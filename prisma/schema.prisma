@@ -1,0 +1,379 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["public", "admin", "client"]
+}
+
+// ============================================================================
+// Enums
+// ============================================================================
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+
+  @@schema("public")
+}
+
+enum CategoryKey {
+  FACE_CARE
+  BODY_CARE
+  HAIR_CARE
+  WELLNESS
+  BABY_KIDS
+
+  @@schema("public")
+}
+
+enum TestimonialSource {
+  facebook
+  manual
+
+  @@schema("public")
+}
+
+enum ContactStatus {
+  new
+  read
+  archived
+
+  @@schema("public")
+}
+
+enum UserRole {
+  client
+  admin
+
+  @@schema("public")
+}
+
+// ============================================================================
+// Auth models — Better Auth managed (public schema)
+// ============================================================================
+
+model user {
+  id               String    @id @default(uuid())
+  name             String
+  firstName        String?
+  lastName         String?
+  phone            String?
+  email            String    @unique
+  emailVerified    Boolean   @default(false)
+  image            String?
+  role             UserRole  @default(client)
+  banned           Boolean   @default(false)
+  banReason        String?
+  banExpires       DateTime?
+  twoFactorEnabled Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  sessions         session[]
+  accounts         account[]
+  cart             cart?
+  favorites        favorite[]
+  orders           order[]
+  adminProfile     adminProfile?
+  clientProfile    clientProfile?
+  twoFactors       twoFactor[]
+
+  @@index([role])
+  @@schema("public")
+}
+
+model session {
+  id        String   @id
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@schema("public")
+}
+
+model account {
+  id                    String    @id
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  user                  user      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@schema("public")
+}
+
+model verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@schema("public")
+}
+
+model twoFactor {
+  id          String @id
+  secret      String
+  backupCodes String
+  verified    Boolean @default(false)
+  userId      String
+  user        user   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@schema("public")
+}
+
+// ============================================================================
+// Storefront models (public schema)
+// ============================================================================
+
+model category {
+  id        String      @id @default(uuid())
+  key       CategoryKey @unique
+  name      String
+  slug      String      @unique
+  imageKey  String
+  sortOrder Int         @default(0)
+  isActive  Boolean     @default(true)
+  products  product[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([isActive, sortOrder])
+  @@schema("public")
+}
+
+model product {
+  id                String         @id @default(uuid())
+  name              String
+  slug              String         @unique
+  description       String
+  shortDescription  String?
+  categoryId        String
+  category          category       @relation(fields: [categoryId], references: [id])
+  priceKes          Int
+  compareAtPriceKes Int?
+  variantLabel      String?
+  bestSeller        Boolean        @default(false)
+  isActive          Boolean        @default(true)
+  stock             Int            @default(0)
+  ratingAvg         Float          @default(0)
+  ratingCount       Int            @default(0)
+  zohoItemId        String?        @unique
+  images            productImage[]
+  cartItems         cartItem[]
+  favorites         favorite[]
+  orderItems        orderItem[]
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([categoryId, isActive])
+  @@index([isActive, bestSeller])
+  @@index([isActive, createdAt])
+  @@index([isActive, priceKes])
+  @@schema("public")
+}
+
+model productImage {
+  id        String   @id @default(uuid())
+  productId String
+  product   product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  objectKey String
+  alt       String   @default("")
+  sortOrder Int      @default(0)
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([productId, sortOrder])
+  @@schema("public")
+}
+
+model cart {
+  id        String     @id @default(uuid())
+  userId    String?    @unique
+  user      user?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String?    @unique
+  items     cartItem[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([updatedAt])
+  @@schema("public")
+}
+
+model cartItem {
+  id        String   @id @default(uuid())
+  cartId    String
+  cart      cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   product  @relation(fields: [productId], references: [id])
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, productId])
+  @@schema("public")
+}
+
+model favorite {
+  id        String   @id @default(uuid())
+  userId    String
+  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@schema("public")
+}
+
+model testimonial {
+  id         String            @id @default(uuid())
+  authorName String
+  location   String?
+  quote      String
+  rating     Int               @default(5)
+  beforeKey  String
+  afterKey   String
+  source     TestimonialSource @default(manual)
+  approved   Boolean           @default(false)
+  sortOrder  Int               @default(0)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@index([approved, sortOrder])
+  @@schema("public")
+}
+
+model order {
+  id           String      @id @default(uuid())
+  userId       String?
+  user         user?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  guestEmail   String?
+  status       OrderStatus @default(PENDING)
+  zohoSoId     String?     @unique
+  subtotalKes  Int
+  deliveryKes  Int         @default(35000)
+  discountKes  Int         @default(0)
+  totalKes     Int
+  promoCode    String?
+  items        orderItem[]
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@schema("public")
+}
+
+model orderItem {
+  id         String   @id @default(uuid())
+  orderId    String
+  order      order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId  String
+  product    product  @relation(fields: [productId], references: [id])
+  name       String
+  priceKes   Int
+  quantity   Int
+
+  @@index([orderId])
+  @@schema("public")
+}
+
+model contactMessage {
+  id        String        @id @default(uuid())
+  name      String
+  email     String
+  phone     String?
+  subject   String
+  message   String
+  status    ContactStatus @default(new)
+  createdAt DateTime      @default(now())
+
+  @@index([status, createdAt])
+  @@schema("public")
+}
+
+// ============================================================================
+// Admin models (admin schema)
+// ============================================================================
+
+model adminProfile {
+  id          String     @id @default(uuid())
+  userId      String     @unique
+  user        user       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName    String
+  permissions Json       @default("{}")
+  department  String?
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  auditLogs   auditLog[]
+
+  @@schema("admin")
+}
+
+model auditLog {
+  id             String       @id @default(uuid())
+  adminProfileId String
+  adminProfile   adminProfile @relation(fields: [adminProfileId], references: [id])
+  action         String
+  resource       String
+  resourceId     String?
+  details        Json?
+  ipAddress      String?
+  createdAt      DateTime     @default(now())
+
+  @@index([adminProfileId, createdAt])
+  @@schema("admin")
+}
+
+model systemConfig {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@schema("admin")
+}
+
+// ============================================================================
+// Client models (client schema)
+// ============================================================================
+
+model clientProfile {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        user     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phone       String?
+  country     String?
+  city        String?
+  companyId   String?  @unique
+  companyName String?
+  loginCount  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@schema("client")
+}

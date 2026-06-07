@@ -1,26 +1,380 @@
 @import "tailwindcss";
 
+/* Enable class-based dark mode for Tailwind v4 dark: utilities */
+@variant dark (&:where(.dark, .dark *));
+
+/* =============================================================================
+   Tailwind v4 theme tokens — extend utilities with brand design tokens
+============================================================================= */
+
+@theme {
+  /* Font families */
+  --font-heading: "Vastago Grotesk", system-ui, sans-serif;
+  --font-body:    "Real Head Web W03", system-ui, sans-serif;
+  --font-stagnan: "Stagnan", system-ui, sans-serif;
+
+  /* Brand colours */
+  --color-primary-green:   #27731e;
+  --color-dark-green:      #045a03;
+  --color-yellow-cta:      #fec700;
+  --color-mint:            #a4f690;
+  --color-mint-light:      #e8fce3;
+  --color-bg-hero:         #27731e;
+
+  /* Text */
+  --color-text-dark:       #1a1c1c;
+  --color-text-body:       #40493c;
+  --color-text-muted:      rgba(64, 73, 60, 0.5);
+
+  /* Form / UI */
+  --color-border-input:    #c0cab8;
+  --color-border-error:    #ef4444;
+  --color-bg-form:         #f9f9f9;
+}
+
+/* =============================================================================
+   VASTAGO GROTESK — full weight range (100–900)
+============================================================================= */
+
+@font-face {
+  font-family: "Vastago Grotesk";
+  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-Thin.otf") format("opentype");
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Vastago Grotesk";
+  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-ExtraLight.otf") format("opentype");
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Vastago Grotesk";
+  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-Light.otf") format("opentype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Vastago Grotesk";
+  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Vastago Grotesk";
+  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-Medium.otf") format("opentype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Vastago Grotesk";
+  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-SemiBold.otf") format("opentype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Vastago Grotesk";
+  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Vastago Grotesk";
+  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-Heavy.otf") format("opentype");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Vastago Grotesk";
+  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-Black.otf") format("opentype");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* =============================================================================
+   STAGNAN — full weight range with italic variants
+============================================================================= */
+
+@font-face {
+  font-family: "Stagnan";
+  src: url("/fonts/stagnan-font/stagnan-thin.otf") format("opentype");
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Stagnan";
+  src: url("/fonts/stagnan-font/stagnan-thinitalic.otf") format("opentype");
+  font-weight: 100;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Stagnan";
+  src: url("/fonts/stagnan-font/stagnan-extralight.otf") format("opentype");
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Stagnan";
+  src: url("/fonts/stagnan-font/stagnan-extralightitalic.otf") format("opentype");
+  font-weight: 200;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Stagnan";
+  src: url("/fonts/stagnan-font/stagnan-light.otf") format("opentype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Stagnan";
+  src: url("/fonts/stagnan-font/stagnan-lightitalic.otf") format("opentype");
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Stagnan";
+  src: url("/fonts/stagnan-font/stagnan-regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Stagnan";
+  src: url("/fonts/stagnan-font/stagnan-italic.otf") format("opentype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Stagnan";
+  src: url("/fonts/stagnan-font/stagnan-medium.otf") format("opentype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Stagnan";
+  src: url("/fonts/stagnan-font/stagnan-mediumitalic.otf") format("opentype");
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Stagnan";
+  src: url("/fonts/stagnan-font/stagnan-semibold.otf") format("opentype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Stagnan";
+  src: url("/fonts/stagnan-font/stagnan-semibolditalic.otf") format("opentype");
+  font-weight: 600;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Stagnan";
+  src: url("/fonts/stagnan-font/stagnan-bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Stagnan";
+  src: url("/fonts/stagnan-font/stagnan-bolditalic.otf") format("opentype");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Stagnan";
+  src: url("/fonts/stagnan-font/stagnan-extrabold.otf") format("opentype");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Stagnan";
+  src: url("/fonts/stagnan-font/stagnan-extrabolditalic.otf") format("opentype");
+  font-weight: 800;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* =============================================================================
+   REAL HEAD WEB W03 — Regular (only weight available)
+   Serves woff2 → woff → ttf in order of preference.
+============================================================================= */
+
+@font-face {
+  font-family: "Real Head Web W03";
+  src:
+    url("/fonts/real-head-web-w03-regular/Web%20Fonts/1e5b7f8cdbcb1e579a6e53aaadaf0b67.woff2") format("woff2"),
+    url("/fonts/real-head-web-w03-regular/Web%20Fonts/1e5b7f8cdbcb1e579a6e53aaadaf0b67.woff") format("woff"),
+    url("/fonts/real-head-web-w03-regular/Web%20Fonts/real-head-web-w03.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* =============================================================================
+   Design Tokens — Fechi Organics
+   CSS custom properties available throughout the application.
+   Font variables: --font-vastago | --font-stagnan | --font-real-head
+============================================================================= */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Brand colours */
+  --color-primary-green:  #27731e;
+  --color-dark-green:     #045a03;
+  --color-yellow-cta:     #fec700;
+  --color-mint:           #a4f690;
+
+  /* Text */
+  --color-text-dark:      #1a1c1c;
+  --color-text-body:      #40493c;
+  --color-text-muted:     rgba(64, 73, 60, 0.5);
+
+  /* Form */
+  --color-border-input:   #c0cab8;
+  --color-border-error:   #ef4444;
+
+  /* Backgrounds */
+  --color-bg-form:        #f9f9f9;
+
+  /* Fonts — custom (populated by @font-face above) */
+  --font-vastago:    "Vastago Grotesk";
+  --font-stagnan:    "Stagnan";
+  --font-real-head:  "Real Head Web W03";
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* =============================================================================
+   Global resets / base styles
+============================================================================= */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--color-text-dark);
+  background-color: #ffffff;
+  font-family: var(--font-body);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+}
+
+/* Custom scrollbar — thin green */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-primary-green);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-dark-green);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-primary-green) transparent;
+}
+
+/* =============================================================================
+   react-phone-number-input overrides
+   Strip the library's default styles inside our custom wrapper.
+============================================================================= */
+
+.phone-input .PhoneInputInput {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 0.875rem;   /* text-sm */
+  color: #1a1c1c;
+  width: 100%;
+  padding: 0;
+}
+
+.phone-input .PhoneInputInput::placeholder {
+  color: rgba(64, 73, 60, 0.5);
+}
+
+.phone-input .PhoneInputCountrySelect {
+  border: none;
+  outline: none;
+  background: transparent;
+  cursor: pointer;
+  margin-right: 0.5rem;
+}
+
+/* ── Dark mode override tokens ───────────────────────────────────────────── */
+.dark {
+  --color-bg-page:      #0f1210;
+  --color-bg-card:      #1a1f18;
+  --color-bg-input:     #1e261c;
+  --color-text-dark:    #edf2ec;
+  --color-text-body:    #b0bfac;
+  --color-text-muted:   rgba(176, 191, 172, 0.6);
+  --color-border-input: #2d3a2b;
+}
+
+/* Apply dark background/color to body; transition for smooth toggling */
+body {
+  background-color: var(--color-bg-page, #ffffff);
+  color: var(--color-text-dark, #1a1c1c);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
