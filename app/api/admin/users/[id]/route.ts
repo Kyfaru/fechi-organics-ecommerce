@@ -140,10 +140,8 @@ export async function PATCH(
 
     // --- Ban / unban via Better Auth admin plugin ---
     if (banned === true && !target.banned) {
-      // @ts-expect-error — admin plugin banUser may not be typed
       await auth.api.banUser({ body: { userId: id } });
     } else if (banned === false && target.banned) {
-      // @ts-expect-error — admin plugin unbanUser may not be typed
       await auth.api.unbanUser({ body: { userId: id } });
     }
 
