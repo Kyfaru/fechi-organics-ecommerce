@@ -134,8 +134,7 @@ export async function PATCH(
       if (id === admin.id && role !== "admin") {
         return Err.validation("You cannot change your own role");
       }
-      // @ts-expect-error — admin plugin setRole may not be typed
-      await auth.api.setRole({ body: { userId: id, role } });
+      await auth.api.setRole({ body: { userId: id, role: role as "user" | "admin" } });
     }
 
     // --- Ban / unban via Better Auth admin plugin ---
@@ -151,7 +150,6 @@ export async function PATCH(
       // Update the credential directly on the account row — Better Auth
       // stores bcrypt-hashed passwords in the account table (providerId="credential").
       // We call setPassword which handles hashing.
-      // @ts-expect-error — admin plugin setPassword may not be typed
       await auth.api.setPassword({ body: { userId: id, newPassword } });
     }
 
@@ -174,7 +172,6 @@ export async function PATCH(
     const newRole = role ?? target.role;
 
     if (newRole === "admin" && (department !== undefined || permissions !== undefined)) {
-      // @ts-expect-error — adminProfile added in schema redesign
       await db.adminProfile.upsert({
         where: { userId: id },
         create: {
@@ -232,13 +229,11 @@ export async function DELETE(
 
     // Ban via Better Auth so all active sessions are invalidated
     if (!target.banned) {
-      // @ts-expect-error — admin plugin banUser may not be typed
       await auth.api.banUser({ body: { userId: id } });
     }
 
     // Mark adminProfile inactive if this is an admin user
     if (target.role === "admin" && target.adminProfile) {
-      // @ts-expect-error — adminProfile added in schema redesign
       await db.adminProfile.update({
         where: { userId: id },
         data: { isActive: false },

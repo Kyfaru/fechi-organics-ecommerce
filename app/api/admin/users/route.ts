@@ -146,7 +146,6 @@ export async function POST(req: NextRequest) {
 
     // Use Better Auth admin plugin to create the user so hashing and
     // account row creation are handled consistently.
-    // @ts-expect-error — admin plugin types may not be fully inferred
     const result = await auth.api.createUser({
       body: {
         name,
@@ -166,7 +165,6 @@ export async function POST(req: NextRequest) {
     // Update the auto-created profile with any extra fields passed in the
     // request. The databaseHooks already created the base profile row.
     if (role === "admin" && (department || permissions)) {
-      // @ts-expect-error — adminProfile added in schema redesign
       await db.adminProfile.update({
         where: { userId },
         data: {

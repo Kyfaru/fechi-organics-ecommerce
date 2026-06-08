@@ -112,7 +112,7 @@ export const auth = betterAuth({
           // Auto-create the matching profile row whenever a user is created.
           // adminProfile and clientProfile are defined in the schema redesign.
           if (user.role === "admin") {
-            // @ts-expect-error — adminProfile added in schema redesign
+          
             await db.adminProfile.create({
               data: {
                 userId: user.id,
@@ -121,7 +121,7 @@ export const auth = betterAuth({
               },
             });
           } else {
-            // @ts-expect-error — clientProfile added in schema redesign
+          
             await db.clientProfile.create({
               data: { userId: user.id },
             });
