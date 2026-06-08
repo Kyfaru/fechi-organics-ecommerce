@@ -101,7 +101,7 @@ const PatchSchema = z.object({
   role: z.enum(["admin", "client"]).optional(),
   banned: z.boolean().optional(),
   department: z.string().optional(),
-  permissions: z.record(z.unknown()).optional(),
+  permissions: z.record(z.string(), z.unknown()).optional(),
   resetPassword: z.boolean().optional(),
 });
 

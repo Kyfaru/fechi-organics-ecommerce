@@ -65,10 +65,14 @@ model user {
   firstName        String?
   lastName         String?
   phone            String?
+  country          String?
+  city             String?
+  companyId        String?
   email            String    @unique
   emailVerified    Boolean   @default(false)
   image            String?
   role             UserRole  @default(client)
+  loginCount       Int       @default(0)
   banned           Boolean   @default(false)
   banReason        String?
   banExpires       DateTime?

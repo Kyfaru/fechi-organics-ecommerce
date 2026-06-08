@@ -55,7 +55,7 @@ export async function GET() {
 // ---------------------------------------------------------------------------
 const RoleSchema = z.object({
   id: z.string().uuid(),
-  role: z.enum(["customer", "admin"]),
+  role: z.enum(["client", "admin"]),
 });
 
 export async function PATCH(req: NextRequest) {
@@ -68,7 +68,7 @@ export async function PATCH(req: NextRequest) {
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
     // Prevent an admin from accidentally demoting themselves
-    if (parsed.data.id === admin.id && parsed.data.role === "customer") {
+    if (parsed.data.id === admin.id && parsed.data.role === "client") {
       return Err.validation("You cannot demote your own account");
     }
 

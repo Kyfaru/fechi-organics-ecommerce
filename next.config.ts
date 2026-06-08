@@ -6,7 +6,6 @@ const nextConfig: NextConfig = {
   },
   
   serverExternalPackages: [
-    "@better-auth/kysely-adapter",
     "@prisma/client",
     "prisma",
   ],
