@@ -6,7 +6,7 @@ import { WhatsAppButton } from "@/components/ui/WhatsAppButton";
 
 export const metadata: Metadata = {
   title: "Fechi Organics",
-  description: "Pure ingredients. Honest farming. Delivered to your door.",
+  description: "Pure ingredients. Your Signature . Your health.",
 };
 
 export default function RootLayout({

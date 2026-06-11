@@ -17,7 +17,7 @@ async function requireAdmin(req?: NextRequest) {
   const user = await db.user.findUnique({ where: { id: session.user.id } });
   return user?.role === "admin" ? user : null;
 }
-
+ 
 // ---------------------------------------------------------------------------
 // GET /api/admin/users
 // Returns all users with query filtering: role, search (name/email), status.

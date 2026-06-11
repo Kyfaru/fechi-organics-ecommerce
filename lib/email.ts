@@ -79,7 +79,6 @@ function buildOTPEmailHTML(otp: string, type: string): string {
                   ${digits}
                 </tr>
               </table>
-
               <!-- Divider -->
               <hr style="border:none;border-top:1px solid #e8ede6;margin:32px 0;" />
 
