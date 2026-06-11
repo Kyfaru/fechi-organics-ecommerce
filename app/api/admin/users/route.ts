@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
@@ -173,7 +172,7 @@ export async function POST(req: NextRequest) {
         where: { userId },
         data: {
           ...(department ? { department } : {}),
-          ...(permissions ? { permissions: permissions as unknown as Prisma.InputJsonValue } : {}),
+          ...(permissions ? { permissions: JSON.parse(JSON.stringify(permissions)) } : {}),
         },
       });
     }
