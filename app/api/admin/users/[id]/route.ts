@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { headers } from "next/headers";
+import { Prisma } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
 // Auth guard
@@ -150,7 +151,7 @@ export async function PATCH(
       // Update the credential directly on the account row — Better Auth
       // stores bcrypt-hashed passwords in the account table (providerId="credential").
       // We call setPassword which handles hashing.
-      await auth.api.setPassword({ headers: req.headers, body: { userId: id, newPassword } });
+      await auth.api.setUserPassword({ headers: req.headers, body: { userId: id, newPassword } });
     }
 
     // --- Core user fields ---
@@ -178,11 +179,11 @@ export async function PATCH(
           userId: id,
           fullName: userUpdateData.name as string ?? target.name,
           ...(department ? { department } : {}),
-          ...(permissions ? { permissions } : {}),
+          ...(permissions ? { permissions: permissions as Prisma.InputJsonValue } : {}),
         },
         update: {
           ...(department !== undefined ? { department } : {}),
-          ...(permissions !== undefined ? { permissions } : {}),
+          ...(permissions !== undefined ? { permissions: permissions as Prisma.InputJsonValue } : {}),
         },
       });
     }

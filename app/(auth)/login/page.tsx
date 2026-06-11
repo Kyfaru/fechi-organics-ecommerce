@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, Suspense } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams} from "next/navigation";
 import AuthToggle from "@/components/auth/AuthToggle";
 import FormInput from "@/components/auth/FormInput";
 import PasswordInput from "@/components/auth/PasswordInput";
@@ -19,11 +19,22 @@ interface LoginErrors {
   general?: string;
 }
 
+// Isolated component so useSearchParams is inside a Suspense boundary
+function LoginSearchParamsReader({
+  onMsg,
+}: {
+  onMsg: (isAdminPortalMsg: boolean) => void;
+}) {
+  const searchParams = useSearchParams();
+  const isAdminPortalMsg = searchParams.get("msg") === "use-admin-portal";
+  // Call the setter on every render so the parent stays in sync
+  onMsg(isAdminPortalMsg);
+  return null;
+}
+
 export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  // Show a banner when redirected here from the admin portal check
-  const isAdminPortalMsg = searchParams.get("msg") === "use-admin-portal";
+  const [isAdminPortalMsg, setIsAdminPortalMsg] = useState(false);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -148,6 +159,10 @@ export default function LoginPage() {
   // ---------------------------------------------------------------------------
   return (
     <main className="flex min-h-screen">
+      {/* Read search-params inside Suspense to satisfy Next.js static-render rules */}
+      <Suspense fallback={null}>
+        <LoginSearchParamsReader onMsg={setIsAdminPortalMsg} />
+      </Suspense>
       {/* ====================================================================
           LEFT PANEL — dark green botanical
       ==================================================================== */}
