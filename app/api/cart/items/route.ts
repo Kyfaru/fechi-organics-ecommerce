@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { connection } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { resolveCart, getCartSummary } from "@/lib/cart";
@@ -11,6 +12,7 @@ const AddSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  await connection();
   try {
     const body = await req.json().catch(() => ({}));
     const parsed = AddSchema.safeParse(body);

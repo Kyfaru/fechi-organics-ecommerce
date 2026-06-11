@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { connection } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -19,6 +20,7 @@ async function requireAdmin(req: NextRequest) {
 // Returns all products ordered by createdAt desc, with category + primary image
 // ---------------------------------------------------------------------------
 export async function GET(req: NextRequest) {
+  await connection();
   try {
     const admin = await requireAdmin(req);
     if (!admin) return Err.forbidden();
@@ -66,6 +68,7 @@ const CreateSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  await connection();
   try {
     const admin = await requireAdmin(req);
     if (!admin) return Err.forbidden();
@@ -128,6 +131,7 @@ const UpdateSchema = z.object({
 });
 
 export async function PATCH(req: NextRequest) {
+  await connection();
   try {
     const admin = await requireAdmin(req);
     if (!admin) return Err.forbidden();

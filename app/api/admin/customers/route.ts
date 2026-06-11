@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { headers } from "next/headers";
+import { connection } from "next/server";
 import { ok, Err } from "@/lib/api";
 import { z } from "zod";
 import { NextRequest } from "next/server";
@@ -21,6 +22,7 @@ async function requireAdmin() {
 // Returns all users (safe fields only), newest first.
 // ---------------------------------------------------------------------------
 export async function GET() {
+  await connection();
   try {
     const admin = await requireAdmin();
     if (!admin) return Err.forbidden();
@@ -59,6 +61,7 @@ const RoleSchema = z.object({
 });
 
 export async function PATCH(req: NextRequest) {
+  await connection();
   try {
     const admin = await requireAdmin();
     if (!admin) return Err.forbidden();

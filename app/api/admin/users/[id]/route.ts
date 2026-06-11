@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { connection } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -64,6 +65,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await connection();
   try {
     const admin = await requireAdmin(req);
     if (!admin) return Err.forbidden();
@@ -110,6 +112,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await connection();
   try {
     const admin = await requireAdmin(req);
     if (!admin) return Err.forbidden();
@@ -211,6 +214,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await connection();
   try {
     const admin = await requireAdmin(req);
     if (!admin) return Err.forbidden();

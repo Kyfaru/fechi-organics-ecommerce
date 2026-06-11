@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { getProducts } from "@/lib/queries/products";
 import { ok, Err } from "@/lib/api";
 
 export async function GET(req: NextRequest) {
-  noStore();
+  await connection();
   try {
     const sp = req.nextUrl.searchParams;
     const category = sp.get("category") ?? undefined;

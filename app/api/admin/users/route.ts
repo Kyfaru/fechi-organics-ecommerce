@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { connection } from "next/server";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
@@ -24,6 +25,7 @@ async function requireAdmin(req?: NextRequest) {
 // Pagination: limit + offset via query params (default 50 per page).
 // ---------------------------------------------------------------------------
 export async function GET(req: NextRequest) {
+  await connection();
   try {
     const admin = await requireAdmin(req);
     if (!admin) return Err.forbidden();
@@ -132,6 +134,7 @@ const CreateUserSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  await connection();
   try {
     const admin = await requireAdmin(req);
     if (!admin) return Err.forbidden();

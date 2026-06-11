@@ -1,9 +1,11 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { headers } from "next/headers";
+import { connection } from "next/server";
 import { ok, Err } from "@/lib/api";
 
 export async function GET() {
+  await connection();
   try {
     const session = await auth.api.getSession({ headers: await headers() });
     if (!session?.user) return Err.authRequired();

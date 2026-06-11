@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { connection } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
@@ -13,6 +14,7 @@ const DELIVERY_KES = 35000; // 350 KES × 100 cents
 // Fire-and-forgets a Zoho Sales Order after commit.
 // ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
+  await connection();
   try {
     // 1. Require session
     const session = await auth.api.getSession({ headers: req.headers });

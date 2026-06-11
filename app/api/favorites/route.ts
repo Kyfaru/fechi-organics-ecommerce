@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { connection } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -6,6 +7,7 @@ import { ok, Err } from "@/lib/api";
 import { r2PublicUrl } from "@/lib/r2";
 
 export async function GET(req: NextRequest) {
+  await connection();
   try {
     const session = await auth.api.getSession({ headers: req.headers });
     if (!session?.user?.id) return ok({ productIds: [] });
@@ -65,6 +67,7 @@ export async function GET(req: NextRequest) {
 const ToggleSchema = z.object({ productId: z.string().uuid() });
 
 export async function POST(req: NextRequest) {
+  await connection();
   try {
     const session = await auth.api.getSession({ headers: req.headers });
     if (!session?.user?.id) return Err.authRequired();

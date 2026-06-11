@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { ShopClient } from "@/components/shop/ShopClient";
@@ -14,7 +15,9 @@ export default async function ShopPage() {
   return (
     <main className="min-h-screen bg-white overflow-x-hidden">
       <Navbar />
-      <ShopClient categories={categories} />
+      <Suspense>
+        <ShopClient categories={categories} />
+      </Suspense>
       <Footer />
     </main>
   );

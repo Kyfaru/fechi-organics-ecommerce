@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { connection } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { resolveCart, getCartSummary } from "@/lib/cart";
@@ -11,6 +12,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ productId: string }> }
 ) {
+  await connection();
   try {
     const { productId } = await params;
     const body = await req.json().catch(() => ({}));
@@ -43,6 +45,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ productId: string }> }
 ) {
+  await connection();
   try {
     const { productId } = await params;
     const session = await auth.api.getSession({ headers: req.headers });

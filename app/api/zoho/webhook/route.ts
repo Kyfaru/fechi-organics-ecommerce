@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { connection } from "next/server";
 import { db } from "@/lib/db";
 import { Err } from "@/lib/api";
 import { syncItemToProduct } from "@/lib/zoho-sync";
@@ -9,6 +10,7 @@ import { syncItemToProduct } from "@/lib/zoho-sync";
 // Always returns 200 to prevent Zoho from retrying on our internal errors.
 // ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
+  await connection();
   // 1. Verify webhook secret token
   const incomingToken = req.headers.get("x-zoho-webhook-token");
   const expectedToken = process.env.ZOHO_WEBHOOK_SECRET;

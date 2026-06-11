@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { unstable_noStore as noStore } from "next/cache";
+import { connection } from "next/server";
 import { auth } from "@/lib/auth";
 import { resolveCart, getCartSummary } from "@/lib/cart";
 import { ok, Err } from "@/lib/api";
 
 export async function GET(req: NextRequest) {
-  noStore();
+  await connection();
   try {
     const session = await auth.api.getSession({ headers: req.headers });
     const userId = session?.user?.id ?? null;

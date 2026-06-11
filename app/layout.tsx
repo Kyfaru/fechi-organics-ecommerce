@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Toaster } from "sonner";
@@ -17,11 +18,15 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
-        <Providers>
-          {children}
-          <Toaster position="bottom-right" richColors />
-          <WhatsAppButton />
-        </Providers>
+        {/* Suspense boundary so PPR can generate a static shell for the html/body
+            without blocking on the CurrencyProvider's fetch-on-mount. */}
+        <Suspense>
+          <Providers>
+            {children}
+            <Toaster position="bottom-right" richColors />
+            <WhatsAppButton />
+          </Providers>
+        </Suspense>
       </body>
     </html>
   );

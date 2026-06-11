@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { connection } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
@@ -14,6 +15,7 @@ const ContactSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  await connection();
   try {
     const body = await req.json().catch(() => ({}));
     const parsed = ContactSchema.safeParse(body);

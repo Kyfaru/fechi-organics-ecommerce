@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { connection } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
@@ -19,6 +20,7 @@ async function requireAdmin(req: NextRequest) {
 // POST /api/zoho/sync  — admin-only, rate-limited to 1 call per 60s per admin
 // ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
+  await connection();
   try {
     const admin = await requireAdmin(req);
     if (!admin) return Err.forbidden();

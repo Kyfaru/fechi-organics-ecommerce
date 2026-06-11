@@ -108,6 +108,8 @@ function CurrencyProvider({ children }: { children: React.ReactNode }) {
     queryFn: () => fetch("/api/currency/rates").then((r) => r.json()).then((d) => d.data),
     staleTime: 6 * 60 * 60 * 1000,
     placeholderData: { base: "KES", rates: DEFAULT_RATES, fetchedAt: "", source: "fallback" },
+    // Do not run during server-side prerender — the query client is hydrated on the client
+    enabled: typeof window !== "undefined",
   });
 
   const rates = (ratesData?.rates ?? DEFAULT_RATES) as Record<CurrencyCode, number>;

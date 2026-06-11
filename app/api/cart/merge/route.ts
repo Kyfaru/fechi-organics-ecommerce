@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { connection } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getCartSummary } from "@/lib/cart";
@@ -6,6 +7,7 @@ import { ok, Err } from "@/lib/api";
 
 /** Merge a guest cart into the logged-in user's cart after sign-in. */
 export async function POST(req: NextRequest) {
+  await connection();
   try {
     const session = await auth.api.getSession({ headers: req.headers });
     if (!session?.user?.id) return Err.authRequired();

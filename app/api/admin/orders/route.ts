@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { connection } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
@@ -17,6 +18,7 @@ async function requireAdmin(req: NextRequest) {
 // GET /api/admin/orders — admin only, returns 50 most recent orders
 // ---------------------------------------------------------------------------
 export async function GET(req: NextRequest) {
+  await connection();
   try {
     const admin = await requireAdmin(req);
     if (!admin) return Err.forbidden();
