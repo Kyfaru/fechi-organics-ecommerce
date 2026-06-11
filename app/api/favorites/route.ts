@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
 
     const products = favs.map((fav: { product: typeof favs[number]["product"] }) =>{
       const p = fav.product;
-      const primary = p.images.find((i) => i.isPrimary) ?? p.images[0];
+      const primary = p.images.find((i: typeof p.images[number]) => i.isPrimary) ?? p.images[0];
       return {
         id: p.id,
         slug: p.slug,
