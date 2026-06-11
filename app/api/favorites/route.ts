@@ -37,7 +37,8 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" as const },
     });
 
-    const products = favs.map(({ product: p }) => {
+    const products = favs.map((fav) => {
+      const p = fav.product;
       const primary = p.images.find((i) => i.isPrimary) ?? p.images[0];
       return {
         id: p.id,
