@@ -134,14 +134,14 @@ export async function PATCH(
       if (id === admin.id && role !== "admin") {
         return Err.validation("You cannot change your own role");
       }
-      await auth.api.setRole({ body: { userId: id, role: role as "user" | "admin" } });
+      await auth.api.setRole({ headers: req.headers, body: { userId: id, role: role as "user" | "admin" } });
     }
 
     // --- Ban / unban via Better Auth admin plugin ---
     if (banned === true && !target.banned) {
-      await auth.api.banUser({ body: { userId: id } });
+      await auth.api.banUser({ headers: req.headers, body: { userId: id } });
     } else if (banned === false && target.banned) {
-      await auth.api.unbanUser({ body: { userId: id } });
+      await auth.api.unbanUser({ headers: req.headers, body: { userId: id } });
     }
 
     // --- Password reset ---
@@ -150,7 +150,7 @@ export async function PATCH(
       // Update the credential directly on the account row — Better Auth
       // stores bcrypt-hashed passwords in the account table (providerId="credential").
       // We call setPassword which handles hashing.
-      await auth.api.setPassword({ body: { userId: id, newPassword } });
+      await auth.api.setPassword({ headers: req.headers, body: { userId: id, newPassword } });
     }
 
     // --- Core user fields ---

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
@@ -127,7 +128,7 @@ const CreateUserSchema = z.object({
   role: z.enum(["admin", "client"]),
   phone: z.string().optional(),
   department: z.string().optional(),
-  permissions: z.record(z.unknown()).optional(),
+  permissions: z.record(z.string(), z.unknown()).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -151,7 +152,7 @@ export async function POST(req: NextRequest) {
         name,
         email,
         password,
-        role,
+        role: role as "user" | "admin",
         data: { firstName, lastName, ...(phone ? { phone } : {}) },
       },
     });
@@ -169,7 +170,7 @@ export async function POST(req: NextRequest) {
         where: { userId },
         data: {
           ...(department ? { department } : {}),
-          ...(permissions ? { permissions } : {}),
+          ...(permissions ? { permissions: permissions as unknown as Prisma.InputJsonValue } : {}),
         },
       });
     }
