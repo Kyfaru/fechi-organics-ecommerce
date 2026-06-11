@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
         where: { userId: session.user.id },
         select: { productId: true },
       });
-      return ok({ productIds: favs.map((f) => f.productId) });
+      return ok({ productIds: favs.map((f: { productId: string }) => f.productId) });
     }
 
     // full=1: return complete ProductCard shapes (used by wishlist page)
