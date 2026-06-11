@@ -6,6 +6,7 @@ import { Icon } from "@iconify/react";
 import { toast } from "@/lib/toast";
 import Link from "next/link";
 import PhoneInput from "@/components/auth/PhoneInput";
+import { posthog } from "@/lib/posthog";
 
 function CustomSelect({
   value,
@@ -228,6 +229,15 @@ export function ContactClient() {
       });
       const json = await res.json();
       if (json.ok) {
+        const urlParams = new URLSearchParams(window.location.search);
+        posthog.capture("contact_form_submitted", {
+          subject: form.subject,
+          has_phone: !!form.phone,
+          referrer: document.referrer || null,
+          utm_source: urlParams.get("utm_source"),
+          utm_medium: urlParams.get("utm_medium"),
+          utm_campaign: urlParams.get("utm_campaign"),
+        });
         toast.success("Message sent! We'll get back to you within 24 hours.");
         setForm({
           firstName: "",

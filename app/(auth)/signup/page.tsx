@@ -15,6 +15,7 @@ import { authClient, signUpWithProfile } from "@/lib/auth-client";
 import { storeUser } from "@/lib/user-store";
 import { Spinner } from "@/components/ui/spinner";
 import { SignupLoader } from "@/components/ui/signup-loader";
+import { posthog } from "@/lib/posthog";
 
 interface SignupErrors {
   firstName?: string;
@@ -137,6 +138,11 @@ export default function SignupPage() {
           companyId: (u.companyId as string | null) ?? null, // set by DB trigger
           image: (u.image as string | null) ?? null,
         });
+        posthog.identify(u.id as string, {
+          email: u.email as string,
+          name: u.name as string,
+        });
+        posthog.capture("signup_completed", { method: "email_password" });
       }
 
       // Successful signup — show animated loader then redirect

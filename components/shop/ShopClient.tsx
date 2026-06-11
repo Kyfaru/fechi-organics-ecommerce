@@ -12,6 +12,7 @@ import { Spinner } from "@/components/ui/spinner";
 import type { CategoryItem } from "@/lib/queries/categories";
 import type { ProductCard as ProductCardType } from "@/lib/queries/products";
 import { useSearchParams, useRouter } from "next/navigation";
+import { posthog } from "@/lib/posthog";
 
 type Sort = "newest" | "best" | "price_asc" | "price_desc";
 type ProductsPage = { items: ProductCardType[]; nextCursor: string | null; total?: number };
@@ -67,8 +68,19 @@ export function ShopClient({ categories }: Props) {
   const allProducts = data?.pages.flatMap((p) => p.items) ?? [];
   const totalShowing = allProducts.length;
 
+  useEffect(() => {
+    if (isLoading || allProducts.length === 0) return;
+    posthog.capture("product_list_viewed", {
+      category: activeCategory,
+      sort,
+      result_count: totalShowing,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
+
   function handleCategoryChange(slug: string) {
     setActiveCategory(slug);
+    posthog.capture("product_filter_applied", { category: slug });
     const params = new URLSearchParams(searchParams);
     if (slug === "all") {
       params.delete("category");
@@ -147,7 +159,11 @@ export function ShopClient({ categories }: Props) {
             <select
               value={sort}
               title="Sort products"
-              onChange={(e) => setSort(e.target.value as Sort)}
+              onChange={(e) => {
+                const v = e.target.value as Sort;
+                setSort(v);
+                posthog.capture("product_sort_changed", { sort: v });
+              }}
               className="font-body text-[14px] text-[#1a1c1c] border border-[#c0cab8] rounded-full px-4 py-2 bg-white outline-none focus:border-[#27731e] cursor-pointer"
             >
               {SORT_OPTIONS.map((o) => (

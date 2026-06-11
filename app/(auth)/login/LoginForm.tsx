@@ -12,6 +12,7 @@ import { authClient, signOut } from "@/lib/auth-client";
 import { storeUser } from "@/lib/user-store";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
+import { posthog } from "@/lib/posthog";
 
 interface LoginErrors {
   email?: string;
@@ -146,6 +147,11 @@ export default function LoginForm() {
           companyId: (u.companyId as string | null) ?? null,
           image: (u.image as string | null) ?? null,
         });
+        posthog.identify(u.id as string, {
+          email: u.email as string,
+          name: u.name as string,
+        });
+        posthog.capture("login_completed", { method: "email_otp" });
       }
 
       return { success: true };

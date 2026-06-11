@@ -57,9 +57,9 @@ export async function POST(req: NextRequest) {
 
     // 5. Compute pricing
     const subtotalKes = cart.items.reduce(
-      (sum, ci) => sum + ci.product.priceKes * ci.quantity,
-      0
-    );
+  (sum: number, ci: typeof cart.items[number]) => sum + ci.product.priceKes * ci.quantity,
+  0
+);
 
     let discountKes = 0;
     if (promoCode === "FECHI10") {
