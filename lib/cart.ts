@@ -48,7 +48,7 @@ export async function resolveCart(
   return { cartId: created.id, isNew: true };
 }
 
-/** Return a serialized cart summary. */
+// Return a serialized cart summary. */
 export async function getCartSummary(cartId: string): Promise<CartSummary> {
   const cart = await db.cart.findUnique({
     where: { id: cartId },
