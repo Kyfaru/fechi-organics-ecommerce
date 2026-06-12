@@ -121,21 +121,21 @@ export function ProductCard({ product }: Props) {
       )}
 
       {/* Favorite */}
-      <Tooltip label={isFavorited ? "Remove favourite" : "Add to favourites"} position="bottom">
-        <div className="absolute top-3 flex left-3 z-10 ">
-        <button
-          onClick={() => favMutation.mutate()}
-          className="relative top-3 left-3 z-10 w-[46px] h-[46px] bg-white rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-transform"
-          aria-label={isFavorited ? "Remove from favourites" : "Add to favourites"}
-        >
+      <div className="relative flex top-0 mt-5 left-63 z-10">
+      <Tooltip label={isFavorited ? "Remove favourite" : "Add to favourites"} position="top">
+    <button
+      onClick={() => favMutation.mutate()}
+      className="absolute w-[46px] h-[46px] bg-white rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-transform"
+    >
           <Icon
             icon={isFavorited ? "mdi:heart" : "hugeicons:favourite"}
             width={22}
             className={isFavorited ? "text-[#c00]" : "text-[#c4c4c4]"}
           />
         </button>
-       </div>
+       
       </Tooltip>
+</div>
 
       {/* Product image */}
       <Link href={`/shop/${product.slug}`}>
