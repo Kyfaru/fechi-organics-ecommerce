@@ -66,7 +66,7 @@ export async function getCartSummary(cartId: string): Promise<CartSummary> {
 
   if (!cart) return { cartId, items: [], subtotalKes: 0, itemCount: 0 };
 
-  const items: CartLine[] = cart.items.map((ci) => {
+  const items: CartLine[] = cart.items.map((ci: typeof cart.items[number]) => {
     const img = ci.product.images[0];
     return {
       cartItemId: ci.id,
