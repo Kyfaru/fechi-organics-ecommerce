@@ -179,6 +179,7 @@ function LogoutModal({
     setLoading(true);
     try {
       await onConfirm();
+      onClose(); // close BEFORE setLoading(false) so AnimatePresence exit fires
     } finally {
       setLoading(false);
     }
@@ -315,7 +316,7 @@ export function Navbar() {
       <div
         aria-hidden
         className={`hidden md:block transition-[height] duration-300 ${
-          scrolled ? "h-[76px]" : "h-[92px]"
+          scrolled ? "h-[76px]" : "h-[-7px]"
         }`}
       />
 

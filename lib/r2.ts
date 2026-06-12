@@ -1,3 +1,18 @@
+import { S3Client } from "@aws-sdk/client-s3";
+
+/** Singleton S3-compatible client for Cloudflare R2.
+ * Credentials are read from env vars at module load time.
+ * R2_ACCOUNT_ID must be the bare account hash (not a full URL).
+ */
+export const r2Client = new S3Client({
+  region: "auto",
+  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+  },
+});
+
 /** Resolve a Cloudflare R2 object key to a public URL.
  *
  * In production set R2_PUBLIC_BASE to your CDN/bucket URL, e.g.

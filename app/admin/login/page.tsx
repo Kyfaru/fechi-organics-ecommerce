@@ -8,6 +8,7 @@ import FormInput from "@/components/auth/FormInput";
 import PasswordInput from "@/components/auth/PasswordInput";
 import { authClient } from "@/lib/auth-client";
 import { Spinner } from "@/components/ui/spinner";
+import { QRCodeSVG } from "qrcode.react";
 
 // ---------------------------------------------------------------------------
 // State machine for the 3-step admin login flow:

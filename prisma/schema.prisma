@@ -55,6 +55,44 @@ enum UserRole {
   @@schema("public")
 }
 
+enum TxStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  TIMEOUT
+
+  @@schema("public")
+}
+
+enum PaymentProvider {
+  MPESA
+  PAYHERO
+
+  @@schema("public")
+}
+
+enum MpesaType {
+  PAYBILL
+  TILL
+
+  @@schema("public")
+}
+
+enum DeliveryType {
+  PICKUP
+  DELIVERY
+
+  @@schema("public")
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+
+  @@schema("public")
+}
+
 // ============================================================================
 // Auth models — Better Auth managed (public schema)
 // ============================================================================
