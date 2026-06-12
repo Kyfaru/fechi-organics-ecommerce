@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
         const soPayload: ZohoSalesOrderPayload = {
           customer_name: user?.name,
           customer_email: user?.email,
-          line_items: cart.items.map((ci) => ({
+          line_items: cart.items.map((ci: (typeof cart.items)[number]) => ({
             item_id: ci.product.zohoItemId ?? undefined,
             name: ci.product.name,
             quantity: ci.quantity,
