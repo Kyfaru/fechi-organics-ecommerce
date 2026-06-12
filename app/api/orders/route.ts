@@ -26,7 +26,10 @@ export async function POST(req: NextRequest) {
     let promoCode: string | undefined;
     try {
       const body = await req.json();
-      promoCode = typeof body?.promoCode === "string" ? body.promoCode.trim().toUpperCase() : undefined;
+      promoCode =
+        typeof body?.promoCode === "string"
+          ? body.promoCode.trim().toUpperCase()
+          : undefined;
     } catch {
       // body is optional
     }
@@ -50,16 +53,17 @@ export async function POST(req: NextRequest) {
     for (const ci of cart.items) {
       if (ci.product.stock < ci.quantity) {
         return Err.validation(
-          `"${ci.product.name}" is out of stock (requested ${ci.quantity}, available ${ci.product.stock})`
+          `"${ci.product.name}" is out of stock (requested ${ci.quantity}, available ${ci.product.stock})`,
         );
       }
     }
 
     // 5. Compute pricing
     const subtotalKes = cart.items.reduce(
-  (sum: number, ci: typeof cart.items[number]) => sum + ci.product.priceKes * ci.quantity,
-  0
-);
+      (sum: number, ci: (typeof cart.items)[number]) =>
+        sum + ci.product.priceKes * ci.quantity,
+      0,
+    );
 
     let discountKes = 0;
     if (promoCode === "FECHI10") {
@@ -73,7 +77,7 @@ export async function POST(req: NextRequest) {
     // 6. Prisma transaction: create order, decrement stock, clear cart
     type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
-    const order = await db.$transaction(async (tx: TxClient) =>{
+    const order = await db.$transaction(async (tx: TxClient) => {
       // Create order
       const newOrder = await tx.order.create({
         data: {
@@ -85,10 +89,10 @@ export async function POST(req: NextRequest) {
           promoCode: promoCode ?? null,
           status: "PENDING",
           items: {
-  create: cart.items.map((ci: typeof cart.items[number]) => ({
-    productId: ci.productId,
-    name: ci.product.name,
-    priceKes: ci.product.priceKes,
+            create: cart.items.map((ci: (typeof cart.items)[number]) => ({
+              productId: ci.productId,
+              name: ci.product.name,
+              priceKes: ci.product.priceKes,
               quantity: ci.quantity,
             })),
           },
@@ -131,10 +135,9 @@ export async function POST(req: NextRequest) {
           notes: `Fechi Organics order ${order.id}`,
         };
 
-        const soRes = await zohoPost<{ salesorder?: { salesorder_id?: string } }>(
-          "/salesorders",
-          { salesorder: soPayload }
-        );
+        const soRes = await zohoPost<{
+          salesorder?: { salesorder_id?: string };
+        }>("/salesorders", { salesorder: soPayload });
 
         if (soRes?.salesorder?.salesorder_id) {
           await db.order.update({
