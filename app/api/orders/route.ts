@@ -85,10 +85,10 @@ export async function POST(req: NextRequest) {
           promoCode: promoCode ?? null,
           status: "PENDING",
           items: {
-            create: cart.items.map((ci) => ({
-              productId: ci.productId,
-              name: ci.product.name,
-              priceKes: ci.product.priceKes,
+  create: cart.items.map((ci: typeof cart.items[number]) => ({
+    productId: ci.productId,
+    name: ci.product.name,
+    priceKes: ci.product.priceKes,
               quantity: ci.quantity,
             })),
           },
