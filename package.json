@@ -39,6 +39,7 @@
     "next": "16.2.7",
     "oslo": "^1.2.1",
     "pg": "^8.21.0",
+    "posthog-js": "^1.384.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-phone-number-input": "^3.4.17",

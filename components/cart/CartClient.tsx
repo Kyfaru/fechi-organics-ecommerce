@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -10,6 +10,7 @@ import { Icon } from "@iconify/react";
 import { Spinner } from "@/components/ui/spinner";
 import { useCurrency } from "@/app/providers";
 import type { CartLine } from "@/lib/cart";
+import { posthog } from "@/lib/posthog";
 
 type PlaceOrderResponse = {
   ok: boolean;
@@ -87,6 +88,12 @@ export function CartClient() {
     },
     onSuccess: (res) => {
       if (res.ok && res.data?.orderId) {
+        posthog.capture("order_completed", {
+          order_id: res.data.orderId,
+          total_kes: subtotalKes + DELIVERY_KES - promoDiscount,
+          item_count: cart?.itemCount ?? 0,
+          promo_code: appliedPromo,
+        });
         setPlacedOrderId(res.data.orderId);
         qc.invalidateQueries({ queryKey: ["cart"] });
       } else {
@@ -107,6 +114,15 @@ export function CartClient() {
   const cart = data?.data;
   const items: CartLine[] = cart?.items ?? [];
 
+  useEffect(() => {
+    if (!cart) return;
+    posthog.capture("cart_viewed", {
+      item_count: cart.itemCount,
+      subtotal_kes: cart.subtotalKes,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!cart]);
+
   // Update quantity mutation
   const updateQty = useMutation({
     mutationFn: async ({ productId, quantity }: { productId: string; quantity: number }) => {
@@ -120,6 +136,12 @@ export function CartClient() {
     onMutate: async ({ productId, quantity }) => {
       await qc.cancelQueries({ queryKey: ["cart"] });
       const prev = qc.getQueryData<CartResponse>(["cart"]);
+      const oldQty = prev?.data?.items.find((it) => it.productId === productId)?.quantity ?? null;
+      posthog.capture("cart_item_quantity_changed", {
+        product_id: productId,
+        old_quantity: oldQty,
+        new_quantity: quantity,
+      });
       qc.setQueryData<CartResponse>(["cart"], (old) => {
         if (!old) return old;
         return {
@@ -159,6 +181,11 @@ export function CartClient() {
     onMutate: async (productId) => {
       await qc.cancelQueries({ queryKey: ["cart"] });
       const prev = qc.getQueryData<CartResponse>(["cart"]);
+      const removedItem = prev?.data?.items.find((it) => it.productId === productId);
+      posthog.capture("cart_item_removed", {
+        product_id: productId,
+        product_name: removedItem?.name ?? null,
+      });
       qc.setQueryData<CartResponse>(["cart"], (old) => {
         if (!old) return old;
         const filtered = old.data.items.filter((it) => it.productId !== productId);
@@ -183,12 +210,15 @@ export function CartClient() {
 
   function handleApplyPromo() {
     if (promoCode.trim().toUpperCase() === "FECHI10") {
+      const discount = Math.round((cart?.subtotalKes ?? 0) * 0.1);
       setAppliedPromo("FECHI10");
-      setPromoDiscount(Math.round((cart?.subtotalKes ?? 0) * 0.1));
+      setPromoDiscount(discount);
+      posthog.capture("promo_code_applied", { code: "FECHI10", discount_kes: discount });
       toast.success("Promo code applied! 10% off your order.");
     } else if (promoCode.trim().toUpperCase() === "NEWUSER") {
       setAppliedPromo("NEWUSER");
-      setPromoDiscount(50000); // 500 KES
+      setPromoDiscount(50000);
+      posthog.capture("promo_code_applied", { code: "NEWUSER", discount_kes: 50000 });
       toast.success("Promo code applied! KES 500 off your order.");
     } else {
       toast.error("Invalid promo code");
@@ -372,7 +402,14 @@ export function CartClient() {
               {/* Place Order button */}
               <div className="flex justify-end mt-8">
                 <button
-                  onClick={() => orderMutation.mutate()}
+                  onClick={() => {
+                    posthog.capture("checkout_started", {
+                      item_count: cart?.itemCount ?? 0,
+                      subtotal_kes: subtotalKes,
+                      has_promo: !!appliedPromo,
+                    });
+                    orderMutation.mutate();
+                  }}
                   disabled={orderMutation.isPending}
                   className="inline-flex items-center gap-2 bg-[#045a03] text-white rounded-full px-8 py-4 font-body font-bold text-[15px] hover:bg-[#27731e] transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
                 >

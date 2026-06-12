@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
+import { posthog } from "@/lib/posthog";
 import { motion } from "framer-motion";
 import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
@@ -21,6 +23,12 @@ export function WishlistClient() {
   });
 
   const products = data?.data?.products ?? [];
+
+  useEffect(() => {
+    if (isLoading) return;
+    posthog.capture("wishlist_viewed", { item_count: products.length });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
 
   return (
     <>

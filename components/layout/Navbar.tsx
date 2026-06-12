@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useSession, signOut } from "@/lib/auth-client";
 import { useTheme } from "@/app/providers";
+import { posthog } from "@/lib/posthog";
 
 const NAV_LINKS = [
   { href: "/", label: "Home" },
@@ -302,6 +303,8 @@ export function Navbar() {
   }
 
   async function handleLogoutConfirm() {
+    posthog.capture("logout_clicked");
+    posthog.reset();
     await signOut();
     router.push("/");
   }
@@ -344,6 +347,7 @@ export function Navbar() {
             <li key={link.href}>
               <Link
                 href={link.href}
+                onClick={() => posthog.capture("nav_link_clicked", { link: link.label, href: link.href, source_path: pathname })}
                 className={[
                   "relative group text-[16px] tracking-[0.8px] transition-colors font-body",
                   "after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:bg-[#27731e] after:origin-left after:transition-all after:duration-300",
@@ -547,7 +551,10 @@ export function Navbar() {
                 <li key={link.href}>
                   <Link
                     href={link.href}
-                    onClick={() => setMobileOpen(false)}
+                    onClick={() => {
+                      setMobileOpen(false);
+                      posthog.capture("nav_link_clicked", { link: link.label, href: link.href, source_path: pathname });
+                    }}
                     className={[
                       "text-2xl font-heading tracking-tight",
                       pathname === link.href

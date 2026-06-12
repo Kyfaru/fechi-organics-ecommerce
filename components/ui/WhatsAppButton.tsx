@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@iconify/react";
+import { posthog } from "@/lib/posthog";
 
 const WHATSAPP_NUMBER = "254710340678";
 const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}`;
@@ -20,6 +21,7 @@ export function WhatsAppButton() {
         target="_blank"
         rel="noopener noreferrer"
         aria-label="Chat with us on WhatsApp"
+        onClick={() => posthog.capture("whatsapp_button_clicked")}
         className="fixed bottom-5 right-5 z-50 w-[54px] h-[54px] rounded-full bg-[#25d366] flex items-center justify-center wa-glow hover:brightness-110 transition-[filter]"
       >
         <Icon icon="mdi:whatsapp" width={30} className="text-white" />

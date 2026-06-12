@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-quer
 import { createContext, useContext, useEffect, useState } from "react";
 import type { CurrencyCode, FxRates } from "@/lib/currency";
 import { CURRENCIES, formatPrice } from "@/lib/currency";
+import { PostHogProvider } from "@/components/PostHogProvider";
 
 // ── TanStack Query ─────────────────────────────────────────────────────────
 
@@ -144,10 +145,12 @@ export function useCurrency() {
 export function Providers({ children }: { children: React.ReactNode }) {
   const qc = getQueryClient();
   return (
-    <QueryClientProvider client={qc}>
-      <ThemeProvider>
-        <CurrencyProvider>{children}</CurrencyProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <PostHogProvider>
+      <QueryClientProvider client={qc}>
+        <ThemeProvider>
+          <CurrencyProvider>{children}</CurrencyProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </PostHogProvider>
   );
 }

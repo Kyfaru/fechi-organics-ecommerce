@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Icon } from "@iconify/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -12,6 +12,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { SkeletonCard } from "@/components/ui/skeleton";
 import { ProductCard } from "@/components/storefront/ProductCard";
 import type { ProductCard as ProductCardType, ProductDetail } from "@/lib/queries/products";
+import { posthog } from "@/lib/posthog";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -223,9 +224,13 @@ export function ProductDetailClient({ product }: Props) {
       return { prev };
     },
     onSuccess: (data) => {
-      toast.success(
-        data?.data?.favorited ? "Added to wishlist" : "Removed from wishlist",
-      );
+      const favorited = data?.data?.favorited;
+      toast.success(favorited ? "Added to wishlist" : "Removed from wishlist");
+      posthog.capture(favorited ? "product_favorited" : "product_unfavorited", {
+        product_id: product.id,
+        product_name: product.name,
+        source: "detail_page",
+      });
     },
     onError: (_e, _v, ctx) => {
       // Roll back optimistic update on error
@@ -252,6 +257,13 @@ export function ProductDetailClient({ product }: Props) {
       toast.success("Added to cart!", {
         message: `${quantity}× ${product.name}`,
       });
+      posthog.capture("product_added_to_cart", {
+        product_id: product.id,
+        product_name: product.name,
+        price_kes: product.priceKes,
+        quantity,
+        source: "detail_page",
+      });
     },
     onError: () => toast.error("Could not add to cart"),
   });
@@ -270,6 +282,16 @@ export function ProductDetailClient({ product }: Props) {
   // Filter out the current product from recommendations
   const relatedProducts =
     relatedData?.data?.items?.filter((p) => p.slug !== product.slug) ?? [];
+
+  useEffect(() => {
+    posthog.capture("product_viewed", {
+      product_id: product.id,
+      product_name: product.name,
+      price_kes: product.priceKes,
+      category: product.categorySlug,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Render

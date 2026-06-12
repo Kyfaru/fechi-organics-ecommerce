@@ -5,6 +5,7 @@ allowBuilds:
   sharp: false
   unrs-resolver: false
   msw: false
+  core-js: false
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver

@@ -57,9 +57,9 @@ export async function POST(req: NextRequest) {
 
     // 5. Compute pricing
     const subtotalKes = cart.items.reduce(
-      (sum, ci) => sum + ci.product.priceKes * ci.quantity,
-      0
-    );
+  (sum: number, ci: typeof cart.items[number]) => sum + ci.product.priceKes * ci.quantity,
+  0
+);
 
     let discountKes = 0;
     if (promoCode === "FECHI10") {
@@ -71,7 +71,9 @@ export async function POST(req: NextRequest) {
     const totalKes = subtotalKes + DELIVERY_KES - discountKes;
 
     // 6. Prisma transaction: create order, decrement stock, clear cart
-    const order = await db.$transaction(async (tx) => {
+    type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+    const order = await db.$transaction(async (tx: TxClient) =>{
       // Create order
       const newOrder = await tx.order.create({
         data: {

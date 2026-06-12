@@ -32,7 +32,7 @@ function createPrismaClient(): PrismaClient {
 
   const adapter = new PrismaPg({ connectionString });
   // Prisma 7 passes adapter via constructor options
-  return new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
+  return new PrismaClient({ adapter });
 }
 
 const globalForPrisma = globalThis as GlobalWithPrisma;
