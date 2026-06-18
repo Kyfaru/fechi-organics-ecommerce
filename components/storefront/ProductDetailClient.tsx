@@ -85,8 +85,7 @@ function StarRow({ rating, count }: { rating: number; count: number }) {
         ))}
       </div>
       <span
-        className="font-body text-[13px]"
-        style={{ color: "#40493c" }}
+        className="font-body text-[13px] text-[#40493c] dark:text-gray-400"
       >
         ({count})
       </span>
@@ -297,17 +296,15 @@ export function ProductDetailClient({ product }: Props) {
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <section className="px-4 md:px-8 lg:px-16 py-10 max-w-[1400px] mx-auto">
+    <section className="px-4 md:px-8 lg:px-16 py-10 max-w-[1400px] mx-auto dark:text-gray-300">
       {/* ── Breadcrumb ──────────────────────────────────────────────────────── */}
       <nav
         aria-label="Breadcrumb"
-        className="flex items-center flex-wrap gap-1.5 font-body text-[13px]"
-        style={{ color: "#40493c" }}
+        className="flex items-center flex-wrap gap-1.5 font-body text-[13px] text-[#40493c] dark:text-gray-400"
       >
         <Link
           href="/"
           className="hover:underline transition-colors"
-          style={{ color: "#40493c" }}
         >
           Home
         </Link>
@@ -315,7 +312,6 @@ export function ProductDetailClient({ product }: Props) {
         <Link
           href="/shop"
           className="hover:underline transition-colors"
-          style={{ color: "#40493c" }}
         >
           Shop
         </Link>
@@ -323,14 +319,12 @@ export function ProductDetailClient({ product }: Props) {
         <Link
           href={`/shop?category=${product.categorySlug}`}
           className="hover:underline transition-colors"
-          style={{ color: "#40493c" }}
         >
           {product.categoryName}
         </Link>
         <span className="select-none">›</span>
         <span
-          className="font-semibold"
-          style={{ color: "#1a1c1c" }}
+          className="font-semibold text-[#1a1c1c] dark:text-white"
           aria-current="page"
         >
           {product.name}
@@ -343,8 +337,7 @@ export function ProductDetailClient({ product }: Props) {
         <div className="w-full lg:w-[52%] flex flex-col gap-4">
           {/* Large image */}
           <div
-            className="relative h-[400px] md:h-[520px] rounded-[24px] overflow-hidden"
-            style={{ background: "#f6f6f6" }}
+            className="relative h-[400px] md:h-[520px] rounded-[24px] overflow-hidden bg-[#f6f6f6] dark:bg-gray-800"
           >
             <Image
               src={activeImageUrl}
@@ -384,10 +377,9 @@ export function ProductDetailClient({ product }: Props) {
                   key={i}
                   onClick={() => setSelectedImage(i)}
                   aria-label={`View image ${i + 1}`}
-                  className="flex-shrink-0 w-16 h-16 rounded-[10px] overflow-hidden transition-all duration-200"
+                  className="flex-shrink-0 w-16 h-16 rounded-[10px] overflow-hidden transition-all duration-200 bg-[#f6f6f6] dark:bg-gray-700"
                   style={{
                     border: `2px solid ${selectedImage === i ? "#27731e" : "transparent"}`,
-                    background: "#f6f6f6",
                     outline: "none",
                   }}
                 >
@@ -421,9 +413,8 @@ export function ProductDetailClient({ product }: Props) {
 
           {/* Product name */}
           <h1
-            className="font-heading font-semibold leading-tight"
+            className="font-heading font-semibold leading-tight text-[#1a1c1c] dark:text-white"
             style={{
-              color: "#1a1c1c",
               fontSize: "clamp(28px, 5vw, 42px)",
               letterSpacing: "-0.8px",
             }}
@@ -433,7 +424,7 @@ export function ProductDetailClient({ product }: Props) {
 
           {/* Variant label */}
           {product.variantLabel && (
-            <p className="font-body text-[14px]" style={{ color: "#40493c" }}>
+            <p className="font-body text-[14px] text-[#40493c] dark:text-gray-400">
               {product.variantLabel}
             </p>
           )}
@@ -444,8 +435,7 @@ export function ProductDetailClient({ product }: Props) {
           {/* Price block */}
           <div className="flex items-center gap-3 flex-wrap">
             <span
-              className="font-body font-bold text-[32px]"
-              style={{ color: "#1a1c1c" }}
+              className="font-body font-bold text-[32px] text-[#1a1c1c] dark:text-white"
             >
               {format(product.priceKes)}
             </span>
@@ -471,27 +461,25 @@ export function ProductDetailClient({ product }: Props) {
           <StockBadge stock={product.stock} />
 
           {/* Divider */}
-          <hr style={{ borderColor: "#c0cab8", margin: "2px 0" }} />
+          <hr className="dark:border-gray-700" style={{ borderColor: "#c0cab8", margin: "2px 0" }} />
 
           {/* Quantity stepper + Add to Cart */}
           <div className="flex items-center gap-3 flex-wrap">
             {/* Stepper */}
             <div
-              className="flex items-center h-[48px] w-[120px] rounded-[8px]"
-              style={{ border: "1px solid #c0cab8" }}
+              className="flex items-center h-[48px] w-[120px] rounded-[8px] border border-[#c0cab8] dark:border-gray-600"
             >
               <button
                 onClick={decQty}
                 disabled={quantity <= 1}
                 aria-label="Decrease quantity"
-                className="flex-1 h-full flex items-center justify-center font-body text-[18px] transition-colors hover:bg-gray-50 rounded-l-[8px] disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-1 h-full flex items-center justify-center font-body text-[18px] transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 rounded-l-[8px] disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ color: "#1a1c1c" }}
               >
                 −
               </button>
               <span
-                className="w-10 text-center font-body text-[15px] font-semibold select-none"
-                style={{ color: "#1a1c1c" }}
+                className="w-10 text-center font-body text-[15px] font-semibold select-none text-[#1a1c1c] dark:text-white"
               >
                 {quantity}
               </span>
@@ -499,7 +487,7 @@ export function ProductDetailClient({ product }: Props) {
                 onClick={incQty}
                 disabled={quantity >= maxQty}
                 aria-label="Increase quantity"
-                className="flex-1 h-full flex items-center justify-center font-body text-[18px] transition-colors hover:bg-gray-50 rounded-r-[8px] disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-1 h-full flex items-center justify-center font-body text-[18px] transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 rounded-r-[8px] disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ color: "#1a1c1c" }}
               >
                 +
@@ -559,19 +547,17 @@ export function ProductDetailClient({ product }: Props) {
           <HighlightPills />
 
           {/* Divider */}
-          <hr style={{ borderColor: "#c0cab8", margin: "2px 0" }} />
+          <hr className="dark:border-gray-700" style={{ borderColor: "#c0cab8", margin: "2px 0" }} />
 
           {/* Description */}
           <div>
             <h2
-              className="font-heading font-semibold text-[20px] mb-2"
-              style={{ color: "#1a1c1c" }}
+              className="font-heading font-semibold text-[20px] mb-2 text-[#1a1c1c] dark:text-white"
             >
               About this product
             </h2>
             <p
-              className="font-body text-[15px] leading-[1.7]"
-              style={{ color: "#40493c" }}
+              className="font-body text-[15px] leading-[1.7] text-[#40493c] dark:text-gray-400"
             >
               {product.description}
             </p>
@@ -582,8 +568,8 @@ export function ProductDetailClient({ product }: Props) {
       {/* ── You May Also Like ─────────────────────────────────────────────────── */}
       <div className="mt-16">
         <h2
-          className="font-heading font-semibold text-[28px] mb-6"
-          style={{ color: "#1a1c1c", letterSpacing: "-0.5px" }}
+          className="font-heading font-semibold text-[28px] mb-6 text-[#1a1c1c] dark:text-white"
+          style={{ letterSpacing: "-0.5px" }}
         >
           You May Also Like
         </h2>

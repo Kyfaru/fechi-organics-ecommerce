@@ -1,7 +1,5 @@
-import { AdminUsersClient } from "@/components/admin/AdminUsersClient";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "User Management | Fechi Organics Admin" };
-
-export default function AdminUsersPage() {
-  return <AdminUsersClient />;
+export default function UsersRedirect() {
+  redirect("/admin/staff");
 }

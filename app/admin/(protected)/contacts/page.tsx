@@ -1,10 +1,6 @@
-// Auth is handled by app/admin/(protected)/layout.tsx — no guard needed here.
-import { AdminContactsClient } from "@/components/admin/AdminContactsClient";
+import { redirect } from "next/navigation";
 
-export const metadata = {
-  title: "Contact Messages | Fechi Organics Admin",
-};
-
-export default function AdminContactsPage() {
-  return <AdminContactsClient />;
+// Contacts now lives under /admin/customers/tickets
+export default function ContactsRedirect() {
+  redirect("/admin/customers/tickets");
 }

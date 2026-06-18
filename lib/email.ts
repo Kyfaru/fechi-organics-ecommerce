@@ -24,6 +24,60 @@ export async function sendOTPEmail(email: string, otp: string, type: string): Pr
   }
 }
 
+/**
+ * Sends a password-reset email containing a magic-link button.
+ *
+ * @param email    - Recipient email address.
+ * @param resetUrl - The full reset URL including the signed JWT token.
+ * @throws When Resend fails to deliver the email.
+ */
+export async function sendPasswordResetEmail(email: string, resetUrl: string): Promise<void> {
+  const { error } = await resend.emails.send({
+    from: sendEmail!,
+    to: email,
+    subject: "Reset your Fechi Organics password",
+    html: buildPasswordResetEmailHTML(resetUrl),
+  });
+  if (error) {
+    console.error("[Resend] Failed to send password reset email:", error);
+    throw new Error("Failed to send password reset email");
+  }
+}
+
+function buildPasswordResetEmailHTML(resetUrl: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"/><title>Reset Your Password</title></head>
+<body style="margin:0;padding:0;background-color:#f4f6f3;font-family:'DM Sans',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f3;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.07);">
+        <tr>
+          <td style="background:#27731e;padding:40px 48px 36px;text-align:center;">
+            <p style="margin:0;font-size:13px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,0.7);">Fechi Organics</p>
+            <h1 style="margin:8px 0 0;font-family:Georgia,serif;font-size:28px;font-weight:700;color:#ffffff;">Password Reset</h1>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:48px 48px 40px;text-align:center;">
+            <p style="font-size:15px;color:#40493c;line-height:1.6;margin-bottom:32px;">
+              Click the button below to reset your password. This link expires in <strong>1 hour</strong>.
+            </p>
+            <a href="${resetUrl}" style="display:inline-block;background:#27731e;color:#ffffff;padding:14px 32px;border-radius:40px;font-size:15px;font-weight:700;text-decoration:none;">
+              Reset Password
+            </a>
+            <p style="font-size:12px;color:#a0a0a0;margin-top:32px;">
+              If you didn't request this, you can safely ignore this email.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
 function buildOTPEmailHTML(otp: string, type: string): string {
   const digits = otp.split("").map(d => `
     <td style="width:52px;height:60px;background:#f9f9f9;border:2px solid #c0cab8;border-radius:12px;text-align:center;vertical-align:middle;font-family:'DM Sans',Helvetica,Arial,sans-serif;font-size:28px;font-weight:700;color:#1a1c1c;letter-spacing:0;">

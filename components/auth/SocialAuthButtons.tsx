@@ -18,9 +18,9 @@ export default function SocialAuthButtons({
 }: SocialAuthButtonsProps) {
   const buttonClass = [
     "flex items-center justify-center gap-2.5 w-full py-3 px-5",
-    "rounded-full border border-[#c0cab8] bg-white",
-    "text-sm font-medium text-[#1a1c1c]",
-    "hover:bg-gray-50 hover:border-[#40493c] transition-colors duration-150",
+    "rounded-full border border-[#c0cab8] dark:border-gray-600 bg-white dark:bg-gray-800",
+    "text-sm font-medium text-[#1a1c1c] dark:text-gray-200",
+    "hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-[#40493c] transition-colors duration-150",
     "disabled:opacity-50 disabled:cursor-not-allowed",
   ].join(" ");
 

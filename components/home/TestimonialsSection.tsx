@@ -60,7 +60,7 @@ export function TestimonialsSection({ testimonials }: Props) {
         ];
 
   return (
-    <section className="py-16 px-4 md:px-8 bg-white">
+    <section className="py-16 px-4 md:px-8 bg-white dark:bg-gray-950">
       <div className="max-w-[1440px] mx-auto">
         {/* Section heading */}
         <motion.h2
@@ -82,7 +82,7 @@ export function TestimonialsSection({ testimonials }: Props) {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.45, delay: idx * 0.1 }}
-              className="bg-[#f9f9f9] rounded-[24px] overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.07)]"
+              className="bg-[#f9f9f9] dark:bg-gray-900 rounded-[24px] overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.07)]"
             >
               {/* Before / After images */}
               <div className="grid grid-cols-2 gap-0.5 h-[220px]">
@@ -115,11 +115,11 @@ export function TestimonialsSection({ testimonials }: Props) {
               {/* Card body */}
               <div className="p-6">
                 <StarRating rating={t.rating} />
-                <p className="font-body text-[15px] text-[#40493c] leading-[1.6] mt-3 mb-4 italic">
+                <p className="font-body text-[15px] text-[#40493c] dark:text-gray-400 leading-[1.6] mt-3 mb-4 italic">
                   &ldquo;{t.quote}&rdquo;
                 </p>
                 <div>
-                  <p className="font-body font-semibold text-[#1a1c1c] text-[15px]">
+                  <p className="font-body font-semibold text-[#1a1c1c] dark:text-white text-[15px]">
                     {t.authorName}
                   </p>
                   {t.location && (

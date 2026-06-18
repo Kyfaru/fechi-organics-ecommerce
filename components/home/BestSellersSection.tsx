@@ -12,7 +12,7 @@ type Props = {
 
 export function BestSellersSection({ products }: Props) {
   return (
-    <section className="py-16 px-4 md:px-8 bg-[#f4fff3]">
+    <section className="py-16 px-4 md:px-8 bg-[#f4fff3] dark:bg-gray-950">
       <div className="max-w-[1440px] mx-auto">
         {/* Header row */}
         <div className="flex items-start justify-between mb-10">
@@ -37,7 +37,7 @@ export function BestSellersSection({ products }: Props) {
           >
             <Link
               href="/shop"
-              className="inline-flex items-center gap-2 border border-black rounded-full px-6 py-3.5 font-body text-[14px] text-[#27731e] tracking-[0.28px] hover:bg-[#27731e] hover:text-white hover:border-[#27731e] transition-all"
+              className="inline-flex items-center gap-2 border border-black dark:border-gray-600 rounded-full px-6 py-3.5 font-body text-[14px] text-[#27731e] tracking-[0.28px] hover:bg-[#27731e] hover:text-white hover:border-[#27731e] transition-all"
             >
               See all products
               <span className="flex items-center justify-center w-[27px] h-[27px] bg-[#27731e] rounded-full text-white group-hover:bg-white group-hover:text-[#27731e] transition-colors">
@@ -67,7 +67,7 @@ export function BestSellersSection({ products }: Props) {
         <div className="flex md:hidden justify-center mt-8">
           <Link
             href="/shop"
-            className="inline-flex items-center gap-2 border border-black rounded-full px-6 py-3.5 font-body text-[14px] text-[#27731e] tracking-[0.28px] hover:bg-[#27731e] hover:text-white hover:border-[#27731e] transition-all"
+            className="inline-flex items-center gap-2 border border-black dark:border-gray-600 rounded-full px-6 py-3.5 font-body text-[14px] text-[#27731e] tracking-[0.28px] hover:bg-[#27731e] hover:text-white hover:border-[#27731e] transition-all"
           >
             See all products
             <Icon icon="mdi:chevron-right" width={16} />

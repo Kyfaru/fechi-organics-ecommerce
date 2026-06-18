@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
-// Auth helper — mirrors app/api/admin/products/route.ts
+// Auth helper
 // ---------------------------------------------------------------------------
 async function requireAdmin(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -15,7 +15,9 @@ async function requireAdmin(req: NextRequest) {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/admin/orders — admin only, returns 50 most recent orders
+// GET /api/admin/orders
+// Returns orders ordered newest-first with user + items (including product images)
+// Supports: ?status=SHIPPED&search=abc&page=1
 // ---------------------------------------------------------------------------
 export async function GET(req: NextRequest) {
   await connection();
@@ -23,16 +25,54 @@ export async function GET(req: NextRequest) {
     const admin = await requireAdmin(req);
     if (!admin) return Err.forbidden();
 
+    const url = new URL(req.url);
+    const status = url.searchParams.get("status");
+    const search = url.searchParams.get("search");
+    const page = Math.max(0, parseInt(url.searchParams.get("page") ?? "0", 10));
+    const pageSize = 50;
+
+    const where: Record<string, unknown> = {};
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (search) {
+      where.OR = [
+        { id: { contains: search, mode: "insensitive" } },
+        { guestEmail: { contains: search, mode: "insensitive" } },
+        { user: { OR: [
+          { name: { contains: search, mode: "insensitive" } },
+          { email: { contains: search, mode: "insensitive" } },
+        ]}},
+      ];
+    }
+
     const orders = await db.order.findMany({
+      where,
       orderBy: { createdAt: "desc" },
-      take: 50,
+      skip: page * pageSize,
+      take: pageSize,
       include: {
         user: { select: { name: true, email: true } },
-        items: { select: { name: true, quantity: true, priceKes: true } },
+        items: {
+          include: {
+            product: {
+              select: {
+                name: true,
+                images: {
+                  where: { isPrimary: true },
+                  take: 1,
+                  select: { objectKey: true },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
-    console.info("[admin/orders] GET — returned", orders.length, "orders");
+    console.info("[admin/orders] GET — returned", orders.length, "orders (page", page + 1, ")");
     return ok({ orders });
   } catch (e) {
     console.error("[admin/orders] GET error", e);

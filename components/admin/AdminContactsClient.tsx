@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { Icon } from "@iconify/react";
-import { toast } from "@/lib/toast";
+import { Search, XCircle, Loader2, MailOpen, ChevronDown, MailCheck, Archive, Mail } from "lucide-react";
+import { toast } from "sonner";
 
 type ContactStatus = "new" | "read" | "archived";
 
@@ -166,11 +166,7 @@ export function AdminContactsClient() {
 
           {/* Search input */}
           <div className="relative sm:ml-auto w-full sm:max-w-[300px]">
-            <Icon
-              icon="mdi:magnify"
-              width={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#a1a1a1]"
-            />
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#a1a1a1]" />
             <input
               type="text"
               placeholder="Search by name, email, subject…"
@@ -184,7 +180,7 @@ export function AdminContactsClient() {
                 className="absolute right-3 top-1/2 -translate-y-1/2"
                 aria-label="Clear search"
               >
-                <Icon icon="mdi:close-circle" width={14} className="text-[#a1a1a1]" />
+                <XCircle size={14} className="text-[#a1a1a1]" />
               </button>
             )}
           </div>
@@ -193,11 +189,11 @@ export function AdminContactsClient() {
         {/* Message list */}
         {isLoading ? (
           <div className="flex justify-center py-16">
-            <Icon icon="mdi:loading" width={36} className="text-[#27731E] animate-spin" />
+            <Loader2 size={36} className="text-[#27731E] animate-spin" />
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <Icon icon="mdi:email-open-outline" width={60} className="text-[#c0cab8] mb-4" />
+            <MailOpen size={60} className="text-[#c0cab8] mb-4" />
             <p className="font-body text-[#40493c] dark:text-[#a8bca4] text-[16px]">
               {search ? "No messages match your search." : "No messages in this category."}
             </p>
@@ -245,9 +241,8 @@ export function AdminContactsClient() {
                   </span>
 
                   {/* Chevron */}
-                  <Icon
-                    icon="mdi:chevron-down"
-                    width={18}
+                  <ChevronDown
+                    size={18}
                     className={[
                       "flex-shrink-0 text-[#a1a1a1] transition-transform duration-200",
                       expandedId === msg.id ? "rotate-180" : "",
@@ -317,7 +312,7 @@ export function AdminContactsClient() {
                               disabled={updateStatus.isPending}
                               className="inline-flex items-center gap-1.5 bg-[#27731E] text-white rounded-full px-4 py-1.5 font-body text-[13px] hover:bg-[#368B2B] transition-colors disabled:opacity-50"
                             >
-                              <Icon icon="mdi:email-check-outline" width={14} />
+                              <MailCheck size={14} />
                               Mark as Read
                             </button>
                           )}
@@ -329,7 +324,7 @@ export function AdminContactsClient() {
                               disabled={updateStatus.isPending}
                               className="inline-flex items-center gap-1.5 bg-[#e2e2e2] dark:bg-[#2d3a2b] text-[#40493c] dark:text-[#a8bca4] rounded-full px-4 py-1.5 font-body text-[13px] hover:bg-[#d0d0d0] dark:hover:bg-[#3a4a37] transition-colors disabled:opacity-50"
                             >
-                              <Icon icon="mdi:archive-outline" width={14} />
+                              <Archive size={14} />
                               Archive
                             </button>
                           )}
@@ -339,7 +334,7 @@ export function AdminContactsClient() {
                             href={`mailto:${msg.email}?subject=Re: ${encodeURIComponent(msg.subject)}`}
                             className="ml-auto inline-flex items-center gap-1.5 bg-white dark:bg-[#232a21] border border-[#27731E] text-[#27731E] rounded-full px-4 py-1.5 font-body text-[13px] hover:bg-[#27731E] hover:text-white transition-colors"
                           >
-                            <Icon icon="mdi:email-outline" width={14} />
+                            <Mail size={14} />
                             Reply via Email
                           </a>
                         </div>

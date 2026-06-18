@@ -13,48 +13,119 @@ export async function GET() {
     const user = await db.user.findUnique({ where: { id: session.user.id } });
     if (user?.role !== "admin") return Err.forbidden();
 
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setHours(0, 0, 0, 0);
+
     const [
-      totalProducts,
-      activeProducts,
-      totalCustomers,
-      newMessages,
-      totalCategories,
-      recentMessages,
-      // TODO: add when orders model is ready
-      totalOrders,
-      pendingOrders,
+      revenueAgg,
+      ordersCount,
+      newCustomers,
+      lowStockCount,
+      recentOrders,
+      lowStockProducts,
+      allOrders30d,
+      ordersByStatusRaw,
     ] = await Promise.all([
-      db.product.count(),
-      db.product.count({ where: { isActive: true } }),
-      db.user.count(),
-      db.contactMessage.count({ where: { status: "new" } }),
-      db.category.count({ where: { isActive: true } }),
-      db.contactMessage.findMany({
+      // Sum of totalKes for PAID orders in last 30 days
+      db.order.aggregate({
+        _sum: { totalKes: true },
+        where: {
+          paymentStatus: "PAID",
+          createdAt: { gte: thirtyDaysAgo },
+        },
+      }),
+      // Count of all orders in last 30 days
+      db.order.count({
+        where: { createdAt: { gte: thirtyDaysAgo } },
+      }),
+      // New client users in last 30 days
+      db.user.count({
+        where: {
+          role: "client",
+          createdAt: { gte: thirtyDaysAgo },
+        },
+      }),
+      // Products with stock < 10 that are active
+      db.product.count({
+        where: { stock: { lt: 10 }, isActive: true },
+      }),
+      // 8 most recent orders with user info
+      db.order.findMany({
         orderBy: { createdAt: "desc" },
-        take: 5,
+        take: 8,
+        select: {
+          id: true,
+          status: true,
+          paymentStatus: true,
+          totalKes: true,
+          createdAt: true,
+          user: { select: { name: true, email: true } },
+        },
+      }),
+      // 6 low-stock active products with images
+      db.product.findMany({
+        where: { stock: { lt: 10 }, isActive: true },
+        orderBy: { stock: "asc" },
+        take: 6,
         select: {
           id: true,
           name: true,
-          email: true,
-          subject: true,
-          status: true,
-          createdAt: true,
+          stock: true,
+          images: {
+            select: { objectKey: true, isPrimary: true },
+            orderBy: { sortOrder: "asc" },
+          },
         },
       }),
-      // order model does not exist yet — placeholder until orders are implemented
-      Promise.resolve(0),
-      Promise.resolve(0),
+      // All PAID orders in last 30 days for daily revenue chart — select date+amount
+      db.order.findMany({
+        where: {
+          paymentStatus: "PAID",
+          createdAt: { gte: thirtyDaysAgo },
+        },
+        select: { createdAt: true, totalKes: true },
+      }),
+      // Order counts grouped by status
+      db.order.groupBy({
+        by: ["status"],
+        _count: { _all: true },
+      }),
     ]);
 
+    // Build daily revenue chart for last 30 days
+    // Key each order by its local KE date string (YYYY-MM-DD)
+    const dailyMap: Record<string, number> = {};
+    for (const ord of allOrders30d) {
+      const dateKey = ord.createdAt.toISOString().slice(0, 10);
+      dailyMap[dateKey] = (dailyMap[dateKey] ?? 0) + ord.totalKes;
+    }
+
+    const revenueChart: { date: string; amount: number }[] = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      revenueChart.push({ date: key, amount: dailyMap[key] ?? 0 });
+    }
+
+    const ordersByStatus = ordersByStatusRaw.map((g) => ({
+      status: g.status,
+      count: g._count._all,
+    }));
+
     return ok({
-      totalProducts,
-      activeProducts,
-      totalCustomers,
-      newMessages,
-      totalCategories,
-      recentMessages,
-      totalOrders,
-      pendingOrders,
+      stats: {
+        revenue: revenueAgg._sum.totalKes ?? 0,
+        orders: ordersCount,
+        newCustomers,
+        lowStock: lowStockCount,
+      },
+      recentOrders,
+      lowStockProducts,
+      revenueChart,
+      ordersByStatus,
     });
   } catch (e) {
     console.error("[admin/dashboard] GET error", e);

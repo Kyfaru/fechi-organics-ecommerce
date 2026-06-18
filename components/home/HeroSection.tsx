@@ -166,7 +166,7 @@ export function HeroSection({ products }: Props) {
             </p>
             <Link
               href="/shop"
-              className="inline-flex items-center gap-2 bg-white text-[#27731e] rounded-full px-7 py-4 font-body text-[16px] hover:bg-[#e8fce3] transition-colors w-fit"
+              className="inline-flex items-center gap-2 bg-white dark:bg-gray-900 dark:hover:bg-gray-800 text-[#27731e] rounded-full px-7 py-4 font-body text-[16px] hover:bg-[#e8fce3] transition-colors w-fit"
             >
               Shop Now
               <Icon icon="mdi:arrow-right" width={17} />
@@ -240,7 +240,7 @@ export function HeroSection({ products }: Props) {
                 onClick={handleNextSlide}
                 onMouseEnter={handleChevronEnter}
                 onMouseLeave={handleChevronLeave}
-                className="absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-md hover:shadow-lg transition-shadow z-10"
+                className="absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-8 bg-white dark:bg-gray-800 rounded-full flex items-center justify-center shadow-md hover:shadow-lg transition-shadow z-10"
                 aria-label="Next product"
               >
                 <Icon icon="mdi:chevron-right" width={18} className="text-[#27731e]" />

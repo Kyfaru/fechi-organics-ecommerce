@@ -9,6 +9,7 @@ import PasswordInput from "@/components/auth/PasswordInput";
 import { authClient } from "@/lib/auth-client";
 import { Spinner } from "@/components/ui/spinner";
 import { QRCodeSVG } from "qrcode.react";
+import { toast } from "@/lib/toast";
 
 // ---------------------------------------------------------------------------
 // State machine for the 3-step admin login flow:
@@ -22,7 +23,6 @@ interface AdminLoginErrors {
   email?: string;
   password?: string;
   code?: string;
-  general?: string;
 }
 
 export default function AdminLoginPage() {
@@ -80,7 +80,7 @@ export default function AdminLoginPage() {
       const result = await authClient.signIn.email({ email, password });
 
       if (result?.error) {
-        setErrors({ general: "Invalid email or password." });
+        toast.error("Invalid email or password.");
         return;
       }
 
@@ -88,7 +88,7 @@ export default function AdminLoginPage() {
       const role = (result?.data?.user as { role?: string } | undefined)?.role;
       if (role && role !== "admin") {
         await authClient.signOut();
-        setErrors({ general: "Access denied — admin accounts only." });
+        toast.error("Access denied — admin accounts only.");
         return;
       }
 
@@ -105,7 +105,7 @@ export default function AdminLoginPage() {
       // No 2FA configured yet — initiate setup for this admin.
       const setupResult = await authClient.twoFactor.enable({ password });
       if (setupResult?.error) {
-        setErrors({ general: "Could not initialize 2FA setup. Please try again." });
+        toast.error("Could not initialize 2FA setup. Please try again.");
         return;
       }
 
@@ -113,7 +113,7 @@ export default function AdminLoginPage() {
       setTotpUri(uri);
       setStep("totp-setup");
     } catch {
-      setErrors({ general: "Sign-in failed. Please try again." });
+      toast.error("Sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -301,19 +301,23 @@ export default function AdminLoginPage() {
           </p>
         </div>
 
-        {/* TOTP URI — copyable text field */}
+        {/* QR code — scannable by Google Authenticator, Authy, etc. */}
         {totpUri && (
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-[#40493c]">TOTP URI</label>
-            <textarea
-              readOnly
-              value={totpUri}
-              rows={3}
-              onClick={(e) => (e.target as HTMLTextAreaElement).select()}
-              className="w-full px-3 py-2 rounded-xl border border-[#c0cab8] bg-[#f9faf8] text-xs font-mono text-[#1a1c1c] resize-none cursor-text focus:outline-none focus:border-[#DEAE00]"
-              aria-label="TOTP URI — click to select all"
-            />
-            <p className="text-[10px] text-[#40493c]">Click the field to select all, then copy.</p>
+          <div className="flex flex-col items-center gap-3">
+            <QRCodeSVG value={totpUri} size={200} bgColor="#ffffff" fgColor="#1a1c1c" level="M" />
+            <p className="text-xs text-[#40493c] text-center">Scan with Google Authenticator or Authy</p>
+            <details className="w-full">
+              <summary className="text-[11px] text-[#40493c] cursor-pointer hover:underline text-center">
+                Can't scan? Use manual entry
+              </summary>
+              <textarea
+                readOnly
+                value={totpUri}
+                rows={3}
+                onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                className="mt-2 w-full px-3 py-2 rounded-xl border border-[#c0cab8] bg-[#f9faf8] text-[10px] font-mono resize-none focus:outline-none"
+              />
+            </details>
           </div>
         )}
 
@@ -380,16 +384,6 @@ export default function AdminLoginPage() {
             </h2>
             <p className="text-sm text-[#40493c]">{subtitle}</p>
           </div>
-
-          {/* General error banner */}
-          {errors.general && (
-            <div
-              role="alert"
-              className="mb-5 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-600"
-            >
-              {errors.general}
-            </div>
-          )}
 
           {/* Active step */}
           {step === "credentials" && renderCredentialsForm()}

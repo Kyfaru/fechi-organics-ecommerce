@@ -34,19 +34,19 @@ export default function PhoneInput({
     <div className="flex flex-col gap-1.5">
       <label
         htmlFor={id}
-        className="text-xs font-semibold tracking-widest uppercase text-[#40493c]"
+        className="text-xs font-semibold tracking-widest uppercase text-[#40493c] dark:text-gray-300"
       >
         {label}
       </label>
 
       <div
         className={[
-          "flex items-center w-full px-4 py-3 bg-white",
+          "flex items-center w-full px-4 py-3 bg-white dark:bg-gray-800",
           "rounded-[20px] border transition-colors duration-150",
           "focus-within:border-[#27731e] focus-within:ring-2 focus-within:ring-[#27731e]/20",
           error
             ? "border-red-500 focus-within:border-red-500 focus-within:ring-red-200"
-            : "border-[#c0cab8]",
+            : "border-[#c0cab8] dark:border-gray-600",
         ]
           .filter(Boolean)
           .join(" ")}
@@ -58,7 +58,7 @@ export default function PhoneInput({
           defaultCountry="KE"
           international
           countryCallingCodeEditable={false}
-          className="w-full text-sm text-[#1a1c1c] phone-input"
+          className="w-full text-sm text-[#1a1c1c] dark:text-white phone-input dark:bg-gray-800"
           aria-invalid={error ? "true" : "false"}
           aria-describedby={error ? `${id}-error` : undefined}
         />

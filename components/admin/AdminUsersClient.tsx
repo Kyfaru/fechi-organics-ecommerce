@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Icon } from "@iconify/react";
+import { ChevronDown, Users, X, Copy, Wand2, KeyRound, UserPlus, ShieldCheck, UserCheck, UserX, Search, XCircle, Pencil } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import { Spinner } from "@/components/ui/spinner";
@@ -137,13 +137,13 @@ function StatusDot({ banned }: { banned: boolean }) {
 function StatCard({
   label,
   value,
-  icon,
+  icon: IconComp,
   color,
   isLoading,
 }: {
   label: string;
   value: number;
-  icon: string;
+  icon: React.ElementType;
   color: string;
   isLoading: boolean;
 }) {
@@ -155,7 +155,7 @@ function StatCard({
         className="w-12 h-12 rounded-[12px] flex items-center justify-center flex-shrink-0"
         style={{ backgroundColor: `${color}18` }}
       >
-        <Icon icon={icon} width={24} style={{ color }} />
+        <IconComp size={24} style={{ color }} />
       </div>
       <div>
         {isLoading ? (
@@ -207,9 +207,8 @@ function CustomSelect({
           </option>
         ))}
       </select>
-      <Icon
-        icon="mdi:chevron-down"
-        width={16}
+      <ChevronDown
+        size={16}
         className="absolute right-3 pointer-events-none"
         style={{
           color: "#a1a1a1",
@@ -231,7 +230,7 @@ function EmptyState() {
         className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
         style={{ backgroundColor: "#f0f4ef" }}
       >
-        <Icon icon="mdi:account-group-outline" width={32} style={{ color: "#c0cab8" }} />
+        <Users size={32} style={{ color: "#c0cab8" }} />
       </div>
       <p className="font-heading text-[#1a1c1c] text-[17px] font-semibold mb-1">No users found</p>
       <p className="font-body text-[#40493c] text-[14px]">
@@ -344,7 +343,7 @@ function UserDrawer({
                 style={{ backgroundColor: "#f3f4f6", color: "#40493c" }}
                 aria-label="Close drawer"
               >
-                <Icon icon="mdi:close" width={20} />
+                <X size={20} />
               </button>
             </div>
 
@@ -378,11 +377,11 @@ function UserDrawer({
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] font-body text-[12px] font-semibold text-white transition-colors"
                       style={{ backgroundColor: "#27731E" }}
                     >
-                      <Icon icon="mdi:content-copy" width={14} />
+                      <Copy size={14} />
                       Copy
                     </button>
                     <button onClick={onClearBanner} aria-label="Dismiss">
-                      <Icon icon="mdi:close" width={16} style={{ color: "#40493c" }} />
+                      <X size={16} style={{ color: "#40493c" }} />
                     </button>
                   </motion.div>
                 )}
@@ -462,7 +461,7 @@ function UserDrawer({
                     backgroundColor: "#fafafa",
                   }}
                 >
-                  <Icon icon="mdi:auto-fix" width={14} />
+                  <Wand2 size={14} />
                   Auto-generate &amp; copy
                 </button>
               </div>
@@ -484,7 +483,7 @@ function UserDrawer({
                     {isResettingPassword ? (
                       <Spinner size={14} />
                     ) : (
-                      <Icon icon="mdi:lock-reset" width={16} />
+                      <KeyRound size={16} />
                     )}
                     Reset Password
                   </button>
@@ -787,7 +786,7 @@ export function AdminUsersClient() {
           className="inline-flex items-center gap-2 rounded-[8px] px-5 py-2.5 font-body text-[14px] font-semibold text-white transition-all hover:brightness-110 active:brightness-95"
           style={{ backgroundColor: "#27731e" }}
         >
-          <Icon icon="mdi:account-plus-outline" width={18} />
+          <UserPlus size={18} />
           Add User
         </button>
       </div>
@@ -802,28 +801,28 @@ export function AdminUsersClient() {
           <StatCard
             label="Total Staff"
             value={totalStaff}
-            icon="mdi:shield-account-outline"
+            icon={ShieldCheck}
             color="#DEAE00"
             isLoading={isLoading}
           />
           <StatCard
             label="Active Users"
             value={activeCount}
-            icon="mdi:account-check-outline"
+            icon={UserCheck}
             color="#27731E"
             isLoading={isLoading}
           />
           <StatCard
             label="Banned / Inactive"
             value={bannedCount}
-            icon="mdi:account-cancel-outline"
+            icon={UserX}
             color="#dc2626"
             isLoading={isLoading}
           />
           <StatCard
             label="Clients"
             value={clientCount}
-            icon="mdi:account-group-outline"
+            icon={Users}
             color="#43A935"
             isLoading={isLoading}
           />
@@ -833,9 +832,8 @@ export function AdminUsersClient() {
         <div className="flex flex-wrap items-center gap-3 mb-5">
           {/* Search */}
           <div className="relative flex-1 min-w-[220px] max-w-[360px]">
-            <Icon
-              icon="mdi:magnify"
-              width={18}
+            <Search
+              size={18}
               className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
               style={{ color: "#a1a1a1" }}
             />
@@ -853,7 +851,7 @@ export function AdminUsersClient() {
                 className="absolute right-3 top-1/2 -translate-y-1/2"
                 aria-label="Clear search"
               >
-                <Icon icon="mdi:close-circle" width={16} style={{ color: "#a1a1a1" }} />
+                <XCircle size={16} style={{ color: "#a1a1a1" }} />
               </button>
             )}
           </div>
@@ -968,7 +966,7 @@ export function AdminUsersClient() {
                               style={{ color: "#27731e" }}
                               aria-label={`Edit ${user.name}`}
                             >
-                              <Icon icon="mdi:pencil-outline" width={16} />
+                              <Pencil size={16} />
                             </button>
 
                             {/* Ban / Deactivate toggle */}
@@ -980,10 +978,7 @@ export function AdminUsersClient() {
                               aria-label={user.banned ? "User is already banned" : `Deactivate ${user.name}`}
                               title={user.banned ? "Already banned" : "Deactivate / ban"}
                             >
-                              <Icon
-                                icon={user.banned ? "mdi:account-cancel" : "mdi:account-cancel-outline"}
-                                width={16}
-                              />
+                              <UserX size={16} />
                             </button>
                           </div>
                         </td>

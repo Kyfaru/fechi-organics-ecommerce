@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Argon2id } from "oslo/password";
 import dotenv from "dotenv";
+import { encrypt } from "../lib/crypto";
 
 dotenv.config({ path: ".env.local" });
 
@@ -396,6 +397,69 @@ async function main() {
   });
 
   console.log(`✅ Admin account created/updated: ${adminEmail}`);
+
+  // ---------------------------------------------------------------------------
+  // Branches — stub records with placeholder encrypted credentials.
+  // Replace consumerKeyEnc / consumerSecretEnc / passkeyEnc via the admin
+  // panel or a direct DB update once real Daraja credentials are available.
+  // ---------------------------------------------------------------------------
+  const branchDefs = [
+    {
+      id: "branch-nairobi",
+      name: "Nairobi Branch",
+      county: "Nairobi",
+      mpesaType: "PAYBILL" as const,
+      shortcode: "000000",
+    },
+    {
+      id: "branch-mombasa",
+      name: "Mombasa Branch",
+      county: "Mombasa",
+      mpesaType: "PAYBILL" as const,
+      shortcode: "000000",
+    },
+    {
+      id: "branch-kisumu",
+      name: "Kisumu Branch",
+      county: "Kisumu",
+      mpesaType: "TILL" as const,
+      shortcode: "000000",
+    },
+    {
+      id: "branch-nakuru",
+      name: "Nakuru Branch",
+      county: "Nakuru",
+      mpesaType: "PAYBILL" as const,
+      shortcode: "000000",
+    },
+    {
+      id: "branch-eldoret",
+      name: "Eldoret Branch",
+      county: "Uasin Gishu",
+      mpesaType: "PAYBILL" as const,
+      shortcode: "000000",
+    },
+  ];
+
+  for (const b of branchDefs) {
+    await prisma.branch.upsert({
+      where: { id: b.id },
+      update: {},
+      create: {
+        id: b.id,
+        name: b.name,
+        county: b.county,
+        mpesaType: b.mpesaType,
+        shortcode: b.shortcode,
+        consumerKeyEnc: encrypt("PLACEHOLDER"),
+        consumerSecretEnc: encrypt("PLACEHOLDER"),
+        passkeyEnc: encrypt("PLACEHOLDER"),
+        isActive: true,
+      },
+    });
+  }
+
+  console.log(`✅ ${branchDefs.length} branches seeded`);
 
   console.log("🎉 Seeding complete!");
 }

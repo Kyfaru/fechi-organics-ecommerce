@@ -24,7 +24,7 @@ const TRACK_ITEMS = [...COUNTRIES, ...COUNTRIES, ...COUNTRIES, ...COUNTRIES, ...
 
 export function BrandTrackSection() {
   return (
-    <section className="py-16 bg-[#f4fff3] overflow-hidden">
+    <section className="py-16 bg-[#f4fff3] dark:bg-gray-950 overflow-hidden">
       <div className="max-w-[1440px] mx-auto px-4 md:px-8 mb-10">
         <motion.h2
           initial={{ opacity: 0, y: 30 }}
@@ -40,8 +40,8 @@ export function BrandTrackSection() {
       {/* Infinite marquee */}
       <div className="relative overflow-hidden">
         {/* Fade edges */}
-        <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-[#f4fff3] to-transparent z-10 pointer-events-none" />
-        <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-[#f4fff3] to-transparent z-10 pointer-events-none" />
+        <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-[#f4fff3] dark:from-gray-950 to-transparent z-10 pointer-events-none" />
+        <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-[#f4fff3] dark:from-gray-950 to-transparent z-10 pointer-events-none" />
 
         <div
           className="fechi-marquee flex gap-8 items-center"

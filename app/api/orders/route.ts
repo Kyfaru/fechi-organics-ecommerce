@@ -4,7 +4,68 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { zohoPost } from "@/lib/zoho";
+import { r2PublicUrl } from "@/lib/r2";
 import type { ZohoSalesOrderPayload } from "@/lib/zoho";
+
+// ---------------------------------------------------------------------------
+// GET /api/orders — return all orders for the authenticated user
+// ---------------------------------------------------------------------------
+export async function GET(req: NextRequest) {
+  await connection();
+  try {
+    const session = await auth.api.getSession({ headers: req.headers });
+    if (!session?.user?.id) return Err.authRequired();
+
+    const orders = await db.order.findMany({
+      where: { userId: session.user.id },
+      include: {
+        items: {
+          include: {
+            product: {
+              include: {
+                images: { orderBy: { sortOrder: "asc" } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Shape each order to include resolved image URLs
+    const shaped = orders.map((order) => ({
+      id: order.id,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      subtotalKes: order.subtotalKes,
+      deliveryKes: order.deliveryKes,
+      discountKes: order.discountKes,
+      totalKes: order.totalKes,
+      promoCode: order.promoCode,
+      createdAt: order.createdAt.toISOString(),
+      updatedAt: order.updatedAt.toISOString(),
+      items: order.items.map((item) => {
+        const primary =
+          item.product.images.find((img) => img.isPrimary) ??
+          item.product.images[0];
+        return {
+          id: item.id,
+          productId: item.productId,
+          name: item.name,
+          priceKes: item.priceKes,
+          quantity: item.quantity,
+          imageUrl: primary ? r2PublicUrl(primary.objectKey) : null,
+        };
+      }),
+    }));
+
+    console.info("[orders] GET — returning", shaped.length, "orders for user", session.user.id);
+    return ok({ orders: shaped });
+  } catch (e) {
+    console.error("[orders] GET error", e);
+    return Err.internal();
+  }
+}
 
 const DELIVERY_KES = 35000; // 350 KES × 100 cents
 

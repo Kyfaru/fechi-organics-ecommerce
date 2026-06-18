@@ -155,7 +155,7 @@ export function ShopClient({ categories }: Props) {
 
           {/* Sort dropdown */}
           <div className="relative flex items-center gap-2 flex-shrink-0">
-            <span className="font-body text-[#40493c] text-[14px]">Sort by:</span>
+            <span className="font-body text-[#40493c] dark:text-gray-300 text-[14px]">Sort by:</span>
             <select
               value={sort}
               title="Sort products"
@@ -164,7 +164,7 @@ export function ShopClient({ categories }: Props) {
                 setSort(v);
                 posthog.capture("product_sort_changed", { sort: v });
               }}
-              className="font-body text-[14px] text-[#1a1c1c] border border-[#c0cab8] rounded-full px-4 py-2 bg-white outline-none focus:border-[#27731e] cursor-pointer"
+              className="font-body text-[14px] text-[#1a1c1c] dark:text-white border border-[#c0cab8] dark:border-gray-600 rounded-full px-4 py-2 bg-white dark:bg-gray-800 outline-none focus:border-[#27731e] cursor-pointer"
             >
               {SORT_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -209,7 +209,7 @@ export function ShopClient({ categories }: Props) {
               {allProducts.length === 0 && (
                 <div className="text-center py-20">
                   <Icon icon="mdi:package-variant-remove" width={64} className="text-[#c0cab8] mx-auto mb-4" />
-                  <p className="font-body text-[#40493c] text-[18px]">No products found in this category.</p>
+                  <p className="font-body text-[#40493c] dark:text-gray-400 text-[18px]">No products found in this category.</p>
                   <button
                     onClick={() => handleCategoryChange("all")}
                     className="mt-4 inline-flex items-center gap-2 bg-[#27731e] text-white rounded-full px-6 py-3 font-body text-[14px] hover:bg-[#045a03] transition-colors"
@@ -224,7 +224,7 @@ export function ShopClient({ categories }: Props) {
           {/* Product count */}
           {totalShowing > 0 && (
             <div className="text-center mt-8 mb-6">
-              <p className="font-body text-[#40493c] text-[14px]">
+              <p className="font-body text-[#40493c] dark:text-gray-400 text-[14px]">
                 Showing {totalShowing} products
               </p>
             </div>
@@ -299,7 +299,7 @@ function FilterChip({
         "rounded-full px-4 py-2 font-body text-[13px] md:text-[14px] transition-all",
         active
           ? "bg-[#27731e] text-white"
-          : "bg-white border border-[#c0cab8] text-[#40493c] hover:border-[#27731e] hover:text-[#27731e]",
+          : "bg-white dark:bg-gray-800 border border-[#c0cab8] dark:border-gray-600 text-[#40493c] dark:text-gray-300 hover:border-[#27731e] hover:text-[#27731e]",
       ].join(" ")}
     >
       {label}

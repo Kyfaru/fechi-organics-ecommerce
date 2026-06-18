@@ -1,18 +1,15 @@
-import { Navbar } from "@/components/layout/Navbar";
-import { Footer } from "@/components/layout/Footer";
+import type { Metadata } from "next";
 import { WishlistClient } from "@/components/wishlist/WishlistClient";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "My Wishlist | Fechi Organics",
   description: "Your saved Fechi Organics favourites.",
 };
 
+/**
+ * /wishlist — Wishlist page.
+ * Navbar and Footer are provided by AccountLayout inside WishlistClient.
+ */
 export default function WishlistPage() {
-  return (
-    <main className="min-h-screen bg-white overflow-x-hidden">
-      <Navbar />
-      <WishlistClient />
-      <Footer />
-    </main>
-  );
+  return <WishlistClient />;
 }

@@ -74,7 +74,7 @@ const CountrySelect = forwardRef<HTMLSelectElement, CountrySelectProps>(
       <div className="flex flex-col gap-1.5">
         <label
           htmlFor={selectId}
-          className="text-xs font-semibold tracking-widest uppercase text-[#40493c]"
+          className="text-xs font-semibold tracking-widest uppercase text-[#40493c] dark:text-gray-300"
         >
           {label}
         </label>
@@ -83,13 +83,13 @@ const CountrySelect = forwardRef<HTMLSelectElement, CountrySelectProps>(
           ref={ref}
           id={selectId}
           className={[
-            "w-full px-4 py-3 text-sm text-[#1a1c1c] bg-white appearance-none",
+            "w-full px-4 py-3 text-sm text-[#1a1c1c] dark:text-white bg-white dark:bg-gray-800 appearance-none",
             "rounded-[20px] border outline-none transition-colors duration-150",
             "focus:border-[#27731e] focus:ring-2 focus:ring-[#27731e]/20",
             "cursor-pointer",
             error
               ? "border-red-500 focus:border-red-500 focus:ring-red-200"
-              : "border-[#c0cab8]",
+              : "border-[#c0cab8] dark:border-gray-600",
             className,
           ]
             .filter(Boolean)

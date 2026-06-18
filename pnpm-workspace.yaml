@@ -6,6 +6,7 @@ allowBuilds:
   unrs-resolver: false
   msw: false
   core-js: false
+  '@sentry/cli': false
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver

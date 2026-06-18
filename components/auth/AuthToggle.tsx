@@ -20,12 +20,12 @@ export default function AuthToggle({ active }: AuthToggleProps) {
     [
       "px-6 sm:px-16 py-2 rounded-full text-sm font-semibold tracking-widest transition-all duration-200",
       active === mode
-        ? "bg-white text-[#1a1c1c] shadow-sm font-bold"
-        : "text-[#40493c] hover:text-[#1a1c1c] font-normal",
+        ? "bg-white dark:bg-gray-700 text-[#1a1c1c] dark:text-white shadow-sm font-bold"
+        : "text-[#40493c] dark:text-gray-400 hover:text-[#1a1c1c] dark:hover:text-white font-normal",
     ].join(" ");
 
   return (
-    <div className="inline-flex items-center rounded-full bg-gray-100 p-1 gap-1">
+    <div className="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 p-1 gap-1">
       <Link href="/login" className={pillClass("login")} aria-current={active === "login" ? "page" : undefined}>
         LOG IN
       </Link>

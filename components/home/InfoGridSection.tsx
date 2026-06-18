@@ -28,7 +28,7 @@ const FEATURE_CARDS = [
 
 export function InfoGridSection() {
   return (
-    <section className="py-16 px-4 md:px-8 bg-white">
+    <section className="py-16 px-4 md:px-8 bg-white dark:bg-gray-950">
       <div className="max-w-[1440px] mx-auto">
         {/* Top row — 3 feature cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
@@ -46,7 +46,7 @@ export function InfoGridSection() {
               <div className="absolute top-5 right-5">
                 <Link
                   href={card.href}
-                  className="flex items-center justify-center w-10 h-10 bg-white rounded-full shadow-sm hover:scale-110 transition-transform"
+                  className="flex items-center justify-center w-10 h-10 bg-white dark:bg-gray-900 rounded-full shadow-sm hover:scale-110 transition-transform"
                 >
                   <Icon icon="mdi:chevron-right" width={18} className="text-[#1a1c1c]" />
                 </Link>

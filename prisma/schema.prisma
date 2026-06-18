@@ -93,6 +93,58 @@ enum PaymentStatus {
   @@schema("public")
 }
 
+enum TicketStatus {
+  OPEN
+  RESOLVED
+  EXPIRED
+
+  @@schema("public")
+}
+
+enum MessageSender {
+  CUSTOMER
+  ADMIN
+
+  @@schema("public")
+}
+
+enum CampaignType {
+  EMAIL
+  SMS
+  PUSH
+
+  @@schema("admin")
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  FAILED
+
+  @@schema("admin")
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  SCHEDULED
+  ARCHIVED
+
+  @@schema("admin")
+}
+
+enum POStatus {
+  DRAFT
+  SENT
+  CONFIRMED
+  RECEIVED
+  CANCELLED
+
+  @@schema("admin")
+}
+
 // ============================================================================
 // Auth models — Better Auth managed (public schema)
 // ============================================================================
@@ -125,6 +177,9 @@ model user {
   adminProfile     adminProfile?
   clientProfile    clientProfile?
   twoFactors       twoFactor[]
+  supportTickets   supportTicket[]
+  blogPosts        blogPost[]
+  loyaltyPoints    loyaltyPoints?
 
   @@index([role])
   @@schema("public")
@@ -320,9 +375,19 @@ model order {
   discountKes  Int         @default(0)
   totalKes     Int
   promoCode    String?
-  items        orderItem[]
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  items             orderItem[]
+  branchId          String?
+  branch            branch?       @relation(fields: [branchId], references: [id])
+  transactions      transaction[]
+  deliveryAddress   String?
+  deliveryCity      String?
+  deliveryCounty    String?
+  deliveryPhone     String?
+  deliveryType      DeliveryType  @default(DELIVERY)
+  isInternational   Boolean       @default(false)
+  paymentStatus     PaymentStatus @default(PENDING)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
@@ -340,6 +405,49 @@ model orderItem {
   quantity   Int
 
   @@index([orderId])
+  @@schema("public")
+}
+
+model branch {
+  id                String        @id @default(uuid())
+  name              String
+  county            String
+  mpesaType         MpesaType
+  shortcode         String
+  consumerKeyEnc    String
+  consumerSecretEnc String
+  passkeyEnc        String
+  isActive          Boolean       @default(true)
+  orders            order[]
+  transactions      transaction[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([county, isActive])
+  @@schema("public")
+}
+
+model transaction {
+  id                   String          @id @default(uuid())
+  orderId              String
+  order                order           @relation(fields: [orderId], references: [id])
+  branchId             String?
+  branch               branch?         @relation(fields: [branchId], references: [id])
+  provider             PaymentProvider
+  checkoutRequestId    String?         @unique
+  payheroReference     String?
+  amount               Int
+  status               TxStatus        @default(PENDING)
+  rawRequestPayload    Json?
+  rawCallbackPayload   Json?
+  mpesaReceiptNumber   String?
+  failureReason        String?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  @@index([orderId])
+  @@index([checkoutRequestId])
+  @@index([status, createdAt])
   @@schema("public")
 }
 
@@ -418,4 +526,200 @@ model clientProfile {
   updatedAt   DateTime @updatedAt
 
   @@schema("client")
+}
+
+// ============================================================================
+// Support Tickets (public schema)
+// ============================================================================
+
+model supportTicket {
+  id             String          @id @default(cuid())
+  ticketNumber   String          @unique
+  userId         String
+  user           user            @relation(fields: [userId], references: [id])
+  subject        String
+  status         TicketStatus    @default(OPEN)
+  lastActivityAt DateTime        @default(now())
+  expiresAt      DateTime
+  messages       ticketMessage[]
+  createdAt      DateTime        @default(now())
+
+  @@index([status, lastActivityAt])
+  @@schema("public")
+}
+
+model ticketMessage {
+  id           String        @id @default(cuid())
+  ticketId     String
+  ticket       supportTicket @relation(fields: [ticketId], references: [id])
+  senderType   MessageSender
+  content      String        @db.Text
+  emailSentAt  DateTime?
+  createdAt    DateTime      @default(now())
+
+  @@index([ticketId])
+  @@schema("public")
+}
+
+// ============================================================================
+// Loyalty (public schema)
+// ============================================================================
+
+model loyaltyPoints {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      user     @relation(fields: [userId], references: [id])
+  points    Int      @default(0)
+  tier      String   @default("BRONZE")
+  updatedAt DateTime @updatedAt
+
+  @@schema("public")
+}
+
+// ============================================================================
+// Marketing (admin schema)
+// ============================================================================
+
+model campaign {
+  id           String         @id @default(cuid())
+  name         String
+  type         CampaignType
+  audienceType String         @default("ALL")
+  subject      String?
+  content      String?        @db.Text
+  status       CampaignStatus @default(DRAFT)
+  scheduledAt  DateTime?
+  sentAt       DateTime?
+  sentCount    Int            @default(0)
+  createdAt    DateTime       @default(now())
+
+  @@schema("admin")
+}
+
+model promotion {
+  id        String    @id @default(cuid())
+  name      String
+  type      String
+  value     Float
+  code      String?   @unique
+  minOrder  Int?
+  maxUses   Int?
+  usedCount Int       @default(0)
+  startDate DateTime?
+  endDate   DateTime?
+  status    String    @default("active")
+  createdAt DateTime  @default(now())
+
+  @@schema("admin")
+}
+
+// ============================================================================
+// Content (admin schema)
+// ============================================================================
+
+model blogPost {
+  id            String     @id @default(cuid())
+  title         String
+  slug          String     @unique
+  excerpt       String?
+  content       String?    @db.Text
+  featuredImage String?
+  category      String?
+  tags          String[]
+  status        PostStatus @default(DRAFT)
+  authorId      String
+  author        user       @relation(fields: [authorId], references: [id])
+  publishedAt   DateTime?
+  seoTitle      String?
+  metaDesc      String?
+  views         Int        @default(0)
+  createdAt     DateTime   @default(now())
+
+  @@schema("admin")
+}
+
+model homepageSection {
+  id      String  @id @default(cuid())
+  type    String
+  order   Int
+  visible Boolean @default(true)
+  config  Json
+
+  @@schema("admin")
+}
+
+model banner {
+  id        String    @id @default(cuid())
+  name      String
+  location  String
+  imageKey  String
+  ctaText   String?
+  ctaLink   String?
+  startDate DateTime?
+  endDate   DateTime?
+  status    String    @default("active")
+
+  @@schema("admin")
+}
+
+model faq {
+  id       String @id @default(cuid())
+  question String
+  answer   String @db.Text
+  group    String @default("General")
+  order    Int    @default(0)
+  status   String @default("published")
+
+  @@schema("admin")
+}
+
+// ============================================================================
+// Suppliers + Purchase Orders (admin schema)
+// ============================================================================
+
+model supplier {
+  id             String          @id @default(cuid())
+  name           String
+  contactPerson  String?
+  email          String?
+  phone          String?
+  address        String?
+  categories     String[]
+  paymentTerms   String?
+  notes          String?
+  status         String          @default("active")
+  purchaseOrders purchaseOrder[]
+  createdAt      DateTime        @default(now())
+
+  @@schema("admin")
+}
+
+model purchaseOrder {
+  id               String    @id @default(cuid())
+  poNumber         String    @unique
+  supplierId       String
+  supplier         supplier  @relation(fields: [supplierId], references: [id])
+  status           POStatus  @default(DRAFT)
+  expectedDelivery DateTime?
+  notes            String?
+  items            Json
+  totalAmount      Int
+  createdAt        DateTime  @default(now())
+
+  @@schema("admin")
+}
+
+// ============================================================================
+// Loyalty Tiers (admin schema)
+// ============================================================================
+
+model loyaltyTier {
+  id         String   @id @default(cuid())
+  name       String
+  minSpend   Int
+  multiplier Float    @default(1.0)
+  benefits   String[]
+  color      String
+
+  @@schema("admin")
 }

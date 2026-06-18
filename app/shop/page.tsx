@@ -13,7 +13,7 @@ export default async function ShopPage() {
   const categories = await getCategories();
 
   return (
-    <main className="min-h-screen bg-white overflow-x-hidden">
+    <main className="min-h-screen bg-white dark:bg-gray-950 overflow-x-hidden">
       <Navbar />
       <Suspense>
         <ShopClient categories={categories} />

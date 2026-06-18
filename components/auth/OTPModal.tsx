@@ -223,7 +223,7 @@ export default function OTPModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="otp-title"
-        className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl p-8"
+        className="relative w-full max-w-sm bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-8"
         onClick={(e) => e.stopPropagation()}
       >
         {/* ------------------------------------------------------------------
@@ -233,7 +233,7 @@ export default function OTPModal({
           <button
             onClick={onClose}
             aria-label="Close verification modal"
-            className="absolute top-4 right-4 text-[#40493c] hover:text-[#1a1c1c] transition-colors"
+            className="absolute top-4 right-4 text-[#40493c] dark:text-gray-400 hover:text-[#1a1c1c] dark:hover:text-white transition-colors"
           >
             <Icon icon="solar:close-circle-linear" width={24} height={24} />
           </button>
@@ -256,15 +256,15 @@ export default function OTPModal({
           </div>
           <h2
             id="otp-title"
-            className="text-xl font-bold text-[#1a1c1c] mb-1"
+            className="text-xl font-bold text-[#1a1c1c] dark:text-white mb-1"
             style={{ fontFamily: "var(--font-vastago), serif" }}
           >
             Verify Your Identity
           </h2>
-          <p className="text-sm text-[#40493c] leading-relaxed">
+          <p className="text-sm text-[#40493c] dark:text-gray-400 leading-relaxed">
             A 5-digit code was sent to
             <br />
-            <span className="font-semibold text-[#1a1c1c]">{email}</span>
+            <span className="font-semibold text-[#1a1c1c] dark:text-white">{email}</span>
           </p>
         </div>
 
@@ -314,14 +314,14 @@ export default function OTPModal({
                 aria-label={`Digit ${i + 1} of ${OTP_LENGTH}`}
                 className={[
                   "w-[46px] h-[56px] text-center text-xl font-bold rounded-xl border-2 outline-none",
-                  "transition-all duration-150 text-[#1a1c1c] bg-white",
+                  "transition-all duration-150 text-[#1a1c1c] dark:text-white bg-white dark:bg-gray-800",
                   "focus:border-[#27731e] focus:ring-2 focus:ring-[#27731e]/20",
                   // When all boxes are filled — glow green across all boxes
                   allFilled
                     ? "border-[#27731e]"
                     : d
                     ? "border-[#27731e]/60"
-                    : "border-[#c0cab8]",
+                    : "border-[#c0cab8] dark:border-gray-600",
                   isSubmitting ? "opacity-50 cursor-not-allowed" : "",
                 ]
                   .filter(Boolean)
@@ -338,7 +338,7 @@ export default function OTPModal({
           <div className="flex justify-center mb-6">
             {!canResend ? (
               /* Countdown timer */
-              <span className="flex items-center gap-1.5 text-sm text-[#40493c]">
+              <span className="flex items-center gap-1.5 text-sm text-[#40493c] dark:text-gray-400">
                 <Icon
                   icon="solar:clock-circle-linear"
                   width={16}

@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Icon } from "@iconify/react";
-import { toast } from "@/lib/toast";
-import { Spinner } from "@/components/ui/spinner";
+import { Star, CheckCircle2, Circle, AlertCircle, MessageSquare } from "lucide-react";
+import { toast } from "sonner";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,10 +47,10 @@ function StarRating({ rating }: { rating: number }) {
   return (
     <div className="flex items-center gap-[2px]">
       {Array.from({ length: MAX }).map((_, i) => (
-        <Icon
+        <Star
           key={i}
-          icon={i < rating ? "mdi:star" : "mdi:star-outline"}
-          width={14}
+          size={14}
+          fill={i < rating ? "#fec700" : "none"}
           style={{ color: i < rating ? "#fec700" : "#c0cab8" }}
         />
       ))}
@@ -73,7 +72,7 @@ function SourceBadge({ source }: { source: "facebook" | "manual" }) {
         color: isFb ? "#1877f2" : "#40493c",
       }}
     >
-      {isFb && <Icon icon="mdi:facebook" width={11} />}
+      {isFb && <span style={{ fontSize: 11, fontWeight: 700 }}>f</span>}
       {source}
     </span>
   );
@@ -173,12 +172,11 @@ function TestimonialCard({
           }}
         >
           {isApprovePending ? (
-            <Spinner size={12} invert={isApproved} />
+            <span className="animate-spin inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full" />
+          ) : isApproved ? (
+            <CheckCircle2 size={14} />
           ) : (
-            <Icon
-              icon={isApproved ? "mdi:check-circle" : "mdi:circle-outline"}
-              width={14}
-            />
+            <Circle size={14} />
           )}
           {isApproved ? "Approved" : "Approve"}
         </button>
@@ -214,7 +212,7 @@ function TestimonialCard({
             />
             {isSortPending && (
               <span className="absolute -right-5">
-                <Spinner size={11} />
+                <span className="animate-spin inline-block w-2.5 h-2.5 border-2 border-current border-t-transparent rounded-full" />
               </span>
             )}
           </div>
@@ -362,11 +360,7 @@ export function AdminTestimonialsClient() {
         {/* Error state */}
         {isError && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <Icon
-              icon="mdi:alert-circle-outline"
-              width={52}
-              className="text-[#e53935] mb-3"
-            />
+            <AlertCircle size={52} className="text-[#e53935] mb-3" />
             <p className="font-body text-[#40493c] text-[15px]">
               Could not load testimonials. Please refresh the page.
             </p>
@@ -385,11 +379,7 @@ export function AdminTestimonialsClient() {
             {/* Empty state */}
             {!isLoading && testimonials.length === 0 && (
               <div className="col-span-full flex flex-col items-center justify-center py-20 text-center">
-                <Icon
-                  icon="mdi:comment-text-outline"
-                  width={52}
-                  className="text-[#c0cab8] mb-3"
-                />
+                <MessageSquare size={52} className="text-[#c0cab8] mb-3" />
                 <p className="font-body text-[#40493c] text-[15px]">
                   No testimonials yet.
                 </p>

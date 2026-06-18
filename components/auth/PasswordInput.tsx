@@ -23,7 +23,7 @@ const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
       <div className="flex flex-col gap-1.5">
         <label
           htmlFor={inputId}
-          className="text-xs font-semibold tracking-widest uppercase text-[#40493c]"
+          className="text-xs font-semibold tracking-widest uppercase text-[#40493c] dark:text-gray-300"
         >
           {label}
         </label>
@@ -34,13 +34,13 @@ const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
             id={inputId}
             type={showPassword ? "text" : "password"}
             className={[
-              "w-full px-4 py-3 pr-11 text-sm text-[#1a1c1c] bg-white",
+              "w-full px-4 py-3 pr-11 text-sm text-[#1a1c1c] dark:text-white bg-white dark:bg-gray-800",
               "rounded-[20px] border outline-none transition-colors duration-150",
-              "placeholder:text-[rgba(64,73,60,0.5)]",
+              "placeholder:text-[rgba(64,73,60,0.5)] dark:placeholder:text-gray-500",
               "focus:border-[#27731e] focus:ring-2 focus:ring-[#27731e]/20",
               error
                 ? "border-red-500 focus:border-red-500 focus:ring-red-200"
-                : "border-[#c0cab8]",
+                : "border-[#c0cab8] dark:border-gray-600",
               className,
             ]
               .filter(Boolean)
@@ -54,7 +54,7 @@ const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
             type="button"
             onClick={() => setShowPassword((prev) => !prev)}
             aria-label={showPassword ? "Hide password" : "Show password"}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-[#40493c] hover:text-[#27731e] transition-colors"
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-[#40493c] dark:text-gray-400 hover:text-[#27731e] transition-colors"
           >
             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>

@@ -11,6 +11,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useCurrency } from "@/app/providers";
 import type { CartLine } from "@/lib/cart";
 import { posthog } from "@/lib/posthog";
+import { StepIndicator } from "@/components/checkout/StepIndicator";
 
 type PlaceOrderResponse = {
   ok: boolean;
@@ -29,44 +30,6 @@ type CartResponse = {
     itemCount: number;
   };
 };
-
-function StepIndicator() {
-  const steps = [
-    { num: 1, label: "Cart", active: true },
-    { num: 2, label: "Delivery", active: false },
-    { num: 3, label: "Payment", active: false },
-  ];
-
-  return (
-    <div className="flex items-center justify-center w-full max-w-[540px] mx-auto relative">
-      {/* Connector line */}
-      <div className="absolute top-5 left-[10%] right-[10%] h-0.5 bg-[#e2e2e2] z-0" />
-
-      {steps.map((step, idx) => (
-        <div key={step.num} className="flex-1 flex flex-col items-center relative z-10">
-          <div
-            className={[
-              "w-10 h-10 rounded-full flex items-center justify-center border-2 font-body font-bold text-[18px]",
-              step.active
-                ? "bg-[#045a03] border-[#045a03] text-white"
-                : "bg-white border-[#e2e2e2] text-[#707a6b]",
-            ].join(" ")}
-          >
-            {step.num}
-          </div>
-          <span
-            className={[
-              "mt-2 font-body text-[13px]",
-              step.active ? "text-[#045a03] font-bold" : "text-[#40493c]",
-            ].join(" ")}
-          >
-            {step.label}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export function CartClient() {
   const qc = useQueryClient();
@@ -236,7 +199,7 @@ export function CartClient() {
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.4 }}
-          className="bg-white rounded-[24px] shadow-[0_8px_40px_rgba(0,0,0,0.08)] p-10 max-w-[480px] w-full text-center"
+          className="bg-white dark:bg-gray-900 rounded-[24px] shadow-[0_8px_40px_rgba(0,0,0,0.08)] p-10 max-w-[480px] w-full text-center"
         >
           <div
             className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"
@@ -244,13 +207,13 @@ export function CartClient() {
           >
             <Icon icon="mdi:check-circle" width={44} style={{ color: "#16a34a" }} />
           </div>
-          <h2 className="font-heading font-bold text-[#1a1c1c] text-[28px] md:text-[32px] mb-3">
+          <h2 className="font-heading font-bold text-[#1a1c1c] dark:text-white text-[28px] md:text-[32px] mb-3">
             Your order has been placed!
           </h2>
-          <p className="font-body text-[#40493c] text-[15px] leading-[1.7] mb-2">
+          <p className="font-body text-[#40493c] dark:text-gray-300 text-[15px] leading-[1.7] mb-2">
             Thank you for shopping with Fechi Organics.
           </p>
-          <p className="font-body text-[#707a6b] text-[13px] mb-8">
+          <p className="font-body text-[#707a6b] dark:text-gray-400 text-[13px] mb-8">
             Order ID:{" "}
             <span className="font-mono font-semibold text-[#1a1c1c]">
               {placedOrderId.slice(0, 8).toUpperCase()}
@@ -279,13 +242,13 @@ export function CartClient() {
   return (
     <div className="flex-1 px-4 md:px-16 py-10 max-w-[1280px] mx-auto w-full">
       {/* Heading */}
-      <h1 className="font-heading font-bold text-[#1a1c1c] text-[36px] md:text-[48px] text-center mb-8">
+      <h1 className="font-heading font-bold text-[#1a1c1c] dark:text-white text-[36px] md:text-[48px] text-center mb-8">
         Checkout
       </h1>
 
-      {/* Step indicator */}
+      {/* Step indicator — step=1 for cart page */}
       <div className="mb-10">
-        <StepIndicator />
+        <StepIndicator step={1} />
       </div>
 
       {items.length === 0 ? (
@@ -296,8 +259,8 @@ export function CartClient() {
           className="flex flex-col items-center justify-center py-20 text-center"
         >
           <Icon icon="mdi:cart-outline" width={80} className="text-[#c0cab8] mb-6" />
-          <h2 className="font-heading text-[#1a1c1c] text-[28px] mb-3">Your cart is empty</h2>
-          <p className="font-body text-[#40493c] text-[16px] mb-8">
+          <h2 className="font-heading text-[#1a1c1c] dark:text-white text-[28px] mb-3">Your cart is empty</h2>
+          <p className="font-body text-[#40493c] dark:text-gray-300 text-[16px] mb-8">
             Add some natural goodness to your cart and come back!
           </p>
           <Link
@@ -312,8 +275,8 @@ export function CartClient() {
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Left column — Review cart */}
           <div className="flex-1 min-w-0">
-            <div className="bg-white rounded-[12px] shadow-[0_4px_10px_rgba(0,0,0,0.05)] p-6 md:p-8">
-              <h2 className="font-heading font-semibold text-[#1a1c1c] text-[28px] md:text-[32px] mb-6">
+            <div className="bg-white dark:bg-gray-900 rounded-[12px] shadow-[0_4px_10px_rgba(0,0,0,0.05)] p-6 md:p-8">
+              <h2 className="font-heading font-semibold text-[#1a1c1c] dark:text-white text-[28px] md:text-[32px] mb-6">
                 Review Your Cart
               </h2>
 
@@ -327,10 +290,10 @@ export function CartClient() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, x: -20 }}
                       transition={{ duration: 0.25 }}
-                      className="border-b border-[#e2e2e2] pb-6 last:border-b-0 flex gap-4 items-center"
+                      className="border-b border-[#e2e2e2] dark:border-gray-700 pb-6 last:border-b-0 flex gap-4 items-center"
                     >
                       {/* Product image */}
-                      <div className="bg-[#f3f3f3] rounded-[8px] w-20 h-20 md:w-24 md:h-24 flex-shrink-0 overflow-hidden relative">
+                      <div className="bg-[#f3f3f3] dark:bg-gray-800 rounded-[8px] w-20 h-20 md:w-24 md:h-24 flex-shrink-0 overflow-hidden relative">
                         <Image
                           src={item.primaryImageUrl}
                           alt={item.name}
@@ -342,37 +305,37 @@ export function CartClient() {
 
                       {/* Product info */}
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-heading font-semibold text-[#1a1c1c] text-[18px] md:text-[22px] leading-tight truncate">
+                        <h3 className="font-heading font-semibold text-[#1a1c1c] dark:text-white text-[18px] md:text-[22px] leading-tight truncate">
                           {item.name}
                         </h3>
                         {item.variantLabel && (
-                          <p className="font-body text-[#40493c] text-[13px] mt-0.5">
+                          <p className="font-body text-[#40493c] dark:text-gray-300 text-[13px] mt-0.5">
                             {item.variantLabel}
                           </p>
                         )}
 
                         <div className="flex items-center justify-between mt-3 flex-wrap gap-3">
                           {/* Quantity stepper */}
-                          <div className="flex items-center border border-[#c0cab8] rounded-[6px] overflow-hidden h-[40px] w-[112px]">
+                          <div className="flex items-center border border-[#c0cab8] dark:border-gray-600 rounded-[6px] overflow-hidden h-[40px] w-[112px]">
                             <button
                               onClick={() =>
                                 item.quantity > 1
                                   ? updateQty.mutate({ productId: item.productId, quantity: item.quantity - 1 })
                                   : deleteItem.mutate(item.productId)
                               }
-                              className="w-10 h-full flex items-center justify-center text-[#40493c] text-[18px] hover:bg-[#f0f0f0] transition-colors font-body"
+                              className="w-10 h-full flex items-center justify-center text-[#40493c] dark:text-gray-300 text-[18px] hover:bg-[#f0f0f0] dark:hover:bg-gray-700 transition-colors font-body"
                               aria-label="Decrease quantity"
                             >
                               −
                             </button>
-                            <span className="flex-1 text-center font-body text-[14px] text-[#1a1c1c]">
+                            <span className="flex-1 text-center font-body text-[14px] text-[#1a1c1c] dark:text-white">
                               {item.quantity}
                             </span>
                             <button
                               onClick={() =>
                                 updateQty.mutate({ productId: item.productId, quantity: item.quantity + 1 })
                               }
-                              className="w-10 h-full flex items-center justify-center text-[#40493c] text-[18px] hover:bg-[#f0f0f0] transition-colors font-body"
+                              className="w-10 h-full flex items-center justify-center text-[#40493c] dark:text-gray-300 text-[18px] hover:bg-[#f0f0f0] dark:hover:bg-gray-700 transition-colors font-body"
                               aria-label="Increase quantity"
                             >
                               +
@@ -380,7 +343,7 @@ export function CartClient() {
                           </div>
 
                           {/* Line total */}
-                          <span className="font-body font-bold text-[#1a1c1c] text-[18px] md:text-[20px]">
+                          <span className="font-body font-bold text-[#1a1c1c] dark:text-white text-[18px] md:text-[20px]">
                             {format(item.lineTotalKes)}
                           </span>
                         </div>
@@ -426,8 +389,8 @@ export function CartClient() {
 
           {/* Right column — Order summary */}
           <div className="w-full lg:w-[376px] flex-shrink-0">
-            <div className="bg-white rounded-[12px] shadow-[0_4px_10px_rgba(0,0,0,0.05)] p-6 sticky top-[80px]">
-              <h2 className="font-heading font-semibold text-[#1a1c1c] text-[22px] border-b border-[#e2e2e2] pb-4 mb-6">
+            <div className="bg-white dark:bg-gray-900 rounded-[12px] shadow-[0_4px_10px_rgba(0,0,0,0.05)] p-6 sticky top-[80px]">
+              <h2 className="font-heading font-semibold text-[#1a1c1c] dark:text-white text-[22px] border-b border-[#e2e2e2] dark:border-gray-700 pb-4 mb-6">
                 Order Summary
               </h2>
 
@@ -447,11 +410,11 @@ export function CartClient() {
                 )}
               </div>
 
-              <div className="border-t border-[#e2e2e2] mt-4 pt-4">
+              <div className="border-t border-[#e2e2e2] dark:border-gray-700 mt-4 pt-4">
                 <div className="flex items-end justify-between">
-                  <span className="font-body font-bold text-[#1a1c1c] text-[18px]">Total</span>
+                  <span className="font-body font-bold text-[#1a1c1c] dark:text-white text-[18px]">Total</span>
                   <div className="text-right">
-                    <p className="font-body text-[#40493c] text-[12px]">Including VAT</p>
+                    <p className="font-body text-[#40493c] dark:text-gray-400 text-[12px]">Including VAT</p>
                     <p className="font-body font-bold text-[#045a03] text-[22px] md:text-[26px]">
                       {format(totalKes)}
                     </p>
@@ -460,8 +423,8 @@ export function CartClient() {
               </div>
 
               {/* Promo code */}
-              <div className="border-t border-[#e2e2e2] mt-4 pt-4">
-                <p className="font-body font-medium text-[#40493c] text-[12px] tracking-[0.6px] mb-2">
+              <div className="border-t border-[#e2e2e2] dark:border-gray-700 mt-4 pt-4">
+                <p className="font-body font-medium text-[#40493c] dark:text-gray-300 text-[12px] tracking-[0.6px] mb-2">
                   Have a promo code?
                 </p>
                 <div className="flex gap-2">
@@ -471,11 +434,11 @@ export function CartClient() {
                     onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
                     onKeyDown={(e) => e.key === "Enter" && handleApplyPromo()}
                     placeholder="ENTER CODE"
-                    className="flex-1 min-w-0 border border-[#c0cab8] rounded-[6px] px-3 py-2.5 font-body text-[13px] text-[#1a1c1c] placeholder-[#6b7280] uppercase outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] bg-white"
+                    className="flex-1 min-w-0 border border-[#c0cab8] dark:border-gray-600 rounded-[6px] px-3 py-2.5 font-body text-[13px] text-[#1a1c1c] dark:text-white placeholder-[#6b7280] uppercase outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] bg-white dark:bg-gray-800"
                   />
                   <button
                     onClick={handleApplyPromo}
-                    className="bg-[#e2e2e2] hover:bg-[#27731e] hover:text-white text-[#1a1c1c] rounded-[6px] px-4 py-2.5 font-body font-medium text-[13px] transition-colors flex-shrink-0"
+                    className="bg-[#e2e2e2] dark:bg-gray-700 hover:bg-[#27731e] hover:text-white text-[#1a1c1c] dark:text-gray-200 rounded-[6px] px-4 py-2.5 font-body font-medium text-[13px] transition-colors flex-shrink-0"
                   >
                     Apply
                   </button>
@@ -509,7 +472,7 @@ function SummaryRow({
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-2">
-        <span className={`font-body text-[15px] ${green ? "text-[#005a01]" : "text-[#40493c]"}`}>
+        <span className={`font-body text-[15px] ${green ? "text-[#005a01]" : "text-[#40493c] dark:text-gray-400"}`}>
           {label}
         </span>
         {badge && (
@@ -518,7 +481,7 @@ function SummaryRow({
           </span>
         )}
       </div>
-      <span className={`font-body font-medium text-[15px] ${green ? "text-[#005a01]" : "text-[#1a1c1c]"}`}>
+      <span className={`font-body font-medium text-[15px] ${green ? "text-[#005a01]" : "text-[#1a1c1c] dark:text-gray-200"}`}>
         {value}
       </span>
     </div>

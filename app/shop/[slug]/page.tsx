@@ -39,7 +39,7 @@ export default async function ProductPage({
   if (!product) notFound();
 
   return (
-    <main className="min-h-screen bg-white overflow-x-hidden">
+    <main className="min-h-screen bg-white dark:bg-gray-950 overflow-x-hidden">
       <Navbar />
 
       {/*

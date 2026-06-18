@@ -105,7 +105,7 @@ export function ProductCard({ product }: Props) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ duration: 0.4 }}
-      className="relative bg-white rounded-[20px] shadow-[0px_4px_15.3px_0px_rgba(0,0,0,0.10)] w-full max-w-[310px] overflow-hidden group"
+      className="relative bg-white dark:bg-gray-900 rounded-[20px] shadow-[0px_4px_15.3px_0px_rgba(0,0,0,0.10)] w-full max-w-[310px] overflow-hidden group"
     >
       {/* Offer badge */}
       {hasDiscount && (
@@ -125,7 +125,7 @@ export function ProductCard({ product }: Props) {
       <Tooltip label={isFavorited ? "Remove favourite" : "Add to favourites"} position="top">
     <button
       onClick={() => favMutation.mutate()}
-      className="absolute w-[46px] h-[46px] bg-white rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-transform"
+      className="absolute w-[46px] h-[46px] bg-white dark:bg-gray-800 rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-transform"
     >
           <Icon
             icon={isFavorited ? "mdi:heart" : "hugeicons:favourite"}
@@ -157,7 +157,7 @@ export function ProductCard({ product }: Props) {
 
         {/* Name */}
         <Link href={`/shop/${product.slug}`}>
-          <h3 className="text-[18px] font-body text-black leading-snug mb-1 hover:text-[#27731e] transition-colors">
+          <h3 className="text-[18px] font-body text-black dark:text-white leading-snug mb-1 hover:text-[#27731e] transition-colors">
             {product.name}
           </h3>
         </Link>
@@ -173,7 +173,7 @@ export function ProductCard({ product }: Props) {
         <div className="flex items-center justify-between mt-2">
           {/* Price */}
           <div className="flex flex-col">
-            <span className="text-[20px] font-body text-black leading-tight">
+            <span className="text-[20px] font-body text-black dark:text-white leading-tight">
               {format(product.priceKes)}
             </span>
             {hasDiscount && (
@@ -198,7 +198,7 @@ export function ProductCard({ product }: Props) {
                   "flex items-center gap-1 border rounded-[40px] px-3 py-2 text-[13px] font-body transition-all",
                   justAdded
                     ? "bg-[#27731e] text-white border-[#27731e]"
-                    : "border-black text-black hover:bg-[#27731e] hover:text-white hover:border-[#27731e]",
+                    : "border-black dark:border-gray-600 text-black dark:text-gray-200 hover:bg-[#27731e] hover:text-white hover:border-[#27731e]",
                   "disabled:opacity-40 disabled:cursor-not-allowed",
                 ].join(" ")}
                 aria-label="Add to cart"

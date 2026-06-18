@@ -3,6 +3,7 @@
 import { useState, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Icon } from "@iconify/react";
 import type { Value as PhoneValue } from "react-phone-number-input";
 import AuthToggle from "@/components/auth/AuthToggle";
 import FormInput from "@/components/auth/FormInput";
@@ -14,6 +15,7 @@ import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
 import { authClient, signUpWithProfile } from "@/lib/auth-client";
 import { storeUser } from "@/lib/user-store";
 import { Spinner } from "@/components/ui/spinner";
+import { toast } from "@/lib/toast";
 import { SignupLoader } from "@/components/ui/signup-loader";
 import { posthog } from "@/lib/posthog";
 
@@ -27,7 +29,6 @@ interface SignupErrors {
   password?: string;
   confirmPassword?: string;
   terms?: string;
-  general?: string;
 }
 
 export default function SignupPage() {
@@ -121,7 +122,7 @@ export default function SignupPage() {
         if (code === "USER_ALREADY_EXISTS" || code === "EMAIL_TAKEN") {
           setErrors({ email: "An account with this email already exists." });
         } else {
-          setErrors({ general: result.error.message ?? "Sign up failed. Please try again." });
+          toast.error(result.error.message ?? "Sign up failed. Please try again.");
         }
         return;
       }
@@ -148,7 +149,7 @@ export default function SignupPage() {
       // Successful signup — show animated loader then redirect
       setShowSignupLoader(true);
     } catch {
-      setErrors({ general: "An unexpected error occurred. Please try again." });
+      toast.error("An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -162,7 +163,7 @@ export default function SignupPage() {
     try {
       await authClient.signIn.social({ provider: "google", callbackURL: "/" });
     } catch {
-      setErrors({ general: "Google sign-in failed. Please try again." });
+      toast.error("Google sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -173,7 +174,7 @@ export default function SignupPage() {
     try {
       await authClient.signIn.social({ provider: "facebook", callbackURL: "/" });
     } catch {
-      setErrors({ general: "Facebook sign-in failed. Please try again." });
+      toast.error("Facebook sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -264,10 +265,18 @@ export default function SignupPage() {
           RIGHT PANEL — light gray form area
       ==================================================================== */}
       <section
-        className="flex-1 flex items-center justify-center px-6 py-12 overflow-y-auto"
+        className="flex-1 flex items-center justify-center px-6 py-12 overflow-y-auto dark:bg-gray-950"
         style={{ backgroundColor: "#f9f9f9" }}
       >
         <div className="w-full max-w-lg sm:max-w-xl">
+
+          {/* Back to home */}
+          <div className="mb-4">
+            <Link href="/" className="inline-flex items-center gap-1.5 text-[14px] text-[#40493c] dark:text-gray-400 hover:text-[#27731e] dark:hover:text-[#27731e] transition-colors">
+              <Icon icon="mdi:arrow-left" width={18} />
+              Back to home
+            </Link>
+          </div>
 
           {/* Toggle */}
           <div className="flex justify-center mb-10">
@@ -277,25 +286,15 @@ export default function SignupPage() {
           {/* Heading */}
           <div className="mb-8 sm:text-left text-center">
             <h2
-              className="text-3xl sm:text-4xl font-bold text-[#1a1c1c] mb-2"
+              className="text-3xl sm:text-4xl font-bold text-[#1a1c1c] dark:text-white mb-2"
               style={{ fontFamily: "var(--font-vastago), sans-serif" }}
             >
               Create an Account
             </h2>
-            <p className="text-sm text-[#40493c]">
+            <p className="text-sm text-[#40493c] dark:text-gray-400">
               Join Fechi Organics and start your organic journey
             </p>
           </div>
-
-          {/* General error banner */}
-          {errors.general && (
-            <div
-              role="alert"
-              className="mb-5 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-600"
-            >
-              {errors.general}
-            </div>
-          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-5">
@@ -440,7 +439,7 @@ export default function SignupPage() {
                   disabled={isLoading}
                   className="mt-0.5 w-4 h-4 accent-[#27731e] cursor-pointer"
                 />
-                <span className="text-xs text-[#40493c] leading-relaxed">
+                <span className="text-xs text-[#40493c] dark:text-gray-400 leading-relaxed">
                   I agree to the{" "}
                   <Link
                     href="/terms"
@@ -482,9 +481,9 @@ export default function SignupPage() {
 
           {/* Divider */}
           <div className="relative flex items-center my-6">
-            <div className="flex-1 h-px bg-[#c0cab8]" />
-            <span className="px-3 text-xs text-[#40493c]">or continue with</span>
-            <div className="flex-1 h-px bg-[#c0cab8]" />
+            <div className="flex-1 h-px bg-[#c0cab8] dark:bg-gray-700" />
+            <span className="px-3 text-xs text-[#40493c] dark:text-gray-400">or continue with</span>
+            <div className="flex-1 h-px bg-[#c0cab8] dark:bg-gray-700" />
           </div>
 
           {/* Social */}
@@ -495,7 +494,7 @@ export default function SignupPage() {
           />
 
           {/* Footer */}
-          <p className="text-center text-sm text-[#40493c] mt-8">
+          <p className="text-center text-sm text-[#40493c] dark:text-gray-400 mt-8">
             Already have an account?{" "}
             <Link
               href="/login"

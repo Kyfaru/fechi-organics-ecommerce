@@ -3,6 +3,7 @@
 import { useState, FormEvent, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Icon } from "@iconify/react";
 import AuthToggle from "@/components/auth/AuthToggle";
 import FormInput from "@/components/auth/FormInput";
 import PasswordInput from "@/components/auth/PasswordInput";
@@ -17,7 +18,6 @@ import { posthog } from "@/lib/posthog";
 interface LoginErrors {
   email?: string;
   password?: string;
-  general?: string;
 }
 
 // Isolated component so useSearchParams is inside a Suspense boundary
@@ -80,7 +80,7 @@ export default function LoginForm() {
       });
       setShowOTP(true);
     } catch {
-      setErrors({ general: "Failed to send verification code. Please try again." });
+      toast.error("Failed to send verification code. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -94,7 +94,7 @@ export default function LoginForm() {
     try {
       await authClient.signIn.social({ provider: "google", callbackURL: "/" });
     } catch {
-      setErrors({ general: "Google sign-in failed. Please try again." });
+      toast.error("Google sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -105,7 +105,7 @@ export default function LoginForm() {
     try {
       await authClient.signIn.social({ provider: "facebook", callbackURL: "/" });
     } catch {
-      setErrors({ general: "Facebook sign-in failed. Please try again." });
+      toast.error("Facebook sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -244,8 +244,16 @@ export default function LoginForm() {
       {/* ====================================================================
           RIGHT PANEL — white form area
       ==================================================================== */}
-      <section className="flex-1 flex items-center justify-center px-6 py-12 bg-white">
+      <section className="flex-1 flex items-center justify-center px-6 py-12 bg-white dark:bg-gray-950">
         <div className="w-full max-w-md">
+
+          {/* Back to home */}
+          <div className="mb-4">
+            <Link href="/" className="inline-flex items-center gap-1.5 text-[14px] text-[#40493c] dark:text-gray-400 hover:text-[#27731e] dark:hover:text-[#27731e] transition-colors">
+              <Icon icon="mdi:arrow-left" width={18} />
+              Back to home
+            </Link>
+          </div>
 
           {/* Toggle */}
           <div className="flex justify-center mb-10">
@@ -255,12 +263,12 @@ export default function LoginForm() {
           {/* Heading */}
           <div className="mb-8 text-center">
             <h2
-              className="text-4xl sm:text-5xl font-bold text-[#1a1c1c] mb-2"
+              className="text-4xl sm:text-5xl font-bold text-[#1a1c1c] dark:text-white mb-2"
               style={{ fontFamily: "var(--font-vastago), sans-serif" }}
             >
               Welcome Back
             </h2>
-            <p className="text-sm text-[#40493c]">
+            <p className="text-sm text-[#40493c] dark:text-gray-400">
               Sign in to your Fechi Organics account
             </p>
           </div>
@@ -276,16 +284,6 @@ export default function LoginForm() {
                 admin portal
               </Link>
               .
-            </div>
-          )}
-
-          {/* General error banner */}
-          {errors.general && (
-            <div
-              role="alert"
-              className="mb-5 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-600"
-            >
-              {errors.general}
             </div>
           )}
 
@@ -344,9 +342,9 @@ export default function LoginForm() {
 
           {/* Divider */}
           <div className="relative flex items-center my-6">
-            <div className="flex-1 h-px bg-[#c0cab8]" />
-            <span className="px-3 text-xs text-[#40493c]">or continue with</span>
-            <div className="flex-1 h-px bg-[#c0cab8]" />
+            <div className="flex-1 h-px bg-[#c0cab8] dark:bg-gray-700" />
+            <span className="px-3 text-xs text-[#40493c] dark:text-gray-400">or continue with</span>
+            <div className="flex-1 h-px bg-[#c0cab8] dark:bg-gray-700" />
           </div>
 
           {/* Social */}
@@ -357,7 +355,7 @@ export default function LoginForm() {
           />
 
           {/* Footer */}
-          <p className="text-center text-sm text-[#40493c] mt-8">
+          <p className="text-center text-sm text-[#40493c] dark:text-gray-400 mt-8">
             Don&apos;t have an account?{" "}
             <Link
               href="/signup"
@@ -388,10 +386,7 @@ export default function LoginForm() {
         }}
         onMaxAttemptsReached={() => {
           setShowOTP(false);
-          setErrors({
-            general:
-              "Too many verification attempts. Please try again.",
-          });
+          toast.error("Too many verification attempts. Please try again.");
         }}
         onRequestOTP={async () => {
           await authClient.emailOtp.sendVerificationOtp({

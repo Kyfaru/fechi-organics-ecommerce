@@ -12,6 +12,9 @@
   --font-heading: "Vastago Grotesk", system-ui, sans-serif;
   --font-body:    "Real Head Web W03", system-ui, sans-serif;
   --font-stagnan: "Stagnan", system-ui, sans-serif;
+  /* Admin panel fonts (Google Fonts, loaded via next/font) */
+  --font-syne:    var(--font-syne-var, "Syne", system-ui, sans-serif);
+  --font-dm:      var(--font-dm-var, "DM Sans", system-ui, sans-serif);
 
   /* Brand colours */
   --color-primary-green:   #27731e;
@@ -30,6 +33,24 @@
   --color-border-input:    #c0cab8;
   --color-border-error:    #ef4444;
   --color-bg-form:         #f9f9f9;
+}
+
+/* Admin design tokens */
+:root {
+  --green-900: #1A5214; --green-800: #27731E; --green-600: #368B2B;
+  --green-500: #43A935; --green-200: #7FDE6C; --green-50: #ECF8E6;
+  --gold-700: #DEAE00; --gold-500: #FFC800; --gold-200: #FFE480;
+  --gold-100: #FFF2C0; --gold-50: #FFFAEB;
+  --neutral-900: #10140E; --neutral-700: #3D4235; --neutral-500: #6B7060;
+  --neutral-400: #979C8C; --neutral-300: #C9CDC0; --neutral-200: #E2E5DC;
+  --neutral-100: #F0F2EC; --neutral-50: #F7F8F4;
+  --success: #43A935; --warning: #FFC800; --danger: #D64545;
+  --danger-bg: #FBEDED; --info: #3B82C4;
+  --e1: 0 1px 2px rgba(16,20,14,0.05);
+  --e2: 0 4px 12px rgba(16,20,14,0.08);
+  --e3: 0 12px 32px rgba(16,20,14,0.12);
+  --dark-bg: #0E140C; --dark-surface: #161D12;
+  --dark-border: #28301F; --dark-text: #F2F4EE; --dark-muted: #A6AB99;
 }
 
 /* =============================================================================
@@ -285,6 +306,51 @@
   --font-vastago:    "Vastago Grotesk";
   --font-stagnan:    "Stagnan";
   --font-real-head:  "Real Head Web W03";
+
+  /* ── Admin design system tokens ─────────────────────────────────────────── */
+  /* Brand greens */
+  --green-900: #1A5214;
+  --green-800: #27731E;
+  --green-600: #368B2B;
+  --green-500: #43A935;
+  --green-200: #7FDE6C;
+  --green-50:  #ECF8E6;
+  /* Brand golds */
+  --gold-700:  #DEAE00;
+  --gold-500:  #FFC800;
+  --gold-200:  #FFE480;
+  --gold-100:  #FFF2C0;
+  --gold-50:   #FFFAEB;
+  /* Neutrals (green-tinted grays) */
+  --neutral-900: #10140E;
+  --neutral-700: #3D4235;
+  --neutral-500: #6B7060;
+  --neutral-400: #979C8C;
+  --neutral-300: #C9CDC0;
+  --neutral-200: #E2E5DC;
+  --neutral-100: #F0F2EC;
+  --neutral-50:  #F7F8F4;
+  /* Semantic */
+  --success:    #43A935;
+  --warning:    #FFC800;
+  --danger:     #D64545;
+  --danger-bg:  #FBEDED;
+  --info:       #3B82C4;
+  /* Elevation shadows */
+  --e1: 0 1px 2px rgba(16,20,14,0.05);
+  --e2: 0 4px 12px rgba(16,20,14,0.08);
+  --e3: 0 12px 32px rgba(16,20,14,0.12);
+  /* Radius tokens */
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-full: 9999px;
+  /* Dark mode surfaces */
+  --dark-bg:      #0E140C;
+  --dark-surface: #161D12;
+  --dark-border:  #28301F;
+  --dark-text:    #F2F4EE;
+  --dark-muted:   #A6AB99;
 }
 
 /* =============================================================================

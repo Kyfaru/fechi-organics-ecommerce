@@ -2,13 +2,25 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Icon } from "@iconify/react";
-import { toast } from "@/lib/toast";
-import { Spinner } from "@/components/ui/spinner";
+import { toast } from "sonner";
+import {
+  Users, UserCheck, UserPlus, Ban, Search, MoreHorizontal,
+  Eye, Edit2, ShieldOff, Shield, MessageSquare, Ticket,
+  ChevronDown,
+} from "lucide-react";
+import Link from "next/link";
+import { PageHeader } from "@/components/admin/ui/PageHeader";
+import { StatCard } from "@/components/admin/ui/StatCard";
+import { DataTable } from "@/components/admin/ui/DataTable";
+import { StatusPill } from "@/components/admin/ui/StatusPill";
+import { Drawer } from "@/components/admin/ui/Drawer";
+import { EmptyState } from "@/components/admin/ui/EmptyState";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+type LoyaltyPoints = { tier: string } | null;
+
 type Customer = {
   id: string;
   companyId: string | null;
@@ -16,14 +28,41 @@ type Customer = {
   email: string;
   phone: string | null;
   country: string | null;
-  role: "customer" | "admin";
+  city: string | null;
+  role: "client" | "admin";
+  banned: boolean;
+  banReason: string | null;
   createdAt: string;
   loginCount: number;
+  _count: { orders: number };
+  loyaltyPoints: LoyaltyPoints;
+};
+
+type CustomerDetail = Customer & {
+  firstName: string | null;
+  lastName: string | null;
+  updatedAt: string;
+};
+
+type CustomerOrder = {
+  id: string;
+  status: string;
+  paymentStatus: string;
+  totalKes: number;
+  createdAt: string;
+  _count: { items: number };
+};
+
+type Stats = {
+  total: number;
+  active: number;
+  newThisMonth: number;
+  banned: number;
 };
 
 type ApiResponse = {
   ok: boolean;
-  data: { users: Customer[] };
+  data: { users: Customer[]; stats: Stats };
 };
 
 // ---------------------------------------------------------------------------
@@ -37,305 +76,569 @@ function formatDate(iso: string) {
   });
 }
 
+function formatKes(amountCents: number) {
+  return `KES ${(amountCents / 100).toLocaleString("en-KE")}`;
+}
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
+}
+
 // ---------------------------------------------------------------------------
-// Skeleton row — shown during initial load
+// Avatar circle — green bg with white initials
 // ---------------------------------------------------------------------------
-function SkeletonRow() {
+function Avatar({ name, size = 36 }: { name: string; size?: number }) {
   return (
-    <tr className="border-t border-[#f0f0f0]">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <td key={i} className="px-4 py-3">
-          <div className="animate-pulse h-4 bg-[#e8fce3] rounded" />
-        </td>
-      ))}
-    </tr>
+    <div
+      style={{ width: size, height: size, fontSize: size * 0.36 }}
+      className="rounded-full bg-[--green-800] text-white flex items-center justify-center font-dm font-semibold shrink-0"
+    >
+      {initials(name)}
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Role badge
+// Pill filter button
 // ---------------------------------------------------------------------------
-function RoleBadge({ role }: { role: "customer" | "admin" }) {
+function FilterPill({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
-    <span
+    <button
+      onClick={onClick}
       className={[
-        "inline-flex items-center rounded-full px-2.5 py-0.5 font-body text-[11px] font-semibold capitalize",
-        role === "admin"
-          ? "bg-[#045a03] text-white"
-          : "bg-[#e8fce3] text-[#27731e]",
+        "h-8 px-4 rounded-full font-dm text-[13px] font-medium transition-colors",
+        active
+          ? "bg-[--green-800] text-white"
+          : "bg-white dark:bg-[--dark-surface] border border-[--neutral-200] dark:border-[--dark-border] text-[--neutral-700] dark:text-[--dark-text] hover:border-[--neutral-400]",
       ].join(" ")}
     >
-      {role}
-    </span>
+      {label}
+    </button>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Main client component
+// Actions dropdown
+// ---------------------------------------------------------------------------
+function ActionsMenu({
+  customer,
+  onView,
+  onBanToggle,
+}: {
+  customer: Customer;
+  onView: () => void;
+  onBanToggle: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        className="w-8 h-8 flex items-center justify-center rounded-[6px] text-[--neutral-500] hover:bg-[--neutral-100] dark:hover:bg-[--dark-border] transition-colors"
+      >
+        <MoreHorizontal size={16} />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-9 z-20 w-44 bg-white dark:bg-[--dark-surface] rounded-[10px] shadow-[--e2] border border-[--neutral-200] dark:border-[--dark-border] py-1 overflow-hidden">
+            <button
+              onClick={() => { setOpen(false); onView(); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-[--neutral-700] dark:text-[--dark-text] hover:bg-[--neutral-50] dark:hover:bg-[--dark-border]"
+            >
+              <Eye size={14} /> View Profile
+            </button>
+            <div className="border-t border-[--neutral-200] dark:border-[--dark-border] my-1" />
+            <button
+              onClick={() => { setOpen(false); onBanToggle(); }}
+              className={[
+                "w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px]",
+                customer.banned
+                  ? "text-[--success] hover:bg-[--green-50]"
+                  : "text-[--danger] hover:bg-[--danger-bg]",
+              ].join(" ")}
+            >
+              {customer.banned ? (
+                <><Shield size={14} /> Unban Customer</>
+              ) : (
+                <><ShieldOff size={14} /> Ban Customer</>
+              )}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Customer Profile Drawer — 3 tabs
+// ---------------------------------------------------------------------------
+function CustomerDrawer({
+  customerId,
+  onClose,
+}: {
+  customerId: string | null;
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState<"orders" | "info" | "notes">("orders");
+  const [note, setNote] = useState("");
+
+  const { data: detailData, isLoading: detailLoading } = useQuery({
+    queryKey: ["admin-customer-detail", customerId],
+    queryFn: () =>
+      fetch(`/api/admin/customers/${customerId}`).then((r) => r.json()),
+    enabled: !!customerId,
+  });
+
+  const { data: ordersData, isLoading: ordersLoading } = useQuery({
+    queryKey: ["admin-customer-orders", customerId],
+    queryFn: () =>
+      fetch(`/api/admin/customers/${customerId}/orders`).then((r) => r.json()),
+    enabled: !!customerId && tab === "orders",
+  });
+
+  const customer: CustomerDetail | null = detailData?.data?.user ?? null;
+  const orders: CustomerOrder[] = ordersData?.data?.orders ?? [];
+
+  const TABS = [
+    { key: "orders" as const, label: "Orders" },
+    { key: "info" as const, label: "Info" },
+    { key: "notes" as const, label: "Notes" },
+  ];
+
+  return (
+    <Drawer
+      open={!!customerId}
+      onClose={onClose}
+      title={customer?.name ?? "Customer Profile"}
+      width={640}
+    >
+      {detailLoading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-10 bg-[--neutral-100] dark:bg-[--dark-border] rounded-[8px] animate-pulse" />
+          ))}
+        </div>
+      ) : !customer ? (
+        <EmptyState icon={Users} title="Not found" description="Customer details could not be loaded." />
+      ) : (
+        <>
+          {/* Customer header */}
+          <div className="flex items-center gap-4 mb-6 pb-6 border-b border-[--neutral-200] dark:border-[--dark-border]">
+            <Avatar name={customer.name} size={56} />
+            <div>
+              <div className="font-syne text-[18px] font-semibold text-[--neutral-900] dark:text-[--dark-text]">
+                {customer.name}
+              </div>
+              <div className="font-dm text-[14px] text-[--neutral-500] dark:text-[--dark-muted]">
+                {customer.email}
+              </div>
+              <div className="mt-1">
+                <StatusPill status={customer.banned ? "banned" : "active"} />
+              </div>
+            </div>
+          </div>
+
+          {/* Tab bar */}
+          <div className="flex gap-1 mb-6 bg-[--neutral-100] dark:bg-[--dark-border] rounded-[10px] p-1">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={[
+                  "flex-1 h-8 rounded-[8px] font-dm text-[13px] font-medium transition-colors",
+                  tab === t.key
+                    ? "bg-white dark:bg-[--dark-surface] text-[--neutral-900] dark:text-[--dark-text] shadow-[--e1]"
+                    : "text-[--neutral-500] dark:text-[--dark-muted] hover:text-[--neutral-700]",
+                ].join(" ")}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab: Orders */}
+          {tab === "orders" && (
+            <div>
+              {ordersLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="h-14 bg-[--neutral-100] dark:bg-[--dark-border] rounded-[8px] animate-pulse" />
+                  ))}
+                </div>
+              ) : orders.length === 0 ? (
+                <EmptyState
+                  icon={Users}
+                  title="No orders yet"
+                  description="This customer has not placed any orders."
+                />
+              ) : (
+                <div className="space-y-2">
+                  {orders.map((order) => (
+                    <div
+                      key={order.id}
+                      className="flex items-center justify-between p-3 rounded-[10px] border border-[--neutral-200] dark:border-[--dark-border] bg-[--neutral-50] dark:bg-[--dark-bg]"
+                    >
+                      <div>
+                        <div className="font-dm text-[13px] font-semibold text-[--neutral-900] dark:text-[--dark-text] font-mono">
+                          #{order.id.slice(0, 8).toUpperCase()}
+                        </div>
+                        <div className="font-dm text-[12px] text-[--neutral-500] dark:text-[--dark-muted] mt-0.5">
+                          {order._count.items} item{order._count.items !== 1 ? "s" : ""} &middot; {formatDate(order.createdAt)}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <StatusPill status={order.status.toLowerCase()} />
+                        <span className="font-dm text-[13px] font-semibold text-[--neutral-900] dark:text-[--dark-text]">
+                          {formatKes(order.totalKes)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab: Info */}
+          {tab === "info" && (
+            <div className="space-y-4">
+              {[
+                { label: "Full Name", value: customer.name },
+                { label: "Email", value: customer.email },
+                { label: "Phone", value: customer.phone ?? "—" },
+                { label: "Country", value: customer.country ?? "—" },
+                { label: "City", value: customer.city ?? "—" },
+                { label: "Role", value: customer.role },
+                { label: "Member Since", value: formatDate(customer.createdAt) },
+                { label: "Loyalty Tier", value: customer.loyaltyPoints?.tier ?? "None" },
+                { label: "Total Orders", value: String(customer._count.orders) },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex justify-between items-start py-2 border-b border-[--neutral-200] dark:border-[--dark-border] last:border-0">
+                  <span className="font-dm text-[13px] text-[--neutral-500] dark:text-[--dark-muted]">{label}</span>
+                  <span className="font-dm text-[13px] text-[--neutral-900] dark:text-[--dark-text] font-medium text-right max-w-[200px]">
+                    {value}
+                  </span>
+                </div>
+              ))}
+              {customer.banned && customer.banReason && (
+                <div className="mt-4 p-3 rounded-[10px] bg-[--danger-bg] border border-[--danger]">
+                  <div className="font-dm text-[12px] font-semibold text-[--danger] mb-1">Ban Reason</div>
+                  <div className="font-dm text-[13px] text-[--danger]">{customer.banReason}</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab: Notes */}
+          {tab === "notes" && (
+            <div className="space-y-4">
+              <p className="font-dm text-[13px] text-[--neutral-500] dark:text-[--dark-muted]">
+                Internal notes visible only to admins.
+              </p>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Add a note about this customer…"
+                rows={6}
+                className="w-full rounded-[10px] border border-[--neutral-200] dark:border-[--dark-border] bg-white dark:bg-[--dark-surface] px-4 py-3 font-dm text-[14px] text-[--neutral-900] dark:text-[--dark-text] placeholder:text-[--neutral-400] resize-none focus:outline-none focus:border-[--green-800] transition-colors"
+              />
+              <button
+                onClick={() => toast.info("Note saved (UI only — connect to adminProfile when ready)")}
+                className="h-10 px-5 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:opacity-90 transition-opacity"
+              >
+                Save Note
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </Drawer>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
 // ---------------------------------------------------------------------------
 export function AdminCustomersClient() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sort, setSort] = useState("newest");
+  const [activeCustomerId, setActiveCustomerId] = useState<string | null>(null);
 
-  // Track which row's mutation is in flight so we can show a per-row spinner
-  const [pendingId, setPendingId] = useState<string | null>(null);
-
-  // -------------------------------------------------------------------------
-  // Data fetch
-  // -------------------------------------------------------------------------
-  const { data, isLoading, isError } = useQuery<ApiResponse>({
+  const { data, isLoading } = useQuery<ApiResponse>({
     queryKey: ["admin-customers"],
     queryFn: () => fetch("/api/admin/customers").then((r) => r.json()),
     staleTime: 30_000,
   });
 
-  const customers = data?.data?.users ?? [];
+  const allCustomers = data?.data?.users ?? [];
+  const stats = data?.data?.stats;
 
-  // Client-side search — filters by name OR email (case-insensitive)
-  const filtered = search.trim()
-    ? customers.filter(
-        (c) =>
-          c.name.toLowerCase().includes(search.toLowerCase()) ||
-          c.email.toLowerCase().includes(search.toLowerCase())
-      )
-    : customers;
+  // Client-side filter on top of server data (server already handles DB-level filter;
+  // this handles additional text search without a round-trip)
+  const filtered = allCustomers.filter((c) => {
+    if (statusFilter === "banned" && !c.banned) return false;
+    if (statusFilter === "active" && c.banned) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      return (
+        c.name.toLowerCase().includes(q) ||
+        c.email.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
 
-  // -------------------------------------------------------------------------
-  // Role toggle mutation
-  // -------------------------------------------------------------------------
-  const toggleRole = useMutation({
-    mutationFn: async ({ id, role }: { id: string; role: "customer" | "admin" }) => {
-      const res = await fetch("/api/admin/customers", {
+  const sorted = [...filtered].sort((a, b) => {
+    if (sort === "name") return a.name.localeCompare(b.name);
+    if (sort === "orders") return b._count.orders - a._count.orders;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+
+  const banMutation = useMutation({
+    mutationFn: async ({ id, banned }: { id: string; banned: boolean }) => {
+      const res = await fetch(`/api/admin/customers/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, role }),
+        body: JSON.stringify({ banned }),
       });
       return res.json();
     },
-    onMutate: ({ id }) => {
-      setPendingId(id);
-    },
-    onSuccess: (result) => {
+    onSuccess: (result, { banned }) => {
       if (result.ok) {
-        toast.success("Role updated");
+        toast.success(banned ? "Customer banned" : "Customer unbanned");
         qc.invalidateQueries({ queryKey: ["admin-customers"] });
       } else {
-        toast.error(result.error?.message ?? "Failed to update role");
+        toast.error(result.error?.message ?? "Action failed");
       }
     },
-    onError: () => {
-      toast.error("Failed to update role");
-    },
-    onSettled: () => {
-      setPendingId(null);
-    },
+    onError: () => toast.error("Action failed"),
   });
 
-  function handleRoleToggle(customer: Customer) {
-    const nextRole = customer.role === "admin" ? "customer" : "admin";
-    toggleRole.mutate({ id: customer.id, role: nextRole });
-  }
-
-  // -------------------------------------------------------------------------
-  // Render
-  // -------------------------------------------------------------------------
-  return (
-    <div className="min-h-screen">
-      {/* Page header */}
-      <div className="px-6 py-5 border-b border-[#e2e2e2] bg-white flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <h1 className="font-heading font-semibold text-[#1a1c1c] text-[24px] leading-tight">
-            Customers
-          </h1>
-          {/* Total count badge */}
-          {!isLoading && (
-            <span className="bg-[#e8fce3] text-[#27731e] font-body font-semibold text-[12px] px-2.5 py-0.5 rounded-full">
-              {customers.length}
-            </span>
-          )}
-        </div>
-
-        {/* Search input */}
-        <div className="relative w-full sm:w-[260px]">
-          <Icon
-            icon="mdi:magnify"
-            width={18}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1a1] pointer-events-none"
-          />
-          <input
-            type="search"
-            placeholder="Search by name or email…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-[#f9f9f9] border border-[#c0cab8] rounded-full font-body text-[14px] text-[#1a1c1c] placeholder-[#a1a1a1] focus:outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] transition-colors"
-          />
-        </div>
-      </div>
-
-      <div className="max-w-[1400px] mx-auto px-4 md:px-8 py-8">
-
-        {/* Error state */}
-        {isError && (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Icon icon="mdi:alert-circle-outline" width={48} className="text-[#e53935] mb-3" />
-            <p className="font-body text-[#40493c] text-[15px]">
-              Could not load customers. Please refresh the page.
-            </p>
-          </div>
-        )}
-
-        {/* Table card */}
-        {!isError && (
-          <div className="bg-white rounded-[12px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] border-collapse">
-                {/* Table header */}
-                <thead>
-                  <tr className="bg-[#f9f9f9] border-b border-[#eeeeee]">
-                    {[
-                      "Company ID",
-                      "Name",
-                      "Email",
-                      "Country",
-                      "Role",
-                      "Logins",
-                      "Joined",
-                      "Actions",
-                    ].map((col) => (
-                      <th
-                        key={col}
-                        className="px-4 py-3 text-left font-body font-semibold text-[#40493c] text-[12px] uppercase tracking-[0.6px] whitespace-nowrap"
-                      >
-                        {col}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {/* Loading skeleton — 5 placeholder rows */}
-                  {isLoading &&
-                    Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)}
-
-                  {/* Empty state */}
-                  {!isLoading && filtered.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="px-4 py-16 text-center">
-                        <div className="flex flex-col items-center gap-3">
-                          <Icon
-                            icon="mdi:account-search-outline"
-                            width={52}
-                            className="text-[#c0cab8]"
-                          />
-                          <p className="font-body text-[#40493c] text-[15px]">
-                            {search.trim()
-                              ? `No customers match "${search}"`
-                              : "No customers yet."}
-                          </p>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-
-                  {/* Data rows */}
-                  {!isLoading &&
-                    filtered.map((customer) => {
-                      const isRowPending = pendingId === customer.id;
-
-                      return (
-                        <tr
-                          key={customer.id}
-                          className="border-t border-[#f3f3f3] hover:bg-[#fafcf9] transition-colors"
-                        >
-                          {/* Company ID */}
-                          <td className="px-4 py-3">
-                            <span className="font-mono text-[12px] text-[#40493c]">
-                              {customer.companyId ?? "—"}
-                            </span>
-                          </td>
-
-                          {/* Name */}
-                          <td className="px-4 py-3">
-                            <span className="font-body font-semibold text-[#1a1c1c] text-[14px] whitespace-nowrap">
-                              {customer.name}
-                            </span>
-                          </td>
-
-                          {/* Email */}
-                          <td className="px-4 py-3 max-w-[220px]">
-                            <span
-                              className="font-body text-[#40493c] text-[13px] truncate block"
-                              title={customer.email}
-                            >
-                              {customer.email}
-                            </span>
-                          </td>
-
-                          {/* Country */}
-                          <td className="px-4 py-3">
-                            <span className="font-body text-[#40493c] text-[13px] whitespace-nowrap">
-                              {customer.country ?? "—"}
-                            </span>
-                          </td>
-
-                          {/* Role badge */}
-                          <td className="px-4 py-3">
-                            <RoleBadge role={customer.role} />
-                          </td>
-
-                          {/* Login count */}
-                          <td className="px-4 py-3">
-                            <span className="font-body text-[#40493c] text-[13px]">
-                              {customer.loginCount}
-                            </span>
-                          </td>
-
-                          {/* Joined date */}
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span className="font-body text-[#40493c] text-[13px]">
-                              {formatDate(customer.createdAt)}
-                            </span>
-                          </td>
-
-                          {/* Toggle role action */}
-                          <td className="px-4 py-3">
-                            <button
-                              onClick={() => handleRoleToggle(customer)}
-                              disabled={isRowPending}
-                              aria-label={
-                                customer.role === "admin"
-                                  ? "Make customer"
-                                  : "Make admin"
-                              }
-                              className="inline-flex items-center justify-center gap-1.5 border border-[#c0cab8] rounded-full px-3 py-1 font-body text-[12px] text-[#40493c] hover:border-[#27731e] hover:text-[#27731e] disabled:opacity-60 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-                            >
-                              {isRowPending ? (
-                                <Spinner size={12} />
-                              ) : customer.role === "admin" ? (
-                                "Make Customer"
-                              ) : (
-                                "Make Admin"
-                              )}
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
+  const columns = [
+    {
+      key: "customer",
+      label: "Customer",
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const c = row as unknown as Customer;
+        return (
+          <div className="flex items-center gap-3">
+            <Avatar name={c.name} size={32} />
+            <div>
+              <div className="font-dm text-[14px] font-semibold text-[--neutral-900] dark:text-[--dark-text]">
+                {c.name}
+              </div>
+              <div className="font-dm text-[12px] text-[--neutral-500] dark:text-[--dark-muted]">
+                {c.email}
+              </div>
             </div>
           </div>
-        )}
+        );
+      },
+    },
+    {
+      key: "country",
+      label: "Country",
+      sortable: true,
+      render: (_: unknown, row: Record<string, unknown>) => (
+        <span className="font-dm text-[14px] text-[--neutral-700] dark:text-[--dark-text]">
+          {(row as unknown as Customer).country ?? "—"}
+        </span>
+      ),
+    },
+    {
+      key: "phone",
+      label: "Phone",
+      render: (_: unknown, row: Record<string, unknown>) => (
+        <span className="font-dm text-[14px] text-[--neutral-700] dark:text-[--dark-text]">
+          {(row as unknown as Customer).phone ?? "—"}
+        </span>
+      ),
+    },
+    {
+      key: "orders",
+      label: "Orders",
+      sortable: true,
+      render: (_: unknown, row: Record<string, unknown>) => (
+        <span className="font-dm text-[14px] text-[--neutral-700] dark:text-[--dark-text]">
+          {(row as unknown as Customer)._count.orders}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      label: "Status",
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const c = row as unknown as Customer;
+        return <StatusPill status={c.banned ? "banned" : "active"} />;
+      },
+    },
+    {
+      key: "createdAt",
+      label: "Joined",
+      sortable: true,
+      render: (_: unknown, row: Record<string, unknown>) => (
+        <span className="font-dm text-[13px] text-[--neutral-500] dark:text-[--dark-muted]">
+          {formatDate((row as unknown as Customer).createdAt)}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      label: "",
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const c = row as unknown as Customer;
+        return (
+          <ActionsMenu
+            customer={c}
+            onView={() => setActiveCustomerId(c.id)}
+            onBanToggle={() =>
+              banMutation.mutate({ id: c.id, banned: !c.banned })
+            }
+          />
+        );
+      },
+    },
+  ];
 
-        {/* Footer count */}
-        {!isLoading && !isError && (
-          <p className="font-body text-[#a1a1a1] text-[13px] mt-4 text-right">
-            {filtered.length === customers.length
-              ? `${customers.length} customer${customers.length !== 1 ? "s" : ""} total`
-              : `Showing ${filtered.length} of ${customers.length} customer${customers.length !== 1 ? "s" : ""}`}
+  return (
+    <div className="min-h-screen">
+      <PageHeader
+        title="Customers"
+        description="Manage your customer accounts"
+        breadcrumbs={[
+          { label: "Admin", href: "/admin" },
+          { label: "Customers", href: "/admin/customers" },
+        ]}
+        action={
+          <Link
+            href="/admin/customers/tickets"
+            className="inline-flex items-center gap-2 h-10 px-4 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:opacity-90 transition-opacity"
+          >
+            <Ticket size={16} />
+            Support Tickets
+          </Link>
+        }
+      />
+
+      <div className="px-6 pb-8 space-y-6">
+        {/* Stat cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            eyebrow="Total Customers"
+            value={isLoading ? "—" : String(stats?.total ?? 0)}
+            icon={Users}
+          />
+          <StatCard
+            eyebrow="Active (90d)"
+            value={isLoading ? "—" : String(stats?.active ?? 0)}
+            icon={UserCheck}
+          />
+          <StatCard
+            eyebrow="New This Month"
+            value={isLoading ? "—" : String(stats?.newThisMonth ?? 0)}
+            icon={UserPlus}
+          />
+          <StatCard
+            eyebrow="Banned"
+            value={isLoading ? "—" : String(stats?.banned ?? 0)}
+            icon={Ban}
+          />
+        </div>
+
+        {/* Filter toolbar */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Search */}
+          <div className="relative w-full sm:w-[280px]">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none"
+            />
+            <input
+              type="search"
+              placeholder="Search by name or email..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 h-10 bg-white dark:bg-[--dark-surface] border border-[--neutral-200] dark:border-[--dark-border] rounded-full font-dm text-[14px] text-[--neutral-900] dark:text-[--dark-text] placeholder:text-[--neutral-400] focus:outline-none focus:border-[--green-800] transition-colors"
+            />
+          </div>
+
+          {/* Status filter */}
+          <div className="flex gap-1.5">
+            {["all", "active", "banned"].map((s) => (
+              <FilterPill
+                key={s}
+                label={s.charAt(0).toUpperCase() + s.slice(1)}
+                active={statusFilter === s}
+                onClick={() => setStatusFilter(s)}
+              />
+            ))}
+          </div>
+
+          {/* Sort */}
+          <div className="relative ml-auto">
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value)}
+              className="h-10 pl-4 pr-8 bg-white dark:bg-[--dark-surface] border border-[--neutral-200] dark:border-[--dark-border] rounded-[8px] font-dm text-[14px] text-[--neutral-700] dark:text-[--dark-text] appearance-none focus:outline-none focus:border-[--green-800] cursor-pointer"
+            >
+              <option value="newest">Newest First</option>
+              <option value="name">Name A–Z</option>
+              <option value="orders">Most Orders</option>
+            </select>
+            <ChevronDown
+              size={14}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none"
+            />
+          </div>
+        </div>
+
+        {/* Table */}
+        <DataTable
+          columns={columns}
+          data={sorted as unknown as Record<string, unknown>[]}
+          loading={isLoading}
+          onRowClick={(row) =>
+            setActiveCustomerId((row as unknown as Customer).id)
+          }
+          emptyTitle="No customers found"
+          emptyDescription={
+            search ? `No customers match "${search}"` : "No customers yet."
+          }
+        />
+
+        {!isLoading && (
+          <p className="font-dm text-[13px] text-[--neutral-400] text-right">
+            {sorted.length === allCustomers.length
+              ? `${allCustomers.length} customer${allCustomers.length !== 1 ? "s" : ""} total`
+              : `Showing ${sorted.length} of ${allCustomers.length}`}
           </p>
         )}
       </div>
+
+      {/* Customer profile drawer */}
+      <CustomerDrawer
+        customerId={activeCustomerId}
+        onClose={() => setActiveCustomerId(null)}
+      />
     </div>
   );
 }

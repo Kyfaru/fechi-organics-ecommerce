@@ -34,7 +34,7 @@ function CustomSelect({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between border border-[#c0cab8] rounded-[8px] px-4 py-3 font-body text-[14px] text-[#1a1c1c] bg-white outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] cursor-pointer transition-colors"
+        className="w-full flex items-center justify-between border border-[#c0cab8] dark:border-gray-600 rounded-[8px] px-4 py-3 font-body text-[14px] text-[#1a1c1c] dark:text-white bg-white dark:bg-gray-800 outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] cursor-pointer transition-colors"
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -42,7 +42,7 @@ function CustomSelect({
         <Icon
           icon={open ? "mdi:chevron-up" : "mdi:chevron-down"}
           width={18}
-          className="text-[#40493c] flex-shrink-0"
+          className="text-[#40493c] dark:text-gray-400 flex-shrink-0"
         />
       </button>
 
@@ -54,7 +54,7 @@ function CustomSelect({
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.15 }}
             role="listbox"
-            className="absolute top-full left-0 right-0 mt-1 z-30 bg-white border border-[#c0cab8] rounded-[10px] shadow-lg overflow-hidden"
+            className="absolute top-full left-0 right-0 mt-1 z-30 bg-white dark:bg-gray-800 border border-[#c0cab8] dark:border-gray-600 rounded-[10px] shadow-lg overflow-hidden"
           >
             {options.map((opt) => (
               <li
@@ -69,7 +69,7 @@ function CustomSelect({
                   "px-4 py-2.5 font-body text-[14px] cursor-pointer transition-colors",
                   opt === value
                     ? "bg-[#27731e] text-white"
-                    : "text-[#1a1c1c] hover:bg-[#e8fce3]",
+                    : "text-[#1a1c1c] dark:text-gray-200 hover:bg-[#e8fce3] dark:hover:bg-gray-700",
                 ].join(" ")}
               >
                 {opt}
@@ -163,16 +163,18 @@ function FaqAccordion() {
   return (
     <div className="max-w-[720px] mx-auto">
       {FAQ_ITEMS.map((faq, idx) => (
-        <div key={idx} className="border-b border-[#e2e2e2]">
+        <div key={idx} className="border-b border-[#e2e2e2] dark:border-gray-700">
           <button
             onClick={() => setOpen(open === idx ? null : idx)}
             className="w-full flex items-center justify-between py-5 text-left gap-4"
           >
-            <span className="font-body text-[#1a1c1c] text-[16px]">{faq.q}</span>
+            <span className="font-body text-[#1a1c1c] dark:text-gray-200 text-[16px]">{faq.q}</span>
             <span
               className={[
-                "flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full border border-[#c0cab8] transition-all",
-                open === idx ? "bg-[#27731e] border-[#27731e] text-white" : "text-[#1a1c1c]",
+                "flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full border transition-all",
+                open === idx
+                  ? "bg-[#27731e] border-[#27731e] text-white"
+                  : "border-[#c0cab8] dark:border-gray-600 text-[#1a1c1c] dark:text-gray-300",
               ].join(" ")}
             >
               <Icon icon={open === idx ? "mdi:minus" : "mdi:plus"} width={16} />
@@ -188,7 +190,7 @@ function FaqAccordion() {
                 transition={{ duration: 0.25 }}
                 className="overflow-hidden"
               >
-                <p className="font-body text-[#40493c] text-[15px] leading-[1.6] pb-5">{faq.a}</p>
+                <p className="font-body text-[#40493c] dark:text-gray-400 text-[15px] leading-[1.6] pb-5">{faq.a}</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -197,6 +199,10 @@ function FaqAccordion() {
     </div>
   );
 }
+
+/* shared input classes to avoid repetition */
+const inputCls =
+  "w-full border border-[#c0cab8] dark:border-gray-600 rounded-[8px] px-4 py-3 font-body text-[14px] text-[#1a1c1c] dark:text-white bg-white dark:bg-gray-800 outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] placeholder-[#a1a1a1] dark:placeholder-gray-500 transition-colors";
 
 export function ContactClient() {
   const [form, setForm] = useState({
@@ -260,36 +266,37 @@ export function ContactClient() {
   return (
     <>
       {/* Hero header */}
-      <section className="bg-white px-4 md:px-8 pt-10 pb-16 text-center">
+      <section className="bg-white dark:bg-gray-950 px-4 md:px-8 pt-10 pb-16 text-center transition-colors">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <p className="font-body text-[#40493c] text-[12px] md:text-[13px] tracking-[1.5px] uppercase mb-3">
+          <p className="font-body text-[#40493c] dark:text-gray-400 text-[12px] md:text-[13px] tracking-[1.5px] uppercase mb-3">
             We&apos;d Love to Hear From You
           </p>
-          <h1 className="font-heading font-semibold text-[#1a1c1c] text-[40px] md:text-[58px] tracking-[-1.16px] leading-tight">
+          <h1 className="font-heading font-semibold text-[#1a1c1c] dark:text-white text-[40px] md:text-[58px] tracking-[-1.16px] leading-tight">
             Get In Touch
           </h1>
         </motion.div>
       </section>
 
       {/* Main content — Form + Contact cards */}
-      <section className="px-4 md:px-8 pb-16 bg-[#f9f9f9]">
+      <section className="px-4 md:px-8 pb-16 bg-[#f9f9f9] dark:bg-gray-900 transition-colors">
         <div className="max-w-[1200px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
+
           {/* Send a Message form */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5 }}
-            className="bg-white rounded-[20px] p-6 md:p-8 shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
+            className="bg-white dark:bg-gray-950 rounded-[20px] p-6 md:p-8 shadow-[0_4px_20px_rgba(0,0,0,0.06)] dark:shadow-none dark:border dark:border-gray-800"
           >
-            <h2 className="font-heading font-semibold text-[#1a1c1c] text-[24px] md:text-[28px] mb-2">
+            <h2 className="font-heading font-semibold text-[#1a1c1c] dark:text-white text-[24px] md:text-[28px] mb-2">
               Send Us a Message
             </h2>
-            <p className="font-body text-[#40493c] text-[14px] mb-6">
+            <p className="font-body text-[#40493c] dark:text-gray-400 text-[14px] mb-6">
               Have a question about our products or your order? Drop us a line below.
             </p>
 
@@ -297,7 +304,7 @@ export function ContactClient() {
               {/* First + Last name row */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="font-body text-[#40493c] text-[12px] mb-1.5 block">First Name</label>
+                  <label className="font-body text-[#40493c] dark:text-gray-400 text-[12px] mb-1.5 block">First Name</label>
                   <input
                     type="text"
                     name="firstName"
@@ -305,11 +312,11 @@ export function ContactClient() {
                     onChange={handleChange}
                     required
                     placeholder="Jane"
-                    className="w-full border border-[#c0cab8] rounded-[8px] px-4 py-3 font-body text-[14px] text-[#1a1c1c] bg-white outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] placeholder-[#a1a1a1]"
+                    className={inputCls}
                   />
                 </div>
                 <div>
-                  <label className="font-body text-[#40493c] text-[12px] mb-1.5 block">Last Name</label>
+                  <label className="font-body text-[#40493c] dark:text-gray-400 text-[12px] mb-1.5 block">Last Name</label>
                   <input
                     type="text"
                     name="lastName"
@@ -317,14 +324,13 @@ export function ContactClient() {
                     onChange={handleChange}
                     required
                     placeholder="Doe"
-                    className="w-full border border-[#c0cab8] rounded-[8px] px-4 py-3 font-body text-[14px] text-[#1a1c1c] bg-white outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] placeholder-[#a1a1a1]"
+                    className={inputCls}
                   />
                 </div>
               </div>
 
-              {/* Email + Phone + Subject row */}
               <div>
-                <label className="font-body text-[#40493c] text-[12px] mb-1.5 block">Email Address</label>
+                <label className="font-body text-[#40493c] dark:text-gray-400 text-[12px] mb-1.5 block">Email Address</label>
                 <input
                   type="email"
                   name="email"
@@ -332,20 +338,18 @@ export function ContactClient() {
                   onChange={handleChange}
                   required
                   placeholder="jane@example.com"
-                  className="w-full border border-[#c0cab8] rounded-[8px] px-4 py-3 font-body text-[14px] text-[#1a1c1c] bg-white outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] placeholder-[#a1a1a1]"
+                  className={inputCls}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                {/* PhoneInput — controlled, returns Value (string) | undefined.
-                    defaultCountry="KE" is set internally by the component. */}
                 <PhoneInput
                   label="Phone Number"
                   value={form.phone as import("react-phone-number-input").Value | undefined}
                   onChange={(val) => setForm((prev) => ({ ...prev, phone: val ?? "" }))}
                 />
                 <div>
-                  <label className="font-body text-[#40493c] text-[12px] mb-1.5 block">Subject</label>
+                  <label className="font-body text-[#40493c] dark:text-gray-400 text-[12px] mb-1.5 block">Subject</label>
                   <CustomSelect
                     value={form.subject}
                     onChange={(v) => setForm((prev) => ({ ...prev, subject: v }))}
@@ -354,9 +358,8 @@ export function ContactClient() {
                 </div>
               </div>
 
-              {/* Message */}
               <div>
-                <label className="font-body text-[#40493c] text-[12px] mb-1.5 block">Message</label>
+                <label className="font-body text-[#40493c] dark:text-gray-400 text-[12px] mb-1.5 block">Message</label>
                 <textarea
                   name="message"
                   value={form.message}
@@ -364,7 +367,7 @@ export function ContactClient() {
                   required
                   rows={4}
                   placeholder="How can we help you today?"
-                  className="w-full border border-[#c0cab8] rounded-[8px] px-4 py-3 font-body text-[14px] text-[#1a1c1c] bg-white outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] placeholder-[#a1a1a1] resize-none"
+                  className={`${inputCls} resize-none`}
                 />
               </div>
 
@@ -393,7 +396,6 @@ export function ContactClient() {
             transition={{ duration: 0.5, delay: 0.1 }}
             className="grid grid-cols-1 sm:grid-cols-2 gap-4 content-start"
           >
-            {/* Phone */}
             <ContactCard
               icon="mdi:phone-outline"
               iconBg="#e8fce3"
@@ -401,16 +403,13 @@ export function ContactClient() {
               title="Phone"
               lines={["+254 710 340 678", "Mon–Fri, 9am–5pm"]}
             />
-            {/* WhatsApp */}
             <ContactCard
               icon="mdi:whatsapp"
               iconBg="#dcfce7"
               iconColor="#16a34a"
               title="WhatsApp"
-              lines={["+254 710 340 678", "Typically responds"]
-              }
+              lines={["+254 710 340 678", "Typically responds"]}
             />
-            {/* Email */}
             <ContactCard
               icon="mdi:email-outline"
               iconBg="#fef9c3"
@@ -418,7 +417,6 @@ export function ContactClient() {
               title="Email"
               lines={["hello@fechiorganics.com", "Response within 24h"]}
             />
-            {/* Stores */}
             <ContactCard
               icon="mdi:store-outline"
               iconBg="#f0fdf4"
@@ -431,7 +429,7 @@ export function ContactClient() {
       </section>
 
       {/* Our Branches */}
-      <section className="px-4 md:px-8 py-16 bg-white">
+      <section className="px-4 md:px-8 py-16 bg-white dark:bg-gray-950 transition-colors">
         <div className="max-w-[1200px] mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -440,10 +438,10 @@ export function ContactClient() {
             transition={{ duration: 0.5 }}
             className="text-center mb-10"
           >
-            <h2 className="font-heading font-semibold text-[#1a1c1c] text-[32px] md:text-[40px] tracking-[-1px] mb-3">
+            <h2 className="font-heading font-semibold text-[#1a1c1c] dark:text-white text-[32px] md:text-[40px] tracking-[-1px] mb-3">
               Our Branches
             </h2>
-            <p className="font-body text-[#40493c] text-[15px] max-w-[400px] mx-auto">
+            <p className="font-body text-[#40493c] dark:text-gray-400 text-[15px] max-w-[400px] mx-auto">
               Find a Fechi Organics store near you and experience our products in person.
             </p>
           </motion.div>
@@ -456,14 +454,14 @@ export function ContactClient() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.4, delay: idx * 0.07 }}
-                className="bg-[#f9f9f9] rounded-[16px] p-5 flex flex-col gap-3"
+                className="bg-[#f9f9f9] dark:bg-gray-900 rounded-[16px] p-5 flex flex-col gap-3 border border-transparent dark:border-gray-800"
               >
                 <div className="flex items-center gap-2">
-                  <Icon icon="mdi:map-marker-outline" width={18} className="text-[#27731e]" />
-                  <span className="font-body font-semibold text-[#1a1c1c] text-[15px]">{branch.city}</span>
+                  <Icon icon="mdi:map-marker-outline" width={18} className="text-[#27731e] dark:text-green-400 flex-shrink-0" />
+                  <span className="font-body font-semibold text-[#1a1c1c] dark:text-white text-[15px]">{branch.city}</span>
                 </div>
-                <p className="font-body text-[#40493c] text-[13px] leading-[1.5]">{branch.mall}</p>
-                <div className="flex items-center gap-1 text-[#40493c]">
+                <p className="font-body text-[#40493c] dark:text-gray-400 text-[13px] leading-[1.5]">{branch.mall}</p>
+                <div className="flex items-center gap-1 text-[#40493c] dark:text-gray-500">
                   <Icon icon="mdi:clock-outline" width={14} />
                   <span className="font-body text-[12px]">{branch.hours}</span>
                 </div>
@@ -483,7 +481,7 @@ export function ContactClient() {
       </section>
 
       {/* Why Choose Fechi Organics */}
-      <section className="px-4 md:px-8 py-16 bg-[#f4fff3]">
+      <section className="px-4 md:px-8 py-16 bg-[#f4fff3] dark:bg-gray-900 transition-colors">
         <div className="max-w-[1200px] mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -492,10 +490,10 @@ export function ContactClient() {
             transition={{ duration: 0.5 }}
             className="text-center mb-10"
           >
-            <h2 className="font-heading font-semibold text-[#27731e] text-[32px] md:text-[40px] tracking-[-1px] mb-3">
+            <h2 className="font-heading font-semibold text-[#27731e] dark:text-green-400 text-[32px] md:text-[40px] tracking-[-1px] mb-3">
               Why Choose Fechi Organics
             </h2>
-            <p className="font-body text-[#40493c] text-[15px]">Committed to your skin and our planet.</p>
+            <p className="font-body text-[#40493c] dark:text-gray-400 text-[15px]">Committed to your skin and our planet.</p>
           </motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -506,21 +504,21 @@ export function ContactClient() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.4, delay: idx * 0.1 }}
-                className="flex flex-col items-center text-center p-8 bg-white rounded-[20px] shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
+                className="flex flex-col items-center text-center p-8 bg-white dark:bg-gray-950 rounded-[20px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] dark:shadow-none dark:border dark:border-gray-800"
               >
                 <div className="w-16 h-16 bg-[#27731e] rounded-full flex items-center justify-center mb-5">
                   <Icon icon={card.icon} width={32} className="text-white" />
                 </div>
-                <h3 className="font-heading font-semibold text-[#1a1c1c] text-[20px] mb-3">{card.title}</h3>
-                <p className="font-body text-[#40493c] text-[14px] leading-[1.6]">{card.desc}</p>
+                <h3 className="font-heading font-semibold text-[#1a1c1c] dark:text-white text-[20px] mb-3">{card.title}</h3>
+                <p className="font-body text-[#40493c] dark:text-gray-400 text-[14px] leading-[1.6]">{card.desc}</p>
               </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* FAQ section */}
-      <section id="faq" className="px-4 md:px-8 py-16 bg-white">
+      {/* FAQ */}
+      <section id="faq" className="px-4 md:px-8 py-16 bg-white dark:bg-gray-950 transition-colors">
         <div className="max-w-[1200px] mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -529,10 +527,10 @@ export function ContactClient() {
             transition={{ duration: 0.5 }}
             className="text-center mb-10"
           >
-            <h2 className="font-heading font-semibold text-[#27731e] text-[32px] md:text-[40px] tracking-[-1px] mb-3">
+            <h2 className="font-heading font-semibold text-[#27731e] dark:text-green-400 text-[32px] md:text-[40px] tracking-[-1px] mb-3">
               Frequently Asked Questions
             </h2>
-            <p className="font-body text-[#40493c] text-[15px]">Quick answers to common questions.</p>
+            <p className="font-body text-[#40493c] dark:text-gray-400 text-[15px]">Quick answers to common questions.</p>
           </motion.div>
 
           <FaqAccordion />
@@ -558,7 +556,7 @@ function ContactCard({
   return (
     <motion.div
       whileHover={{ y: -3 }}
-      className="bg-white rounded-[16px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)] flex flex-col gap-3"
+      className="bg-white dark:bg-gray-950 rounded-[16px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)] dark:shadow-none dark:border dark:border-gray-800 flex flex-col gap-3"
     >
       <div
         className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0"
@@ -567,9 +565,14 @@ function ContactCard({
         <Icon icon={icon} width={24} style={{ color: iconColor }} />
       </div>
       <div>
-        <h3 className="font-body font-semibold text-[#1a1c1c] text-[15px] mb-1">{title}</h3>
+        <h3 className="font-body font-semibold text-[#1a1c1c] dark:text-white text-[15px] mb-1">{title}</h3>
         {lines.map((line, i) => (
-          <p key={i} className={`font-body text-[13px] ${i === 0 ? "text-[#1a1c1c]" : "text-[#a1a1a1]"}`}>
+          <p
+            key={i}
+            className={`font-body text-[13px] ${
+              i === 0 ? "text-[#1a1c1c] dark:text-gray-300" : "text-[#a1a1a1] dark:text-gray-500"
+            }`}
+          >
             {line}
           </p>
         ))}

@@ -11,7 +11,7 @@ type Props = {
 
 export function CategoriesSection({ categories }: Props) {
   return (
-    <section className="py-16 px-4 md:px-8 bg-[#f4fff3]">
+    <section className="py-16 px-4 md:px-8 bg-[#f4fff3] dark:bg-gray-950">
       <div className="max-w-[1440px] mx-auto">
         {/* Section heading */}
         <motion.h2
@@ -19,7 +19,7 @@ export function CategoriesSection({ categories }: Props) {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
-          className="text-center font-heading font-semibold text-[#1a1c1c] text-[40px] md:text-[58px] tracking-[-1.16px] mb-12"
+          className="text-center font-heading font-semibold text-[#1a1c1c] dark:text-white text-[40px] md:text-[58px] tracking-[-1.16px] mb-12"
         >
           Popular Categories
         </motion.h2>
@@ -52,7 +52,7 @@ export function CategoriesSection({ categories }: Props) {
                 </motion.div>
 
                 {/* Label */}
-                <span className="font-body text-[18px] md:text-[20px] text-[#1a1c1c] tracking-[-0.2px] text-center group-hover:text-[#27731e] transition-colors">
+                <span className="font-body text-[18px] md:text-[20px] text-[#1a1c1c] dark:text-gray-200 tracking-[-0.2px] text-center group-hover:text-[#27731e] transition-colors">
                   {cat.name}
                 </span>
               </Link>

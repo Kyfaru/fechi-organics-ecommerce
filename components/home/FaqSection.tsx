@@ -29,17 +29,17 @@ export function FaqSection() {
   }
 
   return (
-    <section className="py-16 px-4 md:px-8 bg-white">
+    <section className="py-16 px-4 md:px-8 bg-white dark:bg-gray-950">
       <div className="max-w-[1440px] mx-auto">
         {/* Eyebrow row */}
         <div className="flex items-center gap-6 mb-3">
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[#27731e] inline-block" />
-            <span className="font-body text-[14px] text-[#1a1c1c] tracking-[0.28px]">Lets Help You</span>
+            <span className="font-body text-[14px] text-[#1a1c1c] dark:text-gray-300 tracking-[0.28px]">Lets Help You</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[#fec700] inline-block" />
-            <span className="font-body text-[14px] text-[#1a1c1c] tracking-[0.28px]">Ask Any thing</span>
+            <span className="font-body text-[14px] text-[#1a1c1c] dark:text-gray-300 tracking-[0.28px]">Ask Any thing</span>
           </div>
         </div>
 
@@ -89,7 +89,7 @@ export function FaqSection() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.4, delay: idx * 0.1 }}
-                className="border-b border-[#e0e0e0]"
+                className="border-b border-[#e0e0e0] dark:border-gray-700"
               >
                 {/* Question row */}
                 <button
@@ -104,7 +104,7 @@ export function FaqSection() {
                       "flex-shrink-0 flex items-center justify-center w-[34px] h-[34px] rounded-full border-2 transition-all",
                       openIndex === idx
                         ? "border-[#27731e] bg-[#27731e] text-white rotate-90"
-                        : "border-[#c0c0c0] text-[#1a1c1c]",
+                        : "border-[#c0c0c0] dark:border-gray-600 text-[#1a1c1c] dark:text-gray-300",
                     ].join(" ")}
                     style={{ transform: openIndex === idx ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}
                   >
@@ -126,7 +126,7 @@ export function FaqSection() {
                       transition={{ duration: 0.25, ease: "easeInOut" }}
                       className="overflow-hidden"
                     >
-                      <p className="font-body text-[#1a1c1c] text-[16px] md:text-[20px] tracking-[0.4px] pb-5 leading-[1.5]">
+                      <p className="font-body text-[#1a1c1c] dark:text-gray-400 text-[16px] md:text-[20px] tracking-[0.4px] pb-5 leading-[1.5]">
                         {faq.a}
                       </p>
                     </motion.div>
@@ -145,7 +145,7 @@ export function FaqSection() {
             >
               <Link
                 href="/contact#faq"
-                className="inline-flex items-center gap-2 border border-black rounded-full px-7 py-4 font-body font-medium text-[#27731e] text-[15px] tracking-[0.3px] hover:bg-[#27731e] hover:text-white hover:border-[#27731e] transition-all"
+                className="inline-flex items-center gap-2 border border-black dark:border-gray-600 rounded-full px-7 py-4 font-body font-medium text-[#27731e] text-[15px] tracking-[0.3px] hover:bg-[#27731e] hover:text-white hover:border-[#27731e] transition-all"
               >
                 See more FAQs
                 <Icon icon="mdi:chevron-right" width={20} />

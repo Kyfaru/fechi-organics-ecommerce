@@ -24,7 +24,7 @@ const FormInput = forwardRef<HTMLInputElement, FormInputProps>(
       <div className="flex flex-col gap-1.5">
         <label
           htmlFor={inputId}
-          className="text-xs font-semibold tracking-widest uppercase text-[#40493c]"
+          className="text-xs font-semibold tracking-widest uppercase text-[#40493c] dark:text-gray-300"
         >
           {label}
         </label>
@@ -33,13 +33,13 @@ const FormInput = forwardRef<HTMLInputElement, FormInputProps>(
           ref={ref}
           id={inputId}
           className={[
-            "w-full px-4 py-3 text-sm text-[#1a1c1c] bg-white",
+            "w-full px-4 py-3 text-sm text-[#1a1c1c] dark:text-white bg-white dark:bg-gray-800",
             "rounded-[20px] border outline-none transition-colors duration-150",
-            "placeholder:text-[rgba(64,73,60,0.5)]",
+            "placeholder:text-[rgba(64,73,60,0.5)] dark:placeholder:text-gray-500",
             "focus:border-[#27731e] focus:ring-2 focus:ring-[#27731e]/20",
             error
               ? "border-red-500 focus:border-red-500 focus:ring-red-200"
-              : "border-[#c0cab8]",
+              : "border-[#c0cab8] dark:border-gray-600",
             className,
           ]
             .filter(Boolean)
