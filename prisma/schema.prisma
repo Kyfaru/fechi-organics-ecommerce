@@ -382,10 +382,12 @@ model order {
   deliveryAddress   String?
   deliveryCity      String?
   deliveryCounty    String?
+  deliveryZone      String?
   deliveryPhone     String?
   deliveryType      DeliveryType  @default(DELIVERY)
   isInternational   Boolean       @default(false)
   paymentStatus     PaymentStatus @default(PENDING)
+  receiptSent       Boolean       @default(false)
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
@@ -412,6 +414,8 @@ model branch {
   id                String        @id @default(uuid())
   name              String
   county            String
+  lat               Float?
+  lng               Float?
   mpesaType         MpesaType
   shortcode         String
   consumerKeyEnc    String
@@ -419,11 +423,29 @@ model branch {
   passkeyEnc        String
   isActive          Boolean       @default(true)
   orders            order[]
+  deliveryZones     DeliveryZone[]
+  adminProfiles     adminProfile[]
   transactions      transaction[]
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
   @@index([county, isActive])
+  @@schema("public")
+}
+
+model DeliveryZone {
+  id             String   @id @default(uuid())
+  county         String
+  name           String
+  branchId       String?
+  branch         branch?  @relation(fields: [branchId], references: [id])
+  deliveryFeeKes Int
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([county, isActive])
+  @@index([branchId])
   @@schema("public")
 }
 
@@ -473,14 +495,18 @@ model adminProfile {
   id          String     @id @default(uuid())
   userId      String     @unique
   user        user       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branchId    String?
+  branch      branch?    @relation(fields: [branchId], references: [id])
   fullName    String
   permissions Json       @default("{}")
   department  String?
+  isSuperAdmin Boolean   @default(false)
   isActive    Boolean    @default(true)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   auditLogs   auditLog[]
 
+  @@index([branchId])
   @@schema("admin")
 }
 

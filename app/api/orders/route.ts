@@ -71,7 +71,8 @@ const DELIVERY_KES = 35000; // 350 KES × 100 cents
 
 // ---------------------------------------------------------------------------
 // POST /api/orders — authenticated users only
-// Creates an order from the current cart, decrements stock, clears cart.
+// Creates an order from the current cart and clears cart.
+// Stock is decremented only after a payment callback confirms PAID.
 // Fire-and-forgets a Zoho Sales Order after commit.
 // ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
@@ -135,7 +136,7 @@ export async function POST(req: NextRequest) {
 
     const totalKes = subtotalKes + DELIVERY_KES - discountKes;
 
-    // 6. Prisma transaction: create order, decrement stock, clear cart
+    // 6. Prisma transaction: create order, clear cart
     type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
     const order = await db.$transaction(async (tx: TxClient) => {
@@ -159,14 +160,6 @@ export async function POST(req: NextRequest) {
           },
         },
       });
-
-      // Decrement stock for each item
-      for (const ci of cart.items) {
-        await tx.product.update({
-          where: { id: ci.productId },
-          data: { stock: { decrement: ci.quantity } },
-        });
-      }
 
       // Clear cart
       await tx.cartItem.deleteMany({ where: { cartId: cart.id } });

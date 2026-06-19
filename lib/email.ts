@@ -44,6 +44,45 @@ export async function sendPasswordResetEmail(email: string, resetUrl: string): P
   }
 }
 
+export async function sendOrderConfirmationEmail(args: {
+  email: string;
+  orderId: string;
+  html: string;
+  pdfBuffer?: Buffer;
+}): Promise<void> {
+  const { error } = await resend.emails.send({
+    from: sendEmail!,
+    to: args.email,
+    subject: `Your Fechi Organics receipt #${args.orderId.slice(0, 8).toUpperCase()}`,
+    html: args.html,
+    attachments: args.pdfBuffer
+      ? [{ filename: `fechi-receipt-${args.orderId.slice(0, 8)}.pdf`, content: args.pdfBuffer }]
+      : undefined,
+  });
+
+  if (error) {
+    console.error("[Resend] Failed to send order confirmation:", error);
+    throw new Error("Failed to send order confirmation email");
+  }
+}
+
+export async function sendAdminNotificationEmail(args: {
+  to: string | string[];
+  subject: string;
+  html: string;
+}) {
+  const { error } = await resend.emails.send({
+    from: sendEmail!,
+    to: args.to,
+    subject: args.subject,
+    html: args.html,
+  });
+  if (error) {
+    console.error("[Resend] Failed to send admin notification:", error);
+    throw new Error("Failed to send admin notification");
+  }
+}
+
 function buildPasswordResetEmailHTML(resetUrl: string): string {
   return `<!DOCTYPE html>
 <html lang="en">

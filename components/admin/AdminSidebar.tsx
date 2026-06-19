@@ -12,6 +12,7 @@ import {
   ChevronLeft, ChevronRight, Menu, X,
 } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
+import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
 
 const NAV_GROUPS = [
   { label: "STORE", items: [
@@ -66,24 +67,32 @@ export function AdminSidebar() {
     const next = !collapsed;
     setCollapsed(next);
     localStorage.setItem("adminSidebarCollapsed", String(next));
+    document.documentElement.style.setProperty("--sidebar-w", next ? "72px" : "264px");
   }
+
+  useEffect(() => {
+    const w = collapsed ? "72px" : "264px";
+    document.documentElement.style.setProperty("--sidebar-w", w);
+  }, [collapsed]);
 
   async function handleLogout() {
     await signOut();
     router.push("/admin/login");
   }
 
+  const [logoutConfirming, setLogoutConfirming] = useState(false);
+
   function SidebarContent({ mobile = false }: { mobile?: boolean }) {
     return (
-      <div className="flex flex-col h-full bg-white dark:bg-[--dark-surface]">
+      <div className="flex flex-col h-full bg-[--green-900] dark:bg-[--dark-surface]">
         {/* Logo zone */}
-        <div className="h-[72px] flex items-center px-4 border-b border-[--neutral-200] dark:border-[--dark-border] shrink-0">
+        <div className="h-[72px] flex items-center px-4 border-b border-[--green-800] dark:border-[--dark-border] shrink-0">
           {(!collapsed || mobile) ? (
             <div className="flex items-center gap-3">
               <Image src="/logo/Asset 16@5x.webp" alt="Fechi Organics" width={32} height={32} className="rounded" />
               <div>
-                <div className="font-syne text-[14px] font-semibold text-[--neutral-900] dark:text-[--dark-text] leading-tight">Fechi Organics</div>
-                <div className="font-dm text-[11px] text-[--neutral-400] dark:text-[--dark-muted]">Admin Panel</div>
+                <div className="font-syne text-[14px] font-semibold text-white dark:text-[--dark-text] leading-tight">Fechi Organics</div>
+                <div className="font-dm text-[11px] text-white/60 dark:text-[--dark-muted]">Admin Panel</div>
               </div>
             </div>
           ) : (
@@ -98,7 +107,7 @@ export function AdminSidebar() {
           {NAV_GROUPS.map((group) => (
             <div key={group.label}>
               {(!collapsed || mobile) && (
-                <div className="font-dm text-[11px] font-semibold uppercase tracking-wider text-[--neutral-400] dark:text-[--dark-muted] px-2 mb-2">
+                <div className="font-dm text-[11px] font-semibold uppercase tracking-wider text-[--green-200] dark:text-[--dark-muted] px-2 mb-2">
                   {group.label}
                 </div>
               )}
@@ -116,12 +125,12 @@ export function AdminSidebar() {
                         "relative flex items-center gap-3 h-11 rounded-[8px] transition-colors overflow-hidden",
                         collapsed && !mobile ? "justify-center px-0" : "px-3",
                         active
-                          ? "bg-[--green-800] text-white"
-                          : "text-[--neutral-700] dark:text-[--dark-text] hover:bg-[--neutral-100] dark:hover:bg-[--dark-border]",
+                          ? "bg-white/15 text-white dark:bg-[--dark-accent]/15 dark:text-[--dark-accent]"
+                          : "text-white/80 dark:text-[--dark-text] hover:bg-[--green-800] dark:hover:bg-[--dark-border]",
                       ].join(" ")}
                     >
                       {active && (
-                        <span className="absolute left-0 top-[20%] h-[60%] w-[3px] bg-[--green-500] rounded-r" />
+                        <span className="absolute left-0 top-[20%] h-[60%] w-[3px] bg-[--gold-500] dark:bg-[--dark-accent] rounded-r" />
                       )}
                       <Icon size={20} className="shrink-0" />
                       {(!collapsed || mobile) && (
@@ -136,18 +145,18 @@ export function AdminSidebar() {
         </nav>
 
         {/* Bottom section */}
-        <div className="border-t border-[--neutral-200] dark:border-[--dark-border] p-3 space-y-0.5 shrink-0">
+        <div className="border-t border-[--green-800] dark:border-[--dark-border] p-3 space-y-0.5 shrink-0">
           <Link
             href="/"
-            className={["flex items-center gap-3 h-10 rounded-[8px] px-3 text-[--neutral-500] dark:text-[--dark-muted] hover:bg-[--neutral-100] dark:hover:bg-[--dark-border] transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}
+            className={["flex items-center gap-3 h-10 rounded-[8px] px-3 text-white/70 dark:text-[--dark-muted] hover:bg-[--green-800] dark:hover:bg-[--dark-border] transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}
             title={collapsed && !mobile ? "Back to Store" : undefined}
           >
             <ArrowLeft size={18} />
             {(!collapsed || mobile) && <span className="font-dm text-[13px]">Back to Store</span>}
           </Link>
           <button
-            onClick={handleLogout}
-            className={["w-full flex items-center gap-3 h-10 rounded-[8px] px-3 text-[--neutral-500] dark:text-[--dark-muted] hover:bg-[--danger-bg] hover:text-[--danger] transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}
+            onClick={() => setLogoutConfirming(true)}
+            className={["w-full flex items-center gap-3 h-10 rounded-[8px] px-3 text-white/70 dark:text-[--dark-muted] hover:text-[--gold-500] dark:hover:text-[--dark-accent] hover:bg-[--green-800] dark:hover:bg-[--dark-border] transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}
             title={collapsed && !mobile ? "Sign out" : undefined}
           >
             <LogOut size={18} />
@@ -157,10 +166,10 @@ export function AdminSidebar() {
 
         {/* Collapse toggle — desktop only */}
         {!mobile && (
-          <div className="border-t border-[--neutral-200] dark:border-[--dark-border] p-2 shrink-0">
+          <div className="border-t border-[--green-800] dark:border-[--dark-border] p-2 shrink-0">
             <button
               onClick={toggleCollapsed}
-              className="w-full flex items-center justify-center h-8 rounded-[6px] text-[--neutral-400] hover:bg-[--neutral-100] dark:hover:bg-[--dark-border] transition-colors"
+              className="w-full flex items-center justify-center h-8 rounded-[6px] text-white/40 hover:bg-[--green-800] dark:hover:bg-[--dark-border] transition-colors"
             >
               {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
             </button>
@@ -174,7 +183,7 @@ export function AdminSidebar() {
     <>
       {/* Desktop sidebar */}
       <aside
-        className={["hidden md:flex flex-col fixed left-0 top-0 h-full border-r border-[--neutral-200] dark:border-[--dark-border] z-30 transition-all duration-200 overflow-hidden", collapsed ? "w-[72px]" : "w-[264px]"].join(" ")}
+        className={["hidden md:flex flex-col fixed left-0 top-0 h-full border-r border-[--green-800] dark:border-[--dark-border] z-30 transition-all duration-200 overflow-hidden", collapsed ? "w-[72px]" : "w-[264px]"].join(" ")}
       >
         <SidebarContent />
       </aside>
@@ -212,6 +221,16 @@ export function AdminSidebar() {
           </>
         )}
       </AnimatePresence>
+
+      <ConfirmModal
+        open={logoutConfirming}
+        onClose={() => setLogoutConfirming(false)}
+        onConfirm={handleLogout}
+        title="Sign out?"
+        description="You will be returned to the login screen."
+        confirmLabel="Sign out"
+        danger={true}
+      />
     </>
   );
 }

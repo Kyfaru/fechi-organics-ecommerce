@@ -10,7 +10,10 @@ import { ok, Err } from "@/lib/api";
 async function requireAdmin(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user) return null;
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
+  const user = await db.user.findUnique({
+    where: { id: session.user.id },
+    include: { adminProfile: true },
+  });
   return user?.role === "admin" ? user : null;
 }
 
@@ -28,6 +31,7 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const status = url.searchParams.get("status");
     const search = url.searchParams.get("search");
+    const branchId = url.searchParams.get("branchId");
     const page = Math.max(0, parseInt(url.searchParams.get("page") ?? "0", 10));
     const pageSize = 50;
 
@@ -35,6 +39,12 @@ export async function GET(req: NextRequest) {
 
     if (status) {
       where.status = status;
+    }
+
+    if (admin.adminProfile?.isSuperAdmin) {
+      if (branchId) where.branchId = branchId;
+    } else {
+      where.branchId = admin.adminProfile?.branchId ?? "__NO_BRANCH__";
     }
 
     if (search) {
@@ -55,6 +65,7 @@ export async function GET(req: NextRequest) {
       take: pageSize,
       include: {
         user: { select: { name: true, email: true } },
+        branch: { select: { id: true, name: true, county: true } },
         items: {
           include: {
             product: {
@@ -73,7 +84,13 @@ export async function GET(req: NextRequest) {
     });
 
     console.info("[admin/orders] GET — returned", orders.length, "orders (page", page + 1, ")");
-    return ok({ orders });
+    return ok({
+      orders,
+      scope: {
+        isSuperAdmin: Boolean(admin.adminProfile?.isSuperAdmin),
+        branchId: admin.adminProfile?.branchId ?? null,
+      },
+    });
   } catch (e) {
     console.error("[admin/orders] GET error", e);
     return Err.internal();

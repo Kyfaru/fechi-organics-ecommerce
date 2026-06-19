@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -12,12 +13,6 @@ import { useCurrency } from "@/app/providers";
 import type { CartLine } from "@/lib/cart";
 import { posthog } from "@/lib/posthog";
 import { StepIndicator } from "@/components/checkout/StepIndicator";
-
-type PlaceOrderResponse = {
-  ok: boolean;
-  data?: { orderId: string };
-  error?: { code: string; message: string };
-};
 
 const DELIVERY_KES = 35000; // 350 × 100 cents
 
@@ -32,41 +27,12 @@ type CartResponse = {
 };
 
 export function CartClient() {
+  const router = useRouter();
   const qc = useQueryClient();
   const { format } = useCurrency();
   const [promoCode, setPromoCode] = useState("");
   const [appliedPromo, setAppliedPromo] = useState<string | null>(null);
   const [promoDiscount, setPromoDiscount] = useState(0);
-  const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
-
-  // Place order mutation
-  const orderMutation = useMutation<PlaceOrderResponse, Error>({
-    mutationFn: async () => {
-      const res = await fetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ promoCode: appliedPromo }),
-      });
-      return res.json();
-    },
-    onSuccess: (res) => {
-      if (res.ok && res.data?.orderId) {
-        posthog.capture("order_completed", {
-          order_id: res.data.orderId,
-          total_kes: subtotalKes + DELIVERY_KES - promoDiscount,
-          item_count: cart?.itemCount ?? 0,
-          promo_code: appliedPromo,
-        });
-        setPlacedOrderId(res.data.orderId);
-        qc.invalidateQueries({ queryKey: ["cart"] });
-      } else {
-        toast.error(res.error?.message ?? "Could not place order");
-      }
-    },
-    onError: () => {
-      toast.error("Could not place order. Please try again.");
-    },
-  });
 
   const { data, isLoading } = useQuery<CartResponse>({
     queryKey: ["cart"],
@@ -191,44 +157,23 @@ export function CartClient() {
   const subtotalKes = cart?.subtotalKes ?? 0;
   const totalKes = subtotalKes + DELIVERY_KES - promoDiscount;
 
-  // Order success panel
-  if (placedOrderId) {
-    return (
-      <div className="flex-1 flex items-center justify-center px-4 py-20">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.4 }}
-          className="bg-white dark:bg-gray-900 rounded-[24px] shadow-[0_8px_40px_rgba(0,0,0,0.08)] p-10 max-w-[480px] w-full text-center"
-        >
-          <div
-            className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"
-            style={{ backgroundColor: "#dcfce7" }}
-          >
-            <Icon icon="mdi:check-circle" width={44} style={{ color: "#16a34a" }} />
-          </div>
-          <h2 className="font-heading font-bold text-[#1a1c1c] dark:text-white text-[28px] md:text-[32px] mb-3">
-            Your order has been placed!
-          </h2>
-          <p className="font-body text-[#40493c] dark:text-gray-300 text-[15px] leading-[1.7] mb-2">
-            Thank you for shopping with Fechi Organics.
-          </p>
-          <p className="font-body text-[#707a6b] dark:text-gray-400 text-[13px] mb-8">
-            Order ID:{" "}
-            <span className="font-mono font-semibold text-[#1a1c1c]">
-              {placedOrderId.slice(0, 8).toUpperCase()}
-            </span>
-          </p>
-          <Link
-            href="/shop"
-            className="inline-flex items-center gap-2 bg-[#27731e] text-white rounded-full px-8 py-4 font-body font-semibold text-[15px] hover:bg-[#045a03] transition-colors"
-          >
-            Continue Shopping
-            <Icon icon="mdi:arrow-right" width={18} />
-          </Link>
-        </motion.div>
-      </div>
-    );
+  function handleStartDelivery() {
+    if (!items.length) return;
+    if (appliedPromo) {
+      sessionStorage.setItem("fechi_promo", appliedPromo);
+    } else {
+      sessionStorage.removeItem("fechi_promo");
+    }
+
+    posthog.capture("checkout_started", {
+      step: "cart",
+      next_step: "delivery",
+      item_count: cart?.itemCount ?? 0,
+      subtotal_kes: subtotalKes,
+      has_promo: !!appliedPromo,
+      promo_code: appliedPromo,
+    });
+    router.push("/delivery");
   }
 
   if (isLoading) {
@@ -365,22 +310,10 @@ export function CartClient() {
               {/* Place Order button */}
               <div className="flex justify-end mt-8">
                 <button
-                  onClick={() => {
-                    posthog.capture("checkout_started", {
-                      item_count: cart?.itemCount ?? 0,
-                      subtotal_kes: subtotalKes,
-                      has_promo: !!appliedPromo,
-                    });
-                    orderMutation.mutate();
-                  }}
-                  disabled={orderMutation.isPending}
+                  onClick={handleStartDelivery}
                   className="inline-flex items-center gap-2 bg-[#045a03] text-white rounded-full px-8 py-4 font-body font-bold text-[15px] hover:bg-[#27731e] transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                  {orderMutation.isPending ? (
-                    <Spinner size={18} />
-                  ) : (
-                    <Icon icon="mdi:cart-check" width={18} />
-                  )}
+                  <Icon icon="mdi:truck-delivery-outline" width={18} />
                   Place Order
                 </button>
               </div>

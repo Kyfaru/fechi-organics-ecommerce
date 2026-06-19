@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { connection } from "next/server";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 
@@ -17,11 +18,23 @@ import { ok, Err } from "@/lib/api";
  *   500 on unexpected errors
  */
 export async function GET(req: NextRequest) {
+  await connection();
   try {
     const county = req.nextUrl.searchParams.get("county");
 
     if (!county) {
-      return Err.validation("county query parameter is required");
+      const branches = await db.branch.findMany({
+        where: { isActive: true },
+        orderBy: { name: "asc" },
+        select: {
+          id: true,
+          name: true,
+          county: true,
+          mpesaType: true,
+          shortcode: true,
+        },
+      });
+      return ok({ branches });
     }
 
     const branch = await db.branch.findFirst({

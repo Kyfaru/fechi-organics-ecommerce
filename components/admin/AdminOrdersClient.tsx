@@ -51,6 +51,7 @@ type AdminOrder = {
   guestEmail: string | null;
   createdAt: string;
   user: { name: string; email: string } | null;
+  branch: { id: string; name: string; county: string } | null;
   items: OrderItemDetail[];
 };
 
@@ -410,17 +411,29 @@ function OrderDetailDrawer({
 export function AdminOrdersClient() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"" | OrderStatus>("");
+  const [branchFilter, setBranchFilter] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<AdminOrder | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // ── Data query ──
-  const { data, isLoading } = useQuery<{ ok: boolean; data: { orders: AdminOrder[] } }>({
-    queryKey: ["admin-orders"],
-    queryFn: () => fetch("/api/admin/orders").then((r) => r.json()),
+  const { data, isLoading } = useQuery<{ ok: boolean; data: { orders: AdminOrder[]; scope: { isSuperAdmin: boolean; branchId: string | null } } }>({
+    queryKey: ["admin-orders", branchFilter],
+    queryFn: () => fetch(`/api/admin/orders${branchFilter ? `?branchId=${encodeURIComponent(branchFilter)}` : ""}`).then((r) => r.json()),
     staleTime: 30_000,
+    refetchInterval: (query) => {
+      const liveOrders = query.state.data?.data?.orders ?? [];
+      return liveOrders.some((order) => order.paymentStatus === "PENDING" || order.status === "PENDING") ? 15_000 : false;
+    },
+  });
+
+  const branchesQuery = useQuery<{ ok: boolean; data: { branches: { id: string; name: string; county: string }[] } }>({
+    queryKey: ["branches"],
+    queryFn: () => fetch("/api/branches").then((r) => r.json()),
   });
 
   const orders: AdminOrder[] = data?.data?.orders ?? [];
+  const scope = data?.data?.scope;
+  const branches = branchesQuery.data?.data?.branches ?? [];
 
   // ── Stats ──
   const todayOrders = orders.filter((o) => isToday(o.createdAt)).length;
@@ -580,6 +593,22 @@ export function AdminOrdersClient() {
           </select>
           <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
         </div>
+
+        {scope?.isSuperAdmin && (
+          <div className="relative">
+            <select
+              value={branchFilter}
+              onChange={(e) => setBranchFilter(e.target.value)}
+              className="h-9 pl-3 pr-8 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] text-[--neutral-700] bg-white focus:outline-none focus:border-[--green-800] appearance-none cursor-pointer"
+            >
+              <option value="">All branches</option>
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>{branch.name} - {branch.county}</option>
+              ))}
+            </select>
+            <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+          </div>
+        )}
 
         {!isLoading && (
           <span className="font-dm text-[13px] text-[--neutral-400]">

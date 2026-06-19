@@ -330,9 +330,9 @@ function ShippingTab() {
         <CardHeader title="Shipping Zones" description="Configure delivery zones, rates, and carrier integrations" />
         <LinkCard
           icon={Truck}
-          title="Manage Shipping Zones"
-          description="Set delivery areas, flat rates, and free-shipping thresholds"
-          href="/admin/orders/shipping"
+          title="Manage Delivery Zones"
+          description="Set counties, local zones, branch routing, and checkout delivery fees"
+          href="/admin/settings/delivery-zones"
         />
       </Card>
     </div>

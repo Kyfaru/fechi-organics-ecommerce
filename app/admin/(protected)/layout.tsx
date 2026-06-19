@@ -12,7 +12,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-screen bg-[--neutral-50] dark:bg-[--dark-bg]">
       <AdminSidebar />
-      <main className="md:ml-[264px] min-h-screen flex flex-col">
+      <main className="md:ml-[var(--sidebar-w,264px)] min-h-screen flex flex-col transition-all duration-200">
         <AdminHeader />
         <div className="flex-1">
           <Suspense

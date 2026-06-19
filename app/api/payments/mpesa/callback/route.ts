@@ -11,6 +11,7 @@
 
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
+import { markPaymentFailed, markPaymentSuccess } from "@/lib/payments/post-payment";
 
 function safaricomOk() {
   return Response.json({ ResultCode: 0, ResultDesc: "Accepted" }, { status: 200 });
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
     // Look up the transaction by CheckoutRequestID
     const transaction = await db.transaction.findUnique({
       where: { checkoutRequestId: CheckoutRequestID },
+      include: { order: { select: { userId: true } } },
     });
 
     if (!transaction) {
@@ -76,27 +78,27 @@ export async function POST(req: NextRequest) {
       mpesaReceiptNumber = receiptItem?.Value as string | undefined;
     }
 
-    // Update transaction and order in a single transaction for atomicity
-    await db.$transaction([
-      db.transaction.update({
-        where: { id: transaction.id },
-        data: {
-          status: isSuccess ? "SUCCESS" : "FAILED",
-          mpesaReceiptNumber: mpesaReceiptNumber ?? null,
-          failureReason: isSuccess ? null : ResultDesc,
-          rawCallbackPayload: body as unknown as import("@prisma/client").Prisma.InputJsonValue,
-        },
-      }),
-      db.order.update({
-        where: { id: transaction.orderId },
-        data: {
-          paymentStatus: isSuccess ? "PAID" : "FAILED",
-          // Only mark CONFIRMED if payment succeeded; otherwise leave as PENDING
-          // so the customer can retry
-          status: isSuccess ? "CONFIRMED" : "PENDING",
-        },
-      }),
-    ]);
+    const transactionData = {
+      status: isSuccess ? "SUCCESS" : "FAILED",
+      mpesaReceiptNumber: mpesaReceiptNumber ?? null,
+      failureReason: isSuccess ? null : `${ResultCode}:${ResultDesc}`,
+      rawCallbackPayload: body as unknown as import("@prisma/client").Prisma.InputJsonValue,
+    } as const;
+
+    if (isSuccess) {
+      await markPaymentSuccess({
+        transactionId: transaction.id,
+        orderId: transaction.orderId,
+        transactionData,
+      });
+    } else {
+      await markPaymentFailed({
+        transactionId: transaction.id,
+        orderId: transaction.orderId,
+        userId: transaction.order.userId,
+        transactionData,
+      });
+    }
 
     console.info(
       `[mpesa/callback] Processed — tx=${transaction.id} success=${isSuccess} receipt=${mpesaReceiptNumber ?? "N/A"}`,

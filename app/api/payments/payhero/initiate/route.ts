@@ -15,12 +15,8 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
 import { createPayHeroPayment } from "@/lib/payments/payhero/payhero-client";
-
-// ---------------------------------------------------------------------------
-// Delivery fees in KES-cents
-// ---------------------------------------------------------------------------
-const PICKUP_FEE_CENTS = 13000;   // KES 130
-const DELIVERY_FEE_CENTS = 35000; // KES 350
+import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
+import { getRedis } from "@/lib/redis";
 
 // ---------------------------------------------------------------------------
 // Input validation
@@ -29,12 +25,20 @@ const deliveryDataSchema = z.object({
   fullName: z.string().min(1),
   phone: z.string().min(9),
   email: z.string().email().optional(),
-  county: z.string().min(1),
+  country: z.string().min(2).default("KE"),
+  county: z.string().optional().default(""),
+  state: z.string().optional(),
+  zoneId: z.string().optional().nullable(),
+  deliveryZone: z.string().optional().nullable(),
+  deliveryKes: z.number().int().nonnegative().optional(),
+  promoCode: z.string().optional().nullable(),
   address: z.string().optional(),
   city: z.string().optional(),
+  postalCode: z.string().optional(),
+  notes: z.string().optional(),
   deliveryType: z.enum(["PICKUP", "DELIVERY"]),
-  branchId: z.string().optional(),
-  branchName: z.string().optional(),
+  branchId: z.string().optional().nullable(),
+  branchName: z.string().optional().nullable(),
 });
 
 const bodySchema = z.object({
@@ -83,14 +87,32 @@ export async function POST(req: NextRequest) {
       return err("CART_EMPTY", "No active products in cart", 400);
     }
 
+    const redis = getRedis();
+    const rateKey = `payment_attempt:${userId}:payhero`;
+    const attempts = await redis.incr(rateKey);
+    if (attempts === 1) await redis.expire(rateKey, 60);
+    if (attempts > 3) return Err.rateLimited();
+
     // 4. Calculate totals
     const subtotalCents = activeItems.reduce(
       (sum, item) => sum + item.product.priceKes * item.quantity,
       0,
     );
-    const deliveryCents =
-      deliveryData.deliveryType === "PICKUP" ? PICKUP_FEE_CENTS : DELIVERY_FEE_CENTS;
-    const totalCents = subtotalCents + deliveryCents;
+    const pricing = await calculateDeliveryPricing({
+      country: deliveryData.country,
+      county: deliveryData.county,
+      zoneId: deliveryData.zoneId,
+      deliveryType: deliveryData.deliveryType,
+    });
+    const deliveryCents = pricing.feeKes;
+    const promoCode = deliveryData.promoCode?.trim().toUpperCase();
+    const discountCents =
+      promoCode === "FECHI10"
+        ? Math.round(subtotalCents * 0.1)
+        : promoCode === "NEWUSER"
+          ? 50000
+          : 0;
+    const totalCents = Math.max(0, subtotalCents + deliveryCents - discountCents);
     // PayHero expects whole KES, not cents
     const totalKes = totalCents / 100;
 
@@ -100,15 +122,19 @@ export async function POST(req: NextRequest) {
         userId,
         subtotalKes: subtotalCents,
         deliveryKes: deliveryCents,
+        discountKes: discountCents,
         totalKes: totalCents,
+        promoCode: promoCode ?? null,
         paymentStatus: "PENDING",
         status: "PENDING",
         isInternational: true,
         deliveryType: deliveryData.deliveryType,
         deliveryPhone: deliveryData.phone,
         deliveryAddress: deliveryData.address ?? null,
-        deliveryCity: deliveryData.city ?? null,
-        deliveryCounty: deliveryData.county,
+        deliveryCity: deliveryData.city ?? deliveryData.state ?? null,
+        deliveryCounty: deliveryData.county || deliveryData.country,
+        deliveryZone: deliveryData.deliveryZone ?? pricing.label,
+        branchId: deliveryData.branchId ?? null,
         items: {
           create: activeItems.map((item) => ({
             productId: item.product.id,

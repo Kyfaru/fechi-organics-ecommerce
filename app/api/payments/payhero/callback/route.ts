@@ -10,6 +10,7 @@
 
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
+import { markPaymentFailed, markPaymentSuccess } from "@/lib/payments/post-payment";
 
 function payHeroOk() {
   return Response.json({ status: "received" }, { status: 200 });
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
         ],
       },
       orderBy: { createdAt: "desc" },
+      include: { order: { select: { userId: true } } },
     });
 
     if (!transaction) {
@@ -73,23 +75,26 @@ export async function POST(req: NextRequest) {
       ? null
       : ((payload.message ?? payload.description ?? "Payment failed") as string);
 
-    await db.$transaction([
-      db.transaction.update({
-        where: { id: transaction.id },
-        data: {
-          status: isSuccess ? "SUCCESS" : "FAILED",
-          failureReason,
-          rawCallbackPayload: payload as unknown as import("@prisma/client").Prisma.InputJsonValue,
-        },
-      }),
-      db.order.update({
-        where: { id: transaction.orderId },
-        data: {
-          paymentStatus: isSuccess ? "PAID" : "FAILED",
-          status: isSuccess ? "CONFIRMED" : "PENDING",
-        },
-      }),
-    ]);
+    const transactionData = {
+      status: isSuccess ? "SUCCESS" : "FAILED",
+      failureReason,
+      rawCallbackPayload: payload as unknown as import("@prisma/client").Prisma.InputJsonValue,
+    } as const;
+
+    if (isSuccess) {
+      await markPaymentSuccess({
+        transactionId: transaction.id,
+        orderId: transaction.orderId,
+        transactionData,
+      });
+    } else {
+      await markPaymentFailed({
+        transactionId: transaction.id,
+        orderId: transaction.orderId,
+        userId: transaction.order.userId,
+        transactionData,
+      });
+    }
 
     console.info(
       `[payhero/callback] Processed — tx=${transaction.id} success=${isSuccess}`,
