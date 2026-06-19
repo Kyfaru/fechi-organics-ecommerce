@@ -29,6 +29,7 @@ interface DeliveryData {
 type PaymentMethod = "mpesa" | "card" | "paypal" | "cod";
 type CartItem = { productId: string; name: string; quantity: number; lineTotalKes: number; primaryImageUrl?: string };
 type CartResponse = { ok: boolean; data: { items: CartItem[]; subtotalKes: number; itemCount: number } };
+type DemoResult = { outcome: "success" | "failed"; method: PaymentMethod; phase: "deciding" | "saving" };
 
 function formatKes(cents: number) {
   return `KSh ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;
@@ -51,6 +52,7 @@ export default function PaymentPage() {
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("mpesa");
   const [mpesaPhone, setMpesaPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [demoResult, setDemoResult] = useState<DemoResult | null>(null);
 
   const cartQuery = useQuery<CartResponse>({
     queryKey: ["cart"],
@@ -94,7 +96,8 @@ export default function PaymentPage() {
   async function completeOrder(outcome: "success" | "failed" = "success") {
     if (!deliveryData) return;
     setSubmitting(true);
-    capture("payment_initiated", { method: selectedMethod, mocked: true });
+    setDemoResult((current) => current ? { ...current, phase: "saving" } : current);
+    capture("payment_initiated", { method: selectedMethod, mocked: true, outcome });
     try {
       const res = await fetch("/api/payments/mock/checkout", {
         method: "POST",
@@ -108,15 +111,30 @@ export default function PaymentPage() {
       const json = await res.json();
       const orderId = json.data?.orderId as string | undefined;
       if (!res.ok || !orderId) {
+        setDemoResult(null);
         toast.error(json.error?.message ?? "Could not complete order.");
         return;
       }
       router.push(outcome === "success" ? `/order-success/${orderId}` : `/order-error/${orderId}`);
     } catch {
+      setDemoResult(null);
       toast.error("Could not complete order. Please try again.");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function startDemoPayment() {
+    if (selectedMethod === "mpesa" && !mpesaPhone.trim()) return;
+
+    const outcome = selectedMethod === "mpesa" || selectedMethod === "card"
+      ? Math.random() >= 0.5 ? "success" : "failed"
+      : "success";
+
+    setDemoResult({ outcome, method: selectedMethod, phase: "deciding" });
+    window.setTimeout(() => {
+      void completeOrder(outcome);
+    }, 1200);
   }
 
   if (!deliveryData) {
@@ -204,21 +222,46 @@ export default function PaymentPage() {
             </div>
 
             <button
-              onClick={() => completeOrder("success")}
+              onClick={startDemoPayment}
               disabled={submitting || (selectedMethod === "mpesa" && !mpesaPhone.trim())}
               className="mt-8 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-[#fec700] text-[18px] font-black text-[#1a1c1c] transition-colors hover:bg-[#f0b800] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Icon icon={submitting ? "mdi:loading" : "mdi:lock-outline"} width={22} className={submitting ? "animate-spin" : ""} />
               Complete Order
             </button>
-            <button onClick={() => completeOrder("failed")} className="mt-3 w-full text-center text-[12px] text-[#707a6b] hover:text-red-600">
-              Simulate unsuccessful payment
-            </button>
             <p className="mt-4 text-center text-[11px] text-[#707a6b]">By completing this order, you agree to our Terms &amp; Conditions.</p>
             <Link href="/delivery" className="mt-4 block text-center text-[13px] font-bold text-[#27731e]">Back to delivery details</Link>
           </aside>
         </div>
       </main>
+
+      {demoResult ? <DemoPaymentModal result={demoResult} /> : null}
+    </div>
+  );
+}
+
+function DemoPaymentModal({ result }: { result: DemoResult }) {
+  const isSuccess = result.outcome === "success";
+  const methodLabel = result.method === "mpesa" ? "M-Pesa" : result.method === "card" ? "Card" : "";
+  const title = isSuccess ? "Demo payment successful" : "Demo payment failed";
+  const message = result.phase === "deciding"
+    ? `Testing ${methodLabel} payment result...`
+    : isSuccess
+      ? "Creating your confirmed order..."
+      : "Saving the failed payment attempt...";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-[420px] rounded-[16px] border border-[#e1e8de] bg-white p-8 text-center shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+        <div className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full ${isSuccess ? "bg-[#e7f6e4] text-[#27731e]" : "bg-[#fdeaea] text-[#b42318]"}`}>
+          <Icon icon={isSuccess ? "mdi:check-bold" : "mdi:close-thick"} width={38} />
+        </div>
+        <h2 className="mt-6 font-heading text-[25px] font-black text-[#1a1c1c] dark:text-white">{title}</h2>
+        <p className="mt-3 text-[14px] leading-6 text-[#40493c] dark:text-gray-300">{message}</p>
+        <div className="mx-auto mt-6 h-8 w-8">
+          <Icon icon="mdi:loading" width={32} className="animate-spin text-[#27731e]" />
+        </div>
+      </div>
     </div>
   );
 }
