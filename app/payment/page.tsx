@@ -168,8 +168,7 @@ export default function PaymentPage() {
                 <input value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} className="h-12 w-full rounded-[8px] border border-[#c0cab8] bg-[#fbfbfb] px-4 text-[14px] outline-none focus:border-[#27731e]" />
               </PaymentOption>
               <PaymentOption active={selectedMethod === "card"} onClick={() => setSelectedMethod("card")} title="Credit / Debit Card" badge="VISA  MC" />
-              <PaymentOption active={selectedMethod === "paypal"} onClick={() => setSelectedMethod("paypal")} title="PayPal" badge="PayPal" />
-              <PaymentOption active={selectedMethod === "cod"} onClick={() => setSelectedMethod("cod")} title="Pay on Delivery" icon="mdi:truck-delivery-outline" />
+              
             </div>
 
             <div className="mt-10 flex flex-wrap justify-center gap-8 text-[12px] font-bold uppercase tracking-[0.12em] text-[#707a6b]">
