@@ -28,9 +28,9 @@ interface Campaign {
 }
 
 const TYPE_STYLES: Record<string, { bg: string; text: string; icon: React.ElementType }> = {
-  EMAIL: { bg: "bg-[--info]/10", text: "text-[--info]", icon: Mail },
-  SMS: { bg: "bg-[--green-50]", text: "text-[--green-800]", icon: MessageSquare },
-  PUSH: { bg: "bg-[--gold-50]", text: "text-[--gold-700]", icon: Bell },
+  EMAIL: { bg: "bg-(--info)/10", text: "text-(--info)", icon: Mail },
+  SMS: { bg: "bg-(--green-50)", text: "text-(--green-800)", icon: MessageSquare },
+  PUSH: { bg: "bg-(--gold-50)", text: "text-(--gold-700)", icon: Bell },
 };
 
 const AUDIENCE_LABELS: Record<string, string> = {
@@ -154,7 +154,7 @@ export function AdminCampaignsClient() {
             <div className={`w-8 h-8 rounded-[6px] flex items-center justify-center ${t?.bg}`}>
               <Icon size={14} className={t?.text} />
             </div>
-            <span className="font-dm text-[14px] font-medium text-[--neutral-900]">{String(v)}</span>
+            <span className="font-dm text-[14px] font-medium text-(--neutral-900)">{String(v)}</span>
           </div>
         );
       },
@@ -175,7 +175,7 @@ export function AdminCampaignsClient() {
       key: "audienceType",
       label: "Audience",
       render: (v: unknown) => (
-        <span className="font-dm text-[14px] text-[--neutral-700]">
+        <span className="font-dm text-[14px] text-(--neutral-700)">
           {AUDIENCE_LABELS[String(v)] ?? String(v)}
         </span>
       ),
@@ -190,7 +190,7 @@ export function AdminCampaignsClient() {
       label: "Sent",
       sortable: true,
       render: (v: unknown) => (
-        <span className="font-dm text-[14px] text-[--neutral-700]">{Number(v).toLocaleString()}</span>
+        <span className="font-dm text-[14px] text-(--neutral-700)">{Number(v).toLocaleString()}</span>
       ),
     },
     {
@@ -198,11 +198,11 @@ export function AdminCampaignsClient() {
       label: "Scheduled",
       render: (v: unknown) =>
         v ? (
-          <span className="font-dm text-[14px] text-[--neutral-700]">
+          <span className="font-dm text-[14px] text-(--neutral-700)">
             {new Date(String(v)).toLocaleString()}
           </span>
         ) : (
-          <span className="text-[--neutral-400]">—</span>
+          <span className="text-(--neutral-400)">—</span>
         ),
     },
     {
@@ -210,7 +210,7 @@ export function AdminCampaignsClient() {
       label: "Created",
       sortable: true,
       render: (v: unknown) => (
-        <span className="font-dm text-[14px] text-[--neutral-500]">
+        <span className="font-dm text-[14px] text-(--neutral-500)">
           {new Date(String(v)).toLocaleDateString()}
         </span>
       ),
@@ -225,14 +225,14 @@ export function AdminCampaignsClient() {
             {(c.status === "DRAFT" || c.status === "SCHEDULED") && (
               <button
                 onClick={(e) => { e.stopPropagation(); sendMutation.mutate(c.id); }}
-                className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-[--green-50] text-[--green-800] hover:bg-[--green-200] transition-colors flex items-center gap-1.5"
+                className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-(--green-50) text-(--green-800) hover:bg-(--green-200) transition-colors flex items-center gap-1.5"
               >
                 <Send size={12} /> Send
               </button>
             )}
             <button
               onClick={(e) => { e.stopPropagation(); setDeleteTarget(c); }}
-              className="h-8 w-8 flex items-center justify-center rounded-[6px] text-[--neutral-400] hover:bg-[--danger-bg] hover:text-[--danger] transition-colors"
+              className="h-8 w-8 flex items-center justify-center rounded-[6px] text-(--neutral-400) hover:bg-(--danger-bg) hover:text-(--danger) transition-colors"
             >
               <Trash2 size={14} />
             </button>
@@ -243,14 +243,14 @@ export function AdminCampaignsClient() {
   ];
 
   return (
-    <div className="min-h-screen bg-[--neutral-50]">
+    <div className="min-h-screen bg-(--neutral-50)">
       <PageHeader
         title="Campaigns"
         description="Email, SMS and push notification campaigns"
         action={
           <button
             onClick={openDrawer}
-            className="flex items-center gap-2 h-10 px-4 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:bg-[--green-900] transition-colors"
+            className="flex items-center gap-2 h-10 px-4 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors"
           >
             <Plus size={16} />
             Create Campaign
@@ -287,7 +287,7 @@ export function AdminCampaignsClient() {
             <>
               <button
                 onClick={() => setStep(1)}
-                className="h-10 px-4 rounded-[8px] border border-[--neutral-200] font-dm text-[14px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors"
+                className="h-10 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
               >
                 Back
               </button>
@@ -295,14 +295,14 @@ export function AdminCampaignsClient() {
                 <button
                   onClick={() => createMutation.mutate("DRAFT")}
                   disabled={createMutation.isPending}
-                  className="h-10 px-4 rounded-[8px] border border-[--neutral-200] font-dm text-[14px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors disabled:opacity-50"
+                  className="h-10 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors disabled:opacity-50"
                 >
                   Save Draft
                 </button>
                 <button
                   onClick={() => createMutation.mutate(sendMode === "later" ? "SCHEDULED" : "DRAFT")}
                   disabled={createMutation.isPending || !form.name.trim()}
-                  className="h-10 px-5 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:bg-[--green-900] transition-colors disabled:opacity-50"
+                  className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors disabled:opacity-50"
                 >
                   {createMutation.isPending ? "Saving..." : sendMode === "later" ? "Schedule" : "Save"}
                 </button>
@@ -310,13 +310,13 @@ export function AdminCampaignsClient() {
             </>
           ) : (
             <>
-              <button onClick={closeDrawer} className="h-10 px-4 rounded-[8px] border border-[--neutral-200] font-dm text-[14px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors">
+              <button onClick={closeDrawer} className="h-10 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors">
                 Cancel
               </button>
               <button
                 onClick={() => selectedType && setStep(2)}
                 disabled={!selectedType}
-                className="h-10 px-5 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:bg-[--green-900] transition-colors disabled:opacity-50 ml-auto"
+                className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors disabled:opacity-50 ml-auto"
               >
                 Continue
               </button>
@@ -327,7 +327,7 @@ export function AdminCampaignsClient() {
         {step === 1 ? (
           /* Step 1 — choose type */
           <div className="space-y-3">
-            <p className="font-dm text-[14px] text-[--neutral-500] mb-4">Choose the type of campaign you want to send.</p>
+            <p className="font-dm text-[14px] text-(--neutral-500) mb-4">Choose the type of campaign you want to send.</p>
             {(["EMAIL", "SMS", "PUSH"] as const).map((type) => {
               const t = TYPE_STYLES[type];
               const Icon = t.icon;
@@ -343,19 +343,19 @@ export function AdminCampaignsClient() {
                   onClick={() => setSelectedType(type)}
                   className={`w-full flex items-center gap-4 p-4 rounded-[12px] border-2 text-left transition-all ${
                     selected
-                      ? "border-[--green-800] bg-[--green-50]"
-                      : "border-[--neutral-200] bg-white hover:border-[--neutral-300]"
+                      ? "border-(--green-800) bg-(--green-50)"
+                      : "border-(--neutral-200) bg-white hover:border-(--neutral-300)"
                   }`}
                 >
                   <div className={`w-12 h-12 rounded-[10px] flex items-center justify-center shrink-0 ${t.bg}`}>
                     <Icon size={22} className={t.text} />
                   </div>
                   <div>
-                    <div className="font-syne text-[15px] font-semibold text-[--neutral-900]">{labels[type].title}</div>
-                    <div className="font-dm text-[13px] text-[--neutral-500] mt-0.5">{labels[type].desc}</div>
+                    <div className="font-syne text-[15px] font-semibold text-(--neutral-900)">{labels[type].title}</div>
+                    <div className="font-dm text-[13px] text-(--neutral-500) mt-0.5">{labels[type].desc}</div>
                   </div>
                   {selected && (
-                    <div className="ml-auto w-5 h-5 rounded-full bg-[--green-800] flex items-center justify-center shrink-0">
+                    <div className="ml-auto w-5 h-5 rounded-full bg-(--green-800) flex items-center justify-center shrink-0">
                       <span className="text-white text-[10px]">✓</span>
                     </div>
                   )}
@@ -386,7 +386,7 @@ export function AdminCampaignsClient() {
                   <option value="NEW">New Customers</option>
                   <option value="VIP">VIP Customers</option>
                 </select>
-                <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+                <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
               </div>
             </Field>
 
@@ -427,15 +427,15 @@ export function AdminCampaignsClient() {
 
             {/* Schedule */}
             <div>
-              <label className="block font-dm text-[13px] font-medium text-[--neutral-700] mb-2">Send Timing</label>
+              <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-2">Send Timing</label>
               <div className="flex flex-col gap-2">
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="sendMode" checked={sendMode === "now"} onChange={() => setSendMode("now")} className="accent-[--green-800]" />
-                  <span className="font-dm text-[14px] text-[--neutral-700]">Save now (send manually later)</span>
+                  <input type="radio" name="sendMode" checked={sendMode === "now"} onChange={() => setSendMode("now")} className="accent-(--green-800)" />
+                  <span className="font-dm text-[14px] text-(--neutral-700)">Save now (send manually later)</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="sendMode" checked={sendMode === "later"} onChange={() => setSendMode("later")} className="accent-[--green-800]" />
-                  <span className="font-dm text-[14px] text-[--neutral-700]">Schedule for later</span>
+                  <input type="radio" name="sendMode" checked={sendMode === "later"} onChange={() => setSendMode("later")} className="accent-(--green-800)" />
+                  <span className="font-dm text-[14px] text-(--neutral-700)">Schedule for later</span>
                 </label>
                 {sendMode === "later" && (
                   <input
@@ -474,9 +474,9 @@ function Field({ label, required, hint, children }: {
 }) {
   return (
     <div>
-      <label className="block font-dm text-[13px] font-medium text-[--neutral-700] mb-1.5">
-        {label} {required && <span className="text-[--danger]">*</span>}
-        {hint && <span className="text-[--neutral-400] font-normal ml-1">({hint})</span>}
+      <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-1.5">
+        {label} {required && <span className="text-(--danger)">*</span>}
+        {hint && <span className="text-(--neutral-400) font-normal ml-1">({hint})</span>}
       </label>
       {children}
     </div>
@@ -484,4 +484,4 @@ function Field({ label, required, hint, children }: {
 }
 
 const inputCls =
-  "w-full h-10 px-3 rounded-[8px] border border-[--neutral-200] bg-white font-dm text-[14px] text-[--neutral-900] placeholder:text-[--neutral-400] focus:outline-none focus:ring-2 focus:ring-[--green-500] focus:border-transparent transition-shadow";
+  "w-full h-10 px-3 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-900) placeholder:text-(--neutral-400) focus:outline-none focus:ring-2 focus:ring-(--green-500) focus:border-transparent transition-shadow";

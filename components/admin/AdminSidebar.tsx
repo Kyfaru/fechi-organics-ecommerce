@@ -84,15 +84,15 @@ export function AdminSidebar() {
 
   function SidebarContent({ mobile = false }: { mobile?: boolean }) {
     return (
-      <div className="flex flex-col h-full bg-[--green-900] dark:bg-[--dark-surface]">
+      <div className="flex flex-col h-full bg-(--green-900) dark:bg-(--dark-surface)">
         {/* Logo zone */}
-        <div className="h-[72px] flex items-center px-4 border-b border-[--green-800] dark:border-[--dark-border] shrink-0">
+        <div className="h-[72px] flex items-center px-4 border-b border-(--green-800) dark:border-(--dark-border) shrink-0">
           {(!collapsed || mobile) ? (
             <div className="flex items-center gap-3">
               <Image src="/logo/Asset 16@5x.webp" alt="Fechi Organics" width={32} height={32} className="rounded" />
               <div>
-                <div className="font-syne text-[14px] font-semibold text-white dark:text-[--dark-text] leading-tight">Fechi Organics</div>
-                <div className="font-dm text-[11px] text-white/60 dark:text-[--dark-muted]">Admin Panel</div>
+                <div className="font-syne text-[14px] font-semibold text-white dark:text-(--dark-text) leading-tight">Fechi Organics</div>
+                <div className="font-dm text-[11px] text-white/60 dark:text-(--dark-muted)">Admin Panel</div>
               </div>
             </div>
           ) : (
@@ -107,7 +107,7 @@ export function AdminSidebar() {
           {NAV_GROUPS.map((group) => (
             <div key={group.label}>
               {(!collapsed || mobile) && (
-                <div className="font-dm text-[11px] font-semibold uppercase tracking-wider text-[--green-200] dark:text-[--dark-muted] px-2 mb-2">
+                <div className="font-dm text-[11px] font-semibold uppercase tracking-wider text-(--green-200) dark:text-(--dark-muted) px-2 mb-2">
                   {group.label}
                 </div>
               )}
@@ -125,12 +125,12 @@ export function AdminSidebar() {
                         "relative flex items-center gap-3 h-11 rounded-[8px] transition-colors overflow-hidden",
                         collapsed && !mobile ? "justify-center px-0" : "px-3",
                         active
-                          ? "bg-white/15 text-white dark:bg-[--dark-accent]/15 dark:text-[--dark-accent]"
-                          : "text-white/80 dark:text-[--dark-text] hover:bg-[--green-800] dark:hover:bg-[--dark-border]",
+                          ? "bg-white/15 text-white dark:bg-(--dark-accent)/15 dark:text-(--dark-accent)"
+                          : "text-white/80 dark:text-(--dark-text) hover:bg-(--green-800) dark:hover:bg-(--dark-border)",
                       ].join(" ")}
                     >
                       {active && (
-                        <span className="absolute left-0 top-[20%] h-[60%] w-[3px] bg-[--gold-500] dark:bg-[--dark-accent] rounded-r" />
+                        <span className="absolute left-0 top-[20%] h-[60%] w-[3px] bg-(--gold-500) dark:bg-(--dark-accent) rounded-r" />
                       )}
                       <Icon size={20} className="shrink-0" />
                       {(!collapsed || mobile) && (
@@ -145,10 +145,10 @@ export function AdminSidebar() {
         </nav>
 
         {/* Bottom section */}
-        <div className="border-t border-[--green-800] dark:border-[--dark-border] p-3 space-y-0.5 shrink-0">
+        <div className="border-t border-(--green-800) dark:border-(--dark-border) p-3 space-y-0.5 shrink-0">
           <Link
             href="/"
-            className={["flex items-center gap-3 h-10 rounded-[8px] px-3 text-white/70 dark:text-[--dark-muted] hover:bg-[--green-800] dark:hover:bg-[--dark-border] transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}
+            className={["flex items-center gap-3 h-10 rounded-[8px] px-3 text-white/70 dark:text-(--dark-muted) hover:bg-(--green-800) dark:hover:bg-(--dark-border) transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}
             title={collapsed && !mobile ? "Back to Store" : undefined}
           >
             <ArrowLeft size={18} />
@@ -156,7 +156,7 @@ export function AdminSidebar() {
           </Link>
           <button
             onClick={() => setLogoutConfirming(true)}
-            className={["w-full flex items-center gap-3 h-10 rounded-[8px] px-3 text-white/70 dark:text-[--dark-muted] hover:text-[--gold-500] dark:hover:text-[--dark-accent] hover:bg-[--green-800] dark:hover:bg-[--dark-border] transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}
+            className={["w-full flex items-center gap-3 h-10 rounded-[8px] px-3 text-white/70 dark:text-(--dark-muted) hover:text-(--gold-500) dark:hover:text-(--dark-accent) hover:bg-(--green-800) dark:hover:bg-(--dark-border) transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}
             title={collapsed && !mobile ? "Sign out" : undefined}
           >
             <LogOut size={18} />
@@ -166,10 +166,10 @@ export function AdminSidebar() {
 
         {/* Collapse toggle — desktop only */}
         {!mobile && (
-          <div className="border-t border-[--green-800] dark:border-[--dark-border] p-2 shrink-0">
+          <div className="border-t border-(--green-800) dark:border-(--dark-border) p-2 shrink-0">
             <button
               onClick={toggleCollapsed}
-              className="w-full flex items-center justify-center h-8 rounded-[6px] text-white/40 hover:bg-[--green-800] dark:hover:bg-[--dark-border] transition-colors"
+              className="w-full flex items-center justify-center h-8 rounded-[6px] text-white/40 hover:bg-(--green-800) dark:hover:bg-(--dark-border) transition-colors"
             >
               {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
             </button>
@@ -183,17 +183,17 @@ export function AdminSidebar() {
     <>
       {/* Desktop sidebar */}
       <aside
-        className={["hidden md:flex flex-col fixed left-0 top-0 h-full border-r border-[--green-800] dark:border-[--dark-border] z-30 transition-all duration-200 overflow-hidden", collapsed ? "w-[72px]" : "w-[264px]"].join(" ")}
+        className={["hidden md:flex flex-col fixed left-0 top-0 h-full border-r border-(--green-800) dark:border-(--dark-border) z-30 transition-all duration-200 overflow-hidden", collapsed ? "w-[72px]" : "w-[264px]"].join(" ")}
       >
         <SidebarContent />
       </aside>
 
       {/* Mobile hamburger */}
       <button
-        className="md:hidden fixed top-4 left-4 z-40 p-2 bg-white dark:bg-[--dark-surface] rounded-[8px] border border-[--neutral-200] dark:border-[--dark-border] shadow-[--e1]"
+        className="md:hidden fixed top-4 left-4 z-40 p-2 bg-white dark:bg-(--dark-surface) rounded-[8px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1)"
         onClick={() => setMobileOpen(true)}
       >
-        <Menu size={20} className="text-[--neutral-700] dark:text-[--dark-text]" />
+        <Menu size={20} className="text-(--neutral-700) dark:text-(--dark-text)" />
       </button>
 
       {/* Mobile drawer */}
@@ -212,7 +212,7 @@ export function AdminSidebar() {
             >
               <button
                 onClick={() => setMobileOpen(false)}
-                className="absolute top-3 right-3 z-10 p-1.5 rounded-[6px] text-[--neutral-500] hover:bg-[--neutral-100]"
+                className="absolute top-3 right-3 z-10 p-1.5 rounded-[6px] text-(--neutral-500) hover:bg-(--neutral-100)"
               >
                 <X size={18} />
               </button>

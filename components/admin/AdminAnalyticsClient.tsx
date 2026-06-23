@@ -81,9 +81,9 @@ const TRAFFIC_COLORS = ["var(--green-500)", "var(--gold-500)", "var(--info)", "v
 function KesTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white dark:bg-[--dark-surface] border border-[--neutral-200] dark:border-[--dark-border] rounded-[8px] px-3 py-2 shadow-[--e2]">
-      <p className="font-dm text-[12px] text-[--neutral-500] mb-1">{label}</p>
-      <p className="font-syne text-[13px] font-semibold text-[--neutral-900] dark:text-[--dark-text]">
+    <div className="bg-white dark:bg-(--dark-surface) border border-(--neutral-200) dark:border-(--dark-border) rounded-[8px] px-3 py-2 shadow-(--e2)">
+      <p className="font-dm text-[12px] text-(--neutral-500) mb-1">{label}</p>
+      <p className="font-syne text-[13px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
         {formatKes(payload[0].value)}
       </p>
     </div>
@@ -138,15 +138,15 @@ export function AdminAnalyticsClient() {
       <div className="px-6 pb-8 space-y-6">
         {/* ── Date range picker ── */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center bg-[--neutral-100] dark:bg-[--dark-bg] rounded-[8px] p-1 gap-1">
+          <div className="flex items-center bg-(--neutral-100) dark:bg-(--dark-bg) rounded-[8px] p-1 gap-1">
             {RANGES.map((r) => (
               <button
                 key={r}
                 onClick={() => setRange(r)}
                 className={`px-3 py-1.5 rounded-[6px] font-dm text-[13px] font-medium transition-colors ${
                   range === r
-                    ? "bg-white dark:bg-[--dark-surface] text-[--green-800] shadow-[--e1]"
-                    : "text-[--neutral-500] hover:text-[--neutral-700]"
+                    ? "bg-white dark:bg-(--dark-surface) text-(--green-800) shadow-(--e1)"
+                    : "text-(--neutral-500) hover:text-(--neutral-700)"
                 }`}
               >
                 {r}
@@ -156,8 +156,8 @@ export function AdminAnalyticsClient() {
               onClick={() => setRange("custom")}
               className={`px-3 py-1.5 rounded-[6px] font-dm text-[13px] font-medium transition-colors ${
                 range === "custom"
-                  ? "bg-white dark:bg-[--dark-surface] text-[--green-800] shadow-[--e1]"
-                  : "text-[--neutral-500] hover:text-[--neutral-700]"
+                  ? "bg-white dark:bg-(--dark-surface) text-(--green-800) shadow-(--e1)"
+                  : "text-(--neutral-500) hover:text-(--neutral-700)"
               }`}
             >
               Custom
@@ -170,29 +170,29 @@ export function AdminAnalyticsClient() {
                 type="date"
                 value={customFrom}
                 onChange={(e) => setCustomFrom(e.target.value)}
-                className="h-9 px-3 rounded-[8px] border border-[--neutral-200] dark:border-[--dark-border] bg-white dark:bg-[--dark-surface] font-dm text-[13px] text-[--neutral-900] dark:text-[--dark-text]"
+                className="h-9 px-3 rounded-[8px] border border-(--neutral-200) dark:border-(--dark-border) bg-white dark:bg-(--dark-surface) font-dm text-[13px] text-(--neutral-900) dark:text-(--dark-text)"
               />
-              <span className="font-dm text-[13px] text-[--neutral-400]">to</span>
+              <span className="font-dm text-[13px] text-(--neutral-400)">to</span>
               <input
                 type="date"
                 value={customTo}
                 onChange={(e) => setCustomTo(e.target.value)}
-                className="h-9 px-3 rounded-[8px] border border-[--neutral-200] dark:border-[--dark-border] bg-white dark:bg-[--dark-surface] font-dm text-[13px] text-[--neutral-900] dark:text-[--dark-text]"
+                className="h-9 px-3 rounded-[8px] border border-(--neutral-200) dark:border-(--dark-border) bg-white dark:bg-(--dark-surface) font-dm text-[13px] text-(--neutral-900) dark:text-(--dark-text)"
               />
             </div>
           )}
         </div>
 
         {/* ── Tabs ── */}
-        <div className="flex items-center gap-1 border-b border-[--neutral-200] dark:border-[--dark-border] overflow-x-auto">
+        <div className="flex items-center gap-1 border-b border-(--neutral-200) dark:border-(--dark-border) overflow-x-auto">
           {TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-3 font-dm text-[13px] font-medium border-b-2 transition-colors whitespace-nowrap -mb-px ${
                 activeTab === tab.id
-                  ? "border-[--green-600] text-[--green-800] dark:text-[--green-200]"
-                  : "border-transparent text-[--neutral-500] hover:text-[--neutral-700] dark:hover:text-[--dark-text]"
+                  ? "border-(--green-600) text-(--green-800) dark:text-(--green-200)"
+                  : "border-transparent text-(--neutral-500) hover:text-(--neutral-700) dark:hover:text-(--dark-text)"
               }`}
             >
               {tab.icon}
@@ -248,7 +248,7 @@ function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>;
       key: "pctOfTotal",
       label: "% of Total",
       render: (_v: unknown, row: Record<string, unknown>) =>
-        <span className="font-dm text-[13px] text-[--neutral-500]">{Number(row.pctOfTotal).toFixed(1)}%</span>,
+        <span className="font-dm text-[13px] text-(--neutral-500)">{Number(row.pctOfTotal).toFixed(1)}%</span>,
     },
   ];
 
@@ -258,7 +258,7 @@ function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>;
       key: "email",
       label: "Email",
       render: (_v: unknown, row: Record<string, unknown>) =>
-        <span className="font-dm text-[12px] text-[--neutral-400]">{String(row.email)}</span>,
+        <span className="font-dm text-[12px] text-(--neutral-400)">{String(row.email)}</span>,
     },
     { key: "orders", label: "Orders", sortable: true },
     {
@@ -266,7 +266,7 @@ function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>;
       label: "Total Spent",
       sortable: true,
       render: (_v: unknown, row: Record<string, unknown>) =>
-        <span className="font-dm text-[13px] font-medium text-[--green-600]">{formatKes(Number(row.totalSpend))}</span>,
+        <span className="font-dm text-[13px] font-medium text-(--green-600)">{formatKes(Number(row.totalSpend))}</span>,
     },
   ];
 
@@ -305,11 +305,11 @@ function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>;
         {isLoading ? (
           <div className="xl:col-span-2"><SkeletonChart /></div>
         ) : (
-          <div className="xl:col-span-2 bg-white dark:bg-[--dark-surface] rounded-[12px] border border-[--neutral-200] dark:border-[--dark-border] shadow-[--e1] p-6">
-            <h3 className="font-syne text-[15px] font-semibold text-[--neutral-900] dark:text-[--dark-text] mb-4">Revenue Trend</h3>
+          <div className="xl:col-span-2 bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+            <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">Revenue Trend</h3>
             {revenueChart.length === 0 ? (
               <div className="h-[240px] flex items-center justify-center">
-                <p className="font-dm text-[13px] text-[--neutral-400]">No revenue data for this period</p>
+                <p className="font-dm text-[13px] text-(--neutral-400)">No revenue data for this period</p>
               </div>
             ) : (
               <ResponsiveContainer width="100%" height={240}>
@@ -333,8 +333,8 @@ function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>;
         {isLoading ? (
           <SkeletonChart />
         ) : (
-          <div className="bg-white dark:bg-[--dark-surface] rounded-[12px] border border-[--neutral-200] dark:border-[--dark-border] shadow-[--e1] p-6">
-            <h3 className="font-syne text-[15px] font-semibold text-[--neutral-900] dark:text-[--dark-text] mb-4">Traffic Sources</h3>
+          <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+            <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">Traffic Sources</h3>
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie data={traffic} dataKey="pct" nameKey="source" cx="50%" cy="50%" outerRadius={80} isAnimationActive animationDuration={800}>
@@ -342,7 +342,7 @@ function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>;
                     <Cell key={i} fill={TRAFFIC_COLORS[i % TRAFFIC_COLORS.length]} />
                   ))}
                 </Pie>
-                <Legend formatter={(v: string) => <span className="font-dm text-[12px] text-[--neutral-700] dark:text-[--dark-text]">{v}</span>} />
+                <Legend formatter={(v: string) => <span className="font-dm text-[12px] text-(--neutral-700) dark:text-(--dark-text)">{v}</span>} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -352,11 +352,11 @@ function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>;
       {/* Top tables */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div>
-          <h3 className="font-syne text-[15px] font-semibold text-[--neutral-900] dark:text-[--dark-text] mb-3">Top Products</h3>
+          <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-3">Top Products</h3>
           <DataTable columns={productCols} data={topProducts as Record<string, unknown>[]} loading={isLoading} emptyTitle="No product data" pageSize={5} />
         </div>
         <div>
-          <h3 className="font-syne text-[15px] font-semibold text-[--neutral-900] dark:text-[--dark-text] mb-3">Top Customers</h3>
+          <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-3">Top Customers</h3>
           <DataTable columns={customerCols} data={topCustomers as Record<string, unknown>[]} loading={isLoading} emptyTitle="No customer data" pageSize={5} />
         </div>
       </div>
@@ -377,7 +377,7 @@ function SalesTab({ payload, isLoading }: { payload: Record<string, unknown>; is
     { key: "items", label: "Items" },
     { key: "totalKes", label: "Total", sortable: true, render: (_v: unknown, row: Record<string, unknown>) => <span className="font-dm text-[13px] font-medium">{formatKes(Number(row.totalKes))}</span> },
     { key: "status", label: "Status", render: (_v: unknown, row: Record<string, unknown>) => <StatusPill status={String(row.status)} /> },
-    { key: "createdAt", label: "Date", render: (_v: unknown, row: Record<string, unknown>) => <span className="font-dm text-[12px] text-[--neutral-400]">{shortDate(String(row.createdAt))}</span> },
+    { key: "createdAt", label: "Date", render: (_v: unknown, row: Record<string, unknown>) => <span className="font-dm text-[12px] text-(--neutral-400)">{shortDate(String(row.createdAt))}</span> },
   ];
 
   return (
@@ -385,10 +385,10 @@ function SalesTab({ payload, isLoading }: { payload: Record<string, unknown>; is
       {isLoading ? (
         <SkeletonChart />
       ) : (
-        <div className="bg-white dark:bg-[--dark-surface] rounded-[12px] border border-[--neutral-200] dark:border-[--dark-border] shadow-[--e1] p-6">
-          <h3 className="font-syne text-[15px] font-semibold text-[--neutral-900] dark:text-[--dark-text] mb-4">Daily Revenue</h3>
+        <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+          <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">Daily Revenue</h3>
           {revenueChart.length === 0 ? (
-            <div className="h-[240px] flex items-center justify-center"><p className="font-dm text-[13px] text-[--neutral-400]">No sales data for this period</p></div>
+            <div className="h-[240px] flex items-center justify-center"><p className="font-dm text-[13px] text-(--neutral-400)">No sales data for this period</p></div>
           ) : (
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={revenueChart} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
@@ -415,10 +415,10 @@ function ProductsTab({ payload, isLoading }: { payload: Record<string, unknown>;
   const cols = [
     { key: "name", label: "Product", sortable: true },
     { key: "category", label: "Category" },
-    { key: "stock", label: "Stock", sortable: true, render: (_v: unknown, row: Record<string, unknown>) => <span className={`font-dm text-[13px] font-medium ${Number(row.stock) < 5 ? "text-[--danger]" : Number(row.stock) < 10 ? "text-[--gold-700]" : "text-[--success]"}`}>{String(row.stock)}</span> },
+    { key: "stock", label: "Stock", sortable: true, render: (_v: unknown, row: Record<string, unknown>) => <span className={`font-dm text-[13px] font-medium ${Number(row.stock) < 5 ? "text-(--danger)" : Number(row.stock) < 10 ? "text-(--gold-700)" : "text-(--success)"}`}>{String(row.stock)}</span> },
     { key: "orders", label: "Orders", sortable: true },
     { key: "revenue", label: "Revenue", sortable: true, render: (_v: unknown, row: Record<string, unknown>) => <span className="font-dm text-[13px]">{formatKes(Number(row.revenue))}</span> },
-    { key: "ratingAvg", label: "Rating", render: (_v: unknown, row: Record<string, unknown>) => <span className="font-dm text-[13px] text-[--neutral-500]">{Number(row.ratingAvg).toFixed(1)} ({Number(row.ratingCount)})</span> },
+    { key: "ratingAvg", label: "Rating", render: (_v: unknown, row: Record<string, unknown>) => <span className="font-dm text-[13px] text-(--neutral-500)">{Number(row.ratingAvg).toFixed(1)} ({Number(row.ratingCount)})</span> },
   ];
 
   return <DataTable columns={cols} data={products} loading={isLoading} emptyTitle="No products" pageSize={20} />;
@@ -432,10 +432,10 @@ function CustomersTab({ payload, isLoading }: { payload: Record<string, unknown>
 
   const cols = [
     { key: "name", label: "Name", sortable: true },
-    { key: "email", label: "Email", render: (_v: unknown, row: Record<string, unknown>) => <span className="font-dm text-[12px] text-[--neutral-400]">{String(row.email)}</span> },
+    { key: "email", label: "Email", render: (_v: unknown, row: Record<string, unknown>) => <span className="font-dm text-[12px] text-(--neutral-400)">{String(row.email)}</span> },
     { key: "orders", label: "Orders", sortable: true },
-    { key: "totalSpent", label: "Total Spent", sortable: true, render: (_v: unknown, row: Record<string, unknown>) => <span className="font-dm text-[13px] font-medium text-[--green-600]">{formatKes(Number(row.totalSpent))}</span> },
-    { key: "lastOrder", label: "Last Order", render: (_v: unknown, row: Record<string, unknown>) => <span className="font-dm text-[12px] text-[--neutral-400]">{row.lastOrder ? shortDate(String(row.lastOrder)) : "—"}</span> },
+    { key: "totalSpent", label: "Total Spent", sortable: true, render: (_v: unknown, row: Record<string, unknown>) => <span className="font-dm text-[13px] font-medium text-(--green-600)">{formatKes(Number(row.totalSpent))}</span> },
+    { key: "lastOrder", label: "Last Order", render: (_v: unknown, row: Record<string, unknown>) => <span className="font-dm text-[12px] text-(--neutral-400)">{row.lastOrder ? shortDate(String(row.lastOrder)) : "—"}</span> },
     { key: "status", label: "Status", render: (_v: unknown, row: Record<string, unknown>) => <StatusPill status={String(row.status)} /> },
   ];
 
@@ -453,7 +453,7 @@ function MarketingTab({ payload, isLoading }: { payload: Record<string, unknown>
     { key: "type", label: "Type", render: (_v: unknown, row: Record<string, unknown>) => <StatusPill status={String(row.type)} /> },
     { key: "status", label: "Status", render: (_v: unknown, row: Record<string, unknown>) => <StatusPill status={String(row.status)} /> },
     { key: "sentCount", label: "Sent", sortable: true },
-    { key: "createdAt", label: "Created", render: (_v: unknown, row: Record<string, unknown>) => <span className="font-dm text-[12px] text-[--neutral-400]">{shortDate(String(row.createdAt))}</span> },
+    { key: "createdAt", label: "Created", render: (_v: unknown, row: Record<string, unknown>) => <span className="font-dm text-[12px] text-(--neutral-400)">{shortDate(String(row.createdAt))}</span> },
   ];
 
   return <DataTable columns={cols} data={campaigns} loading={isLoading} emptyTitle="No campaigns" emptyDescription="No marketing campaigns found." pageSize={20} />;
@@ -483,10 +483,10 @@ function InventoryTab({ payload, isLoading }: { payload: Record<string, unknown>
       {isLoading ? (
         <SkeletonChart />
       ) : (
-        <div className="bg-white dark:bg-[--dark-surface] rounded-[12px] border border-[--neutral-200] dark:border-[--dark-border] shadow-[--e1] p-6">
-          <h3 className="font-syne text-[15px] font-semibold text-[--neutral-900] dark:text-[--dark-text] mb-4">Stock by Category</h3>
+        <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+          <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">Stock by Category</h3>
           {stockByCategory.length === 0 ? (
-            <div className="h-[200px] flex items-center justify-center"><p className="font-dm text-[13px] text-[--neutral-400]">No stock data available</p></div>
+            <div className="h-[200px] flex items-center justify-center"><p className="font-dm text-[13px] text-(--neutral-400)">No stock data available</p></div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={stockByCategory} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>

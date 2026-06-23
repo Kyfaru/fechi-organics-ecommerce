@@ -16,6 +16,7 @@ import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
+import { ScreenLoader } from "@/components/admin/ui/ScreenLoader";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -78,12 +79,16 @@ type SortOption = "newest" | "oldest" | "price-asc" | "price-desc" | "name-asc" 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-const R2_BASE = process.env.NEXT_PUBLIC_R2_PUBLIC_BASE ?? "";
+const R2_BASE =
+  process.env.NEXT_PUBLIC_R2_PUBLIC_URL ??
+  process.env.NEXT_PUBLIC_R2_PUBLIC_BASE ??
+  "https://pub-fechi.b-cdn.net";
 
 function imageUrl(objectKey: string | undefined): string | null {
   if (!objectKey) return null;
   if (objectKey.startsWith("http://") || objectKey.startsWith("https://")) return objectKey;
-  if (!R2_BASE) return null;
+  if (objectKey.startsWith("/")) return objectKey;
+  if (objectKey.startsWith("img/")) return `/${objectKey}`;
   return `${R2_BASE.replace(/\/$/, "")}/${objectKey}`;
 }
 
@@ -133,10 +138,10 @@ function productToForm(p: AdminProduct): DrawerFormData {
 function StockPill({ stock }: { stock: number }) {
   const cfg =
     stock === 0
-      ? "bg-[--danger-bg] text-[--danger]"
+      ? "bg-(--danger-bg) text-(--danger)"
       : stock < 10
-      ? "bg-[--gold-100] text-[--gold-700]"
-      : "bg-[--green-50] text-[--success]";
+      ? "bg-(--gold-100) text-(--gold-700)"
+      : "bg-(--green-50) text-(--success)";
   return (
     <span className={`absolute top-2 right-2 rounded-full px-2 py-0.5 text-[11px] font-dm font-medium ${cfg}`}>
       {stock === 0 ? "Out" : stock < 10 ? `Low: ${stock}` : stock}
@@ -174,7 +179,7 @@ function CardMenu({
     <div ref={ref} className="relative">
       <button
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
-        className="w-7 h-7 flex items-center justify-center rounded-[6px] text-[--neutral-500] hover:bg-[--neutral-100] transition-colors"
+        className="w-7 h-7 flex items-center justify-center rounded-[6px] text-(--neutral-500) hover:bg-(--neutral-100) transition-colors"
         aria-label="Product actions"
       >
         <MoreHorizontal size={15} />
@@ -186,18 +191,18 @@ function CardMenu({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -4 }}
             transition={{ duration: 0.12 }}
-            className="absolute right-0 bottom-full mb-1 w-44 bg-white rounded-[10px] shadow-[--e3] border border-[--neutral-200] z-20 overflow-hidden py-1"
+            className="absolute right-0 bottom-full mb-1 w-44 bg-white rounded-[10px] shadow-(--e3) border border-(--neutral-200) z-20 overflow-hidden py-1"
             onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={() => { setOpen(false); onEdit(); }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
             >
               <Pencil size={14} /> Edit
             </button>
             <button
               onClick={() => { setOpen(false); onDuplicate(); }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
             >
               <Copy size={14} /> Duplicate
             </button>
@@ -205,15 +210,15 @@ function CardMenu({
               href={`/shop/${product.slug}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
               onClick={() => setOpen(false)}
             >
               <ExternalLink size={14} /> View on Store
             </a>
-            <div className="h-px bg-[--neutral-200] mx-2 my-1" />
+            <div className="h-px bg-(--neutral-200) mx-2 my-1" />
             <button
               onClick={() => { setOpen(false); onDelete(); }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-[--danger] hover:bg-[--danger-bg] transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
             >
               <Trash2 size={14} /> Delete
             </button>
@@ -247,45 +252,45 @@ function ProductGridCard({
   return (
     <div
       onClick={onEdit}
-      className="bg-white rounded-[12px] border border-[--neutral-200] shadow-[--e1] overflow-hidden cursor-pointer hover:shadow-[--e2] transition-all group"
+      className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--green-200) dark:border-(--dark-border) shadow-(--e1) overflow-hidden cursor-pointer hover:shadow-(--e2) hover:border-(--green-500) dark:hover:border-(--dark-accent) transition-all group"
     >
       {/* Image */}
-      <div className="relative aspect-square bg-[--neutral-100]">
+      <div className="relative aspect-square bg-(--green-50) dark:bg-(--dark-bg)">
         {imgSrc ? (
-          <Image src={imgSrc} alt={product.name} fill className="object-cover" sizes="220px" />
+          <Image src={imgSrc} alt={product.name} fill className="object-cover transition-transform duration-500 group-hover:scale-105" sizes="220px" />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Tag size={32} className="text-[--neutral-300]" />
+          <div className="absolute inset-0 flex items-center justify-center bg-(--green-50) dark:bg-(--dark-bg)">
+            <ImagePlus size={34} className="text-(--green-500) dark:text-(--dark-accent)" />
           </div>
         )}
         <StockPill stock={product.stock} />
         {savePct && (
-          <span className="absolute top-2 left-2 rounded-full px-2 py-0.5 text-[11px] font-dm font-medium bg-[--gold-100] text-[--gold-700]">
+          <span className="absolute top-2 left-2 rounded-full px-2 py-0.5 text-[11px] font-dm font-medium bg-(--gold-100) text-(--gold-700)">
             -{savePct}%
           </span>
         )}
         {!product.isActive && (
-          <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
-            <span className="bg-[--neutral-700] text-white rounded-full px-2 py-0.5 text-[11px] font-dm">Inactive</span>
+          <div className="absolute inset-0 bg-white/65 dark:bg-black/55 flex items-center justify-center">
+            <span className="bg-(--neutral-700) text-white rounded-full px-2 py-0.5 text-[11px] font-dm">Inactive</span>
           </div>
         )}
       </div>
 
       {/* Info */}
       <div className="p-3">
-        <p className="font-syne text-[14px] font-semibold text-[--neutral-900] leading-snug line-clamp-1 mb-0.5">
+        <p className="font-syne text-[14px] font-semibold text-(--neutral-900) dark:text-(--dark-text) leading-snug line-clamp-1 mb-0.5">
           {product.name}
         </p>
-        <p className="font-dm text-[12px] text-[--neutral-400] mb-1.5">
+        <p className="font-dm text-[12px] text-(--green-800) dark:text-(--dark-muted) mb-1.5">
           {product.category?.name ?? "—"}
         </p>
         <div className="flex items-center justify-between">
-          <p className="font-dm text-[15px] font-semibold text-[--neutral-900]">
+          <p className="font-dm text-[15px] font-semibold text-(--green-900) dark:text-(--dark-accent)">
             {formatKes(product.priceKes)}
           </p>
           <div className="flex items-center gap-1">
             {product.ratingCount > 0 && (
-              <span className="font-dm text-[12px] text-[--gold-700] flex items-center gap-0.5">
+              <span className="font-dm text-[12px] text-(--gold-700) flex items-center gap-0.5">
                 <Star size={11} fill="currentColor" />
                 {product.ratingAvg.toFixed(1)}
               </span>
@@ -388,19 +393,19 @@ function ImageUploadGrid({
               onDrop={() => handleDrop(idx)}
               onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
               className={`relative w-[72px] h-[72px] rounded-[8px] overflow-hidden border-2 transition-all cursor-grab ${
-                overIdx === idx ? "border-[--green-800] scale-105" : isPrimary ? "border-[--green-800]" : "border-[--neutral-200]"
+                overIdx === idx ? "border-(--green-800) scale-105" : isPrimary ? "border-(--green-800)" : "border-(--neutral-200)"
               }`}
             >
               {src ? (
                 <Image src={src} alt="" fill className="object-cover" sizes="72px" />
               ) : (
-                <div className="w-full h-full bg-[--neutral-100] flex items-center justify-center">
-                  <Tag size={20} className="text-[--neutral-300]" />
+                <div className="w-full h-full bg-(--neutral-100) flex items-center justify-center">
+                  <Tag size={20} className="text-(--neutral-300)" />
                 </div>
               )}
               {/* Primary badge */}
               {isPrimary && (
-                <span className="absolute bottom-0 left-0 right-0 bg-[--green-800]/80 text-white text-[9px] font-dm text-center py-0.5">
+                <span className="absolute bottom-0 left-0 right-0 bg-(--green-800)/80 text-white text-[9px] font-dm text-center py-0.5">
                   Primary
                 </span>
               )}
@@ -412,7 +417,7 @@ function ImageUploadGrid({
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onChange(imageKeys.filter((_, i) => i !== idx)); }}
-                className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-white/90 flex items-center justify-center text-[--danger] hover:bg-white shadow-sm"
+                className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-white/90 flex items-center justify-center text-(--danger) hover:bg-white shadow-sm"
                 aria-label="Remove image"
               >
                 <X size={10} />
@@ -427,7 +432,7 @@ function ImageUploadGrid({
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className="w-[72px] h-[72px] rounded-[8px] border-2 border-dashed border-[--neutral-300] flex flex-col items-center justify-center gap-1 text-[--neutral-400] hover:border-[--green-800] hover:text-[--green-800] transition-colors disabled:opacity-50"
+            className="w-[72px] h-[72px] rounded-[8px] border-2 border-dashed border-(--neutral-300) flex flex-col items-center justify-center gap-1 text-(--neutral-400) hover:border-(--green-800) hover:text-(--green-800) transition-colors disabled:opacity-50"
           >
             {uploading ? (
               <Spinner size={16} />
@@ -440,7 +445,7 @@ function ImageUploadGrid({
           </button>
         )}
       </div>
-      <p className="font-dm text-[11px] text-[--neutral-400]">
+      <p className="font-dm text-[11px] text-(--neutral-400)">
         Drag to reorder. First image is primary. Max 8 images.
       </p>
     </div>
@@ -458,7 +463,7 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
         role="switch"
         aria-checked={checked}
         onClick={() => onChange(!checked)}
-        className="relative w-10 h-[22px] rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-[--green-800] focus-visible:ring-offset-2"
+        className="relative w-10 h-[22px] rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-(--green-800) focus-visible:ring-offset-2"
         style={{ backgroundColor: checked ? "var(--green-800)" : "var(--neutral-300)" }}
       >
         <span
@@ -466,7 +471,7 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
           style={{ transform: checked ? "translateX(18px)" : "translateX(0)" }}
         />
       </button>
-      <span className="font-dm text-[13px] text-[--neutral-700]">{label}</span>
+      <span className="font-dm text-[13px] text-(--neutral-700)">{label}</span>
     </label>
   );
 }
@@ -475,9 +480,9 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
 // Shared input / label classes
 // ---------------------------------------------------------------------------
 const inputCls =
-  "w-full font-dm text-[14px] text-[--neutral-900] rounded-[8px] border border-[--neutral-200] bg-white px-3 py-2 focus:outline-none focus:border-[--green-800] transition-colors placeholder:text-[--neutral-400]";
-const labelCls = "block font-dm text-[12px] font-semibold text-[--neutral-500] uppercase tracking-[0.6px] mb-1.5";
-const sectionTitleCls = "font-syne text-[15px] font-semibold text-[--neutral-900] mb-3";
+  "w-full font-dm text-[14px] text-(--neutral-900) rounded-[8px] border border-(--neutral-200) bg-white px-3 py-2 focus:outline-none focus:border-(--green-800) transition-colors placeholder:text-(--neutral-400)";
+const labelCls = "block font-dm text-[12px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-1.5";
+const sectionTitleCls = "font-syne text-[15px] font-semibold text-(--neutral-900) mb-3";
 
 // ---------------------------------------------------------------------------
 // Product Drawer (640px)
@@ -519,7 +524,7 @@ function ProductDrawer({
         type="button"
         onClick={onClose}
         disabled={isPending}
-        className="h-9 px-4 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors disabled:opacity-50 mr-auto"
+        className="h-9 px-4 rounded-[8px] border border-[#ff4545] font-dm text-[13px] text-[#ee2400] hover:bg-(--neutral-50) transition-colors disabled:opacity-50 mr-5"
       >
         Cancel
       </button>
@@ -527,7 +532,7 @@ function ProductDrawer({
         type="button"
         onClick={onSaveDraft}
         disabled={isPending}
-        className="h-9 px-4 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors disabled:opacity-50 flex items-center gap-2"
+        className="h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors disabled:opacity-50 flex items-center gap-2"
       >
         {isPending ? <Spinner size={14} /> : null}
         Save as Draft
@@ -536,7 +541,7 @@ function ProductDrawer({
         type="button"
         onClick={onSaveActive}
         disabled={isPending}
-        className="h-9 px-5 rounded-[8px] bg-[--green-800] font-dm text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center gap-2"
+        className="h-9 px-5 rounded-[8px] bg-(--green-800) font-dm text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center gap-2"
       >
         {isPending ? <Spinner size={14} /> : null}
         {isNew ? "Publish" : "Save Changes"}
@@ -569,7 +574,7 @@ function ProductDrawer({
                 value={form.slug}
                 onChange={(e) => { slugEdited.current = true; onChange({ slug: e.target.value }); }}
               />
-              <p className="font-dm text-[11px] text-[--neutral-400] mt-1">
+              <p className="font-dm text-[11px] text-(--neutral-400) mt-1">
                 Lowercase letters, numbers, hyphens only.
               </p>
             </div>
@@ -617,7 +622,7 @@ function ProductDrawer({
                   onChange={(e) => onChange({ compareAtPriceKes: e.target.value })}
                 />
                 {savePercent && (
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 bg-[--gold-100] text-[--gold-700] rounded-full px-2 py-0.5 text-[11px] font-dm font-medium pointer-events-none">
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 bg-(--gold-100) text-(--gold-700) rounded-full px-2 py-0.5 text-[11px] font-dm font-medium pointer-events-none">
                     Save {savePercent}%
                   </span>
                 )}
@@ -646,7 +651,7 @@ function ProductDrawer({
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
-              <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+              <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
             </div>
           </div>
         </section>
@@ -692,7 +697,7 @@ function ProductDrawer({
           <details className="group">
             <summary className="flex items-center justify-between cursor-pointer list-none">
               <h3 className={sectionTitleCls + " mb-0"}>SEO</h3>
-              <ChevronDown size={16} className="text-[--neutral-400] group-open:rotate-180 transition-transform" />
+              <ChevronDown size={16} className="text-(--neutral-400) group-open:rotate-180 transition-transform" />
             </summary>
             <div className="mt-4 flex flex-col gap-4">
               <div>
@@ -713,7 +718,7 @@ function ProductDrawer({
                   onChange={(e) => onChange({ metaDescription: e.target.value })}
                 />
               </div>
-              <p className="font-dm text-[11px] text-[--neutral-400]">
+              <p className="font-dm text-[11px] text-(--neutral-400)">
                 Canonical URL: /shop/<strong>{form.slug || "product-slug"}</strong>
               </p>
             </div>
@@ -744,29 +749,29 @@ function BulkBar({
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 80, opacity: 0 }}
           transition={{ type: "spring", stiffness: 320, damping: 30 }}
-          className="fixed bottom-0 left-0 right-0 md:left-[264px] h-[72px] bg-white border-t border-[--neutral-200] shadow-[--e3] z-30 flex items-center px-6 gap-4"
+          className="fixed bottom-0 left-0 right-0 md:left-[264px] h-[72px] bg-white border-t border-(--neutral-200) shadow-(--e3) z-30 flex items-center px-6 gap-4"
         >
-          <span className="font-dm text-[14px] font-medium text-[--neutral-700] mr-auto">
+          <span className="font-dm text-[14px] font-medium text-(--neutral-700) mr-auto">
             {count} selected
           </span>
           <button
             onClick={onActivate}
             disabled={isPending}
-            className="h-9 px-4 rounded-[8px] bg-[--green-50] font-dm text-[13px] text-[--success] hover:bg-[--green-800] hover:text-white transition-colors disabled:opacity-50 flex items-center gap-1.5"
+            className="h-9 px-4 rounded-[8px] bg-(--green-50) font-dm text-[13px] text-(--success) hover:bg-(--green-800) hover:text-white transition-colors disabled:opacity-50 flex items-center gap-1.5"
           >
             <Check size={14} /> Activate
           </button>
           <button
             onClick={onDeactivate}
             disabled={isPending}
-            className="h-9 px-4 rounded-[8px] bg-[--neutral-100] font-dm text-[13px] text-[--neutral-700] hover:bg-[--neutral-200] transition-colors disabled:opacity-50 flex items-center gap-1.5"
+            className="h-9 px-4 rounded-[8px] bg-(--neutral-100) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-200) transition-colors disabled:opacity-50 flex items-center gap-1.5"
           >
             <X size={14} /> Deactivate
           </button>
           <button
             onClick={onDelete}
             disabled={isPending}
-            className="h-9 px-4 rounded-[8px] bg-[--danger-bg] font-dm text-[13px] text-[--danger] hover:opacity-80 transition-opacity disabled:opacity-50 flex items-center gap-1.5"
+            className="h-9 px-4 rounded-[8px] bg-(--danger-bg) font-dm text-[13px] text-(--danger) hover:opacity-80 transition-opacity disabled:opacity-50 flex items-center gap-1.5"
           >
             <Trash2 size={14} /> Delete
           </button>
@@ -1006,15 +1011,15 @@ export function AdminProductsClient() {
         const src = getPrimaryImage(p.images);
         return (
           <div className="flex items-center gap-3 py-1">
-            <div className="w-10 h-10 rounded-[8px] bg-[--neutral-100] overflow-hidden shrink-0">
+            <div className="w-10 h-10 rounded-[8px] bg-(--neutral-100) overflow-hidden shrink-0">
               {src
                 ? <Image src={src} alt={p.name} width={40} height={40} className="object-cover w-full h-full" />
-                : <div className="w-full h-full flex items-center justify-center"><Tag size={16} className="text-[--neutral-300]" /></div>
+                : <div className="w-full h-full flex items-center justify-center"><Tag size={16} className="text-(--neutral-300)" /></div>
               }
             </div>
             <div>
-              <p className="font-dm text-[14px] font-medium text-[--neutral-900] leading-snug">{p.name}</p>
-              {p.variantLabel && <p className="font-dm text-[12px] text-[--neutral-400]">{p.variantLabel}</p>}
+              <p className="font-dm text-[14px] font-medium text-(--neutral-900) leading-snug">{p.name}</p>
+              {p.variantLabel && <p className="font-dm text-[12px] text-(--neutral-400)">{p.variantLabel}</p>}
             </div>
           </div>
         );
@@ -1026,7 +1031,7 @@ export function AdminProductsClient() {
       render: (_: unknown, row: Record<string, unknown>) => {
         const p = row as unknown as AdminProduct;
         return (
-          <span className="inline-block rounded-full px-2.5 py-0.5 font-dm text-[12px] font-medium bg-[--green-50] text-[--success]">
+          <span className="inline-block rounded-full px-2.5 py-0.5 font-dm text-[12px] font-medium bg-(--green-50) text-(--success)">
             {p.category?.name ?? "—"}
           </span>
         );
@@ -1040,9 +1045,9 @@ export function AdminProductsClient() {
         const p = row as unknown as AdminProduct;
         return (
           <div>
-            <p className="font-dm text-[14px] font-semibold text-[--neutral-900]">{formatKes(p.priceKes)}</p>
+            <p className="font-dm text-[14px] font-semibold text-(--neutral-900)">{formatKes(p.priceKes)}</p>
             {p.compareAtPriceKes && (
-              <p className="font-dm text-[12px] text-[--neutral-400] line-through">{formatKes(p.compareAtPriceKes)}</p>
+              <p className="font-dm text-[12px] text-(--neutral-400) line-through">{formatKes(p.compareAtPriceKes)}</p>
             )}
           </div>
         );
@@ -1056,10 +1061,10 @@ export function AdminProductsClient() {
         const p = row as unknown as AdminProduct;
         const cfg =
           p.stock === 0
-            ? "bg-[--danger-bg] text-[--danger]"
+            ? "bg-(--danger-bg) text-(--danger)"
             : p.stock < 10
-            ? "bg-[--gold-100] text-[--gold-700]"
-            : "bg-[--green-50] text-[--success]";
+            ? "bg-(--gold-100) text-(--gold-700)"
+            : "bg-(--green-50) text-(--success)";
         return (
           <span className={`inline-block rounded-full px-2.5 py-0.5 font-dm text-[12px] font-semibold ${cfg}`}>
             {p.stock === 0 ? "Out of stock" : p.stock}
@@ -1080,9 +1085,9 @@ export function AdminProductsClient() {
       label: "Rating",
       render: (_: unknown, row: Record<string, unknown>) => {
         const p = row as unknown as AdminProduct;
-        if (!p.ratingCount) return <span className="font-dm text-[13px] text-[--neutral-300]">—</span>;
+        if (!p.ratingCount) return <span className="font-dm text-[13px] text-(--neutral-300)">—</span>;
         return (
-          <span className="font-dm text-[13px] text-[--gold-700] flex items-center gap-1">
+          <span className="font-dm text-[13px] text-(--gold-700) flex items-center gap-1">
             <Star size={12} fill="currentColor" />
             {p.ratingAvg.toFixed(1)}
           </span>
@@ -1111,7 +1116,7 @@ export function AdminProductsClient() {
   const addButton = (
     <button
       onClick={openCreate}
-      className="h-10 px-5 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+      className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
     >
       <Plus size={16} />
       Add Product
@@ -1129,21 +1134,22 @@ export function AdminProductsClient() {
 
   return (
     <div className="min-h-screen pb-24">
+      <ScreenLoader open={isPending || deleteMutation.isPending} message={deleteMutation.isPending ? "Deleting…" : "Saving…"} />
       <PageHeader title="Products" description="Manage your product catalog" action={addButton} />
 
       {/* ── Filter toolbar ── */}
       <div className="px-6 pb-5 flex flex-wrap items-center gap-3">
         {/* Search */}
         <div className="relative w-[280px]">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search products…"
-            className="w-full h-9 pl-9 pr-3 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] text-[--neutral-900] bg-white focus:outline-none focus:border-[--green-800] placeholder:text-[--neutral-400] transition-colors"
+            className="w-full h-9 pl-9 pr-3 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-900) bg-white focus:outline-none focus:border-(--green-800) placeholder:text-(--neutral-400) transition-colors"
           />
           {search && (
-            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[--neutral-400] hover:text-[--neutral-700]">
+            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-(--neutral-400) hover:text-(--neutral-700)">
               <X size={13} />
             </button>
           )}
@@ -1154,12 +1160,12 @@ export function AdminProductsClient() {
           <select
             value={filterCategory}
             onChange={(e) => setFilterCategory(e.target.value)}
-            className="h-9 pl-3 pr-8 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] text-[--neutral-700] bg-white focus:outline-none focus:border-[--green-800] appearance-none cursor-pointer"
+            className="h-9 pl-3 pr-8 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) bg-white focus:outline-none focus:border-(--green-800) appearance-none cursor-pointer"
           >
             <option value="">All categories</option>
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+          <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
         </div>
 
         {/* Status filter */}
@@ -1167,13 +1173,13 @@ export function AdminProductsClient() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value as "" | "active" | "inactive")}
-            className="h-9 pl-3 pr-8 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] text-[--neutral-700] bg-white focus:outline-none focus:border-[--green-800] appearance-none cursor-pointer"
+            className="h-9 pl-3 pr-8 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) bg-white focus:outline-none focus:border-(--green-800) appearance-none cursor-pointer"
           >
             <option value="">All statuses</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
-          <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+          <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
         </div>
 
         {/* Sort */}
@@ -1181,32 +1187,32 @@ export function AdminProductsClient() {
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as SortOption)}
-            className="h-9 pl-3 pr-8 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] text-[--neutral-700] bg-white focus:outline-none focus:border-[--green-800] appearance-none cursor-pointer"
+            className="h-9 pl-3 pr-8 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) bg-white focus:outline-none focus:border-(--green-800) appearance-none cursor-pointer"
           >
             {sortOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+          <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
         </div>
 
         {/* Count label */}
         {!isLoading && (
-          <span className="font-dm text-[13px] text-[--neutral-400] ml-1">
+          <span className="font-dm text-[13px] text-(--neutral-400) ml-1">
             {filtered.length} product{filtered.length !== 1 ? "s" : ""}
           </span>
         )}
 
         {/* View toggle */}
-        <div className="ml-auto flex items-center gap-1 bg-[--neutral-100] rounded-[8px] p-0.5">
+        <div className="ml-auto flex items-center gap-1 bg-(--neutral-100) rounded-[8px] p-0.5">
           <button
             onClick={() => setViewMode("grid")}
-            className={`h-8 w-9 flex items-center justify-center rounded-[6px] transition-colors ${view === "grid" ? "bg-white shadow-[--e1] text-[--neutral-900]" : "text-[--neutral-400] hover:text-[--neutral-700]"}`}
+            className={`h-8 w-9 flex items-center justify-center rounded-[6px] transition-colors ${view === "grid" ? "bg-white shadow-(--e1) text-(--neutral-900)" : "text-(--neutral-400) hover:text-(--neutral-700)"}`}
             aria-label="Grid view"
           >
             <Grid size={15} />
           </button>
           <button
             onClick={() => setViewMode("list")}
-            className={`h-8 w-9 flex items-center justify-center rounded-[6px] transition-colors ${view === "list" ? "bg-white shadow-[--e1] text-[--neutral-900]" : "text-[--neutral-400] hover:text-[--neutral-700]"}`}
+            className={`h-8 w-9 flex items-center justify-center rounded-[6px] transition-colors ${view === "list" ? "bg-white shadow-(--e1) text-(--neutral-900)" : "text-(--neutral-400) hover:text-(--neutral-700)"}`}
             aria-label="List view"
           >
             <List size={15} />
@@ -1221,21 +1227,21 @@ export function AdminProductsClient() {
           isLoading ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {Array.from({ length: 10 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-[12px] border border-[--neutral-200] overflow-hidden">
-                  <div className="aspect-square bg-[--neutral-100] animate-pulse" />
+                <div key={i} className="bg-white rounded-[12px] border border-(--neutral-200) overflow-hidden">
+                  <div className="aspect-square bg-(--neutral-100) animate-pulse" />
                   <div className="p-3 flex flex-col gap-2">
-                    <div className="h-3.5 bg-[--neutral-100] rounded animate-pulse w-3/4" />
-                    <div className="h-3 bg-[--neutral-100] rounded animate-pulse w-1/2" />
-                    <div className="h-4 bg-[--neutral-100] rounded animate-pulse w-1/3" />
+                    <div className="h-3.5 bg-(--neutral-100) rounded animate-pulse w-3/4" />
+                    <div className="h-3 bg-(--neutral-100) rounded animate-pulse w-1/2" />
+                    <div className="h-4 bg-(--neutral-100) rounded animate-pulse w-1/3" />
                   </div>
                 </div>
               ))}
             </div>
           ) : filtered.length === 0 ? (
-            <div className="bg-white rounded-[12px] border border-[--neutral-200] shadow-[--e1] flex flex-col items-center justify-center py-24 text-center">
-              <Tag size={40} className="text-[--neutral-300] mb-4" />
-              <p className="font-syne text-[18px] font-semibold text-[--neutral-900] mb-1">No products found</p>
-              <p className="font-dm text-[14px] text-[--neutral-500]">Try adjusting your filters or add a new product.</p>
+            <div className="bg-white rounded-[12px] border border-(--neutral-200) shadow-(--e1) flex flex-col items-center justify-center py-24 text-center">
+              <Tag size={40} className="text-(--neutral-300) mb-4" />
+              <p className="font-syne text-[18px] font-semibold text-(--neutral-900) mb-1">No products found</p>
+              <p className="font-dm text-[14px] text-(--neutral-500)">Try adjusting your filters or add a new product.</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">

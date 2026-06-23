@@ -122,7 +122,7 @@ function Toggle({
       disabled={disabled}
       aria-pressed={checked}
       className={`relative w-10 h-5.5 rounded-full transition-colors ${
-        checked ? "bg-[--green-600]" : "bg-[--neutral-200]"
+        checked ? "bg-(--green-600)" : "bg-(--neutral-200)"
       } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
       style={{ width: 40, height: 22 }}
     >
@@ -179,7 +179,7 @@ export function AdminRolesClient() {
   }
 
   return (
-    <div className="min-h-screen bg-[--neutral-50] dark:bg-[--dark-bg]">
+    <div className="min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
       <PageHeader
         title="Roles & Permissions"
         breadcrumbs={[
@@ -192,7 +192,7 @@ export function AdminRolesClient() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className="h-10 px-5 rounded-[8px] bg-[--green-800] hover:bg-[--green-900] font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2"
+              className="h-10 px-5 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2"
             >
               <Save size={15} />
               {saving ? "Saving…" : "Save Changes"}
@@ -202,10 +202,10 @@ export function AdminRolesClient() {
       />
 
       <div className="px-6 pb-6">
-        <div className="bg-white dark:bg-[--dark-surface] rounded-[12px] border border-[--neutral-200] dark:border-[--dark-border] shadow-[--e1] overflow-hidden">
+        <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) overflow-hidden">
           {/* Note banner */}
-          <div className="px-6 py-3 bg-[--gold-50] border-b border-[--gold-200] flex items-center gap-2">
-            <span className="font-dm text-[13px] text-[--gold-700]">
+          <div className="px-6 py-3 bg-(--gold-50) border-b border-(--gold-200) flex items-center gap-2">
+            <span className="font-dm text-[13px] text-(--gold-700)">
               Admin permissions are immutable and cannot be changed. Other roles can be customised below.
             </span>
           </div>
@@ -213,20 +213,20 @@ export function AdminRolesClient() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-[--neutral-200] dark:border-[--dark-border] bg-[--neutral-50] dark:bg-[--dark-bg]">
-                  <th className="px-6 py-4 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-[--neutral-500] w-64">
+                <tr className="border-b border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg)">
+                  <th className="px-6 py-4 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500) w-64">
                     Permission
                   </th>
                   {ROLES.map((role) => (
                     <th
                       key={role}
                       className={`px-4 py-4 text-center font-dm text-[12px] font-medium uppercase tracking-wider ${
-                        role === "Admin" ? "text-[--green-800]" : "text-[--neutral-500]"
+                        role === "Admin" ? "text-(--green-800)" : "text-(--neutral-500)"
                       }`}
                     >
                       {role}
                       {role === "Admin" && (
-                        <span className="block text-[10px] normal-case tracking-normal text-[--green-600] font-normal mt-0.5">
+                        <span className="block text-[10px] normal-case tracking-normal text-(--green-600) font-normal mt-0.5">
                           immutable
                         </span>
                       )}
@@ -238,15 +238,15 @@ export function AdminRolesClient() {
                 {PERMISSIONS.map((perm, idx) => (
                   <tr
                     key={perm.key}
-                    className={`border-b border-[--neutral-200] dark:border-[--dark-border] ${
-                      idx % 2 === 0 ? "" : "bg-[--neutral-50]/50 dark:bg-[--dark-bg]/30"
+                    className={`border-b border-(--neutral-200) dark:border-(--dark-border) ${
+                      idx % 2 === 0 ? "" : "bg-(--neutral-50)/50 dark:bg-(--dark-bg)/30"
                     }`}
                   >
                     <td className="px-6 py-4">
-                      <div className="font-dm text-[14px] font-medium text-[--neutral-900] dark:text-[--dark-text]">
+                      <div className="font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">
                         {perm.label}
                       </div>
-                      <div className="font-dm text-[12px] text-[--neutral-400] mt-0.5">
+                      <div className="font-dm text-[12px] text-(--neutral-400) mt-0.5">
                         {perm.description}
                       </div>
                     </td>
@@ -262,9 +262,9 @@ export function AdminRolesClient() {
                             />
                             {/* Visual indicator below toggle */}
                             {enabled ? (
-                              <Check size={12} className="text-[--success]" />
+                              <Check size={12} className="text-(--success)" />
                             ) : (
-                              <X size={12} className="text-[--neutral-300]" />
+                              <X size={12} className="text-(--neutral-300)" />
                             )}
                           </div>
                         </td>

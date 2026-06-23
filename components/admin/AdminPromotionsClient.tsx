@@ -34,9 +34,9 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const TYPE_COLORS: Record<string, string> = {
-  PERCENTAGE: "bg-[--green-50] text-[--green-800]",
-  FIXED: "bg-[--gold-50] text-[--gold-700]",
-  FREE_SHIPPING: "bg-[--info]/10 text-[--info]",
+  PERCENTAGE: "bg-(--green-50) text-(--green-800)",
+  FIXED: "bg-(--gold-50) text-(--gold-700)",
+  FREE_SHIPPING: "bg-(--info)/10 text-(--info)",
 };
 
 function generateCode(): string {
@@ -164,14 +164,14 @@ export function AdminPromotionsClient() {
       label: "Name",
       sortable: true,
       render: (v: unknown) => (
-        <span className="font-dm text-[14px] font-medium text-[--neutral-900]">{String(v)}</span>
+        <span className="font-dm text-[14px] font-medium text-(--neutral-900)">{String(v)}</span>
       ),
     },
     {
       key: "type",
       label: "Type",
       render: (v: unknown) => (
-        <span className={`inline-block px-2 py-0.5 rounded-full font-dm text-[12px] font-medium ${TYPE_COLORS[String(v)] ?? "bg-[--neutral-100] text-[--neutral-700]"}`}>
+        <span className={`inline-block px-2 py-0.5 rounded-full font-dm text-[12px] font-medium ${TYPE_COLORS[String(v)] ?? "bg-(--neutral-100) text-(--neutral-700)"}`}>
           {TYPE_LABELS[String(v)] ?? String(v)}
         </span>
       ),
@@ -183,7 +183,7 @@ export function AdminPromotionsClient() {
         const type = String(row.type);
         const val = Number(v);
         return (
-          <span className="font-dm text-[14px] font-semibold text-[--neutral-900]">
+          <span className="font-dm text-[14px] font-semibold text-(--neutral-900)">
             {type === "PERCENTAGE" ? `${val}%` : type === "FIXED" ? `KES ${val.toLocaleString()}` : "Free"}
           </span>
         );
@@ -194,11 +194,11 @@ export function AdminPromotionsClient() {
       label: "Code",
       render: (v: unknown) =>
         v ? (
-          <code className="px-2 py-0.5 rounded bg-[--neutral-100] font-dm text-[13px] font-semibold text-[--neutral-900] tracking-wider">
+          <code className="px-2 py-0.5 rounded bg-(--neutral-100) font-dm text-[13px] font-semibold text-(--neutral-900) tracking-wider">
             {String(v)}
           </code>
         ) : (
-          <span className="text-[--neutral-400] text-[14px]">—</span>
+          <span className="text-(--neutral-400) text-[14px]">—</span>
         ),
     },
     {
@@ -206,16 +206,16 @@ export function AdminPromotionsClient() {
       label: "Min Order",
       render: (v: unknown) =>
         v ? (
-          <span className="font-dm text-[14px] text-[--neutral-700]">KES {Number(v).toLocaleString()}</span>
+          <span className="font-dm text-[14px] text-(--neutral-700)">KES {Number(v).toLocaleString()}</span>
         ) : (
-          <span className="text-[--neutral-400]">—</span>
+          <span className="text-(--neutral-400)">—</span>
         ),
     },
     {
       key: "usedCount",
       label: "Uses",
       render: (v: unknown, row: Record<string, unknown>) => (
-        <span className="font-dm text-[14px] text-[--neutral-700]">
+        <span className="font-dm text-[14px] text-(--neutral-700)">
           {String(v)} / {String(row.maxUses ?? "∞")}
         </span>
       ),
@@ -224,13 +224,13 @@ export function AdminPromotionsClient() {
       key: "startDate",
       label: "Start",
       render: (v: unknown) =>
-        v ? new Date(String(v)).toLocaleDateString() : <span className="text-[--neutral-400]">—</span>,
+        v ? new Date(String(v)).toLocaleDateString() : <span className="text-(--neutral-400)">—</span>,
     },
     {
       key: "endDate",
       label: "End",
       render: (v: unknown) =>
-        v ? new Date(String(v)).toLocaleDateString() : <span className="text-[--neutral-400]">—</span>,
+        v ? new Date(String(v)).toLocaleDateString() : <span className="text-(--neutral-400)">—</span>,
     },
     {
       key: "status",
@@ -246,13 +246,13 @@ export function AdminPromotionsClient() {
           <div className="flex items-center gap-2">
             <button
               onClick={(e) => { e.stopPropagation(); openEdit(p); }}
-              className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-[--neutral-100] hover:bg-[--neutral-200] text-[--neutral-700] transition-colors"
+              className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-(--neutral-100) hover:bg-(--neutral-200) text-(--neutral-700) transition-colors"
             >
               Edit
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); setDeleteTarget(p); }}
-              className="h-8 w-8 flex items-center justify-center rounded-[6px] text-[--neutral-400] hover:bg-[--danger-bg] hover:text-[--danger] transition-colors"
+              className="h-8 w-8 flex items-center justify-center rounded-[6px] text-(--neutral-400) hover:bg-(--danger-bg) hover:text-(--danger) transition-colors"
             >
               <Trash2 size={14} />
             </button>
@@ -265,7 +265,7 @@ export function AdminPromotionsClient() {
   const valueLabel = form.type === "PERCENTAGE" ? "%" : form.type === "FIXED" ? "KES" : "";
 
   return (
-    <div className="min-h-screen bg-[--neutral-50]">
+    <div className="min-h-screen bg-(--neutral-50)">
       <PageHeader
         title="Promotions"
         description="Discount codes and promotional offers"
@@ -276,7 +276,7 @@ export function AdminPromotionsClient() {
         action={
           <button
             onClick={openCreate}
-            className="flex items-center gap-2 h-10 px-4 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:bg-[--green-900] transition-colors"
+            className="flex items-center gap-2 h-10 px-4 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors"
           >
             <Plus size={16} />
             Create Promotion
@@ -286,15 +286,15 @@ export function AdminPromotionsClient() {
 
       <div className="px-6 pb-6 space-y-4">
         {/* Tabs */}
-        <div className="flex gap-1 bg-[--neutral-100] p-1 rounded-[10px] w-fit">
+        <div className="flex gap-1 bg-(--neutral-100) p-1 rounded-[10px] w-fit">
           {(["promotions", "coupons"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`h-8 px-4 rounded-[8px] font-dm text-[13px] font-medium transition-colors capitalize ${
                 activeTab === tab
-                  ? "bg-white text-[--neutral-900] shadow-[--e1]"
-                  : "text-[--neutral-500] hover:text-[--neutral-700]"
+                  ? "bg-white text-(--neutral-900) shadow-(--e1)"
+                  : "text-(--neutral-500) hover:text-(--neutral-700)"
               }`}
             >
               {tab}
@@ -322,14 +322,14 @@ export function AdminPromotionsClient() {
           <>
             <button
               onClick={closeDrawer}
-              className="h-10 px-4 rounded-[8px] border border-[--neutral-200] font-dm text-[14px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors"
+              className="h-10 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={() => saveMutation.mutate()}
               disabled={saveMutation.isPending || !form.name.trim() || !form.value}
-              className="h-10 px-5 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:bg-[--green-900] transition-colors disabled:opacity-50 ml-auto"
+              className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors disabled:opacity-50 ml-auto"
             >
               {saveMutation.isPending ? "Saving..." : editTarget ? "Save Changes" : "Create"}
             </button>
@@ -357,7 +357,7 @@ export function AdminPromotionsClient() {
                 <option value="FIXED">Fixed Amount Off</option>
                 <option value="FREE_SHIPPING">Free Shipping</option>
               </select>
-              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
             </div>
           </FieldWrap>
 
@@ -373,7 +373,7 @@ export function AdminPromotionsClient() {
                   className={`${inputCls} pr-12`}
                 />
                 {valueLabel && (
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 font-dm text-[13px] text-[--neutral-400]">
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 font-dm text-[13px] text-(--neutral-400)">
                     {valueLabel}
                   </span>
                 )}
@@ -392,7 +392,7 @@ export function AdminPromotionsClient() {
               <button
                 type="button"
                 onClick={() => setForm((f) => ({ ...f, code: generateCode() }))}
-                className="h-10 px-3 rounded-[8px] border border-[--neutral-200] text-[--neutral-500] hover:bg-[--neutral-100] transition-colors flex items-center gap-1.5 font-dm text-[13px]"
+                className="h-10 px-3 rounded-[8px] border border-(--neutral-200) text-(--neutral-500) hover:bg-(--neutral-100) transition-colors flex items-center gap-1.5 font-dm text-[13px]"
                 title="Generate code"
               >
                 <RefreshCw size={13} />
@@ -454,7 +454,7 @@ export function AdminPromotionsClient() {
                 <option value="inactive">Inactive</option>
                 <option value="expired">Expired</option>
               </select>
-              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
             </div>
           </FieldWrap>
         </div>
@@ -482,9 +482,9 @@ function FieldWrap({ label, required, hint, children }: {
 }) {
   return (
     <div>
-      <label className="block font-dm text-[13px] font-medium text-[--neutral-700] mb-1.5">
-        {label} {required && <span className="text-[--danger]">*</span>}
-        {hint && <span className="text-[--neutral-400] font-normal ml-1 text-[12px]">({hint})</span>}
+      <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-1.5">
+        {label} {required && <span className="text-(--danger)">*</span>}
+        {hint && <span className="text-(--neutral-400) font-normal ml-1 text-[12px]">({hint})</span>}
       </label>
       {children}
     </div>
@@ -492,4 +492,4 @@ function FieldWrap({ label, required, hint, children }: {
 }
 
 const inputCls =
-  "w-full h-10 px-3 rounded-[8px] border border-[--neutral-200] bg-white font-dm text-[14px] text-[--neutral-900] placeholder:text-[--neutral-400] focus:outline-none focus:ring-2 focus:ring-[--green-500] focus:border-transparent transition-shadow";
+  "w-full h-10 px-3 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-900) placeholder:text-(--neutral-400) focus:outline-none focus:ring-2 focus:ring-(--green-500) focus:border-transparent transition-shadow";

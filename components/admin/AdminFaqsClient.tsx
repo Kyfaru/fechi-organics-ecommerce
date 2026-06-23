@@ -141,10 +141,10 @@ export function AdminFaqsClient() {
       sortable: true,
       render: (v: unknown) => (
         <div className="flex items-center gap-2 max-w-[420px]">
-          <div className="w-8 h-8 rounded-full bg-[--gold-50] flex items-center justify-center shrink-0">
-            <HelpCircle size={14} className="text-[--gold-700]" />
+          <div className="w-8 h-8 rounded-full bg-(--gold-50) flex items-center justify-center shrink-0">
+            <HelpCircle size={14} className="text-(--gold-700)" />
           </div>
-          <span className="font-dm text-[14px] font-medium text-[--neutral-900] truncate">{String(v)}</span>
+          <span className="font-dm text-[14px] font-medium text-(--neutral-900) truncate">{String(v)}</span>
         </div>
       ),
     },
@@ -153,7 +153,7 @@ export function AdminFaqsClient() {
       label: "Category",
       sortable: true,
       render: (v: unknown) => (
-        <span className="inline-block px-2 py-0.5 rounded-full bg-[--neutral-100] font-dm text-[12px] text-[--neutral-700]">{String(v || "—")}</span>
+        <span className="inline-block px-2 py-0.5 rounded-full bg-(--neutral-100) font-dm text-[12px] text-(--neutral-700)">{String(v || "—")}</span>
       ),
     },
     {
@@ -175,7 +175,7 @@ export function AdminFaqsClient() {
       key: "order",
       label: "Sort Order",
       sortable: true,
-      render: (v: unknown) => <span className="font-dm text-[14px] text-[--neutral-700]">{String(v ?? 0)}</span>,
+      render: (v: unknown) => <span className="font-dm text-[14px] text-(--neutral-700)">{String(v ?? 0)}</span>,
     },
     {
       key: "id",
@@ -184,13 +184,13 @@ export function AdminFaqsClient() {
         <div className="flex items-center gap-2">
           <button
             onClick={(e) => { e.stopPropagation(); openEdit(row as unknown as Faq); }}
-            className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-[--neutral-100] hover:bg-[--neutral-200] text-[--neutral-700] transition-colors"
+            className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-(--neutral-100) hover:bg-(--neutral-200) text-(--neutral-700) transition-colors"
           >
             Edit
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); setDeleteTarget(row as unknown as Faq); }}
-            className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-[--danger-bg] hover:bg-red-100 text-[--danger] transition-colors"
+            className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-(--danger-bg) hover:bg-red-100 text-(--danger) transition-colors"
           >
             Delete
           </button>
@@ -200,7 +200,7 @@ export function AdminFaqsClient() {
   ];
 
   return (
-    <div className="min-h-screen bg-[--neutral-50]">
+    <div className="min-h-screen bg-(--neutral-50)">
       <PageHeader
         breadcrumbs={[{ label: "Content", href: "/admin/content/faqs" }, { label: "FAQs", href: "/admin/content/faqs" }]}
         title="FAQs"
@@ -208,7 +208,7 @@ export function AdminFaqsClient() {
         action={
           <button
             onClick={openCreate}
-            className="flex items-center gap-2 h-10 px-4 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:bg-[--green-900] transition-colors"
+            className="flex items-center gap-2 h-10 px-4 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors"
           >
             <Plus size={16} />
             Add FAQ
@@ -236,14 +236,14 @@ export function AdminFaqsClient() {
           <>
             <button
               onClick={closeDrawer}
-              className="h-10 px-4 rounded-[8px] border border-[--neutral-200] font-dm text-[14px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors"
+              className="h-10 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleSubmit}
               disabled={isPending || !form.question.trim() || !form.answer.trim()}
-              className="h-10 px-5 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:bg-[--green-900] transition-colors disabled:opacity-50 ml-auto"
+              className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors disabled:opacity-50 ml-auto"
             >
               {isPending ? "Saving..." : drawer.mode === "create" ? "Add FAQ" : "Save Changes"}
             </button>
@@ -299,7 +299,7 @@ export function AdminFaqsClient() {
                 <option value="published">Published</option>
                 <option value="draft">Draft</option>
               </select>
-              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
             </div>
           </FormField>
         </div>
@@ -327,9 +327,9 @@ function FormField({ label, required, hint, children }: {
 }) {
   return (
     <div>
-      <label className="block font-dm text-[13px] font-medium text-[--neutral-700] mb-1.5">
-        {label} {required && <span className="text-[--danger]">*</span>}
-        {hint && <span className="text-[--neutral-400] font-normal ml-1">({hint})</span>}
+      <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-1.5">
+        {label} {required && <span className="text-(--danger)">*</span>}
+        {hint && <span className="text-(--neutral-400) font-normal ml-1">({hint})</span>}
       </label>
       {children}
     </div>
@@ -337,4 +337,4 @@ function FormField({ label, required, hint, children }: {
 }
 
 const inputCls =
-  "w-full h-10 px-3 rounded-[8px] border border-[--neutral-200] bg-white font-dm text-[14px] text-[--neutral-900] placeholder:text-[--neutral-400] focus:outline-none focus:ring-2 focus:ring-[--green-500] focus:border-transparent transition-shadow";
+  "w-full h-10 px-3 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-900) placeholder:text-(--neutral-400) focus:outline-none focus:ring-2 focus:ring-(--green-500) focus:border-transparent transition-shadow";

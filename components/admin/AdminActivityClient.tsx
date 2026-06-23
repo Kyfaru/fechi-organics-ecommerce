@@ -36,16 +36,16 @@ interface ActivityLog {
 // Resource type chip
 // ---------------------------------------------------------------------------
 const RESOURCE_COLORS: Record<string, string> = {
-  product:   "bg-[--green-50]  text-[--green-800]",
-  order:     "bg-[--gold-100]  text-[--gold-700]",
-  customer:  "bg-[--info]/10  text-[--info]",
-  setting:   "bg-[--neutral-100] text-[--neutral-700]",
-  staff:     "bg-[--green-200] text-[--green-800]",
+  product:   "bg-(--green-50)  text-(--green-800)",
+  order:     "bg-(--gold-100)  text-(--gold-700)",
+  customer:  "bg-(--info)/10  text-(--info)",
+  setting:   "bg-(--neutral-100) text-(--neutral-700)",
+  staff:     "bg-(--green-200) text-(--green-800)",
 };
 
 function ResourceChip({ resource }: { resource: string }) {
   const key = resource.toLowerCase();
-  const cls = RESOURCE_COLORS[key] ?? "bg-[--neutral-100] text-[--neutral-700]";
+  const cls = RESOURCE_COLORS[key] ?? "bg-(--neutral-100) text-(--neutral-700)";
   return (
     <span className={`inline-flex h-6 items-center px-2.5 rounded-full font-dm text-[11px] font-medium capitalize ${cls}`}>
       {resource}
@@ -120,7 +120,7 @@ export function AdminActivityClient() {
     setApplied({ staffId: "", resource: "", from: "", to: "" });
   }
 
-  const inputCls = "h-9 px-3 rounded-[8px] border border-[--neutral-300] dark:border-[--dark-border] font-dm text-[13px] text-[--neutral-900] dark:text-[--dark-text] bg-white dark:bg-[--dark-surface] outline-none focus:border-[--green-600] transition-colors";
+  const inputCls = "h-9 px-3 rounded-[8px] border border-(--neutral-300) dark:border-(--dark-border) font-dm text-[13px] text-(--neutral-900) dark:text-(--dark-text) bg-white dark:bg-(--dark-surface) outline-none focus:border-(--green-600) transition-colors";
 
   const columns = [
     {
@@ -128,7 +128,7 @@ export function AdminActivityClient() {
       label: "Timestamp",
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => (
-        <span className="font-mono text-[13px] text-[--neutral-700] dark:text-[--dark-text] whitespace-nowrap">
+        <span className="font-mono text-[13px] text-(--neutral-700) dark:text-(--dark-text) whitespace-nowrap">
           {formatTimestamp((row as unknown as ActivityLog).createdAt)}
         </span>
       ),
@@ -141,8 +141,8 @@ export function AdminActivityClient() {
         const log = row as unknown as ActivityLog;
         return (
           <div>
-            <div className="font-dm text-[13px] font-medium text-[--neutral-900] dark:text-[--dark-text]">{log.staffName}</div>
-            <div className="font-dm text-[11px] text-[--neutral-400]">{log.staffEmail}</div>
+            <div className="font-dm text-[13px] font-medium text-(--neutral-900) dark:text-(--dark-text)">{log.staffName}</div>
+            <div className="font-dm text-[11px] text-(--neutral-400)">{log.staffEmail}</div>
           </div>
         );
       },
@@ -151,7 +151,7 @@ export function AdminActivityClient() {
       key: "action",
       label: "Action",
       render: (_: unknown, row: Record<string, unknown>) => (
-        <span className="font-dm text-[13px] text-[--neutral-700] dark:text-[--dark-text]">
+        <span className="font-dm text-[13px] text-(--neutral-700) dark:text-(--dark-text)">
           {(row as unknown as ActivityLog).action}
         </span>
       ),
@@ -167,7 +167,7 @@ export function AdminActivityClient() {
       key: "ipAddress",
       label: "IP Address",
       render: (_: unknown, row: Record<string, unknown>) => (
-        <span className="font-mono text-[12px] text-[--neutral-400]">
+        <span className="font-mono text-[12px] text-(--neutral-400)">
           {(row as unknown as ActivityLog).ipAddress ?? "—"}
         </span>
       ),
@@ -177,7 +177,7 @@ export function AdminActivityClient() {
   const hasFilters = applied.staffId || applied.resource || applied.from || applied.to;
 
   return (
-    <div className="min-h-screen bg-[--neutral-50] dark:bg-[--dark-bg]">
+    <div className="min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
       <PageHeader
         title="Activity Log"
         description="Audit trail of all admin actions"
@@ -189,7 +189,7 @@ export function AdminActivityClient() {
           <button
             onClick={() => refetch()}
             disabled={isFetching}
-            className="h-9 w-9 flex items-center justify-center rounded-[8px] border border-[--neutral-200] text-[--neutral-500] hover:bg-[--neutral-100] transition-colors disabled:opacity-60"
+            className="h-9 w-9 flex items-center justify-center rounded-[8px] border border-(--neutral-200) text-(--neutral-500) hover:bg-(--neutral-100) transition-colors disabled:opacity-60"
             aria-label="Refresh"
           >
             <RefreshCw size={15} className={isFetching ? "animate-spin" : ""} />
@@ -199,10 +199,10 @@ export function AdminActivityClient() {
 
       <div className="px-6 pb-6 space-y-4">
         {/* Filter toolbar */}
-        <div className="bg-white dark:bg-[--dark-surface] rounded-[12px] border border-[--neutral-200] dark:border-[--dark-border] shadow-[--e1] p-4">
+        <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1">
-              <label className="font-dm text-[12px] text-[--neutral-500]">Staff email</label>
+              <label className="font-dm text-[12px] text-(--neutral-500)">Staff email</label>
               <input
                 className={inputCls}
                 placeholder="jane@..."
@@ -212,7 +212,7 @@ export function AdminActivityClient() {
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="font-dm text-[12px] text-[--neutral-500]">Resource type</label>
+              <label className="font-dm text-[12px] text-(--neutral-500)">Resource type</label>
               <select
                 className={`${inputCls} pr-8`}
                 value={resourceFilter}
@@ -226,11 +226,11 @@ export function AdminActivityClient() {
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="font-dm text-[12px] text-[--neutral-500]">From</label>
+              <label className="font-dm text-[12px] text-(--neutral-500)">From</label>
               <input type="date" className={inputCls} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="font-dm text-[12px] text-[--neutral-500]">To</label>
+              <label className="font-dm text-[12px] text-(--neutral-500)">To</label>
               <input type="date" className={inputCls} value={toDate} onChange={(e) => setToDate(e.target.value)} />
             </div>
 
@@ -238,14 +238,14 @@ export function AdminActivityClient() {
               {hasFilters && (
                 <button
                   onClick={clearFilters}
-                  className="h-9 px-4 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] text-[--neutral-600] hover:bg-[--neutral-50] transition-colors"
+                  className="h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-600) hover:bg-(--neutral-50) transition-colors"
                 >
                   Clear
                 </button>
               )}
               <button
                 onClick={applyFilters}
-                className="h-9 px-4 rounded-[8px] bg-[--green-800] hover:bg-[--green-900] font-dm text-[13px] font-medium text-white transition-colors flex items-center gap-1.5"
+                className="h-9 px-4 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[13px] font-medium text-white transition-colors flex items-center gap-1.5"
               >
                 <Filter size={13} />
                 Apply
@@ -256,7 +256,7 @@ export function AdminActivityClient() {
 
         {/* Results */}
         {!isLoading && logs.length === 0 ? (
-          <div className="bg-white dark:bg-[--dark-surface] rounded-[12px] border border-[--neutral-200] dark:border-[--dark-border] shadow-[--e1]">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1)">
             <EmptyState
               icon={Activity}
               title="No activity yet"

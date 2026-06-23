@@ -70,15 +70,15 @@ function RolePill({ role }: { role: string }) {
   const isOwner   = role === "owner";
   const isAdmin   = role === "admin" || role === "Admin";
   const base = "inline-flex items-center h-6 px-[10px] rounded-full font-dm text-[12px] font-medium";
-  if (isOwner) return <span className={`${base} bg-[--green-800] text-white`}>Owner</span>;
-  if (isAdmin) return <span className={`${base} bg-[--green-50] text-[--green-800]`}>Admin</span>;
-  return <span className={`${base} bg-[--neutral-100] text-[--neutral-700]`}>{role}</span>;
+  if (isOwner) return <span className={`${base} bg-(--green-800) text-white`}>Owner</span>;
+  if (isAdmin) return <span className={`${base} bg-(--green-50) text-(--green-800)`}>Admin</span>;
+  return <span className={`${base} bg-(--neutral-100) text-(--neutral-700)`}>{role}</span>;
 }
 
 // Avatar circle with initials
 function Avatar({ name }: { name: string }) {
   return (
-    <div className="w-9 h-9 rounded-full bg-[--green-200] text-[--green-800] flex items-center justify-center font-dm text-[13px] font-semibold shrink-0">
+    <div className="w-9 h-9 rounded-full bg-(--green-200) text-(--green-800) flex items-center justify-center font-dm text-[13px] font-semibold shrink-0">
       {getInitials(name)}
     </div>
   );
@@ -100,7 +100,7 @@ function RowActions({
     <div className="relative">
       <button
         onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
-        className="w-8 h-8 flex items-center justify-center rounded-[6px] text-[--neutral-500] hover:bg-[--neutral-100] transition-colors"
+        className="w-8 h-8 flex items-center justify-center rounded-[6px] text-(--neutral-500) hover:bg-(--neutral-100) transition-colors"
         aria-label="Actions"
       >
         <MoreHorizontal size={16} />
@@ -109,29 +109,29 @@ function RowActions({
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-9 z-20 w-44 bg-white dark:bg-[--dark-surface] rounded-[10px] border border-[--neutral-200] dark:border-[--dark-border] shadow-[--e2] py-1 overflow-hidden">
+          <div className="absolute right-0 top-9 z-20 w-44 bg-white dark:bg-(--dark-surface) rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e2) py-1 overflow-hidden">
             <button
               onClick={() => { setOpen(false); toast.info("Profile view coming soon"); }}
-              className="w-full text-left px-4 py-2 font-dm text-[14px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors"
+              className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
             >
               View
             </button>
             <button
               onClick={() => { setOpen(false); toast.info("Role management coming soon"); }}
-              className="w-full text-left px-4 py-2 font-dm text-[14px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors"
+              className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
             >
               Change Role
             </button>
             <button
               onClick={() => { setOpen(false); toast.info("Password reset coming soon"); }}
-              className="w-full text-left px-4 py-2 font-dm text-[14px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors"
+              className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
             >
               Reset Password
             </button>
-            <div className="h-px bg-[--neutral-200] dark:bg-[--dark-border] my-1" />
+            <div className="h-px bg-(--neutral-200) dark:bg-(--dark-border) my-1" />
             <button
               onClick={() => { setOpen(false); onDeactivate(staff); }}
-              className="w-full text-left px-4 py-2 font-dm text-[14px] text-[--danger] hover:bg-[--danger-bg] transition-colors"
+              className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
             >
               {staff.banned ? "Reactivate" : "Deactivate"}
             </button>
@@ -197,8 +197,8 @@ function InviteDrawer({
   }
 
   const inputCls = (field: string) =>
-    `w-full h-10 px-3 rounded-[8px] border font-dm text-[14px] text-[--neutral-900] bg-white dark:bg-[--dark-surface] dark:text-[--dark-text] outline-none transition-colors focus:border-[--green-600] ${
-      errors[field] ? "border-[--danger]" : "border-[--neutral-300] dark:border-[--dark-border]"
+    `w-full h-10 px-3 rounded-[8px] border font-dm text-[14px] text-(--neutral-900) bg-white dark:bg-(--dark-surface) dark:text-(--dark-text) outline-none transition-colors focus:border-(--green-600) ${
+      errors[field] ? "border-(--danger)" : "border-(--neutral-300) dark:border-(--dark-border)"
     }`;
 
   return (
@@ -211,7 +211,7 @@ function InviteDrawer({
         <>
           <button
             onClick={onClose}
-            className="h-10 px-5 rounded-[8px] border border-[--neutral-200] font-dm text-[14px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors"
+            className="h-10 px-5 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
           >
             Cancel
           </button>
@@ -219,7 +219,7 @@ function InviteDrawer({
             form="invite-form"
             type="submit"
             disabled={loading}
-            className="h-10 px-6 rounded-[8px] bg-[--green-800] hover:bg-[--green-900] font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2"
+            className="h-10 px-6 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2"
           >
             <Mail size={15} />
             {loading ? "Sending…" : "Send Invitation"}
@@ -230,7 +230,7 @@ function InviteDrawer({
       <form id="invite-form" onSubmit={handleSubmit} className="flex flex-col gap-5">
         {/* Full name */}
         <div className="flex flex-col gap-1.5">
-          <label className="font-dm text-[13px] font-medium text-[--neutral-700]">Full name</label>
+          <label className="font-dm text-[13px] font-medium text-(--neutral-700)">Full name</label>
           <input
             className={inputCls("name")}
             placeholder="Jane Mwangi"
@@ -238,12 +238,12 @@ function InviteDrawer({
             onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
             autoComplete="name"
           />
-          {errors.name && <p className="font-dm text-[12px] text-[--danger]">{errors.name}</p>}
+          {errors.name && <p className="font-dm text-[12px] text-(--danger)">{errors.name}</p>}
         </div>
 
         {/* Email */}
         <div className="flex flex-col gap-1.5">
-          <label className="font-dm text-[13px] font-medium text-[--neutral-700]">Email address</label>
+          <label className="font-dm text-[13px] font-medium text-(--neutral-700)">Email address</label>
           <input
             type="email"
             className={inputCls("email")}
@@ -252,37 +252,37 @@ function InviteDrawer({
             onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
             autoComplete="email"
           />
-          {errors.email && <p className="font-dm text-[12px] text-[--danger]">{errors.email}</p>}
+          {errors.email && <p className="font-dm text-[12px] text-(--danger)">{errors.email}</p>}
         </div>
 
         {/* Role select */}
         <div className="flex flex-col gap-1.5">
-          <label className="font-dm text-[13px] font-medium text-[--neutral-700]">Role</label>
+          <label className="font-dm text-[13px] font-medium text-(--neutral-700)">Role</label>
           <div className="relative">
             <select
               value={form.role}
               onChange={(e) => setForm((p) => ({ ...p, role: e.target.value as StaffRole }))}
-              className="w-full h-10 pl-3 pr-9 rounded-[8px] border border-[--neutral-300] dark:border-[--dark-border] font-dm text-[14px] text-[--neutral-900] dark:text-[--dark-text] bg-white dark:bg-[--dark-surface] outline-none appearance-none focus:border-[--green-600] transition-colors"
+              className="w-full h-10 pl-3 pr-9 rounded-[8px] border border-(--neutral-300) dark:border-(--dark-border) font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) bg-white dark:bg-(--dark-surface) outline-none appearance-none focus:border-(--green-600) transition-colors"
             >
               {ROLES.map((r) => (
                 <option key={r} value={r}>{r}</option>
               ))}
             </select>
-            <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-[--neutral-500] pointer-events-none" />
+            <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-(--neutral-500) pointer-events-none" />
           </div>
-          <p className="font-dm text-[12px] text-[--neutral-400]">
+          <p className="font-dm text-[12px] text-(--neutral-400)">
             Managers can manage products and orders but cannot change settings or staff.
           </p>
         </div>
 
         {/* Personal note */}
         <div className="flex flex-col gap-1.5">
-          <label className="font-dm text-[13px] font-medium text-[--neutral-700]">
-            Personal note <span className="text-[--neutral-400] font-normal">(optional)</span>
+          <label className="font-dm text-[13px] font-medium text-(--neutral-700)">
+            Personal note <span className="text-(--neutral-400) font-normal">(optional)</span>
           </label>
           <textarea
             rows={3}
-            className="w-full px-3 py-2 rounded-[8px] border border-[--neutral-300] dark:border-[--dark-border] font-dm text-[14px] text-[--neutral-900] dark:text-[--dark-text] bg-white dark:bg-[--dark-surface] outline-none focus:border-[--green-600] transition-colors resize-none"
+            className="w-full px-3 py-2 rounded-[8px] border border-(--neutral-300) dark:border-(--dark-border) font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) bg-white dark:bg-(--dark-surface) outline-none focus:border-(--green-600) transition-colors resize-none"
             placeholder="Hi Jane, we'd love to have you on the team…"
             value={form.note}
             onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))}
@@ -359,8 +359,8 @@ export function AdminStaffClient() {
           <div className="flex items-center gap-3">
             <Avatar name={s.name} />
             <div>
-              <div className="font-dm text-[14px] font-medium text-[--neutral-900] dark:text-[--dark-text]">{s.name}</div>
-              <div className="font-dm text-[12px] text-[--neutral-400]">{s.email}</div>
+              <div className="font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">{s.name}</div>
+              <div className="font-dm text-[12px] text-(--neutral-400)">{s.email}</div>
             </div>
           </div>
         );
@@ -378,7 +378,7 @@ export function AdminStaffClient() {
       label: "Last Active",
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => (
-        <span className="font-dm text-[13px] text-[--neutral-500]">
+        <span className="font-dm text-[13px] text-(--neutral-500)">
           {formatLastActive((row as unknown as StaffMember).lastActiveAt)}
         </span>
       ),
@@ -407,14 +407,14 @@ export function AdminStaffClient() {
   ];
 
   return (
-    <div className="min-h-screen bg-[--neutral-50] dark:bg-[--dark-bg]">
+    <div className="min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
       <PageHeader
         title="Staff & Roles"
         description="Manage admin accounts and permissions"
         action={
           <button
             onClick={() => setInviteOpen(true)}
-            className="h-10 px-5 rounded-[8px] bg-[--green-800] hover:bg-[--green-900] font-dm text-[14px] font-medium text-white transition-colors flex items-center gap-2"
+            className="h-10 px-5 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors flex items-center gap-2"
           >
             <UserPlus size={16} />
             Invite Staff

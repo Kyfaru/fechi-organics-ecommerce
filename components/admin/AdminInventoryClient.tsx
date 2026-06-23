@@ -148,7 +148,7 @@ export function AdminInventoryClient() {
         return (
           <div className="flex items-center gap-3" style={{ paddingLeft: 8, borderLeft: `3px solid ${borderColor}` }}>
             {/* Thumbnail */}
-            <div className="w-8 h-8 rounded-[6px] bg-[--neutral-100] overflow-hidden shrink-0 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-[6px] bg-(--neutral-100) overflow-hidden shrink-0 flex items-center justify-center">
               {item.imageKey ? (
                 // TODO: replace with actual CDN URL for objectKey
                 <img
@@ -158,12 +158,12 @@ export function AdminInventoryClient() {
                   onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                 />
               ) : (
-                <Package size={14} className="text-[--neutral-400]" />
+                <Package size={14} className="text-(--neutral-400)" />
               )}
             </div>
             <div>
-              <div className="font-dm text-[14px] font-medium text-[--neutral-900]">{item.name}</div>
-              <div className="font-dm text-[12px] text-[--neutral-400]">SKU: {item.id.slice(0, 8).toUpperCase()}</div>
+              <div className="font-dm text-[14px] font-medium text-(--neutral-900)">{item.name}</div>
+              <div className="font-dm text-[12px] text-(--neutral-400)">SKU: {item.id.slice(0, 8).toUpperCase()}</div>
             </div>
           </div>
         );
@@ -174,7 +174,7 @@ export function AdminInventoryClient() {
       label: "Category",
       sortable: true,
       render: (v: unknown) => (
-        <span className="font-dm text-[14px] text-[--neutral-700]">{String(v)}</span>
+        <span className="font-dm text-[14px] text-(--neutral-700)">{String(v)}</span>
       ),
     },
     {
@@ -185,10 +185,10 @@ export function AdminInventoryClient() {
         const item = row as unknown as InventoryItem;
         const color =
           item.status === "out_of_stock"
-            ? "text-[--danger]"
+            ? "text-(--danger)"
             : item.status === "low_stock"
-            ? "text-[--gold-700]"
-            : "text-[--neutral-900]";
+            ? "text-(--gold-700)"
+            : "text-(--neutral-900)";
         return (
           <span className={`font-dm text-[14px] font-semibold ${color}`}>
             {String(v)} units
@@ -210,7 +210,7 @@ export function AdminInventoryClient() {
             e.stopPropagation();
             openAdjust(row as unknown as InventoryItem);
           }}
-          className="h-8 px-3 rounded-[6px] font-dm text-[13px] font-medium bg-[--neutral-100] hover:bg-[--neutral-200] text-[--neutral-700] transition-colors"
+          className="h-8 px-3 rounded-[6px] font-dm text-[13px] font-medium bg-(--neutral-100) hover:bg-(--neutral-200) text-(--neutral-700) transition-colors"
         >
           Adjust
         </button>
@@ -219,7 +219,7 @@ export function AdminInventoryClient() {
   ];
 
   return (
-    <div className="min-h-screen bg-[--neutral-50]">
+    <div className="min-h-screen bg-(--neutral-50)">
       <PageHeader
         title="Inventory"
         description="Track and manage product stock levels"
@@ -251,13 +251,13 @@ export function AdminInventoryClient() {
         <div className="flex flex-col sm:flex-row gap-3">
           {/* Search */}
           <div className="relative flex-1 max-w-sm">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[--neutral-400]" />
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400)" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search products..."
-              className="w-full h-10 pl-9 pr-4 rounded-[8px] border border-[--neutral-200] bg-white font-dm text-[14px] text-[--neutral-900] placeholder:text-[--neutral-400] focus:outline-none focus:ring-2 focus:ring-[--green-500] focus:border-transparent"
+              className="w-full h-10 pl-9 pr-4 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-900) placeholder:text-(--neutral-400) focus:outline-none focus:ring-2 focus:ring-(--green-500) focus:border-transparent"
             />
           </div>
 
@@ -266,14 +266,14 @@ export function AdminInventoryClient() {
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="h-10 pl-3 pr-8 rounded-[8px] border border-[--neutral-200] bg-white font-dm text-[14px] text-[--neutral-700] focus:outline-none focus:ring-2 focus:ring-[--green-500] appearance-none cursor-pointer"
+              className="h-10 pl-3 pr-8 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-700) focus:outline-none focus:ring-2 focus:ring-(--green-500) appearance-none cursor-pointer"
             >
               <option value="all">All Categories</option>
               {categories.map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
-            <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+            <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
           </div>
 
           {/* Status */}
@@ -281,14 +281,14 @@ export function AdminInventoryClient() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-10 pl-3 pr-8 rounded-[8px] border border-[--neutral-200] bg-white font-dm text-[14px] text-[--neutral-700] focus:outline-none focus:ring-2 focus:ring-[--green-500] appearance-none cursor-pointer"
+              className="h-10 pl-3 pr-8 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-700) focus:outline-none focus:ring-2 focus:ring-(--green-500) appearance-none cursor-pointer"
             >
               <option value="all">All Status</option>
               <option value="in_stock">In Stock</option>
               <option value="low_stock">Low Stock</option>
               <option value="out_of_stock">Out of Stock</option>
             </select>
-            <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+            <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
           </div>
         </div>
 
@@ -313,14 +313,14 @@ export function AdminInventoryClient() {
           <>
             <button
               onClick={closeDrawer}
-              className="h-10 px-4 rounded-[8px] border border-[--neutral-200] font-dm text-[14px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors"
+              className="h-10 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={() => adjustMutation.mutate()}
               disabled={adjustMutation.isPending || adjustQty < 0}
-              className="h-10 px-5 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:bg-[--green-900] transition-colors disabled:opacity-50 ml-auto"
+              className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors disabled:opacity-50 ml-auto"
             >
               {adjustMutation.isPending ? "Saving..." : "Save Adjustment"}
             </button>
@@ -331,17 +331,17 @@ export function AdminInventoryClient() {
           <div className="space-y-5">
             {/* Product name */}
             <div>
-              <label className="block font-dm text-[13px] font-medium text-[--neutral-700] mb-1.5">Product</label>
+              <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-1.5">Product</label>
               <input
                 value={adjustDrawer.product.name}
                 disabled
-                className="w-full h-10 px-3 rounded-[8px] border border-[--neutral-200] bg-[--neutral-50] font-dm text-[14px] text-[--neutral-500] cursor-not-allowed"
+                className="w-full h-10 px-3 rounded-[8px] border border-(--neutral-200) bg-(--neutral-50) font-dm text-[14px] text-(--neutral-500) cursor-not-allowed"
               />
             </div>
 
             {/* Adjustment type */}
             <div>
-              <label className="block font-dm text-[13px] font-medium text-[--neutral-700] mb-2">Adjustment Type</label>
+              <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-2">Adjustment Type</label>
               <div className="flex gap-2">
                 {(["ADD", "REMOVE", "SET"] as AdjustType[]).map((t) => (
                   <label key={t} className="flex items-center gap-2 cursor-pointer">
@@ -351,9 +351,9 @@ export function AdminInventoryClient() {
                       value={t}
                       checked={adjustType === t}
                       onChange={() => setAdjustType(t)}
-                      className="accent-[--green-800]"
+                      className="accent-(--green-800)"
                     />
-                    <span className="font-dm text-[14px] text-[--neutral-700] capitalize">
+                    <span className="font-dm text-[14px] text-(--neutral-700) capitalize">
                       {t === "ADD" ? "Add" : t === "REMOVE" ? "Remove" : "Set Exact"}
                     </span>
                   </label>
@@ -363,28 +363,28 @@ export function AdminInventoryClient() {
 
             {/* Quantity */}
             <div>
-              <label className="block font-dm text-[13px] font-medium text-[--neutral-700] mb-1.5">Quantity</label>
+              <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-1.5">Quantity</label>
               <input
                 type="number"
                 min={0}
                 value={adjustQty}
                 onChange={(e) => setAdjustQty(Math.max(0, Number(e.target.value)))}
-                className="w-full h-10 px-3 rounded-[8px] border border-[--neutral-200] bg-white font-dm text-[14px] text-[--neutral-900] focus:outline-none focus:ring-2 focus:ring-[--green-500]"
+                className="w-full h-10 px-3 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-900) focus:outline-none focus:ring-2 focus:ring-(--green-500)"
               />
               {/* Before → After preview */}
               {adjustQty > 0 && (
                 <div className="mt-2 flex items-center gap-2 text-[13px] font-dm">
-                  <span className="text-[--neutral-500]">Before:</span>
-                  <span className="font-semibold text-[--neutral-900]">{adjustDrawer.product.stock}</span>
-                  <span className="text-[--neutral-400]">→</span>
-                  <span className="text-[--neutral-500]">After:</span>
+                  <span className="text-(--neutral-500)">Before:</span>
+                  <span className="font-semibold text-(--neutral-900)">{adjustDrawer.product.stock}</span>
+                  <span className="text-(--neutral-400)">→</span>
+                  <span className="text-(--neutral-500)">After:</span>
                   <span
                     className={`font-semibold ${
                       previewAfter === 0
-                        ? "text-[--danger]"
+                        ? "text-(--danger)"
                         : previewAfter < 10
-                        ? "text-[--gold-700]"
-                        : "text-[--success]"
+                        ? "text-(--gold-700)"
+                        : "text-(--success)"
                     }`}
                   >
                     {previewAfter}
@@ -395,12 +395,12 @@ export function AdminInventoryClient() {
 
             {/* Reason */}
             <div>
-              <label className="block font-dm text-[13px] font-medium text-[--neutral-700] mb-1.5">Reason</label>
+              <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-1.5">Reason</label>
               <div className="relative">
                 <select
                   value={adjustReason}
                   onChange={(e) => setAdjustReason(e.target.value)}
-                  className="w-full h-10 pl-3 pr-8 rounded-[8px] border border-[--neutral-200] bg-white font-dm text-[14px] text-[--neutral-900] focus:outline-none focus:ring-2 focus:ring-[--green-500] appearance-none"
+                  className="w-full h-10 pl-3 pr-8 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-900) focus:outline-none focus:ring-2 focus:ring-(--green-500) appearance-none"
                 >
                   <option>Received delivery</option>
                   <option>Damaged/Lost</option>
@@ -408,21 +408,21 @@ export function AdminInventoryClient() {
                   <option>Correction</option>
                   <option>Other</option>
                 </select>
-                <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+                <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
               </div>
             </div>
 
             {/* Notes */}
             <div>
-              <label className="block font-dm text-[13px] font-medium text-[--neutral-700] mb-1.5">
-                Notes <span className="text-[--neutral-400] font-normal">(optional)</span>
+              <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-1.5">
+                Notes <span className="text-(--neutral-400) font-normal">(optional)</span>
               </label>
               <textarea
                 value={adjustNotes}
                 onChange={(e) => setAdjustNotes(e.target.value)}
                 rows={3}
                 placeholder="Additional context..."
-                className="w-full px-3 py-2 rounded-[8px] border border-[--neutral-200] bg-white font-dm text-[14px] text-[--neutral-900] placeholder:text-[--neutral-400] resize-none focus:outline-none focus:ring-2 focus:ring-[--green-500]"
+                className="w-full px-3 py-2 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-900) placeholder:text-(--neutral-400) resize-none focus:outline-none focus:ring-2 focus:ring-(--green-500)"
               />
             </div>
           </div>

@@ -43,9 +43,9 @@ const INITIAL_ZONES: ShippingZone[] = [
 ];
 
 const inputCls =
-  "w-full font-dm text-[14px] text-[--neutral-900] rounded-[8px] border border-[--neutral-200] bg-white px-3 py-2 focus:outline-none focus:border-[--green-800] transition-colors placeholder:text-[--neutral-400]";
+  "w-full font-dm text-[14px] text-(--neutral-900) rounded-[8px] border border-(--neutral-200) bg-white px-3 py-2 focus:outline-none focus:border-(--green-800) transition-colors placeholder:text-(--neutral-400)";
 const labelCls =
-  "block font-dm text-[12px] font-semibold text-[--neutral-500] uppercase tracking-[0.6px] mb-1.5";
+  "block font-dm text-[12px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-1.5";
 
 function formatKes(cents: number) {
   return `KES ${(cents / 100).toLocaleString("en-KE")}`;
@@ -70,7 +70,7 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
           style={{ transform: checked ? "translateX(18px)" : "translateX(0)" }}
         />
       </button>
-      <span className="font-dm text-[13px] text-[--neutral-700]">{label}</span>
+      <span className="font-dm text-[13px] text-(--neutral-700)">{label}</span>
     </label>
   );
 }
@@ -162,10 +162,10 @@ export function AdminShippingClient() {
         const z = row as unknown as ShippingZone;
         return (
           <div className="flex items-center gap-2.5 py-1">
-            <div className="w-8 h-8 rounded-[6px] bg-[--green-50] flex items-center justify-center shrink-0">
-              <Truck size={14} className="text-[--green-800]" />
+            <div className="w-8 h-8 rounded-[6px] bg-(--green-50) flex items-center justify-center shrink-0">
+              <Truck size={14} className="text-(--green-800)" />
             </div>
-            <span className="font-dm text-[14px] font-medium text-[--neutral-900]">{z.name}</span>
+            <span className="font-dm text-[14px] font-medium text-(--neutral-900)">{z.name}</span>
           </div>
         );
       },
@@ -175,7 +175,7 @@ export function AdminShippingClient() {
       label: "Regions",
       render: (_: unknown, row: Record<string, unknown>) => {
         const z = row as unknown as ShippingZone;
-        return <span className="font-dm text-[13px] text-[--neutral-500]">{z.regions}</span>;
+        return <span className="font-dm text-[13px] text-(--neutral-500)">{z.regions}</span>;
       },
     },
     {
@@ -184,7 +184,7 @@ export function AdminShippingClient() {
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => {
         const z = row as unknown as ShippingZone;
-        return <span className="font-dm text-[14px] font-semibold text-[--neutral-900]">{formatKes(z.feeKes)}</span>;
+        return <span className="font-dm text-[14px] font-semibold text-(--neutral-900)">{formatKes(z.feeKes)}</span>;
       },
     },
     {
@@ -192,7 +192,7 @@ export function AdminShippingClient() {
       label: "Delivery Time",
       render: (_: unknown, row: Record<string, unknown>) => {
         const z = row as unknown as ShippingZone;
-        return <span className="font-dm text-[13px] text-[--neutral-700]">{z.deliveryDays}</span>;
+        return <span className="font-dm text-[13px] text-(--neutral-700)">{z.deliveryDays}</span>;
       },
     },
     {
@@ -212,13 +212,13 @@ export function AdminShippingClient() {
           <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => openEdit(z)}
-              className="h-8 px-3 rounded-[6px] font-dm text-[12px] text-[--neutral-700] border border-[--neutral-200] hover:bg-[--neutral-50] transition-colors"
+              className="h-8 px-3 rounded-[6px] font-dm text-[12px] text-(--neutral-700) border border-(--neutral-200) hover:bg-(--neutral-50) transition-colors"
             >
               Edit
             </button>
             <button
               onClick={() => setDeleteTarget(z.id)}
-              className="h-8 px-3 rounded-[6px] font-dm text-[12px] text-[--danger] border border-[--danger-bg] bg-[--danger-bg] hover:opacity-80 transition-opacity"
+              className="h-8 px-3 rounded-[6px] font-dm text-[12px] text-(--danger) border border-(--danger-bg) bg-(--danger-bg) hover:opacity-80 transition-opacity"
             >
               Delete
             </button>
@@ -231,7 +231,7 @@ export function AdminShippingClient() {
   const addButton = (
     <button
       onClick={openCreate}
-      className="h-10 px-5 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+      className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
     >
       <Plus size={16} /> Add Zone
     </button>
@@ -241,13 +241,13 @@ export function AdminShippingClient() {
     <>
       <button
         onClick={closeDrawer}
-        className="h-9 px-4 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] text-[--neutral-700] hover:bg-[--neutral-50] mr-auto transition-colors"
+        className="h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) mr-auto transition-colors"
       >
         Cancel
       </button>
       <button
         onClick={handleSubmit}
-        className="h-9 px-5 rounded-[8px] bg-[--green-800] font-dm text-[13px] font-medium text-white hover:opacity-90 transition-opacity"
+        className="h-9 px-5 rounded-[8px] bg-(--green-800) font-dm text-[13px] font-medium text-white hover:opacity-90 transition-opacity"
       >
         {editing ? "Save Changes" : "Create Zone"}
       </button>
@@ -335,7 +335,7 @@ export function AdminShippingClient() {
                   <option value="5–7 business days">5–7 business days</option>
                   <option value="7–14 business days">7–14 business days</option>
                 </select>
-                <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+                <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
               </div>
             </div>
           </div>

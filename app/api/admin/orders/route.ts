@@ -43,8 +43,8 @@ export async function GET(req: NextRequest) {
 
     if (admin.adminProfile?.isSuperAdmin) {
       if (branchId) where.branchId = branchId;
-    } else {
-      where.branchId = admin.adminProfile?.branchId ?? "__NO_BRANCH__";
+    } else if (admin.adminProfile?.branchId) {
+      where.branchId = admin.adminProfile.branchId;
     }
 
     if (search) {

@@ -82,7 +82,7 @@ function TierCard({ tier }: { tier: LoyaltyTier }) {
   const headerStyle = { backgroundColor: tier.color || "#27731e" };
 
   return (
-    <div className="bg-white dark:bg-[--dark-surface] rounded-[16px] border border-[--neutral-200] dark:border-[--dark-border] shadow-[--e1] overflow-hidden">
+    <div className="bg-white dark:bg-(--dark-surface) rounded-[16px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) overflow-hidden">
       {/* Colored header band */}
       <div style={headerStyle} className="px-6 py-5">
         <div className="flex items-center justify-between">
@@ -106,20 +106,20 @@ function TierCard({ tier }: { tier: LoyaltyTier }) {
       {/* Body */}
       <div className="p-5">
         <div className="flex items-center gap-2 mb-4">
-          <Star size={14} className="text-[--gold-500]" />
-          <span className="font-dm text-[13px] font-semibold text-[--neutral-700] dark:text-[--dark-text]">
+          <Star size={14} className="text-(--gold-500)" />
+          <span className="font-dm text-[13px] font-semibold text-(--neutral-700) dark:text-(--dark-text)">
             {tier.multiplier}x points multiplier
           </span>
         </div>
 
         {editing ? (
-          <div className="p-4 rounded-[10px] bg-[--neutral-50] dark:bg-[--dark-bg] border border-[--neutral-200] dark:border-[--dark-border]">
-            <p className="font-dm text-[13px] text-[--neutral-500] dark:text-[--dark-muted]">
+          <div className="p-4 rounded-[10px] bg-(--neutral-50) dark:bg-(--dark-bg) border border-(--neutral-200) dark:border-(--dark-border)">
+            <p className="font-dm text-[13px] text-(--neutral-500) dark:text-(--dark-muted)">
               Tier editing UI — connect to a PATCH /api/admin/loyalty/tiers/[id] endpoint when needed.
             </p>
             <button
               onClick={() => setEditing(false)}
-              className="mt-3 h-8 px-4 rounded-[6px] border border-[--neutral-200] dark:border-[--dark-border] font-dm text-[13px] text-[--neutral-700] dark:text-[--dark-text] hover:bg-[--neutral-100] transition-colors"
+              className="mt-3 h-8 px-4 rounded-[6px] border border-(--neutral-200) dark:border-(--dark-border) font-dm text-[13px] text-(--neutral-700) dark:text-(--dark-text) hover:bg-(--neutral-100) transition-colors"
             >
               Close
             </button>
@@ -127,12 +127,12 @@ function TierCard({ tier }: { tier: LoyaltyTier }) {
         ) : (
           <ul className="space-y-2">
             {tier.benefits.length === 0 ? (
-              <li className="font-dm text-[13px] text-[--neutral-400]">No benefits listed yet.</li>
+              <li className="font-dm text-[13px] text-(--neutral-400)">No benefits listed yet.</li>
             ) : (
               tier.benefits.map((b, i) => (
                 <li key={i} className="flex items-start gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[--green-800] mt-2 shrink-0" />
-                  <span className="font-dm text-[14px] text-[--neutral-700] dark:text-[--dark-text]">{b}</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-(--green-800) mt-2 shrink-0" />
+                  <span className="font-dm text-[14px] text-(--neutral-700) dark:text-(--dark-text)">{b}</span>
                 </li>
               ))
             )}
@@ -164,14 +164,14 @@ export function AdminLoyaltyClient() {
         const cp = row as unknown as CustomerPoints;
         return (
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-[--green-800] text-white flex items-center justify-center font-dm font-semibold text-[12px] shrink-0">
+            <div className="w-8 h-8 rounded-full bg-(--green-800) text-white flex items-center justify-center font-dm font-semibold text-[12px] shrink-0">
               {initials(cp.user.name)}
             </div>
             <div>
-              <div className="font-dm text-[14px] font-semibold text-[--neutral-900] dark:text-[--dark-text]">
+              <div className="font-dm text-[14px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
                 {cp.user.name}
               </div>
-              <div className="font-dm text-[12px] text-[--neutral-500] dark:text-[--dark-muted]">
+              <div className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted)">
                 {cp.user.email}
               </div>
             </div>
@@ -184,7 +184,7 @@ export function AdminLoyaltyClient() {
       label: "Points",
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => (
-        <span className="font-dm text-[14px] font-semibold text-[--neutral-900] dark:text-[--dark-text]">
+        <span className="font-dm text-[14px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
           {(row as unknown as CustomerPoints).points.toLocaleString()}
         </span>
       ),
@@ -200,7 +200,7 @@ export function AdminLoyaltyClient() {
       key: "orders",
       label: "Orders",
       render: (_: unknown, row: Record<string, unknown>) => (
-        <span className="font-dm text-[14px] text-[--neutral-700] dark:text-[--dark-text]">
+        <span className="font-dm text-[14px] text-(--neutral-700) dark:text-(--dark-text)">
           {(row as unknown as CustomerPoints).user._count.orders}
         </span>
       ),
@@ -210,7 +210,7 @@ export function AdminLoyaltyClient() {
       label: "Last Updated",
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => (
-        <span className="font-dm text-[13px] text-[--neutral-500] dark:text-[--dark-muted]">
+        <span className="font-dm text-[13px] text-(--neutral-500) dark:text-(--dark-muted)">
           {formatDate((row as unknown as CustomerPoints).updatedAt)}
         </span>
       ),
@@ -232,14 +232,14 @@ export function AdminLoyaltyClient() {
       <div className="px-6 pb-8 space-y-8">
         {/* Tier cards */}
         <div>
-          <h2 className="font-syne text-[18px] font-semibold text-[--neutral-900] dark:text-[--dark-text] mb-4">
+          <h2 className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">
             Tiers
           </h2>
 
           {isLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-64 bg-[--neutral-100] dark:bg-[--dark-border] rounded-[16px] animate-pulse" />
+                <div key={i} className="h-64 bg-(--neutral-100) dark:bg-(--dark-border) rounded-[16px] animate-pulse" />
               ))}
             </div>
           ) : tiers.length === 0 ? (
@@ -259,7 +259,7 @@ export function AdminLoyaltyClient() {
 
         {/* Customer points table */}
         <div>
-          <h2 className="font-syne text-[18px] font-semibold text-[--neutral-900] dark:text-[--dark-text] mb-4">
+          <h2 className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">
             Top Customers by Points
           </h2>
           <DataTable

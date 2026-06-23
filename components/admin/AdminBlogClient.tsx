@@ -60,12 +60,12 @@ export function AdminBlogClient() {
         const p = row as unknown as BlogPost;
         return (
           <div className="flex items-center gap-2 max-w-[420px]">
-            <div className="w-8 h-8 rounded-full bg-[--green-50] flex items-center justify-center shrink-0">
-              <FileText size={14} className="text-[--green-800]" />
+            <div className="w-8 h-8 rounded-full bg-(--green-50) flex items-center justify-center shrink-0">
+              <FileText size={14} className="text-(--green-800)" />
             </div>
             <div className="min-w-0">
-              <div className="font-dm text-[14px] font-medium text-[--neutral-900] truncate">{String(v)}</div>
-              <div className="font-dm text-[12px] text-[--neutral-400] truncate">/{p.slug}</div>
+              <div className="font-dm text-[14px] font-medium text-(--neutral-900) truncate">{String(v)}</div>
+              <div className="font-dm text-[12px] text-(--neutral-400) truncate">/{p.slug}</div>
             </div>
           </div>
         );
@@ -81,7 +81,7 @@ export function AdminBlogClient() {
       key: "publishedAt",
       label: "Published",
       render: (v: unknown) => (
-        <span className="font-dm text-[14px] text-[--neutral-700]">
+        <span className="font-dm text-[14px] text-(--neutral-700)">
           {v ? new Date(String(v)).toLocaleDateString() : "—"}
         </span>
       ),
@@ -96,13 +96,13 @@ export function AdminBlogClient() {
             <Link
               href={`/admin/content/blog/${p.id}/edit`}
               onClick={(e) => e.stopPropagation()}
-              className="h-8 px-3 flex items-center rounded-[6px] font-dm text-[13px] bg-[--neutral-100] hover:bg-[--neutral-200] text-[--neutral-700] transition-colors"
+              className="h-8 px-3 flex items-center rounded-[6px] font-dm text-[13px] bg-(--neutral-100) hover:bg-(--neutral-200) text-(--neutral-700) transition-colors"
             >
               Edit
             </Link>
             <button
               onClick={(e) => { e.stopPropagation(); setDeleteTarget(p); }}
-              className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-[--danger-bg] hover:bg-red-100 text-[--danger] transition-colors"
+              className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-(--danger-bg) hover:bg-red-100 text-(--danger) transition-colors"
             >
               Archive
             </button>
@@ -113,7 +113,7 @@ export function AdminBlogClient() {
   ];
 
   return (
-    <div className="min-h-screen bg-[--neutral-50]">
+    <div className="min-h-screen bg-(--neutral-50)">
       <PageHeader
         breadcrumbs={[{ label: "Content", href: "/admin/content/blog" }, { label: "Blog", href: "/admin/content/blog" }]}
         title="Blog Posts"
@@ -121,7 +121,7 @@ export function AdminBlogClient() {
         action={
           <Link
             href="/admin/content/blog/new"
-            className="flex items-center gap-2 h-10 px-4 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:bg-[--green-900] transition-colors"
+            className="flex items-center gap-2 h-10 px-4 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors"
           >
             <Plus size={16} />
             New Post
@@ -137,8 +137,8 @@ export function AdminBlogClient() {
               onClick={() => setFilter(f)}
               className={`h-9 px-4 rounded-full font-dm text-[13px] font-medium transition-colors ${
                 filter === f
-                  ? "bg-[--green-800] text-white"
-                  : "bg-white border border-[--neutral-200] text-[--neutral-700] hover:bg-[--neutral-50]"
+                  ? "bg-(--green-800) text-white"
+                  : "bg-white border border-(--neutral-200) text-(--neutral-700) hover:bg-(--neutral-50)"
               }`}
             >
               {f === "All" ? "All" : f.charAt(0) + f.slice(1).toLowerCase()}

@@ -54,16 +54,16 @@ export function DataTable({
   const to = Math.min((page + 1) * pageSize, sorted.length);
 
   return (
-    <div className="bg-white dark:bg-[--dark-surface] rounded-[12px] border border-[--neutral-200] dark:border-[--dark-border] shadow-[--e1] overflow-hidden">
+    <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="bg-[--neutral-50] dark:bg-[--dark-bg] border-b border-[--neutral-200] dark:border-[--dark-border]">
+            <tr className="bg-(--green-50) dark:bg-(--dark-bg) border-b border-(--neutral-200) dark:border-(--dark-border)">
               {columns.map(col => (
                 <th
                   key={col.key}
                   onClick={() => col.sortable && handleSort(col.key)}
-                  className={`px-4 py-3 text-left font-dm text-[13px] font-medium uppercase tracking-wider text-[--neutral-500] dark:text-[--dark-muted] whitespace-nowrap ${col.sortable ? "cursor-pointer select-none hover:text-[--neutral-700]" : ""}`}
+                  className={`px-4 py-3 text-left font-dm text-[13px] font-semibold uppercase tracking-wider text-(--neutral-500) dark:text-(--dark-muted) whitespace-nowrap ${col.sortable ? "cursor-pointer select-none hover:text-(--neutral-900) dark:hover:text-(--dark-accent)" : ""}`}
                 >
                   <span className="flex items-center gap-1">
                     {col.label}
@@ -91,10 +91,10 @@ export function DataTable({
                 <tr
                   key={i}
                   onClick={() => onRowClick?.(row)}
-                  className={`border-b border-[--neutral-200] dark:border-[--dark-border] transition-colors h-14 ${onRowClick ? "cursor-pointer hover:bg-[--neutral-50] dark:hover:bg-[--dark-bg]" : ""}`}
+                  className={`border-b border-(--neutral-200) dark:border-(--dark-border) transition-colors h-14 ${i % 2 === 1 ? "bg-(--green-50) dark:bg-(--dark-bg)" : "bg-white dark:bg-(--dark-surface)"} ${onRowClick ? "cursor-pointer hover:bg-(--green-100) dark:hover:bg-(--dark-border)" : ""}`}
                 >
                   {columns.map(col => (
-                    <td key={col.key} className="px-4 font-dm text-[14px] text-[--neutral-900] dark:text-[--dark-text]">
+                    <td key={col.key} className="px-4 font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text)">
                       {col.render ? col.render(row[col.key], row) : String(row[col.key] ?? "")}
                     </td>
                   ))}
@@ -106,15 +106,15 @@ export function DataTable({
       </div>
 
       {!loading && sorted.length > pageSize && (
-        <div className="flex items-center justify-between px-4 py-3 border-t border-[--neutral-200] dark:border-[--dark-border]">
-          <span className="font-dm text-[13px] text-[--neutral-500]">
+        <div className="flex items-center justify-between px-4 py-3 border-t border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg)">
+          <span className="font-dm text-[13px] text-(--green-800) dark:text-(--dark-muted)">
             Showing {from}–{to} of {sorted.length}
           </span>
           <div className="flex items-center gap-1">
             <button
               disabled={page === 0}
               onClick={() => setPage(p => p - 1)}
-              className="h-8 w-8 flex items-center justify-center rounded-[6px] font-dm text-[13px] text-[--neutral-700] hover:bg-[--neutral-100] disabled:opacity-40 disabled:cursor-not-allowed"
+              className="h-8 w-8 flex items-center justify-center rounded-[6px] font-dm text-[13px] text-(--green-800) dark:text-(--dark-text) hover:bg-(--green-100) dark:hover:bg-(--dark-border) disabled:opacity-40 disabled:cursor-not-allowed"
             >
               ‹
             </button>
@@ -123,7 +123,7 @@ export function DataTable({
                 key={i}
                 onClick={() => setPage(i)}
                 className={`h-8 w-8 flex items-center justify-center rounded-[6px] font-dm text-[13px] transition-colors ${
-                  i === page ? "bg-[--green-800] text-white" : "text-[--neutral-700] hover:bg-[--neutral-100]"
+                  i === page ? "bg-(--green-800) text-white dark:bg-(--dark-accent) dark:text-(--dark-bg)" : "text-(--green-800) dark:text-(--dark-text) hover:bg-(--green-100) dark:hover:bg-(--dark-border)"
                 }`}
               >
                 {i + 1}
@@ -132,7 +132,7 @@ export function DataTable({
             <button
               disabled={page === totalPages - 1}
               onClick={() => setPage(p => p + 1)}
-              className="h-8 w-8 flex items-center justify-center rounded-[6px] font-dm text-[13px] text-[--neutral-700] hover:bg-[--neutral-100] disabled:opacity-40 disabled:cursor-not-allowed"
+              className="h-8 w-8 flex items-center justify-center rounded-[6px] font-dm text-[13px] text-(--green-800) dark:text-(--dark-text) hover:bg-(--green-100) dark:hover:bg-(--dark-border) disabled:opacity-40 disabled:cursor-not-allowed"
             >
               ›
             </button>

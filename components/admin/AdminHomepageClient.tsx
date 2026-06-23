@@ -76,7 +76,7 @@ export function AdminHomepageClient() {
   }
 
   return (
-    <div className="min-h-screen bg-[--neutral-50]">
+    <div className="min-h-screen bg-(--neutral-50)">
       <PageHeader
         breadcrumbs={[{ label: "Content", href: "/admin/content/homepage" }, { label: "Homepage Builder", href: "/admin/content/homepage" }]}
         title="Homepage Builder"
@@ -86,30 +86,30 @@ export function AdminHomepageClient() {
       <div className="px-6 pb-6 space-y-3 max-w-[760px]">
         {isLoading ? (
           Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-[72px] w-full rounded-[12px] bg-[--neutral-100] dark:bg-[--dark-border] animate-pulse" />
+            <div key={i} className="h-[72px] w-full rounded-[12px] bg-(--neutral-100) dark:bg-(--dark-border) animate-pulse" />
           ))
         ) : sections.length === 0 ? (
-          <div className="bg-white dark:bg-[--dark-surface] rounded-[12px] border border-[--neutral-200] dark:border-[--dark-border] p-8 text-center font-dm text-[14px] text-[--neutral-500]">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) p-8 text-center font-dm text-[14px] text-(--neutral-500)">
             No homepage sections configured yet.
           </div>
         ) : (
           sections.map((section) => (
             <div
               key={section.id}
-              className="bg-white dark:bg-[--dark-surface] rounded-[12px] border border-[--neutral-200] dark:border-[--dark-border] shadow-[--e1] p-4 flex items-center gap-4"
+              className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 flex items-center gap-4"
             >
-              <GripVertical size={18} className="text-[--neutral-300] shrink-0 cursor-grab" />
+              <GripVertical size={18} className="text-(--neutral-300) shrink-0 cursor-grab" />
 
-              <span className="inline-block px-2 py-0.5 rounded-full bg-[--gold-50] font-dm text-[11px] font-medium uppercase tracking-wide text-[--gold-700] shrink-0">
+              <span className="inline-block px-2 py-0.5 rounded-full bg-(--gold-50) font-dm text-[11px] font-medium uppercase tracking-wide text-(--gold-700) shrink-0">
                 {section.type.replace(/_/g, " ")}
               </span>
 
               <div className="flex-1 min-w-0">
-                <div className="font-dm text-[14px] font-medium text-[--neutral-900] dark:text-[--dark-text] truncate">
+                <div className="font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text) truncate">
                   {String(section.config?.title ?? section.type)}
                 </div>
                 {section.config?.subtitle ? (
-                  <div className="font-dm text-[13px] text-[--neutral-500] truncate">
+                  <div className="font-dm text-[13px] text-(--neutral-500) truncate">
                     {String(section.config.subtitle)}
                   </div>
                 ) : null}
@@ -120,8 +120,8 @@ export function AdminHomepageClient() {
                 disabled={saveMutation.isPending}
                 className={`flex items-center gap-1.5 h-8 px-3 rounded-[6px] font-dm text-[13px] transition-colors disabled:opacity-50 ${
                   section.visible
-                    ? "bg-[--green-50] text-[--success]"
-                    : "bg-[--neutral-100] text-[--neutral-500]"
+                    ? "bg-(--green-50) text-(--success)"
+                    : "bg-(--neutral-100) text-(--neutral-500)"
                 }`}
               >
                 {section.visible ? <Eye size={14} /> : <EyeOff size={14} />}
@@ -130,7 +130,7 @@ export function AdminHomepageClient() {
 
               <button
                 onClick={() => openEdit(section)}
-                className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-[--neutral-100] hover:bg-[--neutral-200] text-[--neutral-700] transition-colors shrink-0"
+                className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-(--neutral-100) hover:bg-(--neutral-200) text-(--neutral-700) transition-colors shrink-0"
               >
                 Edit
               </button>
@@ -148,14 +148,14 @@ export function AdminHomepageClient() {
           <>
             <button
               onClick={() => setEditing(null)}
-              className="h-10 px-4 rounded-[8px] border border-[--neutral-200] font-dm text-[14px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors"
+              className="h-10 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
               disabled={saveMutation.isPending}
-              className="h-10 px-5 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:bg-[--green-900] transition-colors disabled:opacity-50 ml-auto"
+              className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors disabled:opacity-50 ml-auto"
             >
               {saveMutation.isPending ? "Saving..." : "Save Changes"}
             </button>
@@ -196,9 +196,9 @@ export function AdminHomepageClient() {
               type="checkbox"
               checked={form.visible}
               onChange={(e) => setForm((f) => ({ ...f, visible: e.target.checked }))}
-              className="w-4 h-4 accent-[--green-800]"
+              className="w-4 h-4 accent-(--green-800)"
             />
-            <span className="font-dm text-[14px] text-[--neutral-700]">Visible on storefront</span>
+            <span className="font-dm text-[14px] text-(--neutral-700)">Visible on storefront</span>
           </label>
         </div>
       </Drawer>
@@ -209,11 +209,11 @@ export function AdminHomepageClient() {
 function FormField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block font-dm text-[13px] font-medium text-[--neutral-700] mb-1.5">{label}</label>
+      <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-1.5">{label}</label>
       {children}
     </div>
   );
 }
 
 const inputCls =
-  "w-full h-10 px-3 rounded-[8px] border border-[--neutral-200] bg-white font-dm text-[14px] text-[--neutral-900] placeholder:text-[--neutral-400] focus:outline-none focus:ring-2 focus:ring-[--green-500] focus:border-transparent transition-shadow";
+  "w-full h-10 px-3 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-900) placeholder:text-(--neutral-400) focus:outline-none focus:ring-2 focus:ring-(--green-500) focus:border-transparent transition-shadow";

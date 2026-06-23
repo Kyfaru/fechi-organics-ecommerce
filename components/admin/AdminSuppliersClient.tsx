@@ -168,29 +168,29 @@ export function AdminSuppliersClient() {
       sortable: true,
       render: (v: unknown) => (
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-[--green-50] flex items-center justify-center shrink-0">
-            <Truck size={14} className="text-[--green-800]" />
+          <div className="w-8 h-8 rounded-full bg-(--green-50) flex items-center justify-center shrink-0">
+            <Truck size={14} className="text-(--green-800)" />
           </div>
-          <span className="font-dm text-[14px] font-medium text-[--neutral-900]">{String(v)}</span>
+          <span className="font-dm text-[14px] font-medium text-(--neutral-900)">{String(v)}</span>
         </div>
       ),
     },
     {
       key: "contactPerson",
       label: "Contact",
-      render: (v: unknown) => <span className="font-dm text-[14px] text-[--neutral-700]">{String(v || "—")}</span>,
+      render: (v: unknown) => <span className="font-dm text-[14px] text-(--neutral-700)">{String(v || "—")}</span>,
     },
     {
       key: "email",
       label: "Email",
       render: (v: unknown) => (
-        <span className="font-dm text-[14px] text-[--neutral-700]">{String(v || "—")}</span>
+        <span className="font-dm text-[14px] text-(--neutral-700)">{String(v || "—")}</span>
       ),
     },
     {
       key: "phone",
       label: "Phone",
-      render: (v: unknown) => <span className="font-dm text-[14px] text-[--neutral-700]">{String(v || "—")}</span>,
+      render: (v: unknown) => <span className="font-dm text-[14px] text-(--neutral-700)">{String(v || "—")}</span>,
     },
     {
       key: "categories",
@@ -200,10 +200,10 @@ export function AdminSuppliersClient() {
         return (
           <div className="flex flex-wrap gap-1">
             {cats.length ? cats.slice(0, 2).map((c) => (
-              <span key={c} className="inline-block px-2 py-0.5 rounded-full bg-[--neutral-100] font-dm text-[11px] text-[--neutral-700]">{c}</span>
-            )) : <span className="text-[--neutral-400] text-[14px]">—</span>}
+              <span key={c} className="inline-block px-2 py-0.5 rounded-full bg-(--neutral-100) font-dm text-[11px] text-(--neutral-700)">{c}</span>
+            )) : <span className="text-(--neutral-400) text-[14px]">—</span>}
             {cats.length > 2 && (
-              <span className="font-dm text-[11px] text-[--neutral-400]">+{cats.length - 2}</span>
+              <span className="font-dm text-[11px] text-(--neutral-400)">+{cats.length - 2}</span>
             )}
           </div>
         );
@@ -221,13 +221,13 @@ export function AdminSuppliersClient() {
         <div className="flex items-center gap-2">
           <button
             onClick={(e) => { e.stopPropagation(); openEdit(row as unknown as Supplier); }}
-            className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-[--neutral-100] hover:bg-[--neutral-200] text-[--neutral-700] transition-colors"
+            className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-(--neutral-100) hover:bg-(--neutral-200) text-(--neutral-700) transition-colors"
           >
             Edit
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); setDeleteTarget(row as unknown as Supplier); }}
-            className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-[--danger-bg] hover:bg-red-100 text-[--danger] transition-colors"
+            className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-(--danger-bg) hover:bg-red-100 text-(--danger) transition-colors"
           >
             Deactivate
           </button>
@@ -240,14 +240,14 @@ export function AdminSuppliersClient() {
   const selectedSupplier = drawer.supplier;
 
   return (
-    <div className="min-h-screen bg-[--neutral-50]">
+    <div className="min-h-screen bg-(--neutral-50)">
       <PageHeader
         title="Suppliers"
         description="Manage your product suppliers"
         action={
           <button
             onClick={openCreate}
-            className="flex items-center gap-2 h-10 px-4 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:bg-[--green-900] transition-colors"
+            className="flex items-center gap-2 h-10 px-4 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors"
           >
             <Plus size={16} />
             Add Supplier
@@ -276,14 +276,14 @@ export function AdminSuppliersClient() {
           <>
             <button
               onClick={closeDrawer}
-              className="h-10 px-4 rounded-[8px] border border-[--neutral-200] font-dm text-[14px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors"
+              className="h-10 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleSubmit}
               disabled={isPending || !form.name.trim()}
-              className="h-10 px-5 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:bg-[--green-900] transition-colors disabled:opacity-50 ml-auto"
+              className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors disabled:opacity-50 ml-auto"
             >
               {isPending ? "Saving..." : drawer.mode === "create" ? "Add Supplier" : "Save Changes"}
             </button>
@@ -360,7 +360,7 @@ export function AdminSuppliersClient() {
                 <option>COD</option>
                 <option>Upfront</option>
               </select>
-              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
             </div>
           </FormField>
 
@@ -384,27 +384,27 @@ export function AdminSuppliersClient() {
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </select>
-              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
             </div>
           </FormField>
 
           {/* Purchase Orders mini-table when editing */}
           {drawer.mode === "edit" && selectedSupplier && selectedSupplier.purchaseOrders.length > 0 && (
             <div>
-              <div className="font-dm text-[13px] font-medium text-[--neutral-700] mb-2 mt-4">
+              <div className="font-dm text-[13px] font-medium text-(--neutral-700) mb-2 mt-4">
                 Recent Purchase Orders
               </div>
-              <div className="rounded-[8px] border border-[--neutral-200] overflow-hidden">
+              <div className="rounded-[8px] border border-(--neutral-200) overflow-hidden">
                 {selectedSupplier.purchaseOrders.map((po) => (
-                  <div key={po.id} className="flex items-center justify-between px-3 py-2 border-b border-[--neutral-200] last:border-b-0 hover:bg-[--neutral-50]">
+                  <div key={po.id} className="flex items-center justify-between px-3 py-2 border-b border-(--neutral-200) last:border-b-0 hover:bg-(--neutral-50)">
                     <div>
-                      <div className="font-dm text-[13px] font-medium text-[--neutral-900]">{po.poNumber}</div>
-                      <div className="font-dm text-[12px] text-[--neutral-400]">
+                      <div className="font-dm text-[13px] font-medium text-(--neutral-900)">{po.poNumber}</div>
+                      <div className="font-dm text-[12px] text-(--neutral-400)">
                         {new Date(po.createdAt).toLocaleDateString()}
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="font-dm text-[13px] text-[--neutral-700]">
+                      <span className="font-dm text-[13px] text-(--neutral-700)">
                         KES {(po.totalAmount / 100).toLocaleString()}
                       </span>
                       <StatusPill status={po.status.toLowerCase()} />
@@ -442,9 +442,9 @@ function FormField({ label, required, hint, children }: {
 }) {
   return (
     <div>
-      <label className="block font-dm text-[13px] font-medium text-[--neutral-700] mb-1.5">
-        {label} {required && <span className="text-[--danger]">*</span>}
-        {hint && <span className="text-[--neutral-400] font-normal ml-1">({hint})</span>}
+      <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-1.5">
+        {label} {required && <span className="text-(--danger)">*</span>}
+        {hint && <span className="text-(--neutral-400) font-normal ml-1">({hint})</span>}
       </label>
       {children}
     </div>
@@ -452,4 +452,4 @@ function FormField({ label, required, hint, children }: {
 }
 
 const inputCls =
-  "w-full h-10 px-3 rounded-[8px] border border-[--neutral-200] bg-white font-dm text-[14px] text-[--neutral-900] placeholder:text-[--neutral-400] focus:outline-none focus:ring-2 focus:ring-[--green-500] focus:border-transparent transition-shadow";
+  "w-full h-10 px-3 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-900) placeholder:text-(--neutral-400) focus:outline-none focus:ring-2 focus:ring-(--green-500) focus:border-transparent transition-shadow";

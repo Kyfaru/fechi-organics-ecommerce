@@ -96,7 +96,7 @@ function Avatar({ name, size = 36 }: { name: string; size?: number }) {
   return (
     <div
       style={{ width: size, height: size, fontSize: size * 0.36 }}
-      className="rounded-full bg-[--green-800] text-white flex items-center justify-center font-dm font-semibold shrink-0"
+      className="rounded-full bg-(--green-800) text-white flex items-center justify-center font-dm font-semibold shrink-0"
     >
       {initials(name)}
     </div>
@@ -121,8 +121,8 @@ function FilterPill({
       className={[
         "h-8 px-4 rounded-full font-dm text-[13px] font-medium transition-colors",
         active
-          ? "bg-[--green-800] text-white"
-          : "bg-white dark:bg-[--dark-surface] border border-[--neutral-200] dark:border-[--dark-border] text-[--neutral-700] dark:text-[--dark-text] hover:border-[--neutral-400]",
+          ? "bg-(--green-800) text-white"
+          : "bg-white dark:bg-(--dark-surface) border border-(--neutral-200) dark:border-(--dark-border) text-(--neutral-700) dark:text-(--dark-text) hover:border-(--neutral-400)",
       ].join(" ")}
     >
       {label}
@@ -148,7 +148,7 @@ function ActionsMenu({
     <div className="relative">
       <button
         onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
-        className="w-8 h-8 flex items-center justify-center rounded-[6px] text-[--neutral-500] hover:bg-[--neutral-100] dark:hover:bg-[--dark-border] transition-colors"
+        className="w-8 h-8 flex items-center justify-center rounded-[6px] text-(--neutral-500) hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) transition-colors"
       >
         <MoreHorizontal size={16} />
       </button>
@@ -156,21 +156,21 @@ function ActionsMenu({
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-9 z-20 w-44 bg-white dark:bg-[--dark-surface] rounded-[10px] shadow-[--e2] border border-[--neutral-200] dark:border-[--dark-border] py-1 overflow-hidden">
+          <div className="absolute right-0 top-9 z-20 w-44 bg-white dark:bg-(--dark-surface) rounded-[10px] shadow-(--e2) border border-(--neutral-200) dark:border-(--dark-border) py-1 overflow-hidden">
             <button
               onClick={() => { setOpen(false); onView(); }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-[--neutral-700] dark:text-[--dark-text] hover:bg-[--neutral-50] dark:hover:bg-[--dark-border]"
+              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) dark:text-(--dark-text) hover:bg-(--neutral-50) dark:hover:bg-(--dark-border)"
             >
               <Eye size={14} /> View Profile
             </button>
-            <div className="border-t border-[--neutral-200] dark:border-[--dark-border] my-1" />
+            <div className="border-t border-(--neutral-200) dark:border-(--dark-border) my-1" />
             <button
               onClick={() => { setOpen(false); onBanToggle(); }}
               className={[
                 "w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px]",
                 customer.banned
-                  ? "text-[--success] hover:bg-[--green-50]"
-                  : "text-[--danger] hover:bg-[--danger-bg]",
+                  ? "text-(--success) hover:bg-(--green-50)"
+                  : "text-(--danger) hover:bg-(--danger-bg)",
               ].join(" ")}
             >
               {customer.banned ? (
@@ -232,7 +232,7 @@ function CustomerDrawer({
       {detailLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-10 bg-[--neutral-100] dark:bg-[--dark-border] rounded-[8px] animate-pulse" />
+            <div key={i} className="h-10 bg-(--neutral-100) dark:bg-(--dark-border) rounded-[8px] animate-pulse" />
           ))}
         </div>
       ) : !customer ? (
@@ -240,13 +240,13 @@ function CustomerDrawer({
       ) : (
         <>
           {/* Customer header */}
-          <div className="flex items-center gap-4 mb-6 pb-6 border-b border-[--neutral-200] dark:border-[--dark-border]">
+          <div className="flex items-center gap-4 mb-6 pb-6 border-b border-(--neutral-200) dark:border-(--dark-border)">
             <Avatar name={customer.name} size={56} />
             <div>
-              <div className="font-syne text-[18px] font-semibold text-[--neutral-900] dark:text-[--dark-text]">
+              <div className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
                 {customer.name}
               </div>
-              <div className="font-dm text-[14px] text-[--neutral-500] dark:text-[--dark-muted]">
+              <div className="font-dm text-[14px] text-(--neutral-500) dark:text-(--dark-muted)">
                 {customer.email}
               </div>
               <div className="mt-1">
@@ -256,7 +256,7 @@ function CustomerDrawer({
           </div>
 
           {/* Tab bar */}
-          <div className="flex gap-1 mb-6 bg-[--neutral-100] dark:bg-[--dark-border] rounded-[10px] p-1">
+          <div className="flex gap-1 mb-6 bg-(--neutral-100) dark:bg-(--dark-border) rounded-[10px] p-1">
             {TABS.map((t) => (
               <button
                 key={t.key}
@@ -264,8 +264,8 @@ function CustomerDrawer({
                 className={[
                   "flex-1 h-8 rounded-[8px] font-dm text-[13px] font-medium transition-colors",
                   tab === t.key
-                    ? "bg-white dark:bg-[--dark-surface] text-[--neutral-900] dark:text-[--dark-text] shadow-[--e1]"
-                    : "text-[--neutral-500] dark:text-[--dark-muted] hover:text-[--neutral-700]",
+                    ? "bg-white dark:bg-(--dark-surface) text-(--neutral-900) dark:text-(--dark-text) shadow-(--e1)"
+                    : "text-(--neutral-500) dark:text-(--dark-muted) hover:text-(--neutral-700)",
                 ].join(" ")}
               >
                 {t.label}
@@ -279,7 +279,7 @@ function CustomerDrawer({
               {ordersLoading ? (
                 <div className="space-y-2">
                   {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="h-14 bg-[--neutral-100] dark:bg-[--dark-border] rounded-[8px] animate-pulse" />
+                    <div key={i} className="h-14 bg-(--neutral-100) dark:bg-(--dark-border) rounded-[8px] animate-pulse" />
                   ))}
                 </div>
               ) : orders.length === 0 ? (
@@ -293,19 +293,19 @@ function CustomerDrawer({
                   {orders.map((order) => (
                     <div
                       key={order.id}
-                      className="flex items-center justify-between p-3 rounded-[10px] border border-[--neutral-200] dark:border-[--dark-border] bg-[--neutral-50] dark:bg-[--dark-bg]"
+                      className="flex items-center justify-between p-3 rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg)"
                     >
                       <div>
-                        <div className="font-dm text-[13px] font-semibold text-[--neutral-900] dark:text-[--dark-text] font-mono">
+                        <div className="font-dm text-[13px] font-semibold text-(--neutral-900) dark:text-(--dark-text) font-mono">
                           #{order.id.slice(0, 8).toUpperCase()}
                         </div>
-                        <div className="font-dm text-[12px] text-[--neutral-500] dark:text-[--dark-muted] mt-0.5">
+                        <div className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted) mt-0.5">
                           {order._count.items} item{order._count.items !== 1 ? "s" : ""} &middot; {formatDate(order.createdAt)}
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
                         <StatusPill status={order.status.toLowerCase()} />
-                        <span className="font-dm text-[13px] font-semibold text-[--neutral-900] dark:text-[--dark-text]">
+                        <span className="font-dm text-[13px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
                           {formatKes(order.totalKes)}
                         </span>
                       </div>
@@ -330,17 +330,17 @@ function CustomerDrawer({
                 { label: "Loyalty Tier", value: customer.loyaltyPoints?.tier ?? "None" },
                 { label: "Total Orders", value: String(customer._count.orders) },
               ].map(({ label, value }) => (
-                <div key={label} className="flex justify-between items-start py-2 border-b border-[--neutral-200] dark:border-[--dark-border] last:border-0">
-                  <span className="font-dm text-[13px] text-[--neutral-500] dark:text-[--dark-muted]">{label}</span>
-                  <span className="font-dm text-[13px] text-[--neutral-900] dark:text-[--dark-text] font-medium text-right max-w-[200px]">
+                <div key={label} className="flex justify-between items-start py-2 border-b border-(--neutral-200) dark:border-(--dark-border) last:border-0">
+                  <span className="font-dm text-[13px] text-(--neutral-500) dark:text-(--dark-muted)">{label}</span>
+                  <span className="font-dm text-[13px] text-(--neutral-900) dark:text-(--dark-text) font-medium text-right max-w-[200px]">
                     {value}
                   </span>
                 </div>
               ))}
               {customer.banned && customer.banReason && (
-                <div className="mt-4 p-3 rounded-[10px] bg-[--danger-bg] border border-[--danger]">
-                  <div className="font-dm text-[12px] font-semibold text-[--danger] mb-1">Ban Reason</div>
-                  <div className="font-dm text-[13px] text-[--danger]">{customer.banReason}</div>
+                <div className="mt-4 p-3 rounded-[10px] bg-(--danger-bg) border border-(--danger)">
+                  <div className="font-dm text-[12px] font-semibold text-(--danger) mb-1">Ban Reason</div>
+                  <div className="font-dm text-[13px] text-(--danger)">{customer.banReason}</div>
                 </div>
               )}
             </div>
@@ -349,7 +349,7 @@ function CustomerDrawer({
           {/* Tab: Notes */}
           {tab === "notes" && (
             <div className="space-y-4">
-              <p className="font-dm text-[13px] text-[--neutral-500] dark:text-[--dark-muted]">
+              <p className="font-dm text-[13px] text-(--neutral-500) dark:text-(--dark-muted)">
                 Internal notes visible only to admins.
               </p>
               <textarea
@@ -357,11 +357,11 @@ function CustomerDrawer({
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Add a note about this customer…"
                 rows={6}
-                className="w-full rounded-[10px] border border-[--neutral-200] dark:border-[--dark-border] bg-white dark:bg-[--dark-surface] px-4 py-3 font-dm text-[14px] text-[--neutral-900] dark:text-[--dark-text] placeholder:text-[--neutral-400] resize-none focus:outline-none focus:border-[--green-800] transition-colors"
+                className="w-full rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) bg-white dark:bg-(--dark-surface) px-4 py-3 font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) placeholder:text-(--neutral-400) resize-none focus:outline-none focus:border-(--green-800) transition-colors"
               />
               <button
                 onClick={() => toast.info("Note saved (UI only — connect to adminProfile when ready)")}
-                className="h-10 px-5 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:opacity-90 transition-opacity"
+                className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:opacity-90 transition-opacity"
               >
                 Save Note
               </button>
@@ -443,10 +443,10 @@ export function AdminCustomersClient() {
           <div className="flex items-center gap-3">
             <Avatar name={c.name} size={32} />
             <div>
-              <div className="font-dm text-[14px] font-semibold text-[--neutral-900] dark:text-[--dark-text]">
+              <div className="font-dm text-[14px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
                 {c.name}
               </div>
-              <div className="font-dm text-[12px] text-[--neutral-500] dark:text-[--dark-muted]">
+              <div className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted)">
                 {c.email}
               </div>
             </div>
@@ -459,7 +459,7 @@ export function AdminCustomersClient() {
       label: "Country",
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => (
-        <span className="font-dm text-[14px] text-[--neutral-700] dark:text-[--dark-text]">
+        <span className="font-dm text-[14px] text-(--neutral-700) dark:text-(--dark-text)">
           {(row as unknown as Customer).country ?? "—"}
         </span>
       ),
@@ -468,7 +468,7 @@ export function AdminCustomersClient() {
       key: "phone",
       label: "Phone",
       render: (_: unknown, row: Record<string, unknown>) => (
-        <span className="font-dm text-[14px] text-[--neutral-700] dark:text-[--dark-text]">
+        <span className="font-dm text-[14px] text-(--neutral-700) dark:text-(--dark-text)">
           {(row as unknown as Customer).phone ?? "—"}
         </span>
       ),
@@ -478,7 +478,7 @@ export function AdminCustomersClient() {
       label: "Orders",
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => (
-        <span className="font-dm text-[14px] text-[--neutral-700] dark:text-[--dark-text]">
+        <span className="font-dm text-[14px] text-(--neutral-700) dark:text-(--dark-text)">
           {(row as unknown as Customer)._count.orders}
         </span>
       ),
@@ -496,7 +496,7 @@ export function AdminCustomersClient() {
       label: "Joined",
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => (
-        <span className="font-dm text-[13px] text-[--neutral-500] dark:text-[--dark-muted]">
+        <span className="font-dm text-[13px] text-(--neutral-500) dark:text-(--dark-muted)">
           {formatDate((row as unknown as Customer).createdAt)}
         </span>
       ),
@@ -531,7 +531,7 @@ export function AdminCustomersClient() {
         action={
           <Link
             href="/admin/customers/tickets"
-            className="inline-flex items-center gap-2 h-10 px-4 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:opacity-90 transition-opacity"
+            className="inline-flex items-center gap-2 h-10 px-4 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:opacity-90 transition-opacity"
           >
             <Ticket size={16} />
             Support Tickets
@@ -570,14 +570,14 @@ export function AdminCustomersClient() {
           <div className="relative w-full sm:w-[280px]">
             <Search
               size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none"
             />
             <input
               type="search"
               placeholder="Search by name or email..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 h-10 bg-white dark:bg-[--dark-surface] border border-[--neutral-200] dark:border-[--dark-border] rounded-full font-dm text-[14px] text-[--neutral-900] dark:text-[--dark-text] placeholder:text-[--neutral-400] focus:outline-none focus:border-[--green-800] transition-colors"
+              className="w-full pl-9 pr-3 h-10 bg-white dark:bg-(--dark-surface) border border-(--neutral-200) dark:border-(--dark-border) rounded-full font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) placeholder:text-(--neutral-400) focus:outline-none focus:border-(--green-800) transition-colors"
             />
           </div>
 
@@ -598,7 +598,7 @@ export function AdminCustomersClient() {
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value)}
-              className="h-10 pl-4 pr-8 bg-white dark:bg-[--dark-surface] border border-[--neutral-200] dark:border-[--dark-border] rounded-[8px] font-dm text-[14px] text-[--neutral-700] dark:text-[--dark-text] appearance-none focus:outline-none focus:border-[--green-800] cursor-pointer"
+              className="h-10 pl-4 pr-8 bg-white dark:bg-(--dark-surface) border border-(--neutral-200) dark:border-(--dark-border) rounded-[8px] font-dm text-[14px] text-(--neutral-700) dark:text-(--dark-text) appearance-none focus:outline-none focus:border-(--green-800) cursor-pointer"
             >
               <option value="newest">Newest First</option>
               <option value="name">Name A–Z</option>
@@ -606,7 +606,7 @@ export function AdminCustomersClient() {
             </select>
             <ChevronDown
               size={14}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none"
             />
           </div>
         </div>
@@ -626,7 +626,7 @@ export function AdminCustomersClient() {
         />
 
         {!isLoading && (
-          <p className="font-dm text-[13px] text-[--neutral-400] text-right">
+          <p className="font-dm text-[13px] text-(--neutral-400) text-right">
             {sorted.length === allCustomers.length
               ? `${allCustomers.length} customer${allCustomers.length !== 1 ? "s" : ""} total`
               : `Showing ${sorted.length} of ${allCustomers.length}`}

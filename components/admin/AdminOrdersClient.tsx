@@ -117,10 +117,10 @@ function FulfillmentStepper({ status }: { status: OrderStatus }) {
   if (isCancelled) {
     return (
       <div className="flex items-center gap-2 py-2">
-        <div className="w-8 h-8 rounded-full bg-[--danger-bg] flex items-center justify-center shrink-0">
-          <X size={14} className="text-[--danger]" />
+        <div className="w-8 h-8 rounded-full bg-(--danger-bg) flex items-center justify-center shrink-0">
+          <X size={14} className="text-(--danger)" />
         </div>
-        <span className="font-dm text-[14px] font-medium text-[--danger]">Order Cancelled</span>
+        <span className="font-dm text-[14px] font-medium text-(--danger)">Order Cancelled</span>
       </div>
     );
   }
@@ -134,18 +134,18 @@ function FulfillmentStepper({ status }: { status: OrderStatus }) {
           <div key={step} className="flex items-center gap-3">
             <div
               className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors ${
-                reached ? "bg-[--green-800]" : "bg-[--neutral-100] border-2 border-[--neutral-300]"
+                reached ? "bg-(--green-800)" : "bg-(--neutral-100) border-2 border-(--neutral-300)"
               }`}
             >
               {reached ? <Check size={14} className="text-white" /> : null}
             </div>
             <div className="flex-1">
-              <p className={`font-dm text-[13px] font-medium ${isActive ? "text-[--green-800]" : reached ? "text-[--neutral-700]" : "text-[--neutral-400]"}`}>
+              <p className={`font-dm text-[13px] font-medium ${isActive ? "text-(--green-800)" : reached ? "text-(--neutral-700)" : "text-(--neutral-400)"}`}>
                 {STATUS_LABELS[step]}
               </p>
             </div>
             {isActive && (
-              <span className="h-5 px-2 rounded-full bg-[--green-50] font-dm text-[11px] font-medium text-[--green-800] flex items-center">
+              <span className="h-5 px-2 rounded-full bg-(--green-50) font-dm text-[11px] font-medium text-(--green-800) flex items-center">
                 Current
               </span>
             )}
@@ -204,14 +204,14 @@ function OrderDetailDrawer({
           <div className="flex-1 min-w-0 flex flex-col gap-6">
 
             {/* Fulfillment stepper */}
-            <div className="bg-[--neutral-50] rounded-[10px] p-4 border border-[--neutral-200]">
-              <p className="font-dm text-[11px] font-semibold text-[--neutral-500] uppercase tracking-[0.6px] mb-3">Fulfillment</p>
+            <div className="bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200)">
+              <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-3">Fulfillment</p>
               <FulfillmentStepper status={order.status} />
             </div>
 
             {/* Order items */}
             <div>
-              <p className="font-dm text-[11px] font-semibold text-[--neutral-500] uppercase tracking-[0.6px] mb-3">
+              <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-3">
                 Items ({totalQty})
               </p>
               <div className="flex flex-col gap-2">
@@ -219,20 +219,20 @@ function OrderDetailDrawer({
                   const imgSrc = itemImageUrl(item);
                   const subtotal = (item.priceKes / 100) * item.quantity;
                   return (
-                    <div key={item.id} className="flex items-center gap-3 py-2 border-b border-[--neutral-100] last:border-0">
-                      <div className="w-10 h-10 rounded-[6px] bg-[--neutral-100] overflow-hidden shrink-0 flex items-center justify-center">
+                    <div key={item.id} className="flex items-center gap-3 py-2 border-b border-(--neutral-100) last:border-0">
+                      <div className="w-10 h-10 rounded-[6px] bg-(--neutral-100) overflow-hidden shrink-0 flex items-center justify-center">
                         {imgSrc
                           ? <Image src={imgSrc} alt={item.name} width={40} height={40} className="object-cover w-full h-full" />
-                          : <Tag size={14} className="text-[--neutral-300]" />
+                          : <Tag size={14} className="text-(--neutral-300)" />
                         }
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-dm text-[13px] font-medium text-[--neutral-900] line-clamp-1">{item.name}</p>
-                        <p className="font-dm text-[12px] text-[--neutral-400]">
+                        <p className="font-dm text-[13px] font-medium text-(--neutral-900) line-clamp-1">{item.name}</p>
+                        <p className="font-dm text-[12px] text-(--neutral-400)">
                           {formatKes(item.priceKes)} × {item.quantity}
                         </p>
                       </div>
-                      <p className="font-dm text-[13px] font-semibold text-[--neutral-900] whitespace-nowrap">
+                      <p className="font-dm text-[13px] font-semibold text-(--neutral-900) whitespace-nowrap">
                         KES {subtotal.toLocaleString("en-KE", { minimumFractionDigits: 2 })}
                       </p>
                     </div>
@@ -241,23 +241,23 @@ function OrderDetailDrawer({
               </div>
 
               {/* Price summary */}
-              <div className="mt-4 bg-[--neutral-50] rounded-[10px] p-4 border border-[--neutral-200] flex flex-col gap-2">
-                <div className="flex justify-between font-dm text-[13px] text-[--neutral-500]">
+              <div className="mt-4 bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200) flex flex-col gap-2">
+                <div className="flex justify-between font-dm text-[13px] text-(--neutral-500)">
                   <span>Subtotal</span>
                   <span>{formatKes(order.subtotalKes)}</span>
                 </div>
-                <div className="flex justify-between font-dm text-[13px] text-[--neutral-500]">
+                <div className="flex justify-between font-dm text-[13px] text-(--neutral-500)">
                   <span>Delivery</span>
                   <span>{order.deliveryKes ? formatKes(order.deliveryKes) : "Free"}</span>
                 </div>
                 {order.discountKes > 0 && (
-                  <div className="flex justify-between font-dm text-[13px] text-[--success]">
+                  <div className="flex justify-between font-dm text-[13px] text-(--success)">
                     <span>Discount</span>
                     <span>-{formatKes(order.discountKes)}</span>
                   </div>
                 )}
-                <div className="h-px bg-[--neutral-200] my-1" />
-                <div className="flex justify-between font-syne text-[16px] font-semibold text-[--neutral-900]">
+                <div className="h-px bg-(--neutral-200) my-1" />
+                <div className="flex justify-between font-syne text-[16px] font-semibold text-(--neutral-900)">
                   <span>Total</span>
                   <span>{formatKes(order.totalKes)}</span>
                 </div>
@@ -267,13 +267,13 @@ function OrderDetailDrawer({
             {/* Shipping address */}
             {order.deliveryType === "DELIVERY" && (order.deliveryAddress || order.deliveryCity) && (
               <div>
-                <p className="font-dm text-[11px] font-semibold text-[--neutral-500] uppercase tracking-[0.6px] mb-2">Shipping Address</p>
-                <div className="flex items-start gap-2 bg-[--neutral-50] rounded-[10px] p-4 border border-[--neutral-200]">
-                  <MapPin size={15} className="text-[--neutral-400] shrink-0 mt-0.5" />
-                  <div className="font-dm text-[13px] text-[--neutral-700]">
+                <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Shipping Address</p>
+                <div className="flex items-start gap-2 bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200)">
+                  <MapPin size={15} className="text-(--neutral-400) shrink-0 mt-0.5" />
+                  <div className="font-dm text-[13px] text-(--neutral-700)">
                     {order.deliveryAddress && <p>{order.deliveryAddress}</p>}
                     {order.deliveryCity && <p>{order.deliveryCity}{order.deliveryCounty ? `, ${order.deliveryCounty}` : ""}</p>}
-                    {order.deliveryPhone && <p className="text-[--neutral-500] mt-0.5">{order.deliveryPhone}</p>}
+                    {order.deliveryPhone && <p className="text-(--neutral-500) mt-0.5">{order.deliveryPhone}</p>}
                   </div>
                 </div>
               </div>
@@ -281,13 +281,13 @@ function OrderDetailDrawer({
 
             {/* Staff note */}
             <div>
-              <p className="font-dm text-[11px] font-semibold text-[--neutral-500] uppercase tracking-[0.6px] mb-2">Staff Note</p>
+              <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Staff Note</p>
               <textarea
                 rows={3}
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
                 placeholder="Add a staff note (visible to admin only)…"
-                className="w-full font-dm text-[13px] text-[--neutral-900] rounded-[8px] border border-[--neutral-200] bg-white px-3 py-2 focus:outline-none focus:border-[--green-800] resize-none transition-colors placeholder:text-[--neutral-400]"
+                className="w-full font-dm text-[13px] text-(--neutral-900) rounded-[8px] border border-(--neutral-200) bg-white px-3 py-2 focus:outline-none focus:border-(--green-800) resize-none transition-colors placeholder:text-(--neutral-400)"
               />
             </div>
           </div>
@@ -296,19 +296,19 @@ function OrderDetailDrawer({
           <div className="w-[180px] shrink-0 flex flex-col gap-4">
 
             {/* Customer card */}
-            <div className="bg-[--neutral-50] rounded-[10px] p-3 border border-[--neutral-200]">
-              <p className="font-dm text-[11px] font-semibold text-[--neutral-500] uppercase tracking-[0.6px] mb-2">Customer</p>
+            <div className="bg-(--neutral-50) rounded-[10px] p-3 border border-(--neutral-200)">
+              <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Customer</p>
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-full bg-[--green-50] flex items-center justify-center shrink-0">
-                  <span className="font-syne text-[11px] font-bold text-[--green-800]">
+                <div className="w-8 h-8 rounded-full bg-(--green-50) flex items-center justify-center shrink-0">
+                  <span className="font-syne text-[11px] font-bold text-(--green-800)">
                     {getInitials(order.user?.name ?? order.guestEmail)}
                   </span>
                 </div>
                 <div className="min-w-0">
-                  <p className="font-dm text-[12px] font-medium text-[--neutral-900] truncate">
+                  <p className="font-dm text-[12px] font-medium text-(--neutral-900) truncate">
                     {order.user?.name ?? "Guest"}
                   </p>
-                  <p className="font-dm text-[11px] text-[--neutral-400] truncate">
+                  <p className="font-dm text-[11px] text-(--neutral-400) truncate">
                     {order.user?.email ?? order.guestEmail ?? "—"}
                   </p>
                 </div>
@@ -316,7 +316,7 @@ function OrderDetailDrawer({
               {order.user && (
                 <a
                   href={`/admin/customers`}
-                  className="font-dm text-[11px] text-[--green-800] hover:underline flex items-center gap-1"
+                  className="font-dm text-[11px] text-(--green-800) hover:underline flex items-center gap-1"
                 >
                   <User size={11} /> View customer
                 </a>
@@ -324,14 +324,14 @@ function OrderDetailDrawer({
             </div>
 
             {/* Payment card */}
-            <div className="bg-[--neutral-50] rounded-[10px] p-3 border border-[--neutral-200]">
-              <p className="font-dm text-[11px] font-semibold text-[--neutral-500] uppercase tracking-[0.6px] mb-2">Payment</p>
+            <div className="bg-(--neutral-50) rounded-[10px] p-3 border border-(--neutral-200)">
+              <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Payment</p>
               <div className="flex items-center gap-1.5 mb-1.5">
-                <CreditCard size={13} className="text-[--neutral-400]" />
-                <span className="font-dm text-[12px] text-[--neutral-700]">M-Pesa</span>
+                <CreditCard size={13} className="text-(--neutral-400)" />
+                <span className="font-dm text-[12px] text-(--neutral-700)">M-Pesa</span>
               </div>
               <StatusPill status={order.paymentStatus.toLowerCase()} />
-              <p className="font-dm text-[13px] font-semibold text-[--neutral-900] mt-2">
+              <p className="font-dm text-[13px] font-semibold text-(--neutral-900) mt-2">
                 {formatKes(order.totalKes)}
               </p>
             </div>
@@ -342,7 +342,7 @@ function OrderDetailDrawer({
                 <button
                   onClick={() => updateStatus.mutate({ id: order.id, status: "SHIPPED" })}
                   disabled={updateStatus.isPending || order.status === "SHIPPED"}
-                  className="w-full h-9 rounded-[8px] bg-[--green-800] font-dm text-[12px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  className="w-full h-9 rounded-[8px] bg-(--green-800) font-dm text-[12px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {updateStatus.isPending ? <Spinner size={12} /> : <Truck size={13} />}
                   Mark Shipped
@@ -350,7 +350,7 @@ function OrderDetailDrawer({
               )}
               <button
                 onClick={() => { window.print(); }}
-                className="w-full h-9 rounded-[8px] border border-[--neutral-200] font-dm text-[12px] text-[--neutral-700] hover:bg-[--neutral-50] flex items-center justify-center gap-1.5 transition-colors"
+                className="w-full h-9 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center justify-center gap-1.5 transition-colors"
               >
                 <Printer size={13} /> Print Invoice
               </button>
@@ -359,17 +359,17 @@ function OrderDetailDrawer({
                   navigator.clipboard.writeText(`${window.location.origin}/orders/${order.id}`);
                   toast.success("Order link copied");
                 }}
-                className="w-full h-9 rounded-[8px] border border-[--neutral-200] font-dm text-[12px] text-[--neutral-700] hover:bg-[--neutral-50] flex items-center justify-center gap-1.5 transition-colors"
+                className="w-full h-9 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center justify-center gap-1.5 transition-colors"
               >
                 <Link2 size={13} /> Copy Link
               </button>
 
               {order.status !== "CANCELLED" && (
                 <>
-                  <div className="h-px bg-[--neutral-200] my-1" />
+                  <div className="h-px bg-(--neutral-200) my-1" />
                   <button
                     onClick={() => setCancelConfirmOpen(true)}
-                    className="w-full h-9 rounded-[8px] font-dm text-[12px] text-[--danger] hover:bg-[--danger-bg] flex items-center justify-center gap-1.5 transition-colors"
+                    className="w-full h-9 rounded-[8px] font-dm text-[12px] text-(--danger) hover:bg-(--danger-bg) flex items-center justify-center gap-1.5 transition-colors"
                   >
                     <X size={13} /> Cancel Order
                   </button>
@@ -378,7 +378,7 @@ function OrderDetailDrawer({
             </div>
 
             {/* Date info */}
-            <div className="font-dm text-[11px] text-[--neutral-400]">
+            <div className="font-dm text-[11px] text-(--neutral-400)">
               <p>Placed {formatDate(order.createdAt)}</p>
               {order.deliveryType && (
                 <p className="mt-0.5">{order.deliveryType === "PICKUP" ? "Pickup order" : "Delivery order"}</p>
@@ -465,7 +465,7 @@ export function AdminOrdersClient() {
       render: (_: unknown, row: Record<string, unknown>) => {
         const o = row as unknown as AdminOrder;
         return (
-          <span className="font-dm text-[13px] font-semibold text-[--neutral-900] font-mono">
+          <span className="font-dm text-[13px] font-semibold text-(--neutral-900) font-mono">
             {shortId(o.id)}
           </span>
         );
@@ -479,11 +479,11 @@ export function AdminOrdersClient() {
         const o = row as unknown as AdminOrder;
         return o.user ? (
           <div>
-            <p className="font-dm text-[13px] font-medium text-[--neutral-900]">{o.user.name}</p>
-            <p className="font-dm text-[11px] text-[--neutral-400]">{o.user.email}</p>
+            <p className="font-dm text-[13px] font-medium text-(--neutral-900)">{o.user.name}</p>
+            <p className="font-dm text-[11px] text-(--neutral-400)">{o.user.email}</p>
           </div>
         ) : (
-          <span className="font-dm text-[13px] text-[--neutral-400]">{o.guestEmail ?? "Guest"}</span>
+          <span className="font-dm text-[13px] text-(--neutral-400)">{o.guestEmail ?? "Guest"}</span>
         );
       },
     },
@@ -493,7 +493,7 @@ export function AdminOrdersClient() {
       render: (_: unknown, row: Record<string, unknown>) => {
         const o = row as unknown as AdminOrder;
         const qty = o.items.reduce((s, i) => s + i.quantity, 0);
-        return <span className="font-dm text-[13px] text-[--neutral-700]">{qty} item{qty !== 1 ? "s" : ""}</span>;
+        return <span className="font-dm text-[13px] text-(--neutral-700)">{qty} item{qty !== 1 ? "s" : ""}</span>;
       },
     },
     {
@@ -502,7 +502,7 @@ export function AdminOrdersClient() {
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => {
         const o = row as unknown as AdminOrder;
-        return <span className="font-dm text-[13px] font-semibold text-[--neutral-900]">{formatKes(o.totalKes)}</span>;
+        return <span className="font-dm text-[13px] font-semibold text-(--neutral-900)">{formatKes(o.totalKes)}</span>;
       },
     },
     {
@@ -527,7 +527,7 @@ export function AdminOrdersClient() {
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => {
         const o = row as unknown as AdminOrder;
-        return <span className="font-dm text-[12px] text-[--neutral-400]">{formatDate(o.createdAt)}</span>;
+        return <span className="font-dm text-[12px] text-(--neutral-400)">{formatDate(o.createdAt)}</span>;
       },
     },
     {
@@ -538,7 +538,7 @@ export function AdminOrdersClient() {
         return (
           <button
             onClick={(e) => { e.stopPropagation(); openOrderDetail(o); }}
-            className="w-7 h-7 flex items-center justify-center rounded-[6px] text-[--neutral-400] hover:bg-[--neutral-100] transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-[6px] text-(--neutral-400) hover:bg-(--neutral-100) transition-colors"
           >
             <MoreHorizontal size={15} />
           </button>
@@ -565,15 +565,15 @@ export function AdminOrdersClient() {
       <div className="px-6 mb-5 flex flex-wrap items-center gap-3">
         {/* Search */}
         <div className="relative w-[280px]">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search order ID or customer…"
-            className="w-full h-9 pl-9 pr-3 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] text-[--neutral-900] bg-white focus:outline-none focus:border-[--green-800] placeholder:text-[--neutral-400] transition-colors"
+            className="w-full h-9 pl-9 pr-3 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-900) bg-white focus:outline-none focus:border-(--green-800) placeholder:text-(--neutral-400) transition-colors"
           />
           {search && (
-            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[--neutral-400] hover:text-[--neutral-700]">
+            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-(--neutral-400) hover:text-(--neutral-700)">
               <X size={13} />
             </button>
           )}
@@ -584,14 +584,14 @@ export function AdminOrdersClient() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value as "" | OrderStatus)}
-            className="h-9 pl-3 pr-8 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] text-[--neutral-700] bg-white focus:outline-none focus:border-[--green-800] appearance-none cursor-pointer"
+            className="h-9 pl-3 pr-8 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) bg-white focus:outline-none focus:border-(--green-800) appearance-none cursor-pointer"
           >
             <option value="">All statuses</option>
             {ALL_STATUSES.map((s) => (
               <option key={s} value={s}>{STATUS_LABELS[s]}</option>
             ))}
           </select>
-          <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+          <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
         </div>
 
         {scope?.isSuperAdmin && (
@@ -599,19 +599,19 @@ export function AdminOrdersClient() {
             <select
               value={branchFilter}
               onChange={(e) => setBranchFilter(e.target.value)}
-              className="h-9 pl-3 pr-8 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] text-[--neutral-700] bg-white focus:outline-none focus:border-[--green-800] appearance-none cursor-pointer"
+              className="h-9 pl-3 pr-8 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) bg-white focus:outline-none focus:border-(--green-800) appearance-none cursor-pointer"
             >
               <option value="">All branches</option>
               {branches.map((branch) => (
                 <option key={branch.id} value={branch.id}>{branch.name} - {branch.county}</option>
               ))}
             </select>
-            <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+            <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
           </div>
         )}
 
         {!isLoading && (
-          <span className="font-dm text-[13px] text-[--neutral-400]">
+          <span className="font-dm text-[13px] text-(--neutral-400)">
             {filtered.length} order{filtered.length !== 1 ? "s" : ""}
           </span>
         )}
@@ -619,7 +619,7 @@ export function AdminOrdersClient() {
         {/* Export button */}
         <button
           onClick={() => toast.info("Export coming soon")}
-          className="ml-auto h-9 px-4 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] text-[--neutral-700] hover:bg-[--neutral-50] flex items-center gap-2 transition-colors"
+          className="ml-auto h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center gap-2 transition-colors"
         >
           <Download size={14} /> Export
         </button>

@@ -124,19 +124,19 @@ export function BlogEditorClient() {
 
   if (isEdit && isLoading) {
     return (
-      <div className="min-h-screen bg-[--neutral-50] p-6">
-        <div className="h-8 w-48 bg-[--neutral-100] rounded animate-pulse mb-6" />
-        <div className="h-[500px] w-full bg-[--neutral-100] rounded-[12px] animate-pulse" />
+      <div className="min-h-screen bg-(--neutral-50) p-6">
+        <div className="h-8 w-48 bg-(--neutral-100) rounded animate-pulse mb-6" />
+        <div className="h-[500px] w-full bg-(--neutral-100) rounded-[12px] animate-pulse" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[--neutral-50]">
-      <div className="sticky top-0 z-10 bg-white dark:bg-[--dark-surface] border-b border-[--neutral-200] dark:border-[--dark-border] px-6 py-4 flex items-center justify-between">
+    <div className="min-h-screen bg-(--neutral-50)">
+      <div className="sticky top-0 z-10 bg-white dark:bg-(--dark-surface) border-b border-(--neutral-200) dark:border-(--dark-border) px-6 py-4 flex items-center justify-between">
         <a
           href="/admin/content/blog"
-          className="flex items-center gap-2 font-dm text-[14px] text-[--neutral-700] hover:text-[--neutral-900] transition-colors"
+          className="flex items-center gap-2 font-dm text-[14px] text-(--neutral-700) hover:text-(--neutral-900) transition-colors"
         >
           <ArrowLeft size={16} />
           Back to Blog
@@ -145,14 +145,14 @@ export function BlogEditorClient() {
           <button
             onClick={() => saveMutation.mutate("DRAFT")}
             disabled={saveMutation.isPending || !form.title.trim()}
-            className="h-10 px-5 rounded-[8px] border border-[--neutral-200] font-dm text-[14px] font-medium text-[--neutral-700] hover:bg-[--neutral-50] transition-colors disabled:opacity-50"
+            className="h-10 px-5 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] font-medium text-(--neutral-700) hover:bg-(--neutral-50) transition-colors disabled:opacity-50"
           >
             Save Draft
           </button>
           <button
             onClick={() => saveMutation.mutate("PUBLISHED")}
             disabled={saveMutation.isPending || !form.title.trim()}
-            className="h-10 px-5 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:bg-[--green-900] transition-colors disabled:opacity-50"
+            className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors disabled:opacity-50"
           >
             {saveMutation.isPending ? "Saving..." : "Publish"}
           </button>
@@ -219,7 +219,7 @@ export function BlogEditorClient() {
                 <option value="SCHEDULED">Scheduled</option>
                 <option value="ARCHIVED">Archived</option>
               </select>
-              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
             </div>
           </FormField>
 
@@ -234,12 +234,12 @@ export function BlogEditorClient() {
         </div>
 
         <div>
-          <label className="block font-dm text-[13px] font-medium text-[--neutral-700] mb-1.5">Content</label>
+          <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-1.5">Content</label>
           <textarea
             value={form.content}
             onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
             placeholder="Write your post content here..."
-            className="w-full min-h-[560px] p-4 rounded-[12px] border border-[--neutral-200] bg-white font-dm text-[15px] leading-relaxed text-[--neutral-900] placeholder:text-[--neutral-400] focus:outline-none focus:ring-2 focus:ring-[--green-500] focus:border-transparent transition-shadow resize-y"
+            className="w-full min-h-[560px] p-4 rounded-[12px] border border-(--neutral-200) bg-white font-dm text-[15px] leading-relaxed text-(--neutral-900) placeholder:text-(--neutral-400) focus:outline-none focus:ring-2 focus:ring-(--green-500) focus:border-transparent transition-shadow resize-y"
           />
         </div>
       </div>
@@ -255,9 +255,9 @@ function FormField({ label, required, hint, children }: {
 }) {
   return (
     <div>
-      <label className="block font-dm text-[13px] font-medium text-[--neutral-700] mb-1.5">
-        {label} {required && <span className="text-[--danger]">*</span>}
-        {hint && <span className="text-[--neutral-400] font-normal ml-1">({hint})</span>}
+      <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-1.5">
+        {label} {required && <span className="text-(--danger)">*</span>}
+        {hint && <span className="text-(--neutral-400) font-normal ml-1">({hint})</span>}
       </label>
       {children}
     </div>
@@ -265,4 +265,4 @@ function FormField({ label, required, hint, children }: {
 }
 
 const inputCls =
-  "w-full h-10 px-3 rounded-[8px] border border-[--neutral-200] bg-white font-dm text-[14px] text-[--neutral-900] placeholder:text-[--neutral-400] focus:outline-none focus:ring-2 focus:ring-[--green-500] focus:border-transparent transition-shadow";
+  "w-full h-10 px-3 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-900) placeholder:text-(--neutral-400) focus:outline-none focus:ring-2 focus:ring-(--green-500) focus:border-transparent transition-shadow";

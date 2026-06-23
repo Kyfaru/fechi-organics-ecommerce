@@ -30,9 +30,9 @@ export async function GET(req: NextRequest) {
       include: {
         category: { select: { id: true, name: true, slug: true } },
         images: {
-          where: { isPrimary: true },
+          orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }],
           take: 1,
-          select: { objectKey: true },
+          select: { objectKey: true, isPrimary: true },
         },
       },
     });

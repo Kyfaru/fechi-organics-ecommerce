@@ -118,9 +118,9 @@ function buildMonthlyRevenue(transactions: AdminTransaction[]) {
 function KesTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white dark:bg-[--dark-surface] border border-[--neutral-200] dark:border-[--dark-border] rounded-[8px] px-3 py-2 shadow-[--e2]">
-      <p className="font-dm text-[12px] text-[--neutral-500] mb-1">{label}</p>
-      <p className="font-syne text-[13px] font-semibold text-[--neutral-900] dark:text-[--dark-text]">
+    <div className="bg-white dark:bg-(--dark-surface) border border-(--neutral-200) dark:border-(--dark-border) rounded-[8px] px-3 py-2 shadow-(--e2)">
+      <p className="font-dm text-[12px] text-(--neutral-500) mb-1">{label}</p>
+      <p className="font-syne text-[13px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
         {formatKes(payload[0].value)}
       </p>
     </div>
@@ -153,7 +153,7 @@ function ExportButton() {
   return (
     <button
       onClick={handleExport}
-      className="flex items-center gap-2 h-9 px-4 rounded-[8px] bg-[--green-800] hover:bg-[--green-900] text-white font-dm text-[13px] font-medium transition-colors"
+      className="flex items-center gap-2 h-9 px-4 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) text-white font-dm text-[13px] font-medium transition-colors"
     >
       <Download size={14} />
       Export CSV
@@ -206,8 +206,8 @@ export function AdminTransactionsClient() {
       render: (_v: unknown, row: Record<string, unknown>) => {
         const o = row.order as { id: string } | null;
         return o
-          ? <span className="font-mono text-[12px] text-[--neutral-500]">{shortId(o.id)}</span>
-          : <span className="font-dm text-[12px] text-[--neutral-400]">—</span>;
+          ? <span className="font-mono text-[12px] text-(--neutral-500)">{shortId(o.id)}</span>
+          : <span className="font-dm text-[12px] text-(--neutral-400)">—</span>;
       },
     },
     {
@@ -218,11 +218,11 @@ export function AdminTransactionsClient() {
         return o?.user
           ? (
             <div>
-              <p className="font-dm text-[13px] text-[--neutral-900] dark:text-[--dark-text]">{o.user.name}</p>
-              <p className="font-dm text-[11px] text-[--neutral-400]">{o.user.email}</p>
+              <p className="font-dm text-[13px] text-(--neutral-900) dark:text-(--dark-text)">{o.user.name}</p>
+              <p className="font-dm text-[11px] text-(--neutral-400)">{o.user.email}</p>
             </div>
           )
-          : <span className="font-dm text-[13px] text-[--neutral-400]">—</span>;
+          : <span className="font-dm text-[13px] text-(--neutral-400)">—</span>;
       },
     },
     {
@@ -233,7 +233,7 @@ export function AdminTransactionsClient() {
         const status = String(row.status);
         const isSuccess = status === "SUCCESS";
         return (
-          <span className={`font-dm text-[13px] font-medium ${isSuccess ? "text-[--green-600]" : "text-[--danger]"}`}>
+          <span className={`font-dm text-[13px] font-medium ${isSuccess ? "text-(--green-600)" : "text-(--danger)"}`}>
             {formatKes(Number(row.amount))}
           </span>
         );
@@ -246,8 +246,8 @@ export function AdminTransactionsClient() {
         const p = String(row.provider);
         const label = p === "MPESA" ? "M-Pesa" : "PayHero";
         const cls = p === "MPESA"
-          ? "bg-[--green-50] text-[--green-800]"
-          : "bg-[--gold-50] text-[--gold-700]";
+          ? "bg-(--green-50) text-(--green-800)"
+          : "bg-(--gold-50) text-(--gold-700)";
         return (
           <span className={`inline-flex items-center rounded-full px-[10px] h-6 font-dm text-[12px] font-medium ${cls}`}>
             {label}
@@ -270,7 +270,7 @@ export function AdminTransactionsClient() {
       label: "Date",
       sortable: true,
       render: (_v: unknown, row: Record<string, unknown>) =>
-        <span className="font-dm text-[12px] text-[--neutral-400]">{shortDate(String(row.createdAt))}</span>,
+        <span className="font-dm text-[12px] text-(--neutral-400)">{shortDate(String(row.createdAt))}</span>,
     },
   ];
 
@@ -320,11 +320,11 @@ export function AdminTransactionsClient() {
           {isLoading ? (
             <div className="xl:col-span-2"><SkeletonChart /></div>
           ) : (
-            <div className="xl:col-span-2 bg-white dark:bg-[--dark-surface] rounded-[12px] border border-[--neutral-200] dark:border-[--dark-border] shadow-[--e1] p-6">
-              <h2 className="font-syne text-[16px] font-semibold text-[--neutral-900] dark:text-[--dark-text] mb-1">
+            <div className="xl:col-span-2 bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+              <h2 className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-1">
                 Monthly Revenue
               </h2>
-              <p className="font-dm text-[13px] text-[--neutral-400] mb-5">
+              <p className="font-dm text-[13px] text-(--neutral-400) mb-5">
                 Last 12 months — successful payments (KES)
               </p>
               <ResponsiveContainer width="100%" height={240}>
@@ -359,16 +359,16 @@ export function AdminTransactionsClient() {
           {isLoading ? (
             <SkeletonChart />
           ) : (
-            <div className="bg-white dark:bg-[--dark-surface] rounded-[12px] border border-[--neutral-200] dark:border-[--dark-border] shadow-[--e1] p-6">
-              <h2 className="font-syne text-[16px] font-semibold text-[--neutral-900] dark:text-[--dark-text] mb-1">
+            <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+              <h2 className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-1">
                 Payment Methods
               </h2>
-              <p className="font-dm text-[13px] text-[--neutral-400] mb-4">
+              <p className="font-dm text-[13px] text-(--neutral-400) mb-4">
                 Successful transactions by provider
               </p>
               {providerData.length === 0 ? (
                 <div className="h-[200px] flex items-center justify-center">
-                  <p className="font-dm text-[13px] text-[--neutral-400]">No successful payments yet</p>
+                  <p className="font-dm text-[13px] text-(--neutral-400)">No successful payments yet</p>
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height={200}>
@@ -390,7 +390,7 @@ export function AdminTransactionsClient() {
                     </Pie>
                     <Legend
                       formatter={(v: string) =>
-                        <span className="font-dm text-[12px] text-[--neutral-700] dark:text-[--dark-text]">{v}</span>
+                        <span className="font-dm text-[12px] text-(--neutral-700) dark:text-(--dark-text)">{v}</span>
                       }
                     />
                   </PieChart>

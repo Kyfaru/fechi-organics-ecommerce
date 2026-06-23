@@ -64,7 +64,7 @@ export function AdminProductQnAClient() {
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => {
         const item = row as unknown as QnAItem;
-        return <span className="font-dm text-[14px] font-medium text-[--neutral-900]">{item.productName}</span>;
+        return <span className="font-dm text-[14px] font-medium text-(--neutral-900)">{item.productName}</span>;
       },
     },
     {
@@ -73,7 +73,7 @@ export function AdminProductQnAClient() {
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => {
         const item = row as unknown as QnAItem;
-        return <span className="font-dm text-[14px] text-[--neutral-700]">{item.customer}</span>;
+        return <span className="font-dm text-[14px] text-(--neutral-700)">{item.customer}</span>;
       },
     },
     {
@@ -82,7 +82,7 @@ export function AdminProductQnAClient() {
       render: (_: unknown, row: Record<string, unknown>) => {
         const item = row as unknown as QnAItem;
         return (
-          <span className="font-dm text-[13px] text-[--neutral-500] line-clamp-1 max-w-[280px]">
+          <span className="font-dm text-[13px] text-(--neutral-500) line-clamp-1 max-w-[280px]">
             {item.question.length > 80 ? item.question.slice(0, 80) + "…" : item.question}
           </span>
         );
@@ -95,7 +95,7 @@ export function AdminProductQnAClient() {
       render: (_: unknown, row: Record<string, unknown>) => {
         const item = row as unknown as QnAItem;
         return (
-          <span className="font-dm text-[13px] text-[--neutral-400]">
+          <span className="font-dm text-[13px] text-(--neutral-400)">
             {new Date(item.date).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" })}
           </span>
         );
@@ -117,7 +117,7 @@ export function AdminProductQnAClient() {
         return (
           <button
             onClick={(e) => { e.stopPropagation(); openAnswer(item); }}
-            className="h-8 px-3 rounded-[6px] font-dm text-[12px] text-[--green-800] border border-[--green-800] hover:bg-[--green-50] transition-colors"
+            className="h-8 px-3 rounded-[6px] font-dm text-[12px] text-(--green-800) border border-(--green-800) hover:bg-(--green-50) transition-colors"
           >
             {item.status === "answered" ? "Edit Answer" : "Answer"}
           </button>
@@ -130,13 +130,13 @@ export function AdminProductQnAClient() {
     <>
       <button
         onClick={() => setAnswerDrawerOpen(false)}
-        className="h-9 px-4 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] text-[--neutral-700] hover:bg-[--neutral-50] mr-auto transition-colors"
+        className="h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) mr-auto transition-colors"
       >
         Cancel
       </button>
       <button
         onClick={handleSubmitAnswer}
-        className="h-9 px-5 rounded-[8px] bg-[--green-800] font-dm text-[13px] font-medium text-white hover:opacity-90 transition-opacity"
+        className="h-9 px-5 rounded-[8px] bg-(--green-800) font-dm text-[13px] font-medium text-white hover:opacity-90 transition-opacity"
       >
         Submit Answer
       </button>
@@ -177,12 +177,12 @@ export function AdminProductQnAClient() {
         {selectedItem && (
           <div className="flex flex-col gap-5">
             {/* Question display */}
-            <div className="bg-[--neutral-50] rounded-[10px] p-4 border border-[--neutral-200]">
+            <div className="bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200)">
               <div className="flex items-start gap-2 mb-2">
-                <HelpCircle size={15} className="text-[--neutral-400] shrink-0 mt-0.5" />
-                <p className="font-dm text-[14px] font-medium text-[--neutral-900]">{selectedItem.question}</p>
+                <HelpCircle size={15} className="text-(--neutral-400) shrink-0 mt-0.5" />
+                <p className="font-dm text-[14px] font-medium text-(--neutral-900)">{selectedItem.question}</p>
               </div>
-              <p className="font-dm text-[11px] text-[--neutral-400]">
+              <p className="font-dm text-[11px] text-(--neutral-400)">
                 From <strong>{selectedItem.customer}</strong> · {selectedItem.productName} ·{" "}
                 {new Date(selectedItem.date).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" })}
               </p>
@@ -190,15 +190,15 @@ export function AdminProductQnAClient() {
 
             {/* Existing answer */}
             {selectedItem.answer && (
-              <div className="bg-[--green-50] rounded-[10px] p-4 border border-[--green-800]/20">
-                <p className="font-dm text-[12px] font-semibold text-[--green-800] mb-1 uppercase tracking-wide">Current Answer</p>
-                <p className="font-dm text-[13px] text-[--neutral-700]">{selectedItem.answer}</p>
+              <div className="bg-(--green-50) rounded-[10px] p-4 border border-(--green-800)/20">
+                <p className="font-dm text-[12px] font-semibold text-(--green-800) mb-1 uppercase tracking-wide">Current Answer</p>
+                <p className="font-dm text-[13px] text-(--neutral-700)">{selectedItem.answer}</p>
               </div>
             )}
 
             {/* Answer textarea */}
             <div>
-              <label className="block font-dm text-[12px] font-semibold text-[--neutral-500] uppercase tracking-[0.6px] mb-1.5">
+              <label className="block font-dm text-[12px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-1.5">
                 {selectedItem.answer ? "Update Answer" : "Your Answer"}
               </label>
               <textarea
@@ -206,7 +206,7 @@ export function AdminProductQnAClient() {
                 value={answerText}
                 onChange={(e) => setAnswerText(e.target.value)}
                 placeholder="Write a helpful answer for this customer…"
-                className="w-full font-dm text-[14px] text-[--neutral-900] rounded-[8px] border border-[--neutral-200] bg-white px-3 py-2 focus:outline-none focus:border-[--green-800] resize-none transition-colors placeholder:text-[--neutral-400]"
+                className="w-full font-dm text-[14px] text-(--neutral-900) rounded-[8px] border border-(--neutral-200) bg-white px-3 py-2 focus:outline-none focus:border-(--green-800) resize-none transition-colors placeholder:text-(--neutral-400)"
               />
             </div>
           </div>

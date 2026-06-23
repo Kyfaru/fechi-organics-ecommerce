@@ -29,17 +29,17 @@ interface LeaderboardEntry {
 
 // Tier visual config — maps name → design tokens
 const TIER_STYLES: Record<string, { band: string; pill: string; pillText: string }> = {
-  Bronze: { band: "bg-[--neutral-200]", pill: "bg-[--neutral-100] text-[--neutral-700]", pillText: "text-[--neutral-700]" },
-  Silver: { band: "bg-[--gold-100]", pill: "bg-[--gold-100] text-[--gold-700]", pillText: "text-[--gold-700]" },
-  Gold: { band: "bg-[--gold-500]", pill: "bg-[--gold-500] text-white", pillText: "text-white" },
+  Bronze: { band: "bg-(--neutral-200)", pill: "bg-(--neutral-100) text-(--neutral-700)", pillText: "text-(--neutral-700)" },
+  Silver: { band: "bg-(--gold-100)", pill: "bg-(--gold-100) text-(--gold-700)", pillText: "text-(--gold-700)" },
+  Gold: { band: "bg-(--gold-500)", pill: "bg-(--gold-500) text-white", pillText: "text-white" },
 };
 
 function getTierStyle(name: string) {
   return (
     TIER_STYLES[name] ?? {
-      band: "bg-[--neutral-100]",
-      pill: "bg-[--neutral-100] text-[--neutral-700]",
-      pillText: "text-[--neutral-700]",
+      band: "bg-(--neutral-100)",
+      pill: "bg-(--neutral-100) text-(--neutral-700)",
+      pillText: "text-(--neutral-700)",
     }
   );
 }
@@ -68,7 +68,7 @@ function TierCard({ tier, onSave }: { tier: LoyaltyTier; onSave: (id: string, da
   }
 
   return (
-    <div className="bg-white rounded-[14px] border border-[--neutral-200] shadow-[--e1] overflow-hidden">
+    <div className="bg-white rounded-[14px] border border-(--neutral-200) shadow-(--e1) overflow-hidden">
       {/* Color band */}
       <div className={`h-2 ${style.band}`} />
 
@@ -79,41 +79,41 @@ function TierCard({ tier, onSave }: { tier: LoyaltyTier; onSave: (id: string, da
             <input
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              className="w-full h-9 px-3 rounded-[8px] border border-[--neutral-200] font-syne text-[16px] font-semibold text-[--neutral-900] focus:outline-none focus:ring-2 focus:ring-[--green-500]"
+              className="w-full h-9 px-3 rounded-[8px] border border-(--neutral-200) font-syne text-[16px] font-semibold text-(--neutral-900) focus:outline-none focus:ring-2 focus:ring-(--green-500)"
             />
             <div>
-              <label className="block font-dm text-[12px] font-medium text-[--neutral-500] mb-1">Min Spend (KES)</label>
+              <label className="block font-dm text-[12px] font-medium text-(--neutral-500) mb-1">Min Spend (KES)</label>
               <input
                 type="number"
                 value={form.minSpend}
                 onChange={(e) => setForm((f) => ({ ...f, minSpend: e.target.value }))}
-                className="w-full h-9 px-3 rounded-[8px] border border-[--neutral-200] font-dm text-[14px] text-[--neutral-900] focus:outline-none focus:ring-2 focus:ring-[--green-500]"
+                className="w-full h-9 px-3 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-900) focus:outline-none focus:ring-2 focus:ring-(--green-500)"
               />
             </div>
             <div>
-              <label className="block font-dm text-[12px] font-medium text-[--neutral-500] mb-1">Points Multiplier</label>
+              <label className="block font-dm text-[12px] font-medium text-(--neutral-500) mb-1">Points Multiplier</label>
               <input
                 type="number"
                 step="0.1"
                 min={1}
                 value={form.multiplier}
                 onChange={(e) => setForm((f) => ({ ...f, multiplier: e.target.value }))}
-                className="w-full h-9 px-3 rounded-[8px] border border-[--neutral-200] font-dm text-[14px] text-[--neutral-900] focus:outline-none focus:ring-2 focus:ring-[--green-500]"
+                className="w-full h-9 px-3 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-900) focus:outline-none focus:ring-2 focus:ring-(--green-500)"
               />
             </div>
             <div>
-              <label className="block font-dm text-[12px] font-medium text-[--neutral-500] mb-1">Benefits (one per line)</label>
+              <label className="block font-dm text-[12px] font-medium text-(--neutral-500) mb-1">Benefits (one per line)</label>
               <textarea
                 rows={4}
                 value={form.benefitsRaw}
                 onChange={(e) => setForm((f) => ({ ...f, benefitsRaw: e.target.value }))}
-                className="w-full px-3 py-2 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] text-[--neutral-900] resize-none focus:outline-none focus:ring-2 focus:ring-[--green-500]"
+                className="w-full px-3 py-2 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-900) resize-none focus:outline-none focus:ring-2 focus:ring-(--green-500)"
               />
             </div>
             <div className="flex gap-2 pt-1">
               <button
                 onClick={handleSave}
-                className="flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-[--green-800] text-white font-dm text-[13px] hover:bg-[--green-900] transition-colors"
+                className="flex items-center gap-1.5 h-8 px-3 rounded-[6px] bg-(--green-800) text-white font-dm text-[13px] hover:bg-(--green-900) transition-colors"
               >
                 <Check size={13} /> Save
               </button>
@@ -122,7 +122,7 @@ function TierCard({ tier, onSave }: { tier: LoyaltyTier; onSave: (id: string, da
                   setForm({ name: tier.name, minSpend: String(tier.minSpend), multiplier: String(tier.multiplier), benefitsRaw: tier.benefits.join("\n") });
                   setEditing(false);
                 }}
-                className="flex items-center gap-1.5 h-8 px-3 rounded-[6px] border border-[--neutral-200] text-[--neutral-500] font-dm text-[13px] hover:bg-[--neutral-50] transition-colors"
+                className="flex items-center gap-1.5 h-8 px-3 rounded-[6px] border border-(--neutral-200) text-(--neutral-500) font-dm text-[13px] hover:bg-(--neutral-50) transition-colors"
               >
                 <X size={13} /> Cancel
               </button>
@@ -133,28 +133,28 @@ function TierCard({ tier, onSave }: { tier: LoyaltyTier; onSave: (id: string, da
           <>
             <div className="flex items-start justify-between mb-3">
               <div>
-                <h3 className="font-syne text-[18px] font-semibold text-[--neutral-900]">{tier.name}</h3>
-                <p className="font-dm text-[13px] text-[--neutral-500] mt-0.5">
+                <h3 className="font-syne text-[18px] font-semibold text-(--neutral-900)">{tier.name}</h3>
+                <p className="font-dm text-[13px] text-(--neutral-500) mt-0.5">
                   Spend KES {tier.minSpend.toLocaleString()}+
                 </p>
               </div>
               <button
                 onClick={() => setEditing(true)}
-                className="flex items-center gap-1.5 h-8 px-3 rounded-[6px] border border-[--neutral-200] text-[--neutral-500] font-dm text-[13px] hover:bg-[--neutral-100] transition-colors"
+                className="flex items-center gap-1.5 h-8 px-3 rounded-[6px] border border-(--neutral-200) text-(--neutral-500) font-dm text-[13px] hover:bg-(--neutral-100) transition-colors"
               >
                 <Pencil size={12} /> Edit
               </button>
             </div>
 
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[--neutral-100] font-dm text-[13px] font-semibold text-[--neutral-700] mb-4">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-(--neutral-100) font-dm text-[13px] font-semibold text-(--neutral-700) mb-4">
               {tier.multiplier}× points
             </div>
 
             {tier.benefits.length > 0 && (
               <ul className="space-y-1.5 mt-3">
                 {tier.benefits.map((b, i) => (
-                  <li key={i} className="flex items-start gap-2 font-dm text-[13px] text-[--neutral-700]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[--green-500] mt-[5px] shrink-0" />
+                  <li key={i} className="flex items-start gap-2 font-dm text-[13px] text-(--neutral-700)">
+                    <span className="w-1.5 h-1.5 rounded-full bg-(--green-500) mt-[5px] shrink-0" />
                     {b}
                   </li>
                 ))}
@@ -206,7 +206,7 @@ export function AdminLoyaltyTiersClient() {
       render: (_: unknown, row: Record<string, unknown>) => {
         const idx = leaderboard.findIndex((e) => e.userId === String(row.userId));
         return (
-          <span className={`font-syne text-[14px] font-bold ${idx < 3 ? "text-[--gold-700]" : "text-[--neutral-500]"}`}>
+          <span className={`font-syne text-[14px] font-bold ${idx < 3 ? "text-(--gold-700)" : "text-(--neutral-500)"}`}>
             {idx + 1}
           </span>
         );
@@ -219,8 +219,8 @@ export function AdminLoyaltyTiersClient() {
         const u = v as { name: string; email: string };
         return (
           <div>
-            <div className="font-dm text-[14px] font-medium text-[--neutral-900]">{u?.name ?? "—"}</div>
-            <div className="font-dm text-[12px] text-[--neutral-400]">{u?.email ?? ""}</div>
+            <div className="font-dm text-[14px] font-medium text-(--neutral-900)">{u?.name ?? "—"}</div>
+            <div className="font-dm text-[12px] text-(--neutral-400)">{u?.email ?? ""}</div>
           </div>
         );
       },
@@ -230,7 +230,7 @@ export function AdminLoyaltyTiersClient() {
       label: "Points",
       sortable: true,
       render: (v: unknown) => (
-        <span className="font-dm text-[14px] font-semibold text-[--green-800]">
+        <span className="font-dm text-[14px] font-semibold text-(--green-800)">
           {Number(v).toLocaleString()} pts
         </span>
       ),
@@ -254,7 +254,7 @@ export function AdminLoyaltyTiersClient() {
   const totalPoints = leaderboard.reduce((sum, e) => sum + e.points, 0);
 
   return (
-    <div className="min-h-screen bg-[--neutral-50]">
+    <div className="min-h-screen bg-(--neutral-50)">
       <PageHeader
         title="Loyalty Program"
         description="Manage customer loyalty tiers and rewards"
@@ -272,15 +272,15 @@ export function AdminLoyaltyTiersClient() {
         {isLoading ? (
           <div className="grid grid-cols-3 gap-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-64 rounded-[14px] bg-[--neutral-100] animate-pulse" />
+              <div key={i} className="h-64 rounded-[14px] bg-(--neutral-100) animate-pulse" />
             ))}
           </div>
         ) : (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-syne text-[20px] font-semibold text-[--neutral-900]">Tiers</h2>
+              <h2 className="font-syne text-[20px] font-semibold text-(--neutral-900)">Tiers</h2>
               {/* TODO: Add tier creation — POST /api/admin/loyalty/tiers */}
-              <button className="flex items-center gap-1.5 h-8 px-3 rounded-[6px] border border-[--neutral-200] text-[--neutral-500] font-dm text-[13px] hover:bg-[--neutral-100] transition-colors">
+              <button className="flex items-center gap-1.5 h-8 px-3 rounded-[6px] border border-(--neutral-200) text-(--neutral-500) font-dm text-[13px] hover:bg-(--neutral-100) transition-colors">
                 <Plus size={13} /> Add Tier
               </button>
             </div>
@@ -298,7 +298,7 @@ export function AdminLoyaltyTiersClient() {
 
         {/* Leaderboard */}
         <div>
-          <h2 className="font-syne text-[20px] font-semibold text-[--neutral-900] mb-4">Points Leaderboard</h2>
+          <h2 className="font-syne text-[20px] font-semibold text-(--neutral-900) mb-4">Points Leaderboard</h2>
           <DataTable
             columns={leaderboardColumns}
             data={leaderboard as unknown as Record<string, unknown>[]}

@@ -401,21 +401,21 @@ export function ContactClient() {
               iconBg="#e8fce3"
               iconColor="#27731e"
               title="Phone"
-              lines={["+254 710 340 678", "Mon–Fri, 9am–5pm"]}
+              lines={["+254 768 151 505", "Mon–Fri, 8am–6pm"]}
             />
             <ContactCard
               icon="mdi:whatsapp"
               iconBg="#dcfce7"
               iconColor="#16a34a"
               title="WhatsApp"
-              lines={["+254 710 340 678", "Typically responds"]}
+              lines={["+254 768 151 505", "Typically responds"]}
             />
             <ContactCard
               icon="mdi:email-outline"
               iconBg="#fef9c3"
               iconColor="#ca8a04"
               title="Email"
-              lines={["hello@fechiorganics.com", "Response within 24h"]}
+              lines={["fechiorganicsltd@gmail.com", "Response within 24h"]}
             />
             <ContactCard
               icon="mdi:store-outline"

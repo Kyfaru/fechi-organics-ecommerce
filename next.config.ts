@@ -32,6 +32,17 @@ const nextConfig: NextConfig = {
         hostname: "flagcdn.com",
         pathname: "/**",
       },
+      {
+        protocol: "https",
+        hostname: "pub-fechi.b-cdn.net",
+        pathname: "/**",
+      },
+      // Google OAuth profile avatars
+      {
+        protocol: "https",
+        hostname: "lh3.googleusercontent.com",
+        pathname: "/**",
+      },
     ],
   },
 };

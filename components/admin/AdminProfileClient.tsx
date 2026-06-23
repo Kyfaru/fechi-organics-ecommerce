@@ -40,22 +40,22 @@ interface AdminUser {
 // ---------------------------------------------------------------------------
 // Shared UI
 // ---------------------------------------------------------------------------
-const inputCls = "w-full h-10 px-3 rounded-[8px] border border-[--neutral-300] dark:border-[--dark-border] font-dm text-[14px] text-[--neutral-900] dark:text-[--dark-text] bg-white dark:bg-[--dark-surface] outline-none focus:border-[--green-600] transition-colors placeholder:text-[--neutral-400]";
-const textareaCls = "w-full px-3 py-2.5 rounded-[8px] border border-[--neutral-300] dark:border-[--dark-border] font-dm text-[14px] text-[--neutral-900] dark:text-[--dark-text] bg-white dark:bg-[--dark-surface] outline-none focus:border-[--green-600] transition-colors resize-none placeholder:text-[--neutral-400]";
+const inputCls = "w-full h-10 px-3 rounded-[8px] border border-(--neutral-300) dark:border-(--dark-border) font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) bg-white dark:bg-(--dark-surface) outline-none focus:border-(--green-600) transition-colors placeholder:text-(--neutral-400)";
+const textareaCls = "w-full px-3 py-2.5 rounded-[8px] border border-(--neutral-300) dark:border-(--dark-border) font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) bg-white dark:bg-(--dark-surface) outline-none focus:border-(--green-600) transition-colors resize-none placeholder:text-(--neutral-400)";
 
 function Field({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="font-dm text-[13px] font-medium text-[--neutral-700] dark:text-[--dark-text]">{label}</label>
+      <label className="font-dm text-[13px] font-medium text-(--neutral-700) dark:text-(--dark-text)">{label}</label>
       {children}
-      {description && <p className="font-dm text-[12px] text-[--neutral-400]">{description}</p>}
+      {description && <p className="font-dm text-[12px] text-(--neutral-400)">{description}</p>}
     </div>
   );
 }
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`bg-white dark:bg-[--dark-surface] rounded-[12px] border border-[--neutral-200] dark:border-[--dark-border] shadow-[--e1] p-6 ${className}`}>
+    <div className={`bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6 ${className}`}>
       {children}
     </div>
   );
@@ -66,7 +66,7 @@ function SaveBtn({ onClick, saving, label = "Save Changes" }: { onClick: () => v
     <button
       onClick={onClick}
       disabled={saving}
-      className="h-10 px-6 rounded-[8px] bg-[--green-800] hover:bg-[--green-900] font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60"
+      className="h-10 px-6 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60"
     >
       {saving ? "Saving…" : label}
     </button>
@@ -80,7 +80,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
       onClick={() => onChange(!checked)}
       aria-pressed={checked}
       style={{ width: 40, height: 22 }}
-      className={`relative rounded-full transition-colors shrink-0 ${checked ? "bg-[--green-600]" : "bg-[--neutral-200]"}`}
+      className={`relative rounded-full transition-colors shrink-0 ${checked ? "bg-(--green-600)" : "bg-(--neutral-200)"}`}
     >
       <span className={`absolute top-[3px] w-4 h-4 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-[20px]" : "translate-x-[3px]"}`} />
     </button>
@@ -103,10 +103,10 @@ function getStrength(password: string): { level: number; label: string; color: s
   if (/\d/.test(password) && /[^a-zA-Z0-9]/.test(password)) score++;
 
   const map: Record<number, { label: string; color: string }> = {
-    1: { label: "Weak",   color: "bg-[--danger]"   },
-    2: { label: "Fair",   color: "bg-[--gold-500]"  },
-    3: { label: "Good",   color: "bg-[--info]"      },
-    4: { label: "Strong", color: "bg-[--success]"   },
+    1: { label: "Weak",   color: "bg-(--danger)"   },
+    2: { label: "Fair",   color: "bg-(--gold-500)"  },
+    3: { label: "Good",   color: "bg-(--info)"      },
+    4: { label: "Strong", color: "bg-(--success)"   },
   };
   return { level: score, ...(map[score] ?? { label: "", color: "" }) };
 }
@@ -121,16 +121,16 @@ function StrengthMeter({ password }: { password: string }) {
         {[1, 2, 3, 4].map((i) => (
           <div
             key={i}
-            className={`h-1.5 flex-1 rounded-full transition-colors ${i <= level ? color : "bg-[--neutral-200]"}`}
+            className={`h-1.5 flex-1 rounded-full transition-colors ${i <= level ? color : "bg-(--neutral-200)"}`}
           />
         ))}
       </div>
       {label && (
         <p className={`font-dm text-[12px] font-medium ${
-          level === 1 ? "text-[--danger]" :
-          level === 2 ? "text-[--gold-700]" :
-          level === 3 ? "text-[--info]" :
-          "text-[--success]"
+          level === 1 ? "text-(--danger)" :
+          level === 2 ? "text-(--gold-700)" :
+          level === 3 ? "text-(--info)" :
+          "text-(--success)"
         }`}>
           {label} password
         </p>
@@ -160,15 +160,15 @@ function ProfileTab({ user, saving, onSave }: { user: AdminUser; saving: boolean
       {/* Avatar */}
       <Card>
         <div className="flex items-center gap-5">
-          <div className="w-24 h-24 rounded-full bg-[--green-200] text-[--green-800] flex items-center justify-center font-syne text-[28px] font-bold shrink-0">
+          <div className="w-24 h-24 rounded-full bg-(--green-200) text-(--green-800) flex items-center justify-center font-syne text-[28px] font-bold shrink-0">
             {getInitials(user.name ?? "A")}
           </div>
           <div className="flex-1">
-            <div className="font-syne text-[18px] font-semibold text-[--neutral-900] dark:text-[--dark-text]">{user.name}</div>
-            <div className="font-dm text-[13px] text-[--neutral-500] dark:text-[--dark-muted] mt-0.5">{user.email}</div>
+            <div className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">{user.name}</div>
+            <div className="font-dm text-[13px] text-(--neutral-500) dark:text-(--dark-muted) mt-0.5">{user.email}</div>
             <button
               onClick={() => toast.info("Photo upload coming soon — wire to /api/admin/upload")}
-              className="mt-3 h-8 px-4 rounded-[6px] border border-[--neutral-200] font-dm text-[12px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors"
+              className="mt-3 h-8 px-4 rounded-[6px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
             >
               Upload photo
             </button>
@@ -178,7 +178,7 @@ function ProfileTab({ user, saving, onSave }: { user: AdminUser; saving: boolean
 
       {/* Profile fields */}
       <Card>
-        <div className="font-syne text-[16px] font-semibold text-[--neutral-900] dark:text-[--dark-text] mb-5">Personal Information</div>
+        <div className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-5">Personal Information</div>
         <div className="space-y-4">
           <Field label="Display name" description="Shown in the admin panel header and activity logs">
             <input className={inputCls} value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} placeholder="Your full name" />
@@ -186,8 +186,8 @@ function ProfileTab({ user, saving, onSave }: { user: AdminUser; saving: boolean
           <Field label="Phone number">
             <input type="tel" className={inputCls} value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} placeholder="+254 700 000 000" />
           </Field>
-          <div className="border-t border-[--neutral-100] dark:border-[--dark-border] pt-4">
-            <div className="font-dm text-[12px] font-medium uppercase tracking-wider text-[--neutral-400] mb-3">Admin Profile</div>
+          <div className="border-t border-(--neutral-100) dark:border-(--dark-border) pt-4">
+            <div className="font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-400) mb-3">Admin Profile</div>
             <div className="space-y-4">
               <Field label="Full name" description="Your legal name — used in audit logs and invoices">
                 <input className={inputCls} value={form.fullName} onChange={(e) => setForm((p) => ({ ...p, fullName: e.target.value }))} placeholder="Jane Mwangi" />
@@ -260,7 +260,7 @@ function PreferencesTab() {
   return (
     <div className="space-y-6">
       <Card>
-        <div className="font-syne text-[16px] font-semibold text-[--neutral-900] dark:text-[--dark-text] mb-5">Appearance</div>
+        <div className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-5">Appearance</div>
         <div className="grid grid-cols-3 gap-3">
           {themeOptions.map((opt) => (
             <button
@@ -268,19 +268,19 @@ function PreferencesTab() {
               onClick={() => applyTheme(opt.value)}
               className={`flex flex-col items-start gap-1 p-4 rounded-[10px] border-2 text-left transition-all ${
                 theme === opt.value
-                  ? "border-[--green-800] bg-[--green-50]"
-                  : "border-[--neutral-200] dark:border-[--dark-border] hover:border-[--neutral-300]"
+                  ? "border-(--green-800) bg-(--green-50)"
+                  : "border-(--neutral-200) dark:border-(--dark-border) hover:border-(--neutral-300)"
               }`}
             >
-              <span className="font-dm text-[14px] font-semibold text-[--neutral-900] dark:text-[--dark-text]">{opt.label}</span>
-              <span className="font-dm text-[12px] text-[--neutral-400]">{opt.desc}</span>
+              <span className="font-dm text-[14px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">{opt.label}</span>
+              <span className="font-dm text-[12px] text-(--neutral-400)">{opt.desc}</span>
             </button>
           ))}
         </div>
       </Card>
 
       <Card>
-        <div className="font-syne text-[16px] font-semibold text-[--neutral-900] dark:text-[--dark-text] mb-5">Table Density</div>
+        <div className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-5">Table Density</div>
         <div className="grid grid-cols-2 gap-3">
           {densityOptions.map((opt) => (
             <button
@@ -288,12 +288,12 @@ function PreferencesTab() {
               onClick={() => applyDensity(opt.value)}
               className={`flex flex-col items-start gap-1 p-4 rounded-[10px] border-2 text-left transition-all ${
                 density === opt.value
-                  ? "border-[--green-800] bg-[--green-50]"
-                  : "border-[--neutral-200] dark:border-[--dark-border] hover:border-[--neutral-300]"
+                  ? "border-(--green-800) bg-(--green-50)"
+                  : "border-(--neutral-200) dark:border-(--dark-border) hover:border-(--neutral-300)"
               }`}
             >
-              <span className="font-dm text-[14px] font-semibold text-[--neutral-900] dark:text-[--dark-text]">{opt.label}</span>
-              <span className="font-dm text-[12px] text-[--neutral-400]">{opt.desc}</span>
+              <span className="font-dm text-[14px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">{opt.label}</span>
+              <span className="font-dm text-[12px] text-(--neutral-400)">{opt.desc}</span>
             </button>
           ))}
         </div>
@@ -336,16 +336,16 @@ function NotificationsTab() {
   return (
     <div className="space-y-6">
       <Card>
-        <div className="font-syne text-[16px] font-semibold text-[--neutral-900] dark:text-[--dark-text] mb-1">Personal Notifications</div>
-        <p className="font-dm text-[13px] text-[--neutral-500] dark:text-[--dark-muted] mb-5">
+        <div className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-1">Personal Notifications</div>
+        <p className="font-dm text-[13px] text-(--neutral-500) dark:text-(--dark-muted) mb-5">
           These override the store-level notification settings for your account only.
         </p>
-        <div className="divide-y divide-[--neutral-100] dark:divide-[--dark-border]">
+        <div className="divide-y divide-(--neutral-100) dark:divide-(--dark-border)">
           {PERSONAL_NOTIFS.map((item) => (
             <div key={item.key} className="flex items-center justify-between py-4">
               <div>
-                <div className="font-dm text-[14px] font-medium text-[--neutral-900] dark:text-[--dark-text]">{item.label}</div>
-                <div className="font-dm text-[12px] text-[--neutral-400] mt-0.5">{item.description}</div>
+                <div className="font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">{item.label}</div>
+                <div className="font-dm text-[12px] text-(--neutral-400) mt-0.5">{item.description}</div>
               </div>
               <Toggle
                 checked={prefs[item.key]}
@@ -420,7 +420,7 @@ function PasswordTab() {
           <input
             id={id}
             type={show ? "text" : "password"}
-            className={`${inputCls} pr-10 ${error ? "border-[--danger]" : ""}`}
+            className={`${inputCls} pr-10 ${error ? "border-(--danger)" : ""}`}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
@@ -429,12 +429,12 @@ function PasswordTab() {
           <button
             type="button"
             onClick={onToggle}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-[--neutral-400] hover:text-[--neutral-600]"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-(--neutral-400) hover:text-(--neutral-600)"
           >
             {show ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         </div>
-        {error && <p className="font-dm text-[12px] text-[--danger]">{error}</p>}
+        {error && <p className="font-dm text-[12px] text-(--danger)">{error}</p>}
       </div>
     );
   }
@@ -442,7 +442,7 @@ function PasswordTab() {
   return (
     <div className="space-y-6">
       <Card>
-        <div className="font-syne text-[16px] font-semibold text-[--neutral-900] dark:text-[--dark-text] mb-5">Change Password</div>
+        <div className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-5">Change Password</div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <Field label="Current password">
             <PwInput
@@ -473,13 +473,13 @@ function PasswordTab() {
             <div>
               <input
                 type={showNext ? "text" : "password"}
-                className={`${inputCls} ${errors.confirm ? "border-[--danger]" : ""}`}
+                className={`${inputCls} ${errors.confirm ? "border-(--danger)" : ""}`}
                 value={form.confirm}
                 onChange={(e) => setForm((p) => ({ ...p, confirm: e.target.value }))}
                 placeholder="Repeat the new password"
                 autoComplete="new-password"
               />
-              {errors.confirm && <p className="font-dm text-[12px] text-[--danger] mt-1">{errors.confirm}</p>}
+              {errors.confirm && <p className="font-dm text-[12px] text-(--danger) mt-1">{errors.confirm}</p>}
             </div>
           </Field>
 
@@ -487,7 +487,7 @@ function PasswordTab() {
             <button
               type="submit"
               disabled={saving}
-              className="h-10 px-6 rounded-[8px] bg-[--green-800] hover:bg-[--green-900] font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60"
+              className="h-10 px-6 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60"
             >
               {saving ? "Updating…" : "Update Password"}
             </button>
@@ -544,7 +544,7 @@ export function AdminProfileClient() {
       return (
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-white dark:bg-[--dark-surface] rounded-[12px] border border-[--neutral-200] dark:border-[--dark-border] h-24 animate-pulse" />
+            <div key={i} className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) h-24 animate-pulse" />
           ))}
         </div>
       );
@@ -571,7 +571,7 @@ export function AdminProfileClient() {
   }
 
   return (
-    <div className="min-h-screen bg-[--neutral-50] dark:bg-[--dark-bg]">
+    <div className="min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
       <PageHeader title="My Profile" description="Manage your personal admin account settings" />
 
       <div className="flex gap-6 px-6 pb-6">
@@ -583,8 +583,8 @@ export function AdminProfileClient() {
               onClick={() => setActiveTab(tab.id)}
               className={`w-full flex items-center gap-3 h-10 px-3 rounded-[8px] font-dm text-[14px] text-left transition-colors ${
                 activeTab === tab.id
-                  ? "bg-[--green-50] text-[--green-800] font-medium"
-                  : "text-[--neutral-700] dark:text-[--dark-muted] hover:bg-[--neutral-100] dark:hover:bg-[--dark-border]"
+                  ? "bg-(--green-50) text-(--green-800) font-medium"
+                  : "text-(--neutral-700) dark:text-(--dark-muted) hover:bg-(--neutral-100) dark:hover:bg-(--dark-border)"
               }`}
             >
               <tab.icon size={16} />

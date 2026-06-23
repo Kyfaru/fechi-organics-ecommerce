@@ -55,9 +55,9 @@ function slugify(name: string) {
 const VALID_KEYS = ["FACE_CARE", "BODY_CARE", "HAIR_CARE", "WELLNESS", "BABY_KIDS"] as const;
 
 const inputCls =
-  "w-full font-dm text-[14px] text-[--neutral-900] rounded-[8px] border border-[--neutral-200] bg-white px-3 py-2 focus:outline-none focus:border-[--green-800] transition-colors placeholder:text-[--neutral-400]";
+  "w-full font-dm text-[14px] text-(--neutral-900) rounded-[8px] border border-(--neutral-200) bg-white px-3 py-2 focus:outline-none focus:border-(--green-800) transition-colors placeholder:text-(--neutral-400)";
 const labelCls =
-  "block font-dm text-[12px] font-semibold text-[--neutral-500] uppercase tracking-[0.6px] mb-1.5";
+  "block font-dm text-[12px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-1.5";
 
 function blankForm(): FormData {
   return { key: "", name: "", slug: "", imageKey: "", isActive: true, sortOrder: "0" };
@@ -95,10 +95,10 @@ function CategoryImageUpload({ value, onChange }: { value: string; onChange: (ke
   return (
     <div className="flex items-center gap-3">
       <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleChange} />
-      <div className="w-16 h-16 rounded-[8px] border border-[--neutral-200] bg-[--neutral-50] overflow-hidden flex items-center justify-center shrink-0">
+      <div className="w-16 h-16 rounded-[8px] border border-(--neutral-200) bg-(--neutral-50) overflow-hidden flex items-center justify-center shrink-0">
         {src
           ? <Image src={src} alt="Category" width={64} height={64} className="object-cover w-full h-full" />
-          : <Tag size={24} className="text-[--neutral-300]" />
+          : <Tag size={24} className="text-(--neutral-300)" />
         }
       </div>
       <div className="flex flex-col gap-1.5">
@@ -106,7 +106,7 @@ function CategoryImageUpload({ value, onChange }: { value: string; onChange: (ke
           type="button"
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
-          className="h-8 px-3 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] text-[--neutral-700] hover:bg-[--neutral-50] flex items-center gap-2 disabled:opacity-50 transition-colors"
+          className="h-8 px-3 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center gap-2 disabled:opacity-50 transition-colors"
         >
           {uploading ? <Spinner size={14} /> : <ImagePlus size={14} />}
           {value ? "Replace image" : "Upload image"}
@@ -115,7 +115,7 @@ function CategoryImageUpload({ value, onChange }: { value: string; onChange: (ke
           <button
             type="button"
             onClick={() => onChange("")}
-            className="flex items-center gap-1 font-dm text-[12px] text-[--danger] hover:opacity-80 w-fit"
+            className="flex items-center gap-1 font-dm text-[12px] text-(--danger) hover:opacity-80 w-fit"
           >
             <X size={12} /> Remove
           </button>
@@ -144,7 +144,7 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
           style={{ transform: checked ? "translateX(18px)" : "translateX(0)" }}
         />
       </button>
-      <span className="font-dm text-[13px] text-[--neutral-700]">{label}</span>
+      <span className="font-dm text-[13px] text-(--neutral-700)">{label}</span>
     </label>
   );
 }
@@ -285,32 +285,32 @@ export function AdminProductCategoriesClient() {
         const src = imageUrl(cat.imageKey);
         return (
           <div className="flex items-center gap-3 py-1">
-            <div className="w-8 h-8 rounded-[6px] bg-[--neutral-100] overflow-hidden shrink-0 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-[6px] bg-(--neutral-100) overflow-hidden shrink-0 flex items-center justify-center">
               {src
                 ? <Image src={src} alt={cat.name} width={32} height={32} className="object-cover w-full h-full" />
-                : <Tag size={14} className="text-[--neutral-300]" />
+                : <Tag size={14} className="text-(--neutral-300)" />
               }
             </div>
-            <p className="font-dm text-[14px] font-medium text-[--neutral-900]">{cat.name}</p>
+            <p className="font-dm text-[14px] font-medium text-(--neutral-900)">{cat.name}</p>
           </div>
         );
       },
     },
     { key: "slug", label: "Slug", render: (_: unknown, row: Record<string, unknown>) => {
       const cat = row as unknown as AdminCategory;
-      return <span className="font-dm text-[13px] text-[--neutral-500] font-mono">{cat.slug}</span>;
+      return <span className="font-dm text-[13px] text-(--neutral-500) font-mono">{cat.slug}</span>;
     }},
     { key: "key", label: "Key", render: (_: unknown, row: Record<string, unknown>) => {
       const cat = row as unknown as AdminCategory;
-      return <span className="font-dm text-[12px] text-[--neutral-400] font-mono">{cat.key}</span>;
+      return <span className="font-dm text-[12px] text-(--neutral-400) font-mono">{cat.key}</span>;
     }},
     { key: "_count", label: "Products", render: (_: unknown, row: Record<string, unknown>) => {
       const cat = row as unknown as AdminCategory;
-      return <span className="font-dm text-[14px] text-[--neutral-700]">{cat._count.products}</span>;
+      return <span className="font-dm text-[14px] text-(--neutral-700)">{cat._count.products}</span>;
     }},
     { key: "sortOrder", label: "Order", sortable: true, render: (_: unknown, row: Record<string, unknown>) => {
       const cat = row as unknown as AdminCategory;
-      return <span className="font-dm text-[14px] text-[--neutral-700]">{cat.sortOrder}</span>;
+      return <span className="font-dm text-[14px] text-(--neutral-700)">{cat.sortOrder}</span>;
     }},
     {
       key: "isActive",
@@ -329,13 +329,13 @@ export function AdminProductCategoriesClient() {
           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => openEdit(cat)}
-              className="h-8 px-3 rounded-[6px] font-dm text-[12px] text-[--neutral-700] border border-[--neutral-200] hover:bg-[--neutral-50] transition-colors"
+              className="h-8 px-3 rounded-[6px] font-dm text-[12px] text-(--neutral-700) border border-(--neutral-200) hover:bg-(--neutral-50) transition-colors"
             >
               Edit
             </button>
             <button
               onClick={() => setDeleteTarget(cat.id)}
-              className="h-8 px-3 rounded-[6px] font-dm text-[12px] text-[--danger] border border-[--danger-bg] bg-[--danger-bg] hover:opacity-80 transition-opacity"
+              className="h-8 px-3 rounded-[6px] font-dm text-[12px] text-(--danger) border border-(--danger-bg) bg-(--danger-bg) hover:opacity-80 transition-opacity"
             >
               Delete
             </button>
@@ -348,7 +348,7 @@ export function AdminProductCategoriesClient() {
   const addButton = (
     <button
       onClick={openCreate}
-      className="h-10 px-5 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+      className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
     >
       <Plus size={16} /> Add Category
     </button>
@@ -360,7 +360,7 @@ export function AdminProductCategoriesClient() {
         type="button"
         onClick={closeDrawer}
         disabled={isPending}
-        className="h-9 px-4 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] text-[--neutral-700] hover:bg-[--neutral-50] disabled:opacity-50 mr-auto transition-colors"
+        className="h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) disabled:opacity-50 mr-auto transition-colors"
       >
         Cancel
       </button>
@@ -368,7 +368,7 @@ export function AdminProductCategoriesClient() {
         type="button"
         onClick={handleSubmit}
         disabled={isPending}
-        className="h-9 px-5 rounded-[8px] bg-[--green-800] font-dm text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-60 flex items-center gap-2 transition-opacity"
+        className="h-9 px-5 rounded-[8px] bg-(--green-800) font-dm text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-60 flex items-center gap-2 transition-opacity"
       >
         {isPending && <Spinner size={14} />}
         {editing ? "Save Changes" : "Create Category"}
@@ -428,9 +428,9 @@ export function AdminProductCategoriesClient() {
                   <option value="">Select key…</option>
                   {VALID_KEYS.map((k) => <option key={k} value={k}>{k}</option>)}
                 </select>
-                <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+                <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
               </div>
-              <p className="font-dm text-[11px] text-[--neutral-400] mt-1">Must be unique. Cannot be changed after creation.</p>
+              <p className="font-dm text-[11px] text-(--neutral-400) mt-1">Must be unique. Cannot be changed after creation.</p>
             </div>
           )}
 
@@ -454,7 +454,7 @@ export function AdminProductCategoriesClient() {
               value={form.slug}
               onChange={(e) => patchForm({ slug: e.target.value })}
             />
-            <p className="font-dm text-[11px] text-[--neutral-400] mt-1">Lowercase letters, numbers, hyphens only.</p>
+            <p className="font-dm text-[11px] text-(--neutral-400) mt-1">Lowercase letters, numbers, hyphens only.</p>
           </div>
 
           {/* Sort order */}
@@ -467,7 +467,7 @@ export function AdminProductCategoriesClient() {
               value={form.sortOrder}
               onChange={(e) => patchForm({ sortOrder: e.target.value })}
             />
-            <p className="font-dm text-[11px] text-[--neutral-400] mt-1">Lower numbers appear first.</p>
+            <p className="font-dm text-[11px] text-(--neutral-400) mt-1">Lower numbers appear first.</p>
           </div>
 
           {/* Active toggle */}

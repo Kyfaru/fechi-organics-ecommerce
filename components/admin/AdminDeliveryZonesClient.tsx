@@ -127,7 +127,7 @@ export function AdminDeliveryZonesClient() {
     {
       key: "isActive",
       label: "Active",
-      render: (value: unknown) => <span className={Boolean(value) ? "text-[--success]" : "text-[--neutral-400]"}>{Boolean(value) ? "Active" : "Paused"}</span>,
+      render: (value: unknown) => <span className={Boolean(value) ? "text-(--success)" : "text-(--neutral-400)"}>{Boolean(value) ? "Active" : "Paused"}</span>,
     },
     {
       key: "actions",
@@ -136,8 +136,8 @@ export function AdminDeliveryZonesClient() {
         const zone = row as unknown as Zone;
         return (
           <div className="flex items-center justify-end gap-1">
-            <button onClick={(e) => { e.stopPropagation(); openEdit(zone); }} className="w-8 h-8 rounded-[6px] hover:bg-[--neutral-100] flex items-center justify-center"><Edit size={14} /></button>
-            <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(zone); }} className="w-8 h-8 rounded-[6px] hover:bg-[--danger-bg] text-[--danger] flex items-center justify-center"><Trash2 size={14} /></button>
+            <button onClick={(e) => { e.stopPropagation(); openEdit(zone); }} className="w-8 h-8 rounded-[6px] hover:bg-(--neutral-100) flex items-center justify-center"><Edit size={14} /></button>
+            <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(zone); }} className="w-8 h-8 rounded-[6px] hover:bg-(--danger-bg) text-(--danger) flex items-center justify-center"><Trash2 size={14} /></button>
           </div>
         );
       },
@@ -163,7 +163,7 @@ export function AdminDeliveryZonesClient() {
   }
 
   return (
-    <div className="min-h-screen bg-[--neutral-50] dark:bg-[--dark-bg]">
+    <div className="min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
       <PageHeader title="Delivery Zones" description="Manage delivery zones, branch routing, and checkout fees" />
 
       <div className="px-6 mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -173,11 +173,11 @@ export function AdminDeliveryZonesClient() {
       </div>
 
       <div className="px-6 mb-5 flex flex-wrap items-center gap-3">
-        <select value={countyFilter} onChange={(e) => setCountyFilter(e.target.value)} className="h-9 px-3 rounded-[8px] border border-[--neutral-200] font-dm text-[13px] bg-white">
+        <select value={countyFilter} onChange={(e) => setCountyFilter(e.target.value)} className="h-9 px-3 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] bg-white">
           <option value="">All counties</option>
           {KENYA_COUNTIES.map((county) => <option key={county} value={county}>{county}</option>)}
         </select>
-        <button onClick={openCreate} className="ml-auto h-9 px-4 rounded-[8px] bg-[--green-800] text-white font-dm text-[13px] font-medium flex items-center gap-2">
+        <button onClick={openCreate} className="ml-auto h-9 px-4 rounded-[8px] bg-(--green-800) text-white font-dm text-[13px] font-medium flex items-center gap-2">
           <Plus size={14} /> New Zone
         </button>
       </div>
@@ -196,27 +196,27 @@ export function AdminDeliveryZonesClient() {
 
       <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)} title={editing ? "Edit Delivery Zone" : "New Delivery Zone"} footer={
         <>
-          <button onClick={() => setDrawerOpen(false)} className="h-9 px-4 rounded-[8px] border border-[--neutral-200] font-dm text-[13px]">Cancel</button>
-          <button onClick={() => saveMutation.mutate()} disabled={!form.name.trim() || saveMutation.isPending} className="h-9 px-4 rounded-[8px] bg-[--green-800] text-white font-dm text-[13px] disabled:opacity-50">Save Zone</button>
+          <button onClick={() => setDrawerOpen(false)} className="h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px]">Cancel</button>
+          <button onClick={() => saveMutation.mutate()} disabled={!form.name.trim() || saveMutation.isPending} className="h-9 px-4 rounded-[8px] bg-(--green-800) text-white font-dm text-[13px] disabled:opacity-50">Save Zone</button>
         </>
       }>
         <div className="space-y-4">
           <Field label="County">
-            <select value={form.county} onChange={(e) => setForm((p) => ({ ...p, county: e.target.value }))} className="w-full h-10 px-3 rounded-[8px] border border-[--neutral-200]">
+            <select value={form.county} onChange={(e) => setForm((p) => ({ ...p, county: e.target.value }))} className="w-full h-10 px-3 rounded-[8px] border border-(--neutral-200)">
               {KENYA_COUNTIES.map((county) => <option key={county} value={county}>{county}</option>)}
             </select>
           </Field>
           <Field label="Zone name">
-            <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full h-10 px-3 rounded-[8px] border border-[--neutral-200]" placeholder="Westlands" />
+            <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full h-10 px-3 rounded-[8px] border border-(--neutral-200)" placeholder="Westlands" />
           </Field>
           <Field label="Branch">
-            <select value={form.branchId} onChange={(e) => setForm((p) => ({ ...p, branchId: e.target.value }))} className="w-full h-10 px-3 rounded-[8px] border border-[--neutral-200]">
+            <select value={form.branchId} onChange={(e) => setForm((p) => ({ ...p, branchId: e.target.value }))} className="w-full h-10 px-3 rounded-[8px] border border-(--neutral-200)">
               <option value="">No branch routing</option>
               {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name} - {branch.county}</option>)}
             </select>
           </Field>
           <Field label="Delivery fee (KES)">
-            <input type="number" min="0" value={form.deliveryFeeKes} onChange={(e) => setForm((p) => ({ ...p, deliveryFeeKes: e.target.value }))} className="w-full h-10 px-3 rounded-[8px] border border-[--neutral-200]" />
+            <input type="number" min="0" value={form.deliveryFeeKes} onChange={(e) => setForm((p) => ({ ...p, deliveryFeeKes: e.target.value }))} className="w-full h-10 px-3 rounded-[8px] border border-(--neutral-200)" />
           </Field>
           <label className="flex items-center gap-2 font-dm text-[13px]">
             <input type="checkbox" checked={form.isActive} onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.checked }))} />
@@ -242,7 +242,7 @@ export function AdminDeliveryZonesClient() {
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
-      <label className="block font-dm text-[13px] font-medium text-[--neutral-700] mb-1.5">{label}</label>
+      <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-1.5">{label}</label>
       {children}
     </div>
   );

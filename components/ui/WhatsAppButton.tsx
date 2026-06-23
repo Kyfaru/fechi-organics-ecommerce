@@ -3,7 +3,7 @@
 import { Icon } from "@iconify/react";
 import { posthog } from "@/lib/posthog";
 
-const WHATSAPP_NUMBER = "254710340678";
+const WHATSAPP_NUMBER = "254768151505";
 const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}`;
 
 export function WhatsAppButton() {

@@ -173,13 +173,13 @@ export function AdminBannersClient() {
           <div className="flex items-center gap-3">
             {url ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={url} alt="" className="w-10 h-10 rounded-[6px] object-cover border border-[--neutral-200]" />
+              <img src={url} alt="" className="w-10 h-10 rounded-[6px] object-cover border border-(--neutral-200)" />
             ) : (
-              <div className="w-10 h-10 rounded-[6px] bg-[--neutral-100] flex items-center justify-center">
-                <ImageIcon size={16} className="text-[--neutral-400]" />
+              <div className="w-10 h-10 rounded-[6px] bg-(--neutral-100) flex items-center justify-center">
+                <ImageIcon size={16} className="text-(--neutral-400)" />
               </div>
             )}
-            <span className="font-dm text-[14px] font-medium text-[--neutral-900]">{String(v)}</span>
+            <span className="font-dm text-[14px] font-medium text-(--neutral-900)">{String(v)}</span>
           </div>
         );
       },
@@ -189,7 +189,7 @@ export function AdminBannersClient() {
       label: "Location",
       sortable: true,
       render: (v: unknown) => (
-        <span className="inline-block px-2 py-0.5 rounded-full bg-[--neutral-100] font-dm text-[12px] text-[--neutral-700]">
+        <span className="inline-block px-2 py-0.5 rounded-full bg-(--neutral-100) font-dm text-[12px] text-(--neutral-700)">
           {String(v || "—").replace(/_/g, " ")}
         </span>
       ),
@@ -198,7 +198,7 @@ export function AdminBannersClient() {
       key: "ctaLink",
       label: "Link",
       render: (v: unknown) => (
-        <span className="font-dm text-[13px] text-[--neutral-500] truncate max-w-[180px] inline-block">{String(v || "—")}</span>
+        <span className="font-dm text-[13px] text-(--neutral-500) truncate max-w-[180px] inline-block">{String(v || "—")}</span>
       ),
     },
     {
@@ -217,7 +217,7 @@ export function AdminBannersClient() {
       key: "endDate",
       label: "Expires",
       render: (v: unknown) => (
-        <span className="font-dm text-[14px] text-[--neutral-700]">
+        <span className="font-dm text-[14px] text-(--neutral-700)">
           {v ? new Date(String(v)).toLocaleDateString() : "—"}
         </span>
       ),
@@ -229,13 +229,13 @@ export function AdminBannersClient() {
         <div className="flex items-center gap-2">
           <button
             onClick={(e) => { e.stopPropagation(); openEdit(row as unknown as Banner); }}
-            className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-[--neutral-100] hover:bg-[--neutral-200] text-[--neutral-700] transition-colors"
+            className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-(--neutral-100) hover:bg-(--neutral-200) text-(--neutral-700) transition-colors"
           >
             Edit
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); setDeleteTarget(row as unknown as Banner); }}
-            className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-[--danger-bg] hover:bg-red-100 text-[--danger] transition-colors"
+            className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-(--danger-bg) hover:bg-red-100 text-(--danger) transition-colors"
           >
             Delete
           </button>
@@ -245,7 +245,7 @@ export function AdminBannersClient() {
   ];
 
   return (
-    <div className="min-h-screen bg-[--neutral-50]">
+    <div className="min-h-screen bg-(--neutral-50)">
       <PageHeader
         breadcrumbs={[{ label: "Content", href: "/admin/content/banners" }, { label: "Banners", href: "/admin/content/banners" }]}
         title="Banners"
@@ -253,7 +253,7 @@ export function AdminBannersClient() {
         action={
           <button
             onClick={openCreate}
-            className="flex items-center gap-2 h-10 px-4 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:bg-[--green-900] transition-colors"
+            className="flex items-center gap-2 h-10 px-4 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors"
           >
             <Plus size={16} />
             Add Banner
@@ -281,14 +281,14 @@ export function AdminBannersClient() {
           <>
             <button
               onClick={closeDrawer}
-              className="h-10 px-4 rounded-[8px] border border-[--neutral-200] font-dm text-[14px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors"
+              className="h-10 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleSubmit}
               disabled={isPending || !form.name.trim() || !form.imageKey.trim()}
-              className="h-10 px-5 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:bg-[--green-900] transition-colors disabled:opacity-50 ml-auto"
+              className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors disabled:opacity-50 ml-auto"
             >
               {isPending ? "Saving..." : drawer.mode === "create" ? "Add Banner" : "Save Changes"}
             </button>
@@ -315,7 +315,7 @@ export function AdminBannersClient() {
           </FormField>
 
           {form.imageKey && (
-            <div className="rounded-[8px] border border-[--neutral-200] overflow-hidden">
+            <div className="rounded-[8px] border border-(--neutral-200) overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={imageUrl(form.imageKey) ?? ""} alt="Preview" className="w-full h-32 object-cover" />
             </div>
@@ -333,7 +333,7 @@ export function AdminBannersClient() {
                 <option value="shop_top">Shop Top</option>
                 <option value="cart">Cart</option>
               </select>
-              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
             </div>
           </FormField>
 
@@ -385,7 +385,7 @@ export function AdminBannersClient() {
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </select>
-              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none" />
+              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
             </div>
           </FormField>
         </div>
@@ -413,9 +413,9 @@ function FormField({ label, required, hint, children }: {
 }) {
   return (
     <div>
-      <label className="block font-dm text-[13px] font-medium text-[--neutral-700] mb-1.5">
-        {label} {required && <span className="text-[--danger]">*</span>}
-        {hint && <span className="text-[--neutral-400] font-normal ml-1">({hint})</span>}
+      <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-1.5">
+        {label} {required && <span className="text-(--danger)">*</span>}
+        {hint && <span className="text-(--neutral-400) font-normal ml-1">({hint})</span>}
       </label>
       {children}
     </div>
@@ -423,4 +423,4 @@ function FormField({ label, required, hint, children }: {
 }
 
 const inputCls =
-  "w-full h-10 px-3 rounded-[8px] border border-[--neutral-200] bg-white font-dm text-[14px] text-[--neutral-900] placeholder:text-[--neutral-400] focus:outline-none focus:ring-2 focus:ring-[--green-500] focus:border-transparent transition-shadow";
+  "w-full h-10 px-3 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-900) placeholder:text-(--neutral-400) focus:outline-none focus:ring-2 focus:ring-(--green-500) focus:border-transparent transition-shadow";

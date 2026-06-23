@@ -120,27 +120,27 @@ function TicketListItem({
     <button
       onClick={onClick}
       className={[
-        "w-full text-left px-3 py-3.5 border-b border-[--neutral-100] dark:border-[--dark-border] hover:bg-[--neutral-50] dark:hover:bg-[--dark-border] transition-colors relative",
-        active ? "bg-[--green-50] dark:bg-[--dark-border]" : "",
+        "w-full text-left px-3 py-3.5 border-b border-(--neutral-100) dark:border-(--dark-border) hover:bg-(--neutral-50) dark:hover:bg-(--dark-border) transition-colors relative",
+        active ? "bg-(--green-50) dark:bg-(--dark-border)" : "",
       ].join(" ")}
     >
       <div className="flex items-start justify-between gap-2 mb-0.5">
-        <span className="font-dm text-[13px] font-semibold text-[--neutral-900] dark:text-[--dark-text] truncate">
+        <span className="font-dm text-[13px] font-semibold text-(--neutral-900) dark:text-(--dark-text) truncate">
           {ticket.user.name}
         </span>
-        <span className="font-dm text-[11px] text-[--neutral-400] dark:text-[--dark-muted] shrink-0">
+        <span className="font-dm text-[11px] text-(--neutral-400) dark:text-(--dark-muted) shrink-0">
           {formatRelative(ticket.lastActivityAt)}
         </span>
       </div>
-      <div className="font-dm text-[11px] text-[--neutral-400] dark:text-[--dark-muted] mb-1">
+      <div className="font-dm text-[11px] text-(--neutral-400) dark:text-(--dark-muted) mb-1">
         {ticket.ticketNumber}
       </div>
-      <div className="font-dm text-[12px] text-[--neutral-500] dark:text-[--dark-muted] truncate">
+      <div className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted) truncate">
         {preview}
       </div>
       {/* Active status dot */}
       {ticket.status === "OPEN" && (
-        <span className="absolute top-3.5 right-3 w-2 h-2 rounded-full bg-[--success]" />
+        <span className="absolute top-3.5 right-3 w-2 h-2 rounded-full bg-(--success)" />
       )}
     </button>
   );
@@ -161,7 +161,7 @@ function MessageBubble({
   if (isAdmin) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[70%] bg-[--green-800] rounded-[16px] rounded-tr-[4px] px-4 py-3">
+        <div className="max-w-[70%] bg-(--green-800) rounded-[16px] rounded-tr-[4px] px-4 py-3">
           <p className="font-dm text-[14px] text-white leading-relaxed">{message.content}</p>
           <span className="font-dm text-[11px] text-white/60 mt-1 flex items-center justify-end gap-1">
             {formatTime(message.createdAt)}
@@ -178,11 +178,11 @@ function MessageBubble({
 
   return (
     <div className="flex justify-start">
-      <div className="max-w-[70%] bg-white dark:bg-[--dark-surface] border border-[--neutral-200] dark:border-[--dark-border] rounded-[16px] rounded-tl-[4px] px-4 py-3 shadow-[--e1]">
-        <p className="font-dm text-[14px] text-[--neutral-900] dark:text-[--dark-text] leading-relaxed">
+      <div className="max-w-[70%] bg-white dark:bg-(--dark-surface) border border-(--neutral-200) dark:border-(--dark-border) rounded-[16px] rounded-tl-[4px] px-4 py-3 shadow-(--e1)">
+        <p className="font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) leading-relaxed">
           {message.content}
         </p>
-        <span className="font-dm text-[11px] text-[--neutral-400] dark:text-[--dark-muted] mt-1 block">
+        <span className="font-dm text-[11px] text-(--neutral-400) dark:text-(--dark-muted) mt-1 block">
           {formatTime(message.createdAt)}
         </span>
       </div>
@@ -362,26 +362,26 @@ export function AdminTicketsClient() {
       {/* ------------------------------------------------------------------ */}
       {/* Column 1 — Ticket list (240px)                                      */}
       {/* ------------------------------------------------------------------ */}
-      <div className="w-[240px] shrink-0 border-r border-[--neutral-200] dark:border-[--dark-border] flex flex-col bg-white dark:bg-[--dark-surface]">
+      <div className="w-[240px] shrink-0 border-r border-(--neutral-200) dark:border-(--dark-border) flex flex-col bg-white dark:bg-(--dark-surface)">
         {/* Search */}
-        <div className="p-3 border-b border-[--neutral-100] dark:border-[--dark-border]">
+        <div className="p-3 border-b border-(--neutral-100) dark:border-(--dark-border)">
           <div className="relative">
             <Search
               size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-[--neutral-400] pointer-events-none"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none"
             />
             <input
               type="search"
               placeholder="Search tickets..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full h-9 pl-8 pr-3 bg-[--neutral-50] dark:bg-[--dark-bg] border border-[--neutral-200] dark:border-[--dark-border] rounded-full font-dm text-[13px] text-[--neutral-900] dark:text-[--dark-text] placeholder:text-[--neutral-400] focus:outline-none focus:border-[--green-800] transition-colors"
+              className="w-full h-9 pl-8 pr-3 bg-(--neutral-50) dark:bg-(--dark-bg) border border-(--neutral-200) dark:border-(--dark-border) rounded-full font-dm text-[13px] text-(--neutral-900) dark:text-(--dark-text) placeholder:text-(--neutral-400) focus:outline-none focus:border-(--green-800) transition-colors"
             />
           </div>
         </div>
 
         {/* Filter pills */}
-        <div className="flex gap-1 px-2 py-2 border-b border-[--neutral-100] dark:border-[--dark-border] flex-wrap">
+        <div className="flex gap-1 px-2 py-2 border-b border-(--neutral-100) dark:border-(--dark-border) flex-wrap">
           {STATUS_FILTERS.map((f) => (
             <button
               key={f.key}
@@ -389,8 +389,8 @@ export function AdminTicketsClient() {
               className={[
                 "h-6 px-2.5 rounded-full font-dm text-[11px] font-medium transition-colors",
                 statusFilter === f.key
-                  ? "bg-[--green-800] text-white"
-                  : "bg-[--neutral-100] dark:bg-[--dark-border] text-[--neutral-500] dark:text-[--dark-muted] hover:bg-[--neutral-200]",
+                  ? "bg-(--green-800) text-white"
+                  : "bg-(--neutral-100) dark:bg-(--dark-border) text-(--neutral-500) dark:text-(--dark-muted) hover:bg-(--neutral-200)",
               ].join(" ")}
             >
               {f.label}
@@ -403,13 +403,13 @@ export function AdminTicketsClient() {
           {listLoading ? (
             <div className="p-3 space-y-2">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-16 bg-[--neutral-100] dark:bg-[--dark-border] rounded-[8px] animate-pulse" />
+                <div key={i} className="h-16 bg-(--neutral-100) dark:bg-(--dark-border) rounded-[8px] animate-pulse" />
               ))}
             </div>
           ) : filteredTickets.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full p-4 text-center">
-              <MessageSquare size={32} className="text-[--neutral-300] mb-2" />
-              <p className="font-dm text-[12px] text-[--neutral-400]">No tickets found</p>
+              <MessageSquare size={32} className="text-(--neutral-300) mb-2" />
+              <p className="font-dm text-[12px] text-(--neutral-400)">No tickets found</p>
             </div>
           ) : (
             filteredTickets.map((ticket) => (
@@ -427,7 +427,7 @@ export function AdminTicketsClient() {
       {/* ------------------------------------------------------------------ */}
       {/* Column 2 — Thread view (flex-1)                                     */}
       {/* ------------------------------------------------------------------ */}
-      <div className="flex-1 flex flex-col min-w-0 bg-[--neutral-50] dark:bg-[--dark-bg]">
+      <div className="flex-1 flex flex-col min-w-0 bg-(--neutral-50) dark:bg-(--dark-bg)">
         {!activeTicket && !detailLoading ? (
           <div className="flex-1 flex items-center justify-center">
             <EmptyState
@@ -439,17 +439,17 @@ export function AdminTicketsClient() {
         ) : (
           <>
             {/* Thread header */}
-            <div className="h-14 shrink-0 flex items-center justify-between px-4 bg-white dark:bg-[--dark-surface] border-b border-[--neutral-200] dark:border-[--dark-border]">
+            <div className="h-14 shrink-0 flex items-center justify-between px-4 bg-white dark:bg-(--dark-surface) border-b border-(--neutral-200) dark:border-(--dark-border)">
               {detailLoading ? (
-                <div className="h-5 w-48 bg-[--neutral-100] dark:bg-[--dark-border] rounded animate-pulse" />
+                <div className="h-5 w-48 bg-(--neutral-100) dark:bg-(--dark-border) rounded animate-pulse" />
               ) : activeTicket ? (
                 <>
                   <div className="flex items-center gap-3 min-w-0">
-                    <span className="font-dm text-[13px] font-semibold text-[--neutral-400] shrink-0">
+                    <span className="font-dm text-[13px] font-semibold text-(--neutral-400) shrink-0">
                       {activeTicket.ticketNumber}
                     </span>
                     <StatusPill status={activeTicket.status.toLowerCase()} />
-                    <span className="font-dm text-[14px] font-medium text-[--neutral-900] dark:text-[--dark-text] truncate">
+                    <span className="font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text) truncate">
                       {activeTicket.subject}
                     </span>
                   </div>
@@ -463,7 +463,7 @@ export function AdminTicketsClient() {
                       statusMutation.isPending ||
                       activeTicket.status === "EXPIRED"
                     }
-                    className="shrink-0 w-8 h-8 flex items-center justify-center rounded-[6px] text-[--neutral-500] hover:bg-[--neutral-100] dark:hover:bg-[--dark-border] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="shrink-0 w-8 h-8 flex items-center justify-center rounded-[6px] text-(--neutral-500) hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     title={
                       activeTicket.status === "RESOLVED"
                         ? "Reopen ticket"
@@ -485,7 +485,7 @@ export function AdminTicketsClient() {
                       key={i}
                       className={`flex ${i % 2 === 0 ? "justify-start" : "justify-end"}`}
                     >
-                      <div className="h-16 w-64 bg-[--neutral-200] dark:bg-[--dark-border] rounded-[16px] animate-pulse" />
+                      <div className="h-16 w-64 bg-(--neutral-200) dark:bg-(--dark-border) rounded-[16px] animate-pulse" />
                     </div>
                   ))}
                 </div>
@@ -495,7 +495,7 @@ export function AdminTicketsClient() {
                     <div key={group.date}>
                       {/* Date separator */}
                       <div className="flex items-center justify-center my-4">
-                        <span className="font-dm text-[11px] text-[--neutral-400] bg-[--neutral-200] dark:bg-[--dark-border] rounded-full px-3 py-1">
+                        <span className="font-dm text-[11px] text-(--neutral-400) bg-(--neutral-200) dark:bg-(--dark-border) rounded-full px-3 py-1">
                           {group.date}
                         </span>
                       </div>
@@ -516,14 +516,14 @@ export function AdminTicketsClient() {
             </div>
 
             {/* Compose area */}
-            <div className="shrink-0 border-t border-[--neutral-200] dark:border-[--dark-border] p-3 bg-white dark:bg-[--dark-surface]">
+            <div className="shrink-0 border-t border-(--neutral-200) dark:border-(--dark-border) p-3 bg-white dark:bg-(--dark-surface)">
               {activeTicket?.status === "EXPIRED" ? (
                 <div className="text-center py-2">
-                  <p className="font-dm text-[13px] text-[--neutral-400]">
+                  <p className="font-dm text-[13px] text-(--neutral-400)">
                     This ticket has expired.{" "}
                     <button
                       onClick={() => statusMutation.mutate("OPEN")}
-                      className="text-[--green-800] underline hover:no-underline"
+                      className="text-(--green-800) underline hover:no-underline"
                     >
                       Reopen it
                     </button>{" "}
@@ -532,11 +532,11 @@ export function AdminTicketsClient() {
                 </div>
               ) : activeTicket?.status === "RESOLVED" ? (
                 <div className="text-center py-2">
-                  <p className="font-dm text-[13px] text-[--neutral-400]">
+                  <p className="font-dm text-[13px] text-(--neutral-400)">
                     Ticket resolved.{" "}
                     <button
                       onClick={() => statusMutation.mutate("OPEN")}
-                      className="text-[--green-800] underline hover:no-underline"
+                      className="text-(--green-800) underline hover:no-underline"
                     >
                       Reopen
                     </button>{" "}
@@ -551,12 +551,12 @@ export function AdminTicketsClient() {
                     onKeyDown={handleKeyDown}
                     placeholder="Type a reply... (Ctrl+Enter to send)"
                     rows={2}
-                    className="flex-1 resize-none rounded-[10px] border border-[--neutral-200] dark:border-[--dark-border] bg-[--neutral-50] dark:bg-[--dark-bg] px-3 py-2 font-dm text-[14px] text-[--neutral-900] dark:text-[--dark-text] placeholder:text-[--neutral-400] min-h-[40px] max-h-[120px] focus:border-[--green-800] focus:outline-none transition-colors"
+                    className="flex-1 resize-none rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg) px-3 py-2 font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) placeholder:text-(--neutral-400) min-h-[40px] max-h-[120px] focus:border-(--green-800) focus:outline-none transition-colors"
                   />
                   <button
                     onClick={handleSend}
                     disabled={!replyText.trim() || replyMutation.isPending}
-                    className="w-10 h-10 rounded-full bg-[--green-800] text-white flex items-center justify-center hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity shrink-0"
+                    className="w-10 h-10 rounded-full bg-(--green-800) text-white flex items-center justify-center hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity shrink-0"
                   >
                     <Send size={16} />
                   </button>
@@ -570,24 +570,24 @@ export function AdminTicketsClient() {
       {/* ------------------------------------------------------------------ */}
       {/* Column 3 — Customer + ticket info (280px)                           */}
       {/* ------------------------------------------------------------------ */}
-      <div className="w-[280px] shrink-0 border-l border-[--neutral-200] dark:border-[--dark-border] bg-[--neutral-50] dark:bg-[--dark-bg] flex flex-col overflow-y-auto">
+      <div className="w-[280px] shrink-0 border-l border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg) flex flex-col overflow-y-auto">
         {activeTicket ? (
           <>
             {/* Customer info */}
-            <div className="p-4 border-b border-[--neutral-200] dark:border-[--dark-border]">
+            <div className="p-4 border-b border-(--neutral-200) dark:border-(--dark-border)">
               <div className="flex flex-col items-center text-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-[--green-50] dark:bg-[--dark-border] text-[--green-800] dark:text-[--dark-text] flex items-center justify-center font-dm font-semibold text-[18px]">
+                <div className="w-12 h-12 rounded-full bg-(--green-50) dark:bg-(--dark-border) text-(--green-800) dark:text-(--dark-text) flex items-center justify-center font-dm font-semibold text-[18px]">
                   {initials(activeTicket.user.name)}
                 </div>
                 <div>
-                  <div className="font-syne text-[16px] font-semibold text-[--neutral-900] dark:text-[--dark-text]">
+                  <div className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
                     {activeTicket.user.name}
                   </div>
-                  <div className="font-dm text-[13px] text-[--neutral-500] dark:text-[--dark-muted] mt-0.5">
+                  <div className="font-dm text-[13px] text-(--neutral-500) dark:text-(--dark-muted) mt-0.5">
                     {activeTicket.user.email}
                   </div>
                   {activeTicket.user.phone && (
-                    <div className="font-dm text-[13px] text-[--neutral-500] dark:text-[--dark-muted]">
+                    <div className="font-dm text-[13px] text-(--neutral-500) dark:text-(--dark-muted)">
                       {activeTicket.user.phone}
                     </div>
                   )}
@@ -596,8 +596,8 @@ export function AdminTicketsClient() {
             </div>
 
             {/* Ticket info */}
-            <div className="p-4 border-b border-[--neutral-200] dark:border-[--dark-border] space-y-3">
-              <div className="font-dm text-[11px] font-semibold uppercase tracking-wider text-[--neutral-400] dark:text-[--dark-muted]">
+            <div className="p-4 border-b border-(--neutral-200) dark:border-(--dark-border) space-y-3">
+              <div className="font-dm text-[11px] font-semibold uppercase tracking-wider text-(--neutral-400) dark:text-(--dark-muted)">
                 Ticket Details
               </div>
               {[
@@ -608,21 +608,21 @@ export function AdminTicketsClient() {
                 { label: "Expires", value: formatDate(activeTicket.expiresAt) },
               ].map(({ label, value }) => (
                 <div key={label}>
-                  <div className="font-dm text-[11px] text-[--neutral-400] dark:text-[--dark-muted]">{label}</div>
-                  <div className="font-dm text-[13px] text-[--neutral-700] dark:text-[--dark-text] mt-0.5 font-medium">
+                  <div className="font-dm text-[11px] text-(--neutral-400) dark:text-(--dark-muted)">{label}</div>
+                  <div className="font-dm text-[13px] text-(--neutral-700) dark:text-(--dark-text) mt-0.5 font-medium">
                     {value}
                   </div>
                 </div>
               ))}
               <div>
-                <div className="font-dm text-[11px] text-[--neutral-400] dark:text-[--dark-muted] mb-1">Status</div>
+                <div className="font-dm text-[11px] text-(--neutral-400) dark:text-(--dark-muted) mb-1">Status</div>
                 <StatusPill status={activeTicket.status.toLowerCase()} />
               </div>
             </div>
 
             {/* Actions */}
             <div className="p-4 space-y-2">
-              <div className="font-dm text-[11px] font-semibold uppercase tracking-wider text-[--neutral-400] dark:text-[--dark-muted] mb-3">
+              <div className="font-dm text-[11px] font-semibold uppercase tracking-wider text-(--neutral-400) dark:text-(--dark-muted) mb-3">
                 Actions
               </div>
 
@@ -630,7 +630,7 @@ export function AdminTicketsClient() {
                 <button
                   onClick={() => statusMutation.mutate("RESOLVED")}
                   disabled={statusMutation.isPending || activeTicket.status === "EXPIRED"}
-                  className="w-full h-10 rounded-[8px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+                  className="w-full h-10 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
                 >
                   Mark Resolved
                 </button>
@@ -640,7 +640,7 @@ export function AdminTicketsClient() {
                 <button
                   onClick={() => statusMutation.mutate("OPEN")}
                   disabled={statusMutation.isPending}
-                  className="w-full h-10 rounded-[8px] border border-[--neutral-200] dark:border-[--dark-border] text-[--neutral-700] dark:text-[--dark-text] font-dm text-[14px] font-medium hover:bg-[--neutral-100] dark:hover:bg-[--dark-border] disabled:opacity-50 transition-colors"
+                  className="w-full h-10 rounded-[8px] border border-(--neutral-200) dark:border-(--dark-border) text-(--neutral-700) dark:text-(--dark-text) font-dm text-[14px] font-medium hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) disabled:opacity-50 transition-colors"
                 >
                   Reopen Ticket
                 </button>
@@ -650,7 +650,7 @@ export function AdminTicketsClient() {
                 <button
                   onClick={() => statusMutation.mutate("OPEN")}
                   disabled={statusMutation.isPending}
-                  className="w-full h-10 rounded-[8px] border border-[--neutral-200] dark:border-[--dark-border] text-[--neutral-700] dark:text-[--dark-text] font-dm text-[14px] font-medium hover:bg-[--neutral-100] dark:hover:bg-[--dark-border] disabled:opacity-50 transition-colors"
+                  className="w-full h-10 rounded-[8px] border border-(--neutral-200) dark:border-(--dark-border) text-(--neutral-700) dark:text-(--dark-text) font-dm text-[14px] font-medium hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) disabled:opacity-50 transition-colors"
                 >
                   Reopen Ticket
                 </button>
@@ -659,7 +659,7 @@ export function AdminTicketsClient() {
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center p-4">
-            <p className="font-dm text-[13px] text-[--neutral-400] text-center">
+            <p className="font-dm text-[13px] text-(--neutral-400) text-center">
               Select a ticket to see details
             </p>
           </div>

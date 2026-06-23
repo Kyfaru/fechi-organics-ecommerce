@@ -107,12 +107,12 @@ function NewTicketModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45">
       <div className="w-full max-w-[480px] bg-white rounded-[16px] shadow-[0_24px_64px_rgba(0,0,0,0.16)] p-6">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="font-syne text-[20px] font-semibold text-[--neutral-900]">
+          <h2 className="font-syne text-[20px] font-semibold text-(--neutral-900)">
             New Support Ticket
           </h2>
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-[6px] text-[--neutral-500] hover:bg-[--neutral-100] transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-[6px] text-(--neutral-500) hover:bg-(--neutral-100) transition-colors"
           >
             <X size={18} />
           </button>
@@ -120,7 +120,7 @@ function NewTicketModal({
 
         <div className="space-y-4">
           <div>
-            <label className="font-dm text-[13px] font-medium text-[--neutral-700] block mb-1.5">
+            <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1.5">
               Subject
             </label>
             <input
@@ -128,11 +128,11 @@ function NewTicketModal({
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               placeholder="What do you need help with?"
-              className="w-full h-11 px-4 rounded-[10px] border border-[--neutral-200] font-dm text-[14px] text-[--neutral-900] placeholder:text-[--neutral-400] focus:outline-none focus:border-[--green-800] transition-colors"
+              className="w-full h-11 px-4 rounded-[10px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-900) placeholder:text-(--neutral-400) focus:outline-none focus:border-(--green-800) transition-colors"
             />
           </div>
           <div>
-            <label className="font-dm text-[13px] font-medium text-[--neutral-700] block mb-1.5">
+            <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1.5">
               Message
             </label>
             <textarea
@@ -140,7 +140,7 @@ function NewTicketModal({
               onChange={(e) => setContent(e.target.value)}
               placeholder="Describe your issue in detail..."
               rows={5}
-              className="w-full px-4 py-3 rounded-[10px] border border-[--neutral-200] font-dm text-[14px] text-[--neutral-900] placeholder:text-[--neutral-400] focus:outline-none focus:border-[--green-800] resize-none transition-colors"
+              className="w-full px-4 py-3 rounded-[10px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-900) placeholder:text-(--neutral-400) focus:outline-none focus:border-(--green-800) resize-none transition-colors"
             />
           </div>
         </div>
@@ -148,7 +148,7 @@ function NewTicketModal({
         <div className="flex gap-3 mt-6">
           <button
             onClick={onClose}
-            className="flex-1 h-11 rounded-[10px] border border-[--neutral-200] font-dm text-[14px] text-[--neutral-700] hover:bg-[--neutral-50] transition-colors"
+            className="flex-1 h-11 rounded-[10px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
           >
             Cancel
           </button>
@@ -159,7 +159,7 @@ function NewTicketModal({
               content.trim().length < 10 ||
               createMutation.isPending
             }
-            className="flex-1 h-11 rounded-[10px] bg-[--green-800] text-white font-dm text-[14px] font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+            className="flex-1 h-11 rounded-[10px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
           >
             {createMutation.isPending ? "Creating..." : "Create Ticket"}
           </button>
@@ -178,7 +178,7 @@ function MessageBubble({ message }: { message: TicketMessage & { isOptimistic?: 
   if (isCustomer) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[70%] bg-[--green-800] rounded-[16px] rounded-tr-[4px] px-4 py-3">
+        <div className="max-w-[70%] bg-(--green-800) rounded-[16px] rounded-tr-[4px] px-4 py-3">
           <p className="font-dm text-[14px] text-white leading-relaxed">{message.content}</p>
           <span className="font-dm text-[11px] text-white/60 mt-1 block text-right">
             {formatTime(message.createdAt)}
@@ -190,10 +190,10 @@ function MessageBubble({ message }: { message: TicketMessage & { isOptimistic?: 
 
   return (
     <div className="flex justify-start">
-      <div className="max-w-[70%] bg-white border border-[--neutral-200] rounded-[16px] rounded-tl-[4px] px-4 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
-        <div className="font-dm text-[11px] text-[--green-800] font-semibold mb-1">Fechi Organics Support</div>
-        <p className="font-dm text-[14px] text-[--neutral-900] leading-relaxed">{message.content}</p>
-        <span className="font-dm text-[11px] text-[--neutral-400] mt-1 block">
+      <div className="max-w-[70%] bg-white border border-(--neutral-200) rounded-[16px] rounded-tl-[4px] px-4 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
+        <div className="font-dm text-[11px] text-(--green-800) font-semibold mb-1">Fechi Organics Support</div>
+        <p className="font-dm text-[14px] text-(--neutral-900) leading-relaxed">{message.content}</p>
+        <span className="font-dm text-[11px] text-(--neutral-400) mt-1 block">
           {formatTime(message.createdAt)}
         </span>
       </div>
@@ -324,13 +324,13 @@ export function MessagesClient() {
         {/* ---------------------------------------------------------------- */}
         {/* Column 1 — Ticket list (280px)                                   */}
         {/* ---------------------------------------------------------------- */}
-        <div className="w-[280px] shrink-0 border-r border-[--neutral-200] flex flex-col">
+        <div className="w-[280px] shrink-0 border-r border-(--neutral-200) flex flex-col">
           {/* Header */}
-          <div className="h-14 flex items-center justify-between px-4 border-b border-[--neutral-200]">
-            <span className="font-syne text-[16px] font-semibold text-[--neutral-900]">Messages</span>
+          <div className="h-14 flex items-center justify-between px-4 border-b border-(--neutral-200)">
+            <span className="font-syne text-[16px] font-semibold text-(--neutral-900)">Messages</span>
             <button
               onClick={() => setShowNewModal(true)}
-              className="w-8 h-8 flex items-center justify-center rounded-[6px] bg-[--green-800] text-white hover:opacity-90 transition-opacity"
+              className="w-8 h-8 flex items-center justify-center rounded-[6px] bg-(--green-800) text-white hover:opacity-90 transition-opacity"
               title="New ticket"
             >
               <Plus size={16} />
@@ -342,16 +342,16 @@ export function MessagesClient() {
             {listLoading ? (
               <div className="p-3 space-y-2">
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="h-16 bg-[--neutral-100] rounded-[8px] animate-pulse" />
+                  <div key={i} className="h-16 bg-(--neutral-100) rounded-[8px] animate-pulse" />
                 ))}
               </div>
             ) : tickets.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full px-4 text-center gap-3">
-                <MessageSquare size={36} className="text-[--neutral-300]" />
-                <p className="font-dm text-[13px] text-[--neutral-500]">No messages yet</p>
+                <MessageSquare size={36} className="text-(--neutral-300)" />
+                <p className="font-dm text-[13px] text-(--neutral-500)">No messages yet</p>
                 <button
                   onClick={() => setShowNewModal(true)}
-                  className="h-9 px-4 rounded-full bg-[--green-800] text-white font-dm text-[13px] font-medium hover:opacity-90 transition-opacity"
+                  className="h-9 px-4 rounded-full bg-(--green-800) text-white font-dm text-[13px] font-medium hover:opacity-90 transition-opacity"
                 >
                   Start a conversation
                 </button>
@@ -369,20 +369,20 @@ export function MessagesClient() {
                     key={ticket.id}
                     onClick={() => setActiveTicketId(ticket.id)}
                     className={[
-                      "w-full text-left px-4 py-3.5 border-b border-[--neutral-100] transition-colors",
-                      active ? "bg-[--green-50]" : "hover:bg-[--neutral-50]",
+                      "w-full text-left px-4 py-3.5 border-b border-(--neutral-100) transition-colors",
+                      active ? "bg-(--green-50)" : "hover:bg-(--neutral-50)",
                     ].join(" ")}
                   >
                     <div className="flex items-center justify-between gap-2 mb-0.5">
-                      <span className="font-dm text-[13px] font-semibold text-[--neutral-900] truncate">
+                      <span className="font-dm text-[13px] font-semibold text-(--neutral-900) truncate">
                         {ticket.subject}
                       </span>
-                      <span className="font-dm text-[11px] text-[--neutral-400] shrink-0">
+                      <span className="font-dm text-[11px] text-(--neutral-400) shrink-0">
                         {formatRelative(ticket.lastActivityAt)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-dm text-[12px] text-[--neutral-500] truncate">
+                      <span className="font-dm text-[12px] text-(--neutral-500) truncate">
                         {preview}
                       </span>
                       <StatusPill status={ticket.status.toLowerCase()} />
@@ -400,13 +400,13 @@ export function MessagesClient() {
         <div className="flex-1 flex flex-col min-w-0 bg-[#f7f8f7]">
           {!activeTicket && !detailLoading ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-4">
-              <MessageSquare size={48} className="text-[--neutral-300]" />
-              <p className="font-dm text-[15px] text-[--neutral-500]">
+              <MessageSquare size={48} className="text-(--neutral-300)" />
+              <p className="font-dm text-[15px] text-(--neutral-500)">
                 Select a conversation or start a new one
               </p>
               <button
                 onClick={() => setShowNewModal(true)}
-                className="h-10 px-5 rounded-full bg-[--green-800] text-white font-dm text-[14px] font-medium hover:opacity-90 transition-opacity"
+                className="h-10 px-5 rounded-full bg-(--green-800) text-white font-dm text-[14px] font-medium hover:opacity-90 transition-opacity"
               >
                 New Message
               </button>
@@ -414,15 +414,15 @@ export function MessagesClient() {
           ) : (
             <>
               {/* Thread header */}
-              <div className="h-14 shrink-0 flex items-center px-4 bg-white border-b border-[--neutral-200] gap-3">
+              <div className="h-14 shrink-0 flex items-center px-4 bg-white border-b border-(--neutral-200) gap-3">
                 {detailLoading ? (
-                  <div className="h-5 w-48 bg-[--neutral-100] rounded animate-pulse" />
+                  <div className="h-5 w-48 bg-(--neutral-100) rounded animate-pulse" />
                 ) : activeTicket ? (
                   <>
-                    <span className="font-dm text-[11px] text-[--neutral-400] font-mono">
+                    <span className="font-dm text-[11px] text-(--neutral-400) font-mono">
                       {activeTicket.ticketNumber}
                     </span>
-                    <span className="font-dm text-[14px] font-semibold text-[--neutral-900] truncate flex-1">
+                    <span className="font-dm text-[14px] font-semibold text-(--neutral-900) truncate flex-1">
                       {activeTicket.subject}
                     </span>
                     <StatusPill status={activeTicket.status.toLowerCase()} />
@@ -436,7 +436,7 @@ export function MessagesClient() {
                   <div className="space-y-4">
                     {Array.from({ length: 3 }).map((_, i) => (
                       <div key={i} className={`flex ${i % 2 === 0 ? "justify-end" : "justify-start"}`}>
-                        <div className="h-16 w-56 bg-[--neutral-200] rounded-[16px] animate-pulse" />
+                        <div className="h-16 w-56 bg-(--neutral-200) rounded-[16px] animate-pulse" />
                       </div>
                     ))}
                   </div>
@@ -445,7 +445,7 @@ export function MessagesClient() {
                     {messageGroups.map((group) => (
                       <div key={group.date}>
                         <div className="flex items-center justify-center my-4">
-                          <span className="font-dm text-[11px] text-[--neutral-400] bg-[--neutral-200] rounded-full px-3 py-1">
+                          <span className="font-dm text-[11px] text-(--neutral-400) bg-(--neutral-200) rounded-full px-3 py-1">
                             {group.date}
                           </span>
                         </div>
@@ -465,7 +465,7 @@ export function MessagesClient() {
               </div>
 
               {/* Compose */}
-              <div className="shrink-0 border-t border-[--neutral-200] p-3 bg-white">
+              <div className="shrink-0 border-t border-(--neutral-200) p-3 bg-white">
                 {canReply ? (
                   <div className="flex gap-2 items-end">
                     <textarea
@@ -474,18 +474,18 @@ export function MessagesClient() {
                       onKeyDown={handleKeyDown}
                       placeholder="Type a message... (Ctrl+Enter to send)"
                       rows={2}
-                      className="flex-1 resize-none rounded-[10px] border border-[--neutral-200] bg-[--neutral-50] px-3 py-2 font-dm text-[14px] text-[--neutral-900] placeholder:text-[--neutral-400] min-h-[40px] max-h-[120px] focus:border-[--green-800] focus:outline-none transition-colors"
+                      className="flex-1 resize-none rounded-[10px] border border-(--neutral-200) bg-(--neutral-50) px-3 py-2 font-dm text-[14px] text-(--neutral-900) placeholder:text-(--neutral-400) min-h-[40px] max-h-[120px] focus:border-(--green-800) focus:outline-none transition-colors"
                     />
                     <button
                       onClick={handleSend}
                       disabled={!replyText.trim() || replyMutation.isPending}
-                      className="w-10 h-10 rounded-full bg-[--green-800] text-white flex items-center justify-center hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity shrink-0"
+                      className="w-10 h-10 rounded-full bg-(--green-800) text-white flex items-center justify-center hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity shrink-0"
                     >
                       <Send size={16} />
                     </button>
                   </div>
                 ) : (
-                  <p className="text-center font-dm text-[13px] text-[--neutral-400] py-1">
+                  <p className="text-center font-dm text-[13px] text-(--neutral-400) py-1">
                     {activeTicket?.status === "RESOLVED"
                       ? "This conversation has been resolved."
                       : "This ticket has expired. Please open a new one."}
