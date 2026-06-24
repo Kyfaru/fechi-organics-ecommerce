@@ -16,8 +16,20 @@ async function requireAdmin(req: NextRequest) {
 }
 
 // ---------------------------------------------------------------------------
+// Derive a URL-safe slug/key from a human-readable category name.
+// "Face Care" → "face_care"  |  "Baby & Kids" → "baby_kids"
+// ---------------------------------------------------------------------------
+function slugifyName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_") // replace any non-alphanumeric run with _
+    .replace(/^_+|_+$/g, "");    // trim leading/trailing underscores
+}
+
+// ---------------------------------------------------------------------------
 // GET /api/admin/products/categories
-// Returns all categories ordered by sortOrder asc, with product count
+// Returns all categories ordered by sortOrder asc, with product count.
 // ---------------------------------------------------------------------------
 export async function GET(req: NextRequest) {
   await connection();
@@ -42,20 +54,13 @@ export async function GET(req: NextRequest) {
 
 // ---------------------------------------------------------------------------
 // POST /api/admin/products/categories
-// Creates a new category. The `key` (CategoryKey enum) must be unique.
+// Accepts { name, isActive?, sortOrder?, imageKey? }.
+// key and slug are auto-derived from name and must be unique.
 // ---------------------------------------------------------------------------
-const VALID_KEYS = ["FACE_CARE", "BODY_CARE", "HAIR_CARE", "WELLNESS", "BABY_KIDS"] as const;
-
 const CreateSchema = z.object({
-  key: z.enum(VALID_KEYS, { error: "key must be one of: " + VALID_KEYS.join(", ") }),
-  name: z.string().min(1, "Name is required"),
-  slug: z
-    .string()
-    .min(1, "Slug is required")
-    .regex(/^[a-z0-9-]+$/, "Slug must be lowercase letters, numbers, and hyphens"),
-  // imageKey is required in the Prisma schema
-  imageKey: z.string().default(""),
-  isActive: z.boolean().default(true),
+  name:      z.string().min(1, "Name is required").max(100, "Name too long"),
+  imageKey:  z.string().default(""),
+  isActive:  z.boolean().default(true),
   sortOrder: z.number().int().min(0).default(0),
 });
 
@@ -69,13 +74,16 @@ export async function POST(req: NextRequest) {
     const parsed = CreateSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
+    const slug = slugifyName(parsed.data.name);
+    if (!slug) return Err.validation("Name produces an empty slug — please use a valid category name");
+
     const category = await db.category.create({
       data: {
-        key: parsed.data.key,
-        name: parsed.data.name,
-        slug: parsed.data.slug,
-        imageKey: parsed.data.imageKey,
-        isActive: parsed.data.isActive,
+        key:       slug,
+        slug,
+        name:      parsed.data.name,
+        imageKey:  parsed.data.imageKey,
+        isActive:  parsed.data.isActive,
         sortOrder: parsed.data.sortOrder,
       },
     });
@@ -85,7 +93,7 @@ export async function POST(req: NextRequest) {
   } catch (e: unknown) {
     console.error("[admin/products/categories] POST error", e);
     if ((e as { code?: string }).code === "P2002") {
-      return Err.validation("A category with this slug or key already exists");
+      return Err.validation("A category with this name already exists");
     }
     return Err.internal();
   }

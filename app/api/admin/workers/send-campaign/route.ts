@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { qstashReceiver } from "@/lib/qstash";
 import { db } from "@/lib/db";
+import { sendSms } from "@/lib/twilio";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -25,9 +26,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
   }
 
+  // Determine audience: custom list or all verified non-banned users
+  const isCustomAudience =
+    campaign.audienceCustomerIds && campaign.audienceCustomerIds.length > 0;
+
   const users = await db.user.findMany({
-    where: { emailVerified: true, banned: false },
-    select: { email: true, name: true },
+    where: {
+      ...(isCustomAudience
+        ? { id: { in: campaign.audienceCustomerIds } }
+        : { emailVerified: true, banned: false }),
+    },
+    select: { email: true, name: true, phone: true },
   });
 
   await db.campaign.update({
@@ -37,6 +46,9 @@ export async function POST(req: NextRequest) {
 
   let sentCount = 0;
   const batchSize = 50;
+
+  // Strip HTML tags for SMS/WhatsApp plain-text body
+  const plainContent = (campaign.content ?? "").replace(/<[^>]+>/g, "");
 
   const emailHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -72,15 +84,26 @@ export async function POST(req: NextRequest) {
 
     for (const user of batch) {
       try {
-        const { error } = await resend.emails.send({
-          from: process.env.EMAIL_FROM!,
-          to: user.email,
-          subject: campaign.subject ?? campaign.name,
-          html: emailHtml,
-        });
-        if (!error) sentCount++;
-      } catch {
-        // Continue on individual failure
+        // Send email when type is EMAIL or ALL
+        if (campaign.type === "EMAIL" || campaign.type === "ALL") {
+          const { error } = await resend.emails.send({
+            from: process.env.EMAIL_FROM!,
+            to: user.email,
+            subject: campaign.subject ?? campaign.name,
+            html: emailHtml,
+          });
+          if (!error) sentCount++;
+        }
+
+        // Send SMS when type is SMS or ALL — skip users without a phone number
+        if ((campaign.type === "SMS" || campaign.type === "ALL") && user.phone) {
+          await sendSms(user.phone, plainContent);
+          // Only increment if we haven't already counted this user from the email send
+          if (campaign.type === "SMS") sentCount++;
+        }
+      } catch (err) {
+        // Log but continue — one failed delivery must not abort the batch
+        console.error(`[send-campaign] Failed delivery for ${user.email}:`, err);
       }
     }
 

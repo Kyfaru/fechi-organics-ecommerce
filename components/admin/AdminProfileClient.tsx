@@ -19,6 +19,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { User, Settings, Bell, Lock, Eye, EyeOff } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { toast } from "@/lib/toast";
+import Switch from "@/components/ui/Switch";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -69,20 +70,6 @@ function SaveBtn({ onClick, saving, label = "Save Changes" }: { onClick: () => v
       className="h-10 px-6 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60"
     >
       {saving ? "Saving…" : label}
-    </button>
-  );
-}
-
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      aria-pressed={checked}
-      style={{ width: 40, height: 22 }}
-      className={`relative rounded-full transition-colors shrink-0 ${checked ? "bg-(--green-600)" : "bg-(--neutral-200)"}`}
-    >
-      <span className={`absolute top-[3px] w-4 h-4 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-[20px]" : "translate-x-[3px]"}`} />
     </button>
   );
 }
@@ -347,7 +334,7 @@ function NotificationsTab() {
                 <div className="font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">{item.label}</div>
                 <div className="font-dm text-[12px] text-(--neutral-400) mt-0.5">{item.description}</div>
               </div>
-              <Toggle
+              <Switch
                 checked={prefs[item.key]}
                 onChange={(v) => setPrefs((p) => ({ ...p, [item.key]: v }))}
               />

@@ -11,6 +11,7 @@ import { DataTable } from "@/components/admin/ui/DataTable";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
+import Switch from "@/components/ui/Switch";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,7 +40,7 @@ type FormData = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-const R2_BASE = process.env.NEXT_PUBLIC_R2_PUBLIC_BASE ?? "";
+const R2_BASE = process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "";
 
 function imageUrl(key: string): string | null {
   if (!key) return null;
@@ -79,7 +80,7 @@ function CategoryImageUpload({ value, onChange }: { value: string; onChange: (ke
       const form = new FormData();
       form.append("file", file);
       form.append("category", "categories");
-      const res = await fetch("/api/admin/upload", { method: "POST", body: form });
+      const res = await fetch("/api/admin/upload?category=categories", { method: "POST", body: form });
       const json = await res.json();
       if (!res.ok) { toast.error(json.error ?? "Upload failed"); return; }
       onChange(json.objectKey);
@@ -122,30 +123,6 @@ function CategoryImageUpload({ value, onChange }: { value: string; onChange: (ke
         )}
       </div>
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Toggle switch
-// ---------------------------------------------------------------------------
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
-  return (
-    <label className="flex items-center gap-2.5 cursor-pointer select-none">
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className="relative w-10 h-[22px] rounded-full transition-colors"
-        style={{ backgroundColor: checked ? "var(--green-800)" : "var(--neutral-300)" }}
-      >
-        <span
-          className="absolute top-[3px] left-[3px] w-4 h-4 bg-white rounded-full shadow transition-transform"
-          style={{ transform: checked ? "translateX(18px)" : "translateX(0)" }}
-        />
-      </button>
-      <span className="font-dm text-[13px] text-(--neutral-700)">{label}</span>
-    </label>
   );
 }
 
@@ -471,11 +448,13 @@ export function AdminProductCategoriesClient() {
           </div>
 
           {/* Active toggle */}
-          <Toggle
-            checked={form.isActive}
-            onChange={(v) => patchForm({ isActive: v })}
-            label="Active (visible in store)"
-          />
+          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            <Switch
+              checked={form.isActive}
+              onChange={(v) => patchForm({ isActive: v })}
+            />
+            <span className="font-dm text-[13px] text-(--neutral-700)">Active (visible in store)</span>
+          </label>
         </div>
       </Drawer>
 

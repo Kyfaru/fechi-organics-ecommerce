@@ -15,14 +15,15 @@ export const r2Client = new S3Client({
 
 /** Resolve a Cloudflare R2 object key to a public URL.
  *
- * In production set R2_PUBLIC_BASE to your CDN/bucket URL, e.g.
+ * In production set NEXT_PUBLIC_R2_PUBLIC_URL to your CDN/bucket URL, e.g.
  * https://cdn.fechiorganics.com
  *
- * In development (no R2_PUBLIC_BASE) keys starting with "img/" are mapped to
- * /public/img/<filename> so the local /public directory is used as a fallback.
+ * In development (no NEXT_PUBLIC_R2_PUBLIC_URL) keys starting with "img/" are
+ * mapped to /public/img/<filename> so the local /public directory is used as a
+ * fallback.
  */
 export function r2PublicUrl(objectKey: string): string {
-  const base = process.env.R2_PUBLIC_BASE;
+  const base = process.env.NEXT_PUBLIC_R2_PUBLIC_URL;
   if (base) {
     return `${base.replace(/\/$/, "")}/${objectKey}`;
   }

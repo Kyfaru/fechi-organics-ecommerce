@@ -24,17 +24,19 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
+        hostname: "*.cloudflarestorage.com",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
         hostname: "*.r2.cloudflarestorage.com",
         pathname: "/**",
       },
+      // If using a custom domain for R2, add it here:
+      // { protocol: "https", hostname: "your-r2-custom-domain.com", pathname: "/**" },
       {
         protocol: "https",
         hostname: "flagcdn.com",
-        pathname: "/**",
-      },
-      {
-        protocol: "https",
-        hostname: "pub-fechi.b-cdn.net",
         pathname: "/**",
       },
       // Google OAuth profile avatars

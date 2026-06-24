@@ -23,15 +23,6 @@ enum OrderStatus {
   @@schema("public")
 }
 
-enum CategoryKey {
-  FACE_CARE
-  BODY_CARE
-  HAIR_CARE
-  WELLNESS
-  BABY_KIDS
-
-  @@schema("public")
-}
 
 enum TestimonialSource {
   facebook
@@ -112,6 +103,8 @@ enum CampaignType {
   EMAIL
   SMS
   PUSH
+  WHATSAPP
+  ALL
 
   @@schema("admin")
 }
@@ -154,6 +147,7 @@ model user {
   name             String
   firstName        String?
   lastName         String?
+  username         String?   @unique
   phone            String?
   country          String?
   city             String?
@@ -245,8 +239,8 @@ model twoFactor {
 // ============================================================================
 
 model category {
-  id        String      @id @default(uuid())
-  key       CategoryKey @unique
+  id        String   @id @default(uuid())
+  key       String   @unique
   name      String
   slug      String      @unique
   imageKey  String
@@ -370,6 +364,12 @@ model order {
   guestEmail   String?
   status       OrderStatus @default(PENDING)
   zohoSoId     String?     @unique
+  orderNumber  String?     @unique
+  processingBy String?
+  processedAt  DateTime?
+  confirmedBy  String?
+  confirmedAt  DateTime?
+  shippedAt    DateTime?
   subtotalKes  Int
   deliveryKes  Int         @default(35000)
   discountKes  Int         @default(0)
@@ -497,14 +497,17 @@ model adminProfile {
   user        user       @relation(fields: [userId], references: [id], onDelete: Cascade)
   branchId    String?
   branch      branch?    @relation(fields: [branchId], references: [id])
-  fullName    String
-  permissions Json       @default("{}")
-  department  String?
-  isSuperAdmin Boolean   @default(false)
-  isActive    Boolean    @default(true)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  auditLogs   auditLog[]
+  fullName        String
+  permissions     Json       @default("{}")
+  department      String?
+  role            String     @default("viewer")
+  twoFaMethod     String     @default("totp")
+  isSuperAdmin    Boolean    @default(false)
+  isActive        Boolean    @default(true)
+  accessExpiresAt DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  auditLogs       auditLog[]
 
   @@index([branchId])
   @@schema("admin")
@@ -602,22 +605,38 @@ model loyaltyPoints {
   @@schema("public")
 }
 
+model couponRedemption {
+  id         String   @id @default(uuid())
+  couponId   String
+  userId     String
+  orderId    String   @unique
+  redeemedAt DateTime @default(now())
+
+  @@unique([couponId, userId])
+  @@index([couponId])
+  @@index([userId])
+  @@schema("public")
+}
+
 // ============================================================================
 // Marketing (admin schema)
 // ============================================================================
 
 model campaign {
-  id           String         @id @default(cuid())
-  name         String
-  type         CampaignType
-  audienceType String         @default("ALL")
-  subject      String?
-  content      String?        @db.Text
-  status       CampaignStatus @default(DRAFT)
-  scheduledAt  DateTime?
-  sentAt       DateTime?
-  sentCount    Int            @default(0)
-  createdAt    DateTime       @default(now())
+  id                   String         @id @default(cuid())
+  name                 String
+  type                 CampaignType
+  audienceType         String         @default("ALL")
+  subject              String?
+  heading              String?
+  previewText          String?
+  content              String?        @db.Text
+  audienceCustomerIds  String[]       @default([])
+  status               CampaignStatus @default(DRAFT)
+  scheduledAt          DateTime?
+  sentAt               DateTime?
+  sentCount            Int            @default(0)
+  createdAt            DateTime       @default(now())
 
   @@schema("admin")
 }

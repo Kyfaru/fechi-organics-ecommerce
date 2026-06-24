@@ -71,10 +71,12 @@ export async function GET(req: NextRequest) {
             product: {
               select: {
                 name: true,
+                // Fetch all images ordered by sortOrder so primary (sortOrder 0)
+                // comes first. No isPrimary filter — products with no primary
+                // image still get their first image shown in the order card.
                 images: {
-                  where: { isPrimary: true },
-                  take: 1,
-                  select: { objectKey: true },
+                  orderBy: { sortOrder: "asc" },
+                  select: { objectKey: true, isPrimary: true },
                 },
               },
             },
@@ -83,9 +85,20 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    console.info("[admin/orders] GET — returned", orders.length, "orders (page", page + 1, ")");
+    // Shape to expose fulfillment fields at the top level
+    const shaped = orders.map((o) => ({
+      ...o,
+      orderNumber: o.orderNumber,
+      processingBy: o.processingBy,
+      processedAt: o.processedAt,
+      confirmedBy: o.confirmedBy,
+      confirmedAt: o.confirmedAt,
+      shippedAt: o.shippedAt,
+    }));
+
+    console.info("[admin/orders] GET — returned", shaped.length, "orders (page", page + 1, ")");
     return ok({
-      orders,
+      orders: shaped,
       scope: {
         isSuperAdmin: Boolean(admin.adminProfile?.isSuperAdmin),
         branchId: admin.adminProfile?.branchId ?? null,

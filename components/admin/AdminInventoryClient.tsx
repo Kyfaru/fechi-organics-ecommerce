@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Warehouse, Package, AlertTriangle, XCircle, Search, ChevronDown } from "lucide-react";
+import { Warehouse, Package, AlertTriangle, XCircle, Search, ChevronDown, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { StatCard } from "@/components/admin/ui/StatCard";
 import { DataTable } from "@/components/admin/ui/DataTable";
@@ -53,6 +53,26 @@ export function AdminInventoryClient() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+
+  // Zoho sync state
+  const [syncing, setSyncing] = useState(false);
+
+  async function handleZohoSync() {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      // POST /api/admin/zoho/sync — syncs inventory levels with Zoho Inventory
+      const res = await fetch("/api/admin/zoho/sync", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error?.message ?? "Sync failed");
+      toast.success("Zoho sync complete.");
+      qc.invalidateQueries({ queryKey: ["admin-inventory"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Zoho sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   // Adjust drawer state
   const [adjustDrawer, setAdjustDrawer] = useState<AdjustState>({ open: false, product: null });
@@ -248,7 +268,7 @@ export function AdminInventoryClient() {
         </div>
 
         {/* Filter toolbar */}
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
           {/* Search */}
           <div className="relative flex-1 max-w-sm">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400)" />
@@ -290,6 +310,17 @@ export function AdminInventoryClient() {
             </select>
             <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
           </div>
+
+          {/* Zoho sync button — POST /api/admin/zoho/sync */}
+          <button
+            type="button"
+            onClick={handleZohoSync}
+            disabled={syncing}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 dark:border-neutral-700 text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 disabled:opacity-50 ml-auto"
+          >
+            <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Syncing…" : "Sync with Zoho"}
+          </button>
         </div>
 
         {/* Table */}

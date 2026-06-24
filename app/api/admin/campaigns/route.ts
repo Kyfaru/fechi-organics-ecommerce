@@ -3,10 +3,15 @@ import { ok, created, Err } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { connection } from "next/server";
+import { NextRequest } from "next/server";
+import { requireAdminPage } from "@/lib/admin-guard";
 
 /** GET /api/admin/campaigns */
-export async function GET() {
+export async function GET(req: NextRequest) {
   await connection();
+
+  const denied = await requireAdminPage(req, 'campaigns');
+  if (denied) return denied;
 
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
@@ -41,8 +46,11 @@ export async function GET() {
 }
 
 /** POST /api/admin/campaigns — create campaign */
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   await connection();
+
+  const denied = await requireAdminPage(req, 'campaigns');
+  if (denied) return denied;
 
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
@@ -52,10 +60,13 @@ export async function POST(req: Request) {
 
   let body: {
     name: string;
-    type: "EMAIL" | "SMS" | "PUSH";
+    type: "EMAIL" | "SMS" | "PUSH" | "WHATSAPP" | "ALL";
     audienceType?: string;
     subject?: string;
+    heading?: string;
+    previewText?: string;
     content?: string;
+    audienceCustomerIds?: string[];
     status?: "DRAFT" | "SCHEDULED";
     scheduledAt?: string;
   };
@@ -66,7 +77,7 @@ export async function POST(req: Request) {
   }
 
   if (!body.name?.trim()) return Err.validation("Campaign name is required");
-  if (!["EMAIL", "SMS", "PUSH"].includes(body.type)) return Err.validation("Invalid campaign type");
+  if (!["EMAIL", "SMS", "PUSH", "WHATSAPP", "ALL"].includes(body.type)) return Err.validation("Invalid campaign type");
 
   try {
     const campaign = await db.campaign.create({
@@ -75,7 +86,10 @@ export async function POST(req: Request) {
         type: body.type,
         audienceType: body.audienceType ?? "ALL",
         subject: body.subject ?? null,
+        heading: body.heading ?? null,
+        previewText: body.previewText ?? null,
         content: body.content ?? null,
+        audienceCustomerIds: body.audienceCustomerIds ?? [],
         status: body.status ?? "DRAFT",
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
       },

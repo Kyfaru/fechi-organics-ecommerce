@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ResponsiveContainer,
@@ -18,19 +19,22 @@ import {
   Receipt,
   Clock,
   RotateCcw,
-  Download,
 } from "lucide-react";
 import { StatCard } from "@/components/admin/ui/StatCard";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { SkeletonStatCard, SkeletonChart } from "@/components/admin/ui/Skeleton";
+import DownloadButton from "@/components/ui/DownloadButton";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 type TxStatus = "PENDING" | "SUCCESS" | "FAILED" | "TIMEOUT";
 type PaymentProvider = "MPESA" | "PAYHERO";
+
+// Payment methods pie filter — matches TxStatus vocabulary plus "ALL" and "CANCELLED"
+type PieFilter = "ALL" | "SUCCESSFUL" | "FAILED" | "CANCELLED";
 
 type AdminTransaction = {
   id: string;
@@ -113,6 +117,41 @@ function buildMonthlyRevenue(transactions: AdminTransaction[]) {
 }
 
 // ---------------------------------------------------------------------------
+// Derive payment provider pie data based on active filter (F4)
+// ---------------------------------------------------------------------------
+function buildProviderData(transactions: AdminTransaction[], filter: PieFilter) {
+  let filtered: AdminTransaction[];
+
+  switch (filter) {
+    case "ALL":
+      filtered = transactions;
+      break;
+    case "SUCCESSFUL":
+      // Match the existing behavior: status === "SUCCESS" (TxStatus)
+      filtered = transactions.filter((t) => t.status === "SUCCESS");
+      break;
+    case "FAILED":
+      filtered = transactions.filter((t) => t.status === "FAILED" || t.status === "TIMEOUT");
+      break;
+    case "CANCELLED":
+      // There is no "CANCELLED" TxStatus in the schema; treat TIMEOUT as closest
+      // or show empty. We use a separate bucket here for UX completeness.
+      filtered = transactions.filter((t) => t.status === "TIMEOUT");
+      break;
+    default:
+      filtered = transactions;
+  }
+
+  const mpesa = filtered.filter((t) => t.provider === "MPESA").length;
+  const payhero = filtered.filter((t) => t.provider === "PAYHERO").length;
+
+  return [
+    { provider: "M-Pesa", count: mpesa },
+    { provider: "PayHero", count: payhero },
+  ].filter((p) => p.count > 0);
+}
+
+// ---------------------------------------------------------------------------
 // Tooltip
 // ---------------------------------------------------------------------------
 function KesTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
@@ -128,43 +167,31 @@ function KesTooltip({ active, payload, label }: { active?: boolean; payload?: { 
 }
 
 // ---------------------------------------------------------------------------
-// Export button — triggers CSV download from server
+// Export handler — triggers CSV download from server
+// Used by DownloadButton via onDownload prop
 // ---------------------------------------------------------------------------
-function ExportButton() {
-  async function handleExport() {
-    try {
-      const res = await fetch("/api/admin/finance/export", { method: "POST" });
-      if (!res.ok) {
-        console.error("[finance/export] failed:", res.status);
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `transactions-${Date.now()}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error("[finance/export] error:", e);
-    }
+async function handleExportCsv(): Promise<void> {
+  const res = await fetch("/api/admin/finance/export", { method: "POST" });
+  if (!res.ok) {
+    console.error("[finance/export] failed:", res.status);
+    throw new Error(`Export failed: ${res.status}`);
   }
-
-  return (
-    <button
-      onClick={handleExport}
-      className="flex items-center gap-2 h-9 px-4 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) text-white font-dm text-[13px] font-medium transition-colors"
-    >
-      <Download size={14} />
-      Export CSV
-    </button>
-  );
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `transactions-${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 export function AdminTransactionsClient() {
+  // Filter state for the payment methods pie chart (F4)
+  const [pieFilter, setPieFilter] = useState<PieFilter>("SUCCESSFUL");
+
   const { data, isLoading } = useQuery<ApiResponse>({
     queryKey: ["admin-finance"],
     queryFn: () => fetch("/api/admin/transactions").then((r) => r.json()),
@@ -176,21 +203,16 @@ export function AdminTransactionsClient() {
   const transactions = data?.data?.transactions ?? [];
   const total = data?.data?.pagination?.total ?? 0;
 
-  // Derived stats — computed in the client from the fetched page.
-  // For a full accurate total, the API would need to return aggregate fields.
-  // This is the loaded page sample; for production, extend the API to return aggregates.
+  // Derived stats — computed from the fetched page.
+  // For fully accurate totals, the API would need to return aggregate fields.
   const successTxns = transactions.filter((t) => t.status === "SUCCESS");
   const pendingTxns = transactions.filter((t) => t.status === "PENDING");
   const totalRevenue = successTxns.reduce((s, t) => s + t.amount, 0);
 
   const monthlyRevenue = buildMonthlyRevenue(transactions);
 
-  const mpesaCount = successTxns.filter((t) => t.provider === "MPESA").length;
-  const payHeroCount = successTxns.filter((t) => t.provider === "PAYHERO").length;
-  const providerData = [
-    { provider: "M-Pesa", count: mpesaCount },
-    { provider: "PayHero", count: payHeroCount },
-  ].filter((p) => p.count > 0);
+  // Derive pie data from loaded transactions filtered by active toggle (F4)
+  const providerData = buildProviderData(transactions, pieFilter);
 
   // DataTable columns
   const columns = [
@@ -274,12 +296,20 @@ export function AdminTransactionsClient() {
     },
   ];
 
+  // Pie filter toggle definitions (F4)
+  const pieFilters: { id: PieFilter; label: string }[] = [
+    { id: "ALL", label: "All" },
+    { id: "SUCCESSFUL", label: "Successful" },
+    { id: "FAILED", label: "Failed" },
+    { id: "CANCELLED", label: "Cancelled" },
+  ];
+
   return (
     <div>
       <PageHeader
         title="Finance"
         description="Revenue, transactions and payment records"
-        action={<ExportButton />}
+        action={<DownloadButton onDownload={handleExportCsv} label="Export CSV" />}
       />
 
       <div className="px-6 pb-8 space-y-6">
@@ -355,20 +385,42 @@ export function AdminTransactionsClient() {
             </div>
           )}
 
-          {/* Payment method donut — 1/3 */}
+          {/* Payment methods donut with filter toggles — 1/3 (F4) */}
           {isLoading ? (
             <SkeletonChart />
           ) : (
             <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+              {/* Card header with filter toggles */}
               <h2 className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-1">
                 Payment Methods
               </h2>
-              <p className="font-dm text-[13px] text-(--neutral-400) mb-4">
-                Successful transactions by provider
-              </p>
+
+              {/* Filter toggle pills */}
+              <div className="flex flex-wrap gap-1 mb-4">
+                {pieFilters.map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => setPieFilter(f.id)}
+                    className={`px-2.5 py-1 rounded-full font-dm text-[11px] font-medium border transition-colors ${
+                      pieFilter === f.id
+                        ? "bg-(--green-800) border-(--green-800) text-white"
+                        : "border-(--neutral-200) dark:border-(--dark-border) text-(--neutral-500) hover:text-(--neutral-700) dark:hover:text-(--dark-text)"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+
               {providerData.length === 0 ? (
-                <div className="h-[200px] flex items-center justify-center">
-                  <p className="font-dm text-[13px] text-(--neutral-400)">No successful payments yet</p>
+                // Empty state: show donut outline + message in center (F4)
+                <div className="relative h-[200px] flex items-center justify-center">
+                  <svg width="140" height="140" viewBox="0 0 140 140" className="absolute opacity-10">
+                    <circle cx="70" cy="70" r="55" fill="none" stroke="var(--neutral-400)" strokeWidth="20" />
+                  </svg>
+                  <p className="font-dm text-[13px] text-(--neutral-400) text-center z-10">
+                    No data for this filter
+                  </p>
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height={200}>
@@ -383,7 +435,7 @@ export function AdminTransactionsClient() {
                       outerRadius={80}
                       paddingAngle={3}
                       isAnimationActive
-                      animationDuration={800}
+                      animationDuration={600}
                     >
                       <Cell fill="var(--green-500)" />
                       <Cell fill="var(--gold-500)" />

@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, Grid, List, ChevronDown, Star, MoreHorizontal,
   Pencil, Copy, ExternalLink, Trash2, Check, X, ImagePlus,
-  GripVertical, RefreshCw, Tag,
+  GripVertical, Tag, RefreshCw,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
@@ -17,6 +17,8 @@ import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
 import { ScreenLoader } from "@/components/admin/ui/ScreenLoader";
+import Switch from "@/components/ui/Switch";
+import CircularProgress from "@/components/ui/CircularProgress";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -59,6 +61,7 @@ type DrawerFormData = {
   shortDescription: string;
   // Pricing
   categoryId: string;
+  // E1: stored as digits-only string (e.g. "120000" = KES 1,200.00 in cents)
   priceKes: string;
   compareAtPriceKes: string;
   variantLabel: string;
@@ -79,10 +82,7 @@ type SortOption = "newest" | "oldest" | "price-asc" | "price-desc" | "name-asc" 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-const R2_BASE =
-  process.env.NEXT_PUBLIC_R2_PUBLIC_URL ??
-  process.env.NEXT_PUBLIC_R2_PUBLIC_BASE ??
-  "https://pub-fechi.b-cdn.net";
+const R2_BASE = process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "";
 
 function imageUrl(objectKey: string | undefined): string | null {
   if (!objectKey) return null;
@@ -105,6 +105,83 @@ function getPrimaryImage(images: ProductImage[]): string | null {
   return imageUrl(primary?.objectKey);
 }
 
+// ---------------------------------------------------------------------------
+// E1: Price mask helpers
+// ---------------------------------------------------------------------------
+/**
+ * Converts a digits-only string (representing cents) to a display string.
+ * "120000" → "1,200.00"
+ * "100"    → "1.00"
+ * "1"      → "0.01"
+ * ""       → ""
+ */
+function formatPrice(digits: string): string {
+  if (!digits) return "";
+  const cents = parseInt(digits, 10);
+  if (isNaN(cents)) return "";
+  // Divide by 100 to get the decimal value, then format with 2 decimal places
+  return (cents / 100).toLocaleString("en-KE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/**
+ * Hook that manages a price field stored as a digits-only cents string.
+ * Returns { digits, display, onKeyDown, onFocus, onBlur }
+ * to spread onto a controlled <input type="text" inputMode="numeric">.
+ */
+function usePriceMask(
+  digits: string,
+  setDigits: (d: string) => void,
+) {
+  const [focused, setFocused] = useState(false);
+
+  // While focused show the raw formatted value; while blurred show same but without cursor artifacts
+  const display = formatPrice(digits);
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key >= "0" && e.key <= "9") {
+      e.preventDefault();
+      // Append digit (max ~15 digits to avoid precision loss)
+      if (digits.length < 15) {
+        setDigits(digits + e.key);
+      }
+    } else if (e.key === "Backspace") {
+      e.preventDefault();
+      setDigits(digits.slice(0, -1));
+    } else if (e.key === "Delete") {
+      e.preventDefault();
+      setDigits("");
+    }
+    // All other keys (Tab, arrows, etc.) pass through unchanged
+  }
+
+  // Prevent paste of non-digit characters
+  function onPaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    e.preventDefault();
+    const raw = e.clipboardData.getData("text").replace(/[^0-9]/g, "");
+    if (!raw) return;
+    const combined = (digits + raw).slice(0, 15);
+    setDigits(combined);
+  }
+
+  return {
+    value: display,
+    onKeyDown,
+    onPaste,
+    onFocus: () => setFocused(true),
+    onBlur: () => setFocused(false),
+    // Prevent native onChange from doing anything — we manage state in onKeyDown
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => { e.preventDefault(); },
+    readOnly: false,
+    type: "text" as const,
+    inputMode: "numeric" as const,
+    pattern: "[0-9]*",
+    focused,
+  };
+}
+
 function blankForm(): DrawerFormData {
   return {
     name: "", slug: "", description: "", shortDescription: "",
@@ -123,8 +200,11 @@ function productToForm(p: AdminProduct): DrawerFormData {
     name: p.name, slug: p.slug, description: p.description,
     shortDescription: p.shortDescription ?? "",
     categoryId: p.categoryId,
-    priceKes: String(p.priceKes),
-    compareAtPriceKes: p.compareAtPriceKes != null ? String(p.compareAtPriceKes) : "",
+    // E1: store prices as digits (cents) string — priceKes is already in cents
+    priceKes: p.priceKes > 0 ? String(p.priceKes) : "",
+    compareAtPriceKes: p.compareAtPriceKes != null && p.compareAtPriceKes > 0
+      ? String(p.compareAtPriceKes)
+      : "",
     variantLabel: p.variantLabel ?? "",
     stock: String(p.stock), bestSeller: p.bestSeller, isActive: p.isActive,
     imageKeys: sortedImages.map((i) => i.objectKey),
@@ -312,7 +392,201 @@ function ProductGridCard({
 }
 
 // ---------------------------------------------------------------------------
-// Image upload row used inside the drawer
+// E3: Category dropdown with inline "Add category"
+// ---------------------------------------------------------------------------
+function CategoryDropdown({
+  value,
+  onChange,
+  categories,
+  onCategoryAdded,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  categories: Category[];
+  onCategoryAdded: (cat: Category) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  // "list" = showing options, "add" = showing inline add input
+  const [mode, setMode] = useState<"list" | "add">("list");
+  const [newName, setNewName] = useState("");
+  const [adding, setAdding] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const addInputRef = useRef<HTMLInputElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setMode("list");
+        setNewName("");
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  // Focus input when switching to add mode
+  useEffect(() => {
+    if (mode === "add" && addInputRef.current) {
+      addInputRef.current.focus();
+    }
+  }, [mode]);
+
+  const selectedCategory = categories.find((c) => c.id === value);
+
+  async function handleConfirmAdd() {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    setAdding(true);
+    try {
+      // POST to the categories API — Stream D owns this endpoint
+      const res = await fetch("/api/admin/products/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error(json.error ?? "Could not add category");
+        return;
+      }
+      // Expect the API to return the new category object
+      const newCat: Category = json.data ?? json;
+      onCategoryAdded(newCat);
+      onChange(newCat.id);
+      toast.success(`Category "${newCat.name}" added`);
+      setOpen(false);
+      setMode("list");
+      setNewName("");
+    } catch {
+      toast.error("Failed to add category");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  function handleCancelAdd() {
+    setMode("list");
+    setNewName("");
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      {/* Trigger button */}
+      <button
+        type="button"
+        onClick={() => { setOpen((v) => !v); setMode("list"); }}
+        className="w-full font-dm text-[14px] text-(--neutral-900) rounded-[8px] border border-(--neutral-200) bg-white px-3 py-2 focus:outline-none focus:border-(--green-800) transition-colors text-left flex items-center justify-between"
+        style={{ minHeight: "38px" }}
+      >
+        <span className={selectedCategory ? "text-(--neutral-900)" : "text-(--neutral-400)"}>
+          {selectedCategory ? selectedCategory.name : "Select a category"}
+        </span>
+        <ChevronDown
+          size={14}
+          className={`text-(--neutral-400) transition-transform shrink-0 ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {/* Dropdown panel */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -4, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+            transition={{ duration: 0.13 }}
+            className="absolute left-0 right-0 top-full mt-1 bg-white rounded-[10px] border border-(--neutral-200) shadow-(--e3) z-30 overflow-hidden"
+          >
+            {mode === "list" ? (
+              <div className="py-1 max-h-56 overflow-y-auto">
+                {/* Add category button — always first */}
+                <button
+                  type="button"
+                  onClick={() => setMode("add")}
+                  className="w-full flex items-center justify-center gap-2 mx-2 my-1 rounded-[7px] border-2 border-dashed border-(--neutral-300) py-2 font-dm text-[13px] text-(--neutral-500) hover:border-(--green-800) hover:text-(--green-800) transition-colors"
+                  style={{ width: "calc(100% - 16px)" }}
+                >
+                  <Plus size={14} />
+                  Add category
+                </button>
+
+                {/* Divider */}
+                {categories.length > 0 && (
+                  <div className="h-px bg-(--neutral-100) mx-2 my-1" />
+                )}
+
+                {/* Existing category options */}
+                {categories.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => { onChange(cat.id); setOpen(false); }}
+                    className={`w-full flex items-center gap-2 px-3 py-2 font-dm text-[13px] transition-colors ${
+                      cat.id === value
+                        ? "text-(--green-800) bg-(--green-50)"
+                        : "text-(--neutral-700) hover:bg-(--neutral-50)"
+                    }`}
+                  >
+                    {cat.id === value && <Check size={13} className="shrink-0" />}
+                    <span className={cat.id === value ? "ml-0" : "ml-[17px]"}>{cat.name}</span>
+                  </button>
+                ))}
+
+                {categories.length === 0 && (
+                  <p className="px-3 py-2 font-dm text-[12px] text-(--neutral-400)">No categories yet</p>
+                )}
+              </div>
+            ) : (
+              /* Inline add mode */
+              <div className="p-3 flex flex-col gap-2">
+                <p className="font-dm text-[12px] font-semibold text-(--neutral-500) uppercase tracking-[0.5px]">
+                  New category
+                </p>
+                <input
+                  ref={addInputRef}
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); handleConfirmAdd(); }
+                    if (e.key === "Escape") handleCancelAdd();
+                  }}
+                  placeholder="e.g. Face Care"
+                  className="w-full font-dm text-[14px] text-(--neutral-900) rounded-[7px] border border-(--neutral-200) bg-white px-3 py-2 focus:outline-none focus:border-(--green-800) transition-colors placeholder:text-(--neutral-400)"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleConfirmAdd}
+                    disabled={adding || !newName.trim()}
+                    className="flex-1 h-8 rounded-[7px] bg-(--green-800) font-dm text-[13px] text-white flex items-center justify-center gap-1.5 hover:opacity-90 transition-opacity disabled:opacity-50"
+                  >
+                    {adding ? <Spinner size={12} /> : <Check size={13} />}
+                    Confirm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelAdd}
+                    disabled={adding}
+                    className="flex-1 h-8 rounded-[7px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-600) hover:bg-(--neutral-50) transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// E4: Image upload grid with per-slot XHR progress rings
 // ---------------------------------------------------------------------------
 function ImageUploadGrid({
   imageKeys,
@@ -322,41 +596,105 @@ function ImageUploadGrid({
   onChange: (keys: string[]) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
+  // Map of in-flight upload index → percent (0–100). null = not uploading.
+  const [uploadPercents, setUploadPercents] = useState<Record<number, number>>({});
   // Drag-to-reorder state
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
 
+  const isUploading = Object.keys(uploadPercents).length > 0;
+
+  function setSlotPercent(slotIdx: number, percent: number | null) {
+    setUploadPercents((prev) => {
+      if (percent === null) {
+        const next = { ...prev };
+        delete next[slotIdx];
+        return next;
+      }
+      return { ...prev, [slotIdx]: percent };
+    });
+  }
+
+  /**
+   * Upload a single file via XHR so we can track real upload progress.
+   * Returns the objectKey from the server on success, or null on failure.
+   */
+  function uploadFile(file: File, slotIdx: number): Promise<string | null> {
+    return new Promise((resolve) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("category", "products");
+
+      const xhr = new XMLHttpRequest();
+
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          setSlotPercent(slotIdx, pct);
+        }
+      });
+
+      xhr.addEventListener("load", () => {
+        setSlotPercent(slotIdx, null);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const json = JSON.parse(xhr.responseText);
+            resolve(json.objectKey ?? null);
+          } catch {
+            toast.error("Upload response parse error");
+            resolve(null);
+          }
+        } else {
+          try {
+            const json = JSON.parse(xhr.responseText);
+            toast.error(json.error ?? "Upload failed");
+          } catch {
+            toast.error("Upload failed");
+          }
+          resolve(null);
+        }
+      });
+
+      xhr.addEventListener("error", () => {
+        setSlotPercent(slotIdx, null);
+        toast.error("Upload failed. Please try again.");
+        resolve(null);
+      });
+
+      xhr.addEventListener("abort", () => {
+        setSlotPercent(slotIdx, null);
+        resolve(null);
+      });
+
+      xhr.open("POST", "/api/admin/upload?category=products");
+      xhr.send(formData);
+    });
+  }
+
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
-    // Limit total images to 8
     if (imageKeys.length + files.length > 8) {
       toast.error("Maximum 8 images per product");
       return;
     }
-    setUploading(true);
-    try {
-      const newKeys: string[] = [];
-      for (const file of files) {
-        const form = new FormData();
-        form.append("file", file);
-        form.append("category", "products");
-        const res = await fetch("/api/admin/upload", { method: "POST", body: form });
-        const json = await res.json();
-        if (!res.ok) { toast.error(json.error ?? "Upload failed"); continue; }
-        newKeys.push(json.objectKey);
-      }
-      if (newKeys.length) {
-        onChange([...imageKeys, ...newKeys]);
-        toast.success(`${newKeys.length} image${newKeys.length > 1 ? "s" : ""} uploaded`);
-      }
-    } catch {
-      toast.error("Upload failed. Please try again.");
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = "";
+
+    const startIdx = imageKeys.length;
+    const newKeys: string[] = [];
+
+    // Upload files sequentially so slot indices are predictable
+    for (let i = 0; i < files.length; i++) {
+      const slotIdx = startIdx + i;
+      const key = await uploadFile(files[i], slotIdx);
+      if (key) newKeys.push(key);
     }
+
+    if (newKeys.length) {
+      onChange([...imageKeys, ...newKeys]);
+      toast.success(`${newKeys.length} image${newKeys.length > 1 ? "s" : ""} uploaded`);
+    }
+
+    if (fileRef.current) fileRef.current.value = "";
   }
 
   function handleDrop(targetIdx: number) {
@@ -426,16 +764,21 @@ function ImageUploadGrid({
           );
         })}
 
-        {/* Add button (shimmer while uploading) */}
+        {/* Add / upload slot — shows CircularProgress ring while a file is uploading into this slot */}
         {imageKeys.length < 8 && (
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="w-[72px] h-[72px] rounded-[8px] border-2 border-dashed border-(--neutral-300) flex flex-col items-center justify-center gap-1 text-(--neutral-400) hover:border-(--green-800) hover:text-(--green-800) transition-colors disabled:opacity-50"
+            disabled={isUploading}
+            className="w-[72px] h-[72px] rounded-[8px] border-2 border-dashed border-(--neutral-300) flex flex-col items-center justify-center gap-1 text-(--neutral-400) hover:border-(--green-800) hover:text-(--green-800) transition-colors disabled:opacity-50 relative overflow-hidden"
           >
-            {uploading ? (
-              <Spinner size={16} />
+            {isUploading ? (
+              /* Show the highest active upload percent in the add slot */
+              <CircularProgress
+                percent={Math.max(...Object.values(uploadPercents))}
+                size={44}
+                strokeWidth={4}
+              />
             ) : (
               <>
                 <ImagePlus size={18} />
@@ -453,30 +796,6 @@ function ImageUploadGrid({
 }
 
 // ---------------------------------------------------------------------------
-// Toggle switch
-// ---------------------------------------------------------------------------
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
-  return (
-    <label className="flex items-center gap-2.5 cursor-pointer select-none">
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className="relative w-10 h-[22px] rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-(--green-800) focus-visible:ring-offset-2"
-        style={{ backgroundColor: checked ? "var(--green-800)" : "var(--neutral-300)" }}
-      >
-        <span
-          className="absolute top-[3px] left-[3px] w-4 h-4 bg-white rounded-full shadow transition-transform"
-          style={{ transform: checked ? "translateX(18px)" : "translateX(0)" }}
-        />
-      </button>
-      <span className="font-dm text-[13px] text-(--neutral-700)">{label}</span>
-    </label>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Shared input / label classes
 // ---------------------------------------------------------------------------
 const inputCls =
@@ -485,10 +804,55 @@ const labelCls = "block font-dm text-[12px] font-semibold text-(--neutral-500) u
 const sectionTitleCls = "font-syne text-[15px] font-semibold text-(--neutral-900) mb-3";
 
 // ---------------------------------------------------------------------------
+// E1: Masked price input component
+// ---------------------------------------------------------------------------
+function PriceInput({
+  label,
+  digits,
+  setDigits,
+  placeholder,
+  required,
+}: {
+  label: string;
+  digits: string;
+  setDigits: (d: string) => void;
+  placeholder?: string;
+  required?: boolean;
+}) {
+  const maskProps = usePriceMask(digits, setDigits);
+  const isEmpty = !digits;
+
+  return (
+    <div>
+      <label className={labelCls}>{label}{required && " *"}</label>
+      <div className="relative">
+        {/* KES prefix */}
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 font-dm text-[13px] text-(--neutral-400) pointer-events-none select-none">
+          KES
+        </span>
+        <input
+          className={`${inputCls} pl-10`}
+          placeholder={placeholder ?? "0.00"}
+          {...maskProps}
+          // Display value: formatted if we have digits, empty otherwise
+          value={maskProps.value}
+        />
+        {/* Show formatted preview suffix in placeholder style when empty */}
+      </div>
+      {!isEmpty && (
+        <p className="font-dm text-[11px] text-(--neutral-400) mt-0.5">
+          {formatPrice(digits)} KES
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Product Drawer (640px)
 // ---------------------------------------------------------------------------
 function ProductDrawer({
-  open, onClose, editing, form, onChange, onSaveActive, onSaveDraft, isPending, categories,
+  open, onClose, editing, form, onChange, onSaveActive, onSaveDraft, isPending, categories, onCategoryAdded,
 }: {
   open: boolean;
   onClose: () => void;
@@ -499,6 +863,7 @@ function ProductDrawer({
   onSaveDraft: () => void;
   isPending: boolean;
   categories: Category[];
+  onCategoryAdded: (cat: Category) => void;
 }) {
   const isNew = editing === null;
 
@@ -511,12 +876,21 @@ function ProductDrawer({
     }
   }, [form.name, isNew]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Discount badge
+  // E2: local UI state for showing the savings badge toggle
+  const [showSavingsBadge, setShowSavingsBadge] = useState(false);
+
+  // E2: Compute the savings percentage from the digits buffers
+  const priceInCents = form.priceKes ? parseInt(form.priceKes, 10) : 0;
+  const compareInCents = form.compareAtPriceKes ? parseInt(form.compareAtPriceKes, 10) : 0;
   const savePercent =
-    form.compareAtPriceKes && form.priceKes &&
-    Number(form.compareAtPriceKes) > Number(form.priceKes)
-      ? Math.round(((Number(form.compareAtPriceKes) - Number(form.priceKes)) / Number(form.compareAtPriceKes)) * 100)
+    compareInCents > 0 && priceInCents > 0 && compareInCents > priceInCents
+      ? Math.round(((compareInCents - priceInCents) / compareInCents) * 100)
       : null;
+
+  // Reset showSavingsBadge if compare price becomes invalid
+  useEffect(() => {
+    if (!savePercent) setShowSavingsBadge(false);
+  }, [savePercent]);
 
   const footer = (
     <>
@@ -602,56 +976,80 @@ function ProductDrawer({
         {/* ── 2. Pricing ── */}
         <section>
           <h3 className={sectionTitleCls}>Pricing</h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="flex flex-col gap-4">
+
+            {/* E1 + E2: Price field with optional savings badge */}
             <div>
-              <label className={labelCls}>Price (KES) *</label>
-              <input
-                type="number" min={0} className={inputCls}
-                placeholder="120000"
-                value={form.priceKes}
-                onChange={(e) => onChange({ priceKes: e.target.value })}
+              <label className={labelCls}>
+                <span className="flex items-center gap-2">
+                  Price (KES) *
+                  {/* E2: savings badge shown next to price label when toggle is on and % is valid */}
+                  {showSavingsBadge && savePercent && (
+                    <span className="inline-flex items-center rounded-full px-2 py-0.5 bg-(--gold-100) text-(--gold-700) text-[11px] font-dm font-medium normal-case tracking-normal">
+                      Save {savePercent}%
+                    </span>
+                  )}
+                </span>
+              </label>
+              <PriceInput
+                label=""
+                digits={form.priceKes}
+                setDigits={(d) => onChange({ priceKes: d })}
+                placeholder="0.00"
+                required
               />
             </div>
+
+            {/* E2: Compare-at price with strikethrough preview + savings toggle */}
             <div>
-              <label className={labelCls}>Compare-at Price (KES)</label>
-              <div className="relative">
-                <input
-                  type="number" min={0} className={inputCls}
-                  placeholder="150000"
-                  value={form.compareAtPriceKes}
-                  onChange={(e) => onChange({ compareAtPriceKes: e.target.value })}
-                />
-                {savePercent && (
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 bg-(--gold-100) text-(--gold-700) rounded-full px-2 py-0.5 text-[11px] font-dm font-medium pointer-events-none">
-                    Save {savePercent}%
-                  </span>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className={`${labelCls} mb-0`}>Compare-at Price (KES)</label>
+                {/* E2: "Show % savings" toggle — only visible when a valid compare price exists */}
+                {savePercent !== null && (
+                  <div className="flex items-center gap-2">
+                    <span className="font-dm text-[11px] text-(--neutral-500)">Show % savings</span>
+                    <Switch
+                      checked={showSavingsBadge}
+                      onChange={setShowSavingsBadge}
+                    />
+                  </div>
                 )}
               </div>
+
+              <PriceInput
+                label=""
+                digits={form.compareAtPriceKes}
+                setDigits={(d) => onChange({ compareAtPriceKes: d })}
+                placeholder="0.00"
+              />
+
+              {/* E2: Strikethrough preview below compare price input */}
+              {compareInCents > 0 && (
+                <p className="font-dm text-[12px] text-(--neutral-400) mt-1 line-through">
+                  KES {formatPrice(form.compareAtPriceKes)}
+                </p>
+              )}
             </div>
-          </div>
-          <div className="mt-4">
-            <label className={labelCls}>Variant Label</label>
-            <input
-              className={inputCls}
-              placeholder="e.g. 250ml"
-              value={form.variantLabel}
-              onChange={(e) => onChange({ variantLabel: e.target.value })}
-            />
-          </div>
-          <div className="mt-4">
-            <label className={labelCls}>Category *</label>
-            <div className="relative">
-              <select
-                className={`${inputCls} appearance-none pr-8`}
+
+            <div>
+              <label className={labelCls}>Variant Label</label>
+              <input
+                className={inputCls}
+                placeholder="e.g. 250ml"
+                value={form.variantLabel}
+                onChange={(e) => onChange({ variantLabel: e.target.value })}
+              />
+            </div>
+
+            {/* E3: Category dropdown with inline add */}
+            <div>
+              <label className={labelCls}>Category *</label>
+              <CategoryDropdown
                 value={form.categoryId}
-                onChange={(e) => onChange({ categoryId: e.target.value })}
-              >
-                <option value="">Select a category</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-              <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
+                onChange={(id) => onChange({ categoryId: id })}
+                categories={categories}
+                onCategoryAdded={onCategoryAdded}
+              />
             </div>
           </div>
         </section>
@@ -679,16 +1077,20 @@ function ProductDrawer({
             </div>
           </div>
           <div className="flex flex-col gap-3">
-            <Toggle
-              checked={form.isActive}
-              onChange={(v) => onChange({ isActive: v })}
-              label="Active (visible in store)"
-            />
-            <Toggle
-              checked={form.bestSeller}
-              onChange={(v) => onChange({ bestSeller: v })}
-              label="Best Seller badge"
-            />
+            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+              <Switch
+                checked={form.isActive}
+                onChange={(v) => onChange({ isActive: v })}
+              />
+              <span className="font-dm text-[13px] text-(--neutral-700)">Active (visible in store)</span>
+            </label>
+            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+              <Switch
+                checked={form.bestSeller}
+                onChange={(v) => onChange({ bestSeller: v })}
+              />
+              <span className="font-dm text-[13px] text-(--neutral-700)">Best Seller badge</span>
+            </label>
           </div>
         </section>
 
@@ -811,6 +1213,26 @@ export function AdminProductsClient() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
+  // Zoho sync state
+  const [syncing, setSyncing] = useState(false);
+
+  async function handleZohoSync() {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      // POST /api/admin/zoho/sync — triggers a full product sync with Zoho Inventory
+      const res = await fetch("/api/admin/zoho/sync", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error?.message ?? "Sync failed");
+      toast.success("Zoho sync complete.");
+      qc.invalidateQueries({ queryKey: ["admin-products"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Zoho sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   // ── Data query ──
   const { data, isLoading } = useQuery<{ ok: boolean; data: { products: AdminProduct[] } }>({
     queryKey: ["admin-products"],
@@ -821,13 +1243,30 @@ export function AdminProductsClient() {
   const products: AdminProduct[] = data?.data?.products ?? [];
 
   // Derive categories from loaded products (no extra API call unless categories page)
-  const categories: Category[] = [
+  // E3: allow adding new categories inline — keep a local supplemental list
+  const [extraCategories, setExtraCategories] = useState<Category[]>([]);
+
+  const productCategories: Category[] = [
     ...new Map(
       products
         .filter((p) => p.category)
         .map((p) => [p.categoryId, p.category as Category])
     ).values(),
   ];
+
+  // Merge product-derived categories with any added inline, deduplicating by id
+  const allCategoryIds = new Set(productCategories.map((c) => c.id));
+  const categories: Category[] = [
+    ...productCategories,
+    ...extraCategories.filter((c) => !allCategoryIds.has(c.id)),
+  ];
+
+  function handleCategoryAdded(cat: Category) {
+    setExtraCategories((prev) => {
+      if (prev.some((c) => c.id === cat.id)) return prev;
+      return [...prev, cat];
+    });
+  }
 
   // ── Filtered + sorted list ──
   const filtered = products
@@ -945,7 +1384,8 @@ export function AdminProductsClient() {
   }, []);
 
   function buildBody(isActive: boolean) {
-    const priceKes = parseInt(form.priceKes, 10);
+    // E1: form.priceKes is a digits-only string already in cents (e.g. "120000" = KES 1,200.00)
+    const priceKes = form.priceKes ? parseInt(form.priceKes, 10) : NaN;
     const compareAtPriceKes = form.compareAtPriceKes ? parseInt(form.compareAtPriceKes, 10) : undefined;
     const stock = parseInt(form.stock, 10) || 0;
 
@@ -1114,13 +1554,25 @@ export function AdminProductsClient() {
   ];
 
   const addButton = (
-    <button
-      onClick={openCreate}
-      className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
-    >
-      <Plus size={16} />
-      Add Product
-    </button>
+    <div className="flex items-center gap-2">
+      {/* Sync with Zoho — POST /api/admin/zoho/sync */}
+      <button
+        type="button"
+        onClick={handleZohoSync}
+        disabled={syncing}
+        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 dark:border-neutral-700 text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 disabled:opacity-50"
+      >
+        <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
+        {syncing ? "Syncing…" : "Sync with Zoho"}
+      </button>
+      <button
+        onClick={openCreate}
+        className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+      >
+        <Plus size={16} />
+        Add Product
+      </button>
+    </div>
   );
 
   const sortOptions: { value: SortOption; label: string }[] = [
@@ -1281,6 +1733,7 @@ export function AdminProductsClient() {
         onSaveDraft={() => handleSave(false)}
         isPending={isPending}
         categories={categories}
+        onCategoryAdded={handleCategoryAdded}
       />
 
       {/* ── Single delete confirm ── */}
@@ -1318,3 +1771,13 @@ export function AdminProductsClient() {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// __TEST__ — self-check assertions (comment-guarded, never runs in prod)
+// Uncomment and run in a Node.js REPL to verify formatPrice logic:
+//
+// console.assert(formatPrice("120000") === "1,200.00", "120000 → 1,200.00")
+// console.assert(formatPrice("100")    === "1.00",     "100 → 1.00")
+// console.assert(formatPrice("1")      === "0.01",     "1 → 0.01")
+// console.assert(formatPrice("")       === "",          "empty → empty")
+// ---------------------------------------------------------------------------

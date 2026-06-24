@@ -64,7 +64,8 @@ const CreateSchema = z.object({
   stock: z.number().int().min(0, "Stock cannot be negative").default(0),
   bestSeller: z.boolean().default(false),
   isActive: z.boolean().default(true),
-  imageObjectKey: z.string().optional(),
+  // imageObjectKeys: ordered array; index 0 = primary.
+  imageObjectKeys: z.array(z.string()).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -77,22 +78,29 @@ export async function POST(req: NextRequest) {
     const parsed = CreateSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
-    const { imageObjectKey, ...productData } = parsed.data;
+    const { imageObjectKeys, ...productData } = parsed.data;
 
     const product = await db.product.create({
       data: {
         ...productData,
-        ...(imageObjectKey
+        ...(imageObjectKeys?.length
           ? {
               images: {
-                create: { objectKey: imageObjectKey, isPrimary: true, sortOrder: 0 },
+                create: imageObjectKeys.map((objectKey, idx) => ({
+                  objectKey,
+                  isPrimary: idx === 0,
+                  sortOrder: idx,
+                })),
               },
             }
           : {}),
       },
       include: {
         category: { select: { id: true, name: true, slug: true } },
-        images: { where: { isPrimary: true }, take: 1, select: { objectKey: true } },
+        images: {
+          orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }],
+          select: { objectKey: true, isPrimary: true },
+        },
       },
     });
 

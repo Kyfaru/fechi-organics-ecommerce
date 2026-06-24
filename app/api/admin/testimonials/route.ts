@@ -2,7 +2,8 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { headers } from "next/headers";
 import { connection } from "next/server";
-import { ok, Err } from "@/lib/api";
+import { ok, created, Err } from "@/lib/api";
+import { r2PublicUrl } from "@/lib/r2";
 import { z } from "zod";
 import { NextRequest } from "next/server";
 
@@ -17,8 +18,21 @@ async function requireAdmin() {
 }
 
 // ---------------------------------------------------------------------------
+// Attach resolved public URLs to a testimonial row before returning to client.
+// Keeps URL construction server-side where NEXT_PUBLIC_R2_PUBLIC_URL is stable.
+// ---------------------------------------------------------------------------
+function withUrls(t: { beforeKey: string; afterKey: string; [key: string]: unknown }) {
+  return {
+    ...t,
+    beforeUrl: r2PublicUrl(t.beforeKey),
+    afterUrl: r2PublicUrl(t.afterKey),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // GET /api/admin/testimonials
-// Returns all testimonials ordered by sortOrder ascending
+// Returns all testimonials ordered by sortOrder ascending.
+// Each record includes beforeUrl and afterUrl resolved via r2PublicUrl().
 // ---------------------------------------------------------------------------
 export async function GET() {
   await connection();
@@ -26,11 +40,11 @@ export async function GET() {
     const admin = await requireAdmin();
     if (!admin) return Err.forbidden();
 
-    const testimonials = await db.testimonial.findMany({
+    const rows = await db.testimonial.findMany({
       orderBy: { sortOrder: "asc" },
     });
 
-    return ok({ testimonials });
+    return ok({ testimonials: rows.map(withUrls) });
   } catch (e) {
     console.error("[admin/testimonials] GET error", e);
     return Err.internal();
@@ -38,36 +52,38 @@ export async function GET() {
 }
 
 // ---------------------------------------------------------------------------
-// PATCH /api/admin/testimonials
-// Accepts { id, approved? } or { id, sortOrder? } — partial updates
+// POST /api/admin/testimonials
+// Creates a new testimonial.
+// Body: { authorName, location?, quote, rating, beforeKey, afterKey, source? }
+// Returns 201 with the created record including beforeUrl / afterUrl.
 // ---------------------------------------------------------------------------
-const UpdateSchema = z.object({
-  id: z.string().uuid(),
-  approved: z.boolean().optional(),
-  sortOrder: z.number().int().min(0).optional(),
+const CreateSchema = z.object({
+  authorName: z.string().min(1, "Author name is required"),
+  location: z.string().optional(),
+  quote: z.string().min(1, "Quote is required"),
+  rating: z.number().int().min(1).max(5).default(5),
+  beforeKey: z.string().min(1, "Before image key is required"),
+  afterKey: z.string().min(1, "After image key is required"),
+  source: z.enum(["facebook", "manual"]).default("manual"),
+  sortOrder: z.number().int().min(0).default(0),
 });
 
-export async function PATCH(req: NextRequest) {
+export async function POST(req: NextRequest) {
   await connection();
   try {
     const admin = await requireAdmin();
     if (!admin) return Err.forbidden();
 
     const body = await req.json().catch(() => ({}));
-    const parsed = UpdateSchema.safeParse(body);
+    const parsed = CreateSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
-    const { id, ...data } = parsed.data;
+    const t = await db.testimonial.create({ data: parsed.data });
 
-    // Ensure there is at least one field to update
-    if (Object.keys(data).length === 0) {
-      return Err.validation("No fields to update");
-    }
-
-    const t = await db.testimonial.update({ where: { id }, data });
-    return ok({ testimonial: t });
+    console.info("[admin/testimonials] created", t.id);
+    return created({ testimonial: withUrls(t) });
   } catch (e) {
-    console.error("[admin/testimonials] PATCH error", e);
+    console.error("[admin/testimonials] POST error", e);
     return Err.internal();
   }
 }

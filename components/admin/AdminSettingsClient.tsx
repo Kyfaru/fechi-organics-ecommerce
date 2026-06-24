@@ -23,14 +23,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Store, Building2, Palette, Truck, CreditCard, Bell,
   Lock, Zap, AlertTriangle, ExternalLink, Shield,
-  ChevronRight, Globe, Phone, Clock, Languages, FileText,
-  MapPin, Hash,
+  ChevronRight, Globe, Phone, Clock, Languages,
+  MapPin,
 } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { toast } from "@/lib/toast";
-import { authClient } from "@/lib/auth-client";
+import Switch from "@/components/ui/Switch";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -106,23 +106,6 @@ function CardHeader({ title, description }: { title: string; description?: strin
   );
 }
 
-/** Toggle switch */
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      aria-pressed={checked}
-      style={{ width: 40, height: 22 }}
-      className={`relative rounded-full transition-colors shrink-0 ${checked ? "bg-(--green-600)" : "bg-(--neutral-200)"}`}
-    >
-      <span
-        className={`absolute top-[3px] w-4 h-4 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-[20px]" : "translate-x-[3px]"}`}
-      />
-    </button>
-  );
-}
-
 /** Save button */
 function SaveBtn({ onClick, saving }: { onClick: () => void; saving: boolean }) {
   return (
@@ -161,16 +144,22 @@ function LinkCard({ icon: Icon, title, description, href }: {
 // Tab panels
 // ---------------------------------------------------------------------------
 
+// Read-only field style — same dimensions as editable inputs but visually distinct
+const readonlyCls = "w-full h-10 px-3 rounded-[8px] border border-(--neutral-200) dark:border-(--dark-border) font-dm text-[14px] text-(--neutral-600) dark:text-(--dark-muted) bg-(--neutral-50) dark:bg-(--dark-bg) cursor-not-allowed select-all";
+
 function GeneralTab({ settings, onSave, saving }: { settings: Settings; onSave: (k: string, v: string) => void; saving: boolean }) {
+  // Read-only display values — store_name, store_email, support_phone cannot be changed here
+  const storeName    = String(settings.store_name ?? "Fechi Organics");
+  const storeEmail   = String(settings.store_email ?? "");
+  const supportPhone = String(settings.support_phone ?? "");
+
   const [form, setForm] = useState({
-    store_name:    String(settings.store_name ?? "Fechi Organics"),
-    store_email:   String(settings.store_email ?? ""),
-    support_phone: String(settings.support_phone ?? ""),
-    timezone:      String(settings.timezone ?? "Africa/Nairobi"),
-    language:      String(settings.language ?? "en"),
+    timezone: String(settings.timezone ?? "Africa/Nairobi"),
+    language: String(settings.language ?? "en"),
   });
 
   function handleSave() {
+    // Only save editable fields — read-only fields are excluded
     Object.entries(form).forEach(([k, v]) => onSave(k, v));
     toast.success("General settings saved.");
   }
@@ -180,23 +169,29 @@ function GeneralTab({ settings, onSave, saving }: { settings: Settings; onSave: 
       <Card>
         <CardHeader title="Store Information" description="Basic details about your store" />
         <div className="space-y-4">
+          {/* Read-only: store name */}
           <Field label="Store name" description="Shown in emails, invoices, and browser tabs">
             <div className="relative">
               <Store size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400)" />
-              <input className={`${inputCls} pl-9`} value={form.store_name} onChange={(e) => setForm((p) => ({ ...p, store_name: e.target.value }))} placeholder="Fechi Organics" />
+              <input readOnly disabled className={`${readonlyCls} pl-9`} value={storeName} />
             </div>
+            <p className="font-dm text-[11px] text-(--neutral-400)">Contact support to change this.</p>
           </Field>
+          {/* Read-only: store email */}
           <Field label="Store email" description="Used for order confirmations and support replies">
             <div className="relative">
               <Globe size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400)" />
-              <input type="email" className={`${inputCls} pl-9`} value={form.store_email} onChange={(e) => setForm((p) => ({ ...p, store_email: e.target.value }))} placeholder="orders@fechiorganics.co.ke" />
+              <input readOnly disabled type="email" className={`${readonlyCls} pl-9`} value={storeEmail} />
             </div>
+            <p className="font-dm text-[11px] text-(--neutral-400)">Contact support to change this.</p>
           </Field>
+          {/* Read-only: support phone */}
           <Field label="Support phone" description="Displayed on the storefront contact page">
             <div className="relative">
               <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400)" />
-              <input type="tel" className={`${inputCls} pl-9`} value={form.support_phone} onChange={(e) => setForm((p) => ({ ...p, support_phone: e.target.value }))} placeholder="+254 700 000 000" />
+              <input readOnly disabled type="tel" className={`${readonlyCls} pl-9`} value={supportPhone} />
             </div>
+            <p className="font-dm text-[11px] text-(--neutral-400)">Contact support to change this.</p>
           </Field>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Timezone">
@@ -232,7 +227,7 @@ function StoreProfileTab({ settings, onSave, saving }: { settings: Settings; onS
   const [form, setForm] = useState({
     store_description: String(settings.store_description ?? ""),
     store_address:     String(settings.store_address ?? ""),
-    kra_pin:           String(settings.kra_pin ?? ""),
+    // kra_pin removed — managed internally, not editable from the settings panel
   });
 
   function handleSave() {
@@ -252,12 +247,6 @@ function StoreProfileTab({ settings, onSave, saving }: { settings: Settings; onS
             <div className="relative">
               <MapPin size={16} className="absolute left-3 top-3 text-(--neutral-400)" />
               <textarea rows={2} className={`${textareaCls} pl-9`} value={form.store_address} onChange={(e) => setForm((p) => ({ ...p, store_address: e.target.value }))} placeholder="Westlands, Nairobi, Kenya" />
-            </div>
-          </Field>
-          <Field label="KRA PIN" description="Required for VAT invoicing in Kenya">
-            <div className="relative">
-              <Hash size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400)" />
-              <input className={`${inputCls} pl-9`} value={form.kra_pin} onChange={(e) => setForm((p) => ({ ...p, kra_pin: e.target.value.toUpperCase() }))} placeholder="P051234567A" />
             </div>
           </Field>
         </div>
@@ -385,7 +374,7 @@ function NotificationsTab({ settings, onSave, saving }: { settings: Settings; on
                 <div className="font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">{item.label}</div>
                 <div className="font-dm text-[12px] text-(--neutral-400) mt-0.5">{item.description}</div>
               </div>
-              <Toggle
+              <Switch
                 checked={local[item.key]}
                 onChange={(v) => setLocal((p) => ({ ...p, [item.key]: v }))}
               />
@@ -425,7 +414,7 @@ function SecurityTab({ settings, onSave, saving }: { settings: Settings; onSave:
             <div className="font-dm text-[12px] text-(--neutral-400)">Manage 2FA on your profile page</div>
           </div>
           <a
-            href="/admin/profile"
+            href="/admin/security"
             className="h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors flex items-center gap-1.5"
           >
             Configure <ExternalLink size={13} />
@@ -459,7 +448,7 @@ function SecurityTab({ settings, onSave, saving }: { settings: Settings; onSave:
               <div className="font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">Require special characters</div>
               <div className="font-dm text-[12px] text-(--neutral-400)">Passwords must include at least one symbol</div>
             </div>
-            <Toggle checked={requireSpecial} onChange={setRequireSpecial} />
+            <Switch checked={requireSpecial} onChange={setRequireSpecial} />
           </div>
         </div>
       </Card>
@@ -472,10 +461,8 @@ function SecurityTab({ settings, onSave, saving }: { settings: Settings; onSave:
 }
 
 function ApiTab() {
-  // TODO: Fetch real M-Pesa / Zoho / PostHog config status from settings or dedicated endpoints
-  const mpesaConfigured = false; // TODO: check if branch is configured
-  const zohoConfigured  = false; // TODO: check systemConfig for zoho credentials
-  const posthogKey = process.env.NEXT_PUBLIC_POSTHOG_KEY; // Available if set in .env
+  // TODO: Fetch real Zoho config status from settings or dedicated endpoint
+  const zohoConfigured = false; // TODO: check systemConfig for zoho credentials
 
   return (
     <div className="space-y-6">
@@ -493,23 +480,7 @@ function ApiTab() {
         </div>
       </Card>
 
-      {/* M-Pesa */}
-      <Card>
-        <CardHeader title="M-Pesa" description="Safaricom STK Push payment integration" />
-        <div className="flex items-center gap-4">
-          <div className="flex-1">
-            <div className="font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">M-Pesa Status</div>
-            <div className="mt-1">
-              <StatusPill status={mpesaConfigured ? "active" : "failed"} />
-            </div>
-          </div>
-          <a href="/admin/finance/payment-methods" className="h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors flex items-center gap-1.5">
-            Configure <ExternalLink size={13} />
-          </a>
-        </div>
-      </Card>
-
-      {/* Zoho */}
+      {/* Zoho Inventory — M-Pesa and PostHog cards removed (P4-1) */}
       <Card>
         <CardHeader title="Zoho Inventory" description="Sync products and orders with Zoho" />
         <div className="flex items-center gap-4">
@@ -525,24 +496,6 @@ function ApiTab() {
           >
             Sync Now
           </button>
-        </div>
-      </Card>
-
-      {/* PostHog */}
-      <Card>
-        <CardHeader title="PostHog Analytics" description="Product analytics and session recording" />
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
-            <div className="font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">PostHog Status</div>
-            <div className="mt-1">
-              <StatusPill status={posthogKey ? "active" : "draft"} />
-            </div>
-            {posthogKey && (
-              <div className="font-mono text-[11px] text-(--neutral-400) mt-1">
-                Key: {posthogKey.slice(0, 8)}…
-              </div>
-            )}
-          </div>
         </div>
       </Card>
     </div>

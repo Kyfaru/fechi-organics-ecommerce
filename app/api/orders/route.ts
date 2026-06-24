@@ -70,8 +70,67 @@ export async function GET(req: NextRequest) {
 const DELIVERY_KES = 35000; // 350 KES × 100 cents
 
 // ---------------------------------------------------------------------------
+// Validate a promo code against the promotions table.
+// Returns the promotion row and the discount amount in cents (KES × 100),
+// or throws a Response that can be returned directly.
+// ---------------------------------------------------------------------------
+async function resolvePromo(
+  promoCode: string,
+  userId: string,
+  subtotalKes: number,
+): Promise<{ promo: { id: string; type: string; value: number }; discountKes: number; deliveryFree: boolean }> {
+  const now = new Date();
+
+  const promo = await db.promotion.findFirst({
+    where: {
+      code: promoCode,
+      status: "active",
+      OR: [{ startDate: null }, { startDate: { lte: now } }],
+      AND: [
+        { OR: [{ endDate: null }, { endDate: { gte: now } }] },
+      ],
+    },
+  });
+
+  if (!promo) {
+    throw Err.validation("Invalid or expired coupon code");
+  }
+
+  if (promo.maxUses !== null && promo.usedCount >= promo.maxUses) {
+    throw Err.validation("Coupon usage limit reached");
+  }
+
+  // Check this user hasn't already redeemed this coupon
+  const alreadyUsed = await db.couponRedemption.findUnique({
+    where: { couponId_userId: { couponId: promo.id, userId } },
+  });
+  if (alreadyUsed) {
+    throw Err.validation("You have already used this coupon");
+  }
+
+  if (promo.minOrder !== null && subtotalKes < promo.minOrder) {
+    throw Err.validation("Order does not meet minimum for this coupon");
+  }
+
+  let discountKes = 0;
+  let deliveryFree = false;
+
+  if (promo.type === "PERCENTAGE") {
+    discountKes = Math.round(subtotalKes * promo.value / 100);
+  } else if (promo.type === "FIXED") {
+    // promo.value is stored in KES; convert to cents, cap at subtotal
+    discountKes = Math.min(Math.round(promo.value * 100), subtotalKes);
+  } else if (promo.type === "FREE_SHIPPING") {
+    deliveryFree = true;
+  }
+
+  return { promo, discountKes, deliveryFree };
+}
+
+// ---------------------------------------------------------------------------
 // POST /api/orders — authenticated users only
 // Creates an order from the current cart and clears cart.
+// Validates a real coupon code if provided, records redemption in transaction.
 // Stock is decremented only after a payment callback confirms PAID.
 // Fire-and-forgets a Zoho Sales Order after commit.
 // ---------------------------------------------------------------------------
@@ -120,23 +179,34 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 5. Compute pricing
+    // 5. Compute subtotal
     const subtotalKes = cart.items.reduce(
       (sum: number, ci: (typeof cart.items)[number]) =>
         sum + ci.product.priceKes * ci.quantity,
       0,
     );
 
+    // 6. Validate promo code if provided
     let discountKes = 0;
-    if (promoCode === "FECHI10") {
-      discountKes = Math.round(subtotalKes * 0.1);
-    } else if (promoCode === "NEWUSER") {
-      discountKes = 50000; // 500 KES
+    let resolvedDeliveryKes = DELIVERY_KES;
+    let resolvedPromoId: string | null = null;
+
+    if (promoCode) {
+      try {
+        const result = await resolvePromo(promoCode, userId, subtotalKes);
+        discountKes = result.discountKes;
+        if (result.deliveryFree) resolvedDeliveryKes = 0;
+        resolvedPromoId = result.promo.id;
+      } catch (e) {
+        // resolvePromo throws Response objects for operational errors
+        if (e instanceof Response) return e;
+        throw e;
+      }
     }
 
-    const totalKes = subtotalKes + DELIVERY_KES - discountKes;
+    const totalKes = subtotalKes + resolvedDeliveryKes - discountKes;
 
-    // 6. Prisma transaction: create order, clear cart
+    // 7. Prisma transaction: create order, record redemption, increment promo, clear cart
     type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
     const order = await db.$transaction(async (tx: TxClient) => {
@@ -145,7 +215,7 @@ export async function POST(req: NextRequest) {
         data: {
           userId,
           subtotalKes,
-          deliveryKes: DELIVERY_KES,
+          deliveryKes: resolvedDeliveryKes,
           discountKes,
           totalKes,
           promoCode: promoCode ?? null,
@@ -161,13 +231,28 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      // Record coupon redemption and increment usedCount atomically
+      if (resolvedPromoId && promoCode) {
+        await tx.couponRedemption.create({
+          data: {
+            couponId: resolvedPromoId,
+            userId,
+            orderId: newOrder.id,
+          },
+        });
+        await tx.promotion.update({
+          where: { id: resolvedPromoId },
+          data: { usedCount: { increment: 1 } },
+        });
+      }
+
       // Clear cart
       await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
 
       return newOrder;
     });
 
-    // 7. Fire-and-forget: push Sales Order to Zoho
+    // 8. Fire-and-forget: push Sales Order to Zoho
     (async () => {
       try {
         const user = await db.user.findUnique({
@@ -185,7 +270,7 @@ export async function POST(req: NextRequest) {
             rate: ci.product.priceKes / 100,
           })),
           discount: discountKes / 100,
-          shipping_charge: DELIVERY_KES / 100,
+          shipping_charge: resolvedDeliveryKes / 100,
           notes: `Fechi Organics order ${order.id}`,
         };
 
@@ -204,7 +289,13 @@ export async function POST(req: NextRequest) {
       }
     })();
 
-    console.info("[orders] Created order", order.id, "for user", userId);
+    // Assign a human-readable order number after creation.
+    // Count is used as a sequence — not perfectly contiguous but collision-safe.
+    const orderCount = await db.order.count();
+    const orderNumber = `FO-${new Date().getFullYear()}-${String(orderCount).padStart(4, "0")}`;
+    await db.order.update({ where: { id: order.id }, data: { orderNumber } });
+
+    console.info("[orders] Created order", order.id, "orderNumber", orderNumber, "for user", userId);
     return ok({ orderId: order.id });
   } catch (e) {
     console.error("[orders] POST error", e);

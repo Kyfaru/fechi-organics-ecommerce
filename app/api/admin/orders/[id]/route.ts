@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
-// Auth helper
+// Auth helper — matches pattern in /api/admin/orders/route.ts
 // ---------------------------------------------------------------------------
 async function requireAdmin(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -14,6 +14,21 @@ async function requireAdmin(req: NextRequest) {
   const user = await db.user.findUnique({ where: { id: session.user.id } });
   return user?.role === "admin" ? user : null;
 }
+
+// Shared include for returning the full order after mutations
+const ORDER_INCLUDE = {
+  user: { select: { name: true, email: true } },
+  items: {
+    include: {
+      product: {
+        select: {
+          name: true,
+          images: { where: { isPrimary: true }, take: 1, select: { objectKey: true } },
+        },
+      },
+    },
+  },
+} as const;
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/orders/[id]
@@ -63,9 +78,16 @@ export async function GET(
 
 // ---------------------------------------------------------------------------
 // PATCH /api/admin/orders/[id]
-// Update order status
+// Supports two modes:
+//   1. Fulfillment actions: { action: 'set_processing' | 'unset_processing' | 'confirm' | 'ship' | 'cancel', orderNumber?: string }
+//   2. Legacy status/paymentStatus update: { status?, paymentStatus? }
 // ---------------------------------------------------------------------------
-const UpdateOrderSchema = z.object({
+const FulfillmentSchema = z.object({
+  action: z.enum(["set_processing", "unset_processing", "confirm", "ship", "cancel"]),
+  orderNumber: z.string().optional(),
+});
+
+const LegacySchema = z.object({
   status: z.enum(["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"]).optional(),
   paymentStatus: z.enum(["PENDING", "PAID", "FAILED"]).optional(),
 });
@@ -82,7 +104,14 @@ export async function PATCH(
     const { id } = await params;
 
     const body = await req.json().catch(() => ({}));
-    const parsed = UpdateOrderSchema.safeParse(body);
+
+    // Route to fulfillment handler when "action" key is present
+    if ("action" in body) {
+      return handleFulfillmentAction(id, body, admin.id);
+    }
+
+    // Legacy path — direct status / paymentStatus update
+    const parsed = LegacySchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
     if (!parsed.data.status && !parsed.data.paymentStatus) {
       return Err.validation("Provide at least one field to update (status or paymentStatus)");
@@ -94,25 +123,114 @@ export async function PATCH(
     const updated = await db.order.update({
       where: { id },
       data: parsed.data,
-      include: {
-        user: { select: { name: true, email: true } },
-        items: {
-          include: {
-            product: {
-              select: {
-                name: true,
-                images: { where: { isPrimary: true }, take: 1, select: { objectKey: true } },
-              },
-            },
-          },
-        },
-      },
+      include: ORDER_INCLUDE,
     });
 
-    console.info("[admin/orders/[id]] PATCH —", id, "status →", parsed.data.status);
+    console.info("[admin/orders/[id]] PATCH (legacy) —", id, "→", parsed.data.status);
     return ok({ order: updated });
   } catch (e) {
     console.error("[admin/orders/[id]] PATCH error", e);
     return Err.internal();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Fulfillment action handler
+// Each action has explicit pre-condition checks to prevent invalid state transitions.
+// ---------------------------------------------------------------------------
+async function handleFulfillmentAction(
+  orderId: string,
+  body: unknown,
+  adminUserId: string,
+): Promise<Response> {
+  const parsed = FulfillmentSchema.safeParse(body);
+  if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
+
+  const { action, orderNumber } = parsed.data;
+
+  const order = await db.order.findUnique({ where: { id: orderId } });
+  if (!order) return Err.notFound("Order");
+
+  const terminalStatuses = ["SHIPPED", "DELIVERED", "CANCELLED"];
+
+  switch (action) {
+    case "set_processing": {
+      if (terminalStatuses.includes(order.status)) {
+        return Err.validation(`Cannot process an order with status ${order.status}`);
+      }
+      const updated = await db.order.update({
+        where: { id: orderId },
+        data: {
+          status: "PROCESSING",
+          processingBy: adminUserId,
+          processedAt: new Date(),
+        },
+        include: ORDER_INCLUDE,
+      });
+      console.info("[admin/orders/[id]] set_processing —", orderId);
+      return ok({ order: updated });
+    }
+
+    case "unset_processing": {
+      const updated = await db.order.update({
+        where: { id: orderId },
+        data: {
+          status: "PENDING",
+          processingBy: null,
+          processedAt: null,
+        },
+        include: ORDER_INCLUDE,
+      });
+      console.info("[admin/orders/[id]] unset_processing —", orderId);
+      return ok({ order: updated });
+    }
+
+    case "confirm": {
+      // Require the admin to type the order number to prevent accidental confirmation
+      if (!orderNumber || orderNumber !== order.orderNumber) {
+        return Err.validation("Order number does not match — confirmation rejected");
+      }
+      const updated = await db.order.update({
+        where: { id: orderId },
+        data: {
+          status: "CONFIRMED",
+          confirmedBy: adminUserId,
+          confirmedAt: new Date(),
+        },
+        include: ORDER_INCLUDE,
+      });
+      console.info("[admin/orders/[id]] confirm —", orderId);
+      return ok({ order: updated });
+    }
+
+    case "ship": {
+      // Must be CONFIRMED and have a processor assigned before shipping
+      if (!order.processingBy || order.status !== "CONFIRMED") {
+        return Err.validation("Order must be CONFIRMED and assigned to a processor before shipping");
+      }
+      const updated = await db.order.update({
+        where: { id: orderId },
+        data: {
+          status: "SHIPPED",
+          shippedAt: new Date(),
+        },
+        include: ORDER_INCLUDE,
+      });
+      console.info("[admin/orders/[id]] ship —", orderId);
+      return ok({ order: updated });
+    }
+
+    case "cancel": {
+      const updated = await db.order.update({
+        where: { id: orderId },
+        data: { status: "CANCELLED" },
+        include: ORDER_INCLUDE,
+      });
+      console.info("[admin/orders/[id]] cancel —", orderId);
+      return ok({ order: updated });
+    }
+
+    default:
+      return Err.validation("Unknown action");
   }
 }

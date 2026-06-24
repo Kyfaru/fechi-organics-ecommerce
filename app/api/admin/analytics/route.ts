@@ -2,7 +2,8 @@
  * GET /api/admin/analytics?tab=overview&from=2026-05-18&to=2026-06-17
  *
  * Admin-only analytics endpoint. Returns data shaped per the requested tab.
- * All aggregations happen in the database.
+ * All aggregations happen in the database or in JS where Prisma groupBy
+ * lacks date-truncation support.
  */
 
 import { NextRequest } from "next/server";
@@ -10,6 +11,7 @@ import { connection } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { requireAdminPage } from "@/lib/admin-guard";
 
 async function requireAdmin(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -18,8 +20,62 @@ async function requireAdmin(req: NextRequest) {
   return user?.role === "admin" ? user : null;
 }
 
+// ---------------------------------------------------------------------------
+// Helper: bucket a list of orders by day into ordersChart shape
+// Orders with paymentStatus === "FAILED" are treated as "failed".
+// Orders with status === "CANCELLED" are "cancelled".
+// Orders with status DELIVERED/SHIPPED/PROCESSING/CONFIRMED and paymentStatus PAID
+// are "successful". Everything else contributes to "all".
+// ---------------------------------------------------------------------------
+type OrderChartRow = {
+  date: string;
+  all: number;
+  successful: number;
+  failed: number;
+  cancelled: number;
+};
+
+function buildOrdersChart(
+  orders: { createdAt: Date; status: string; paymentStatus: string }[],
+  from: Date,
+  to: Date,
+): OrderChartRow[] {
+  const map: Record<string, { all: number; successful: number; failed: number; cancelled: number }> = {};
+
+  // Pre-fill every day in range with zeros
+  const diffDays = Math.round((to.getTime() - from.getTime()) / 86400000);
+  for (let i = 0; i <= diffDays; i++) {
+    const d = new Date(from);
+    d.setDate(d.getDate() + i);
+    const key = d.toISOString().slice(0, 10);
+    map[key] = { all: 0, successful: 0, failed: 0, cancelled: 0 };
+  }
+
+  for (const ord of orders) {
+    const key = ord.createdAt.toISOString().slice(0, 10);
+    if (!(key in map)) continue;
+    map[key].all += 1;
+
+    if (ord.status === "CANCELLED") {
+      map[key].cancelled += 1;
+    } else if (ord.paymentStatus === "FAILED") {
+      map[key].failed += 1;
+    } else if (
+      ord.paymentStatus === "PAID" &&
+      ["DELIVERED", "SHIPPED", "PROCESSING", "CONFIRMED"].includes(ord.status)
+    ) {
+      map[key].successful += 1;
+    }
+  }
+
+  return Object.entries(map).map(([date, counts]) => ({ date, ...counts }));
+}
+
 export async function GET(req: NextRequest) {
   await connection();
+
+  const denied = await requireAdminPage(req, 'analytics');
+  if (denied) return denied;
 
   const admin = await requireAdmin(req);
   if (!admin) return Err.forbidden();
@@ -57,6 +113,7 @@ export async function GET(req: NextRequest) {
         topProductsRaw,
         topCustomersRaw,
         revenueChartOrders,
+        ordersForChart,
       ] = await Promise.all([
         db.order.aggregate({
           _sum: { totalKes: true },
@@ -88,6 +145,11 @@ export async function GET(req: NextRequest) {
           where: { paymentStatus: "PAID", createdAt: dateFilter },
           select: { createdAt: true, totalKes: true },
         }),
+        // All orders for order-status area chart (F2/F5)
+        db.order.findMany({
+          where: { createdAt: dateFilter },
+          select: { createdAt: true, status: true, paymentStatus: true },
+        }),
       ]);
 
       // Build daily revenue chart
@@ -109,6 +171,9 @@ export async function GET(req: NextRequest) {
         const key = d.toISOString().slice(0, 10);
         revenueChart.push({ date: key, amount: dailyMap[key] ?? 0 });
       }
+
+      // Build orders chart (order-status area chart data)
+      const ordersChart = buildOrdersChart(ordersForChart, from, to);
 
       // Resolve user names for top customers
       const customerIds = topCustomersRaw
@@ -149,9 +214,10 @@ export async function GET(req: NextRequest) {
           returningRate: 68, // placeholder
         },
         revenueChart,
+        ordersChart,
         topProducts,
         topCustomers,
-        // Placeholder traffic data
+        // Placeholder traffic data — replace with real source tracking when available
         trafficSources: [
           { source: "Direct", pct: 40 },
           { source: "Social", pct: 30 },
@@ -165,7 +231,7 @@ export async function GET(req: NextRequest) {
     // Sales tab
     // -------------------------------------------------------------------------
     if (tab === "sales") {
-      const [orders, revenueByDay] = await Promise.all([
+      const [orders, revenueByDay, ordersForChart] = await Promise.all([
         db.order.findMany({
           where: { createdAt: dateFilter },
           orderBy: { createdAt: "desc" },
@@ -184,6 +250,11 @@ export async function GET(req: NextRequest) {
           where: { paymentStatus: "PAID", createdAt: dateFilter },
           select: { createdAt: true, totalKes: true },
         }),
+        // Orders for order-status area chart (F2/F5)
+        db.order.findMany({
+          where: { createdAt: dateFilter },
+          select: { createdAt: true, status: true, paymentStatus: true },
+        }),
       ]);
 
       const dailyMap: Record<string, number> = {};
@@ -201,6 +272,9 @@ export async function GET(req: NextRequest) {
         revenueChart.push({ date: key, amount: dailyMap[key] ?? 0 });
       }
 
+      // Build orders chart
+      const ordersChart = buildOrdersChart(ordersForChart, from, to);
+
       const formattedOrders = orders.map((o) => ({
         id: o.id,
         customer: o.user?.name ?? "Guest",
@@ -212,7 +286,7 @@ export async function GET(req: NextRequest) {
         createdAt: o.createdAt.toISOString(),
       }));
 
-      return ok({ tab: "sales", revenueChart, orders: formattedOrders });
+      return ok({ tab: "sales", revenueChart, ordersChart, orders: formattedOrders });
     }
 
     // -------------------------------------------------------------------------

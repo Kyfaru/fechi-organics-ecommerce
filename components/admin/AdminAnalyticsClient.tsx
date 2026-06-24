@@ -24,18 +24,30 @@ import {
   BarChart2,
   Mail,
   Layers,
+  FileText,
 } from "lucide-react";
 import { StatCard } from "@/components/admin/ui/StatCard";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { SkeletonStatCard, SkeletonChart } from "@/components/admin/ui/Skeleton";
+import DownloadButton from "@/components/ui/DownloadButton";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 type TabId = "overview" | "sales" | "products" | "customers" | "marketing" | "inventory";
 type RangeId = "7D" | "30D" | "90D" | "12M" | "custom";
+type OrderTrendFilter = "all" | "successful" | "failed" | "cancelled";
+
+type RevenueChartRow = { date: string; amount: number };
+type OrderChartRow = {
+  date: string;
+  all: number;
+  successful: number;
+  failed: number;
+  cancelled: number;
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -73,7 +85,22 @@ function rangeToFromTo(range: RangeId): { from: string; to: string } {
   return { from: from.toISOString().slice(0, 10), to };
 }
 
+// Traffic sources pie: only show if data is non-empty and has any nonzero value
 const TRAFFIC_COLORS = ["var(--green-500)", "var(--gold-500)", "var(--info)", "var(--neutral-400)"];
+
+// Order trend filter color map
+const ORDER_TREND_COLORS: Record<OrderTrendFilter, string> = {
+  all: "var(--info)",
+  successful: "var(--green-500)",
+  failed: "var(--danger)",
+  cancelled: "var(--neutral-400)",
+};
+const ORDER_TREND_GRAD_IDS: Record<OrderTrendFilter, string> = {
+  all: "orderGradAll",
+  successful: "orderGradSuccess",
+  failed: "orderGradFailed",
+  cancelled: "orderGradCancelled",
+};
 
 // ---------------------------------------------------------------------------
 // Shared tooltip
@@ -85,6 +112,18 @@ function KesTooltip({ active, payload, label }: { active?: boolean; payload?: { 
       <p className="font-dm text-[12px] text-(--neutral-500) mb-1">{label}</p>
       <p className="font-syne text-[13px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
         {formatKes(payload[0].value)}
+      </p>
+    </div>
+  );
+}
+
+function CountTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-white dark:bg-(--dark-surface) border border-(--neutral-200) dark:border-(--dark-border) rounded-[8px] px-3 py-2 shadow-(--e2)">
+      <p className="font-dm text-[12px] text-(--neutral-500) mb-1">{label}</p>
+      <p className="font-syne text-[13px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
+        {payload[0].value} orders
       </p>
     </div>
   );
@@ -103,6 +142,63 @@ const TABS: { id: TabId; label: string; icon: ReactNode }[] = [
 ];
 
 const RANGES: RangeId[] = ["7D", "30D", "90D", "12M"];
+
+// ---------------------------------------------------------------------------
+// CSV export helper
+// ---------------------------------------------------------------------------
+function downloadCSV(revenueData: RevenueChartRow[]) {
+  const header = "Date,Revenue (KES),Orders,AOV\n";
+  // Each revenueChart row only has date + amount (KES cents) — AOV and order
+  // count are not per-day in this payload, so we surface what we have.
+  const rows = revenueData.map((r) => {
+    const kes = (r.amount / 100).toFixed(2);
+    return `${r.date},${kes},,`;
+  });
+  const csv = header + rows.join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "fechi-report.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+  console.info("[analytics/export] CSV downloaded", { rows: rows.length });
+}
+
+// ---------------------------------------------------------------------------
+// PDF export helper — uses jsPDF + jspdf-autotable
+// ---------------------------------------------------------------------------
+async function downloadPDF(revenueData: RevenueChartRow[]) {
+  try {
+    // Dynamic import keeps jsPDF out of the initial bundle (client-only)
+    const jsPDF = (await import("jspdf")).default;
+    const autoTable = (await import("jspdf-autotable")).default;
+
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text("Fechi Organics — Analytics Report", 14, 16);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 24);
+
+    autoTable(doc, {
+      startY: 30,
+      head: [["Date", "Revenue (KES)", "Orders", "AOV"]],
+      body: revenueData.map((r) => [
+        r.date,
+        (r.amount / 100).toFixed(2),
+        "",
+        "",
+      ]),
+      styles: { font: "helvetica", fontSize: 10 },
+      headStyles: { fillColor: [39, 93, 56] }, // --green-800 approximate
+    });
+
+    doc.save("fechi-analytics.pdf");
+    console.info("[analytics/export] PDF downloaded", { rows: revenueData.length });
+  } catch (e) {
+    console.error("[analytics/export] PDF generation failed", e);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -127,6 +223,7 @@ export function AdminAnalyticsClient() {
   });
 
   const payload = data?.data ?? {};
+  const revenueChart = (payload.revenueChart ?? []) as RevenueChartRow[];
 
   return (
     <div>
@@ -136,8 +233,9 @@ export function AdminAnalyticsClient() {
       />
 
       <div className="px-6 pb-8 space-y-6">
-        {/* ── Date range picker ── */}
+        {/* ── Date range picker + Export buttons ── */}
         <div className="flex flex-wrap items-center gap-3">
+          {/* Range pills */}
           <div className="flex items-center bg-(--neutral-100) dark:bg-(--dark-bg) rounded-[8px] p-1 gap-1">
             {RANGES.map((r) => (
               <button
@@ -164,6 +262,7 @@ export function AdminAnalyticsClient() {
             </button>
           </div>
 
+          {/* Custom date range inputs */}
           {range === "custom" && (
             <div className="flex items-center gap-2">
               <input
@@ -181,6 +280,18 @@ export function AdminAnalyticsClient() {
               />
             </div>
           )}
+
+          {/* Export buttons — pushed to the right */}
+          <div className="ml-auto flex items-center gap-2">
+            <DownloadButton
+              onDownload={async () => { downloadCSV(revenueChart); }}
+              label="CSV"
+            />
+            <DownloadButton
+              onDownload={async () => { downloadPDF(revenueChart); }}
+              label="PDF"
+            />
+          </div>
         </div>
 
         {/* ── Tabs ── */}
@@ -226,14 +337,103 @@ export function AdminAnalyticsClient() {
 }
 
 // ---------------------------------------------------------------------------
+// Order Trends area chart — reusable across Overview and Sales tabs (F2)
+// ---------------------------------------------------------------------------
+function OrderTrendsChart({ ordersChart }: { ordersChart: OrderChartRow[] }) {
+  const [filter, setFilter] = useState<OrderTrendFilter>("all");
+
+  const filters: { id: OrderTrendFilter; label: string }[] = [
+    { id: "all", label: "All" },
+    { id: "successful", label: "Successful" },
+    { id: "failed", label: "Failed" },
+    { id: "cancelled", label: "Cancelled" },
+  ];
+
+  const color = ORDER_TREND_COLORS[filter];
+  const gradId = ORDER_TREND_GRAD_IDS[filter];
+  const hasData = ordersChart.length > 0 && ordersChart.some((r) => r[filter] > 0);
+
+  return (
+    <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+      {/* Card header with inline toggle buttons */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
+          Order Trends
+        </h3>
+        <div className="flex items-center gap-1 bg-(--neutral-100) dark:bg-(--dark-bg) rounded-[8px] p-1">
+          {filters.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setFilter(f.id)}
+              className={`px-2.5 py-1 rounded-[6px] font-dm text-[12px] font-medium transition-colors ${
+                filter === f.id
+                  ? "bg-white dark:bg-(--dark-surface) shadow-(--e1)"
+                  : "text-(--neutral-500) hover:text-(--neutral-700)"
+              }`}
+              style={filter === f.id ? { color } : undefined}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {!hasData ? (
+        <div className="h-[200px] flex items-center justify-center">
+          <p className="font-dm text-[13px] text-(--neutral-400)">No order data for this period</p>
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={200}>
+          <AreaChart data={ordersChart} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+            <defs>
+              <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity={0.25} />
+                <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+            <XAxis
+              dataKey="date"
+              tickFormatter={chartLabel}
+              tick={{ fontFamily: "var(--font-dm)", fontSize: 11, fill: "var(--neutral-400)" }}
+              axisLine={false}
+              tickLine={false}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              allowDecimals={false}
+              tick={{ fontFamily: "var(--font-dm)", fontSize: 11, fill: "var(--neutral-400)" }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <Tooltip content={<CountTooltip />} />
+            <Area
+              type="monotone"
+              dataKey={filter}
+              stroke={color}
+              strokeWidth={2.5}
+              fill={`url(#${gradId})`}
+              isAnimationActive
+              animationDuration={600}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Overview tab
 // ---------------------------------------------------------------------------
 function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>; isLoading: boolean }) {
   const stats = (payload.stats ?? {}) as Record<string, number>;
-  const revenueChart = (payload.revenueChart ?? []) as { date: string; amount: number }[];
+  const revenueChart = (payload.revenueChart ?? []) as RevenueChartRow[];
+  const ordersChart = (payload.ordersChart ?? []) as OrderChartRow[];
   const topProducts = (payload.topProducts ?? []) as { name: string; orders: number; revenue: number; pctOfTotal: number }[];
   const topCustomers = (payload.topCustomers ?? []) as { name: string; email: string; orders: number; totalSpend: number }[];
-  const traffic = (payload.trafficSources ?? []) as { source: string; pct: number }[];
+  // Traffic sources: only use data if it has at least one nonzero value (F1)
+  const trafficRaw = (payload.trafficSources ?? []) as { source: string; pct: number }[];
+  const traffic = trafficRaw.filter((t) => t.pct > 0);
 
   const productCols = [
     { key: "name", label: "Product" },
@@ -330,24 +530,53 @@ function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>;
           </div>
         )}
 
+        {/* Traffic Sources pie — F1: show empty state if no real data */}
         {isLoading ? (
           <SkeletonChart />
         ) : (
           <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
             <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">Traffic Sources</h3>
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie data={traffic} dataKey="pct" nameKey="source" cx="50%" cy="50%" outerRadius={80} isAnimationActive animationDuration={800}>
-                  {traffic.map((_, i) => (
-                    <Cell key={i} fill={TRAFFIC_COLORS[i % TRAFFIC_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Legend formatter={(v: string) => <span className="font-dm text-[12px] text-(--neutral-700) dark:text-(--dark-text)">{v}</span>} />
-              </PieChart>
-            </ResponsiveContainer>
+            {traffic.length === 0 ? (
+              // Empty state: gray donut placeholder with centered message (F1)
+              <div className="relative h-[200px] flex items-center justify-center">
+                <svg width="160" height="160" viewBox="0 0 160 160" className="absolute opacity-10">
+                  <circle cx="80" cy="80" r="70" fill="none" stroke="var(--neutral-400)" strokeWidth="20" />
+                </svg>
+                <p className="font-dm text-[13px] text-(--neutral-400) text-center z-10">
+                  No traffic data available
+                </p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie
+                    data={traffic}
+                    dataKey="pct"
+                    nameKey="source"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={80}
+                    isAnimationActive
+                    animationDuration={800}
+                  >
+                    {traffic.map((_, i) => (
+                      <Cell key={i} fill={TRAFFIC_COLORS[i % TRAFFIC_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Legend formatter={(v: string) => <span className="font-dm text-[12px] text-(--neutral-700) dark:text-(--dark-text)">{v}</span>} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </div>
         )}
       </div>
+
+      {/* Order Trends area chart (F2) — beside revenue in overview */}
+      {isLoading ? (
+        <SkeletonChart />
+      ) : (
+        <OrderTrendsChart ordersChart={ordersChart} />
+      )}
 
       {/* Top tables */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -368,7 +597,8 @@ function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>;
 // Sales tab
 // ---------------------------------------------------------------------------
 function SalesTab({ payload, isLoading }: { payload: Record<string, unknown>; isLoading: boolean }) {
-  const revenueChart = (payload.revenueChart ?? []) as { date: string; amount: number }[];
+  const revenueChart = (payload.revenueChart ?? []) as RevenueChartRow[];
+  const ordersChart = (payload.ordersChart ?? []) as OrderChartRow[];
   const orders = (payload.orders ?? []) as Record<string, unknown>[];
 
   const cols = [
@@ -382,25 +612,36 @@ function SalesTab({ payload, isLoading }: { payload: Record<string, unknown>; is
 
   return (
     <div className="space-y-6">
+      {/* Daily revenue + Order Trends: 2-column grid on desktop, stacked on mobile (F2) */}
       {isLoading ? (
-        <SkeletonChart />
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <SkeletonChart />
+          <SkeletonChart />
+        </div>
       ) : (
-        <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
-          <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">Daily Revenue</h3>
-          {revenueChart.length === 0 ? (
-            <div className="h-[240px] flex items-center justify-center"><p className="font-dm text-[13px] text-(--neutral-400)">No sales data for this period</p></div>
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={revenueChart} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                <XAxis dataKey="date" tickFormatter={chartLabel} tick={{ fontFamily: "var(--font-dm)", fontSize: 11, fill: "var(--neutral-400)" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
-                <YAxis tickFormatter={(v) => `KES ${(v / 100).toLocaleString()}`} tick={{ fontFamily: "var(--font-dm)", fontSize: 11, fill: "var(--neutral-400)" }} axisLine={false} tickLine={false} width={80} />
-                <Tooltip content={<KesTooltip />} />
-                <Bar dataKey="amount" fill="var(--green-500)" radius={[4, 4, 0, 0]} isAnimationActive animationDuration={800} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          {/* Daily Revenue bar chart */}
+          <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+            <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">Daily Revenue</h3>
+            {revenueChart.length === 0 ? (
+              <div className="h-[200px] flex items-center justify-center"><p className="font-dm text-[13px] text-(--neutral-400)">No sales data for this period</p></div>
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={revenueChart} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <XAxis dataKey="date" tickFormatter={chartLabel} tick={{ fontFamily: "var(--font-dm)", fontSize: 11, fill: "var(--neutral-400)" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                  <YAxis tickFormatter={(v) => `KES ${(v / 100).toLocaleString()}`} tick={{ fontFamily: "var(--font-dm)", fontSize: 11, fill: "var(--neutral-400)" }} axisLine={false} tickLine={false} width={80} />
+                  <Tooltip content={<KesTooltip />} />
+                  <Bar dataKey="amount" fill="var(--green-500)" radius={[4, 4, 0, 0]} isAnimationActive animationDuration={800} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          {/* Order Trends area chart (F2) */}
+          <OrderTrendsChart ordersChart={ordersChart} />
         </div>
       )}
+
       <DataTable columns={cols} data={orders} loading={isLoading} emptyTitle="No orders" emptyDescription="No orders in this date range." pageSize={20} />
     </div>
   );

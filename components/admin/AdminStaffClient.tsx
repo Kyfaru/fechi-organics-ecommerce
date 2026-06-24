@@ -13,7 +13,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Users, ShieldCheck, UserCog, Activity,
   MoreHorizontal, UserPlus, Mail, ChevronDown,
+  Eye, EyeOff, ChevronUp,
 } from "lucide-react";
+import CheckboxGreen from "@/components/ui/CheckboxGreen";
+import { ALL_PAGES, permissionsFromRole, type AdminPage } from "@/lib/permissions";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { StatCard } from "@/components/admin/ui/StatCard";
 import { DataTable } from "@/components/admin/ui/DataTable";
@@ -143,7 +146,49 @@ function RowActions({
 }
 
 // ---------------------------------------------------------------------------
-// Invite Staff Drawer
+// Role options for the enhanced invite drawer
+// ---------------------------------------------------------------------------
+const INVITE_ROLES = [
+  "admin", "manager", "finance", "marketing",
+  "inventory", "customer_care", "viewer", "custom",
+] as const;
+type InviteRole = (typeof INVITE_ROLES)[number];
+
+// Expiry presets
+const EXPIRY_OPTIONS = [
+  { label: "Lifetime",  value: "lifetime" },
+  { label: "1 Day",     value: "1d" },
+  { label: "7 Days",    value: "7d" },
+  { label: "30 Days",   value: "30d" },
+  { label: "3 Months",  value: "3m" },
+  { label: "Custom",    value: "custom" },
+] as const;
+
+// Maps preset keys to number of days (null = no expiry)
+const EXPIRY_DAYS: Record<string, number | null> = {
+  lifetime: null,
+  "1d": 1,
+  "7d": 7,
+  "30d": 30,
+  "3m": 90,
+};
+
+function addDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Generates a random 12-character password from a safe character set. */
+function generatePassword(): string {
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$";
+  return Array.from({ length: 12 }, () =>
+    chars[Math.floor(Math.random() * chars.length)]
+  ).join("");
+}
+
+// ---------------------------------------------------------------------------
+// Invite Staff Drawer (enhanced)
 // ---------------------------------------------------------------------------
 function InviteDrawer({
   open,
@@ -156,17 +201,77 @@ function InviteDrawer({
 }) {
   const [form, setForm] = useState({
     name: "",
+    username: "",
     email: "",
-    role: "Admin" as StaffRole,
+    phone: "",
+    password: "",
+    role: "viewer" as InviteRole,
+    permissions: permissionsFromRole("viewer"),
+    branchId: "",
+    expiry: "lifetime" as string,
+    customFrom: "",
+    customTo: "",
     note: "",
+    inviteChannels: [] as string[],
   });
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(false);
+  const [errors, setErrors]     = useState<Record<string, string>>({});
+  const [loading, setLoading]   = useState(false);
+  const [showPw, setShowPw]     = useState(false);
+  const [permsOpen, setPermsOpen] = useState(false);
+
+  // Fetch branches for the branch select
+  const { data: branchData } = useQuery({
+    queryKey: ["admin-branches"],
+    queryFn: () => fetch("/api/admin/branches").then((r) => r.json()),
+    staleTime: 10 * 60 * 1000,
+  });
+  const branches: { id: string; name: string }[] = branchData?.branches ?? [];
+
+  // When role changes, auto-populate permissions from template (unless custom)
+  function handleRoleChange(role: InviteRole) {
+    const perms = role === "custom" ? form.permissions : permissionsFromRole(role);
+    setForm((p) => ({ ...p, role, permissions: perms }));
+    // Show the permissions grid automatically for custom role
+    if (role === "custom") setPermsOpen(true);
+  }
+
+  function togglePage(page: AdminPage) {
+    setForm((p) => {
+      const pages = p.permissions.pages.includes(page)
+        ? p.permissions.pages.filter((pg) => pg !== page)
+        : [...p.permissions.pages, page];
+      return { ...p, permissions: { pages } };
+    });
+  }
+
+  function toggleChannel(channel: string) {
+    setForm((p) => ({
+      ...p,
+      inviteChannels: p.inviteChannels.includes(channel)
+        ? p.inviteChannels.filter((c) => c !== channel)
+        : [...p.inviteChannels, channel],
+    }));
+  }
+
+  // Compute accessExpiresAt from the expiry selection
+  function resolveExpiry(): string | null {
+    if (form.expiry === "lifetime") return null;
+    if (form.expiry === "custom") return form.customTo || null;
+    const days = EXPIRY_DAYS[form.expiry];
+    if (days === null || days === undefined) return null;
+    return addDays(days);
+  }
 
   function validate() {
     const e: Record<string, string> = {};
-    if (!form.name.trim() || form.name.trim().length < 2) e.name = "Full name required (min 2 chars).";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = "Valid email required.";
+    if (!form.name.trim() || form.name.trim().length < 2)
+      e.name = "Full name required (min 2 chars).";
+    if (form.username && !/^\w{3,}$/.test(form.username))
+      e.username = "Username must be alphanumeric/underscore, min 3 chars.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
+      e.email = "Valid email required.";
+    if (!form.password)
+      e.password = "Password is required.";
     return e;
   }
 
@@ -181,12 +286,31 @@ function InviteDrawer({
       const res = await fetch("/api/admin/staff/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          name:             form.name.trim(),
+          username:         form.username.trim() || undefined,
+          email:            form.email.toLowerCase(),
+          phone:            form.phone.trim() || undefined,
+          password:         form.password,
+          role:             form.role,
+          permissions:      form.permissions,
+          branchId:         form.branchId || undefined,
+          accessExpiresAt:  resolveExpiry(),
+          note:             form.note.trim() || undefined,
+          inviteChannels:   form.inviteChannels,
+        }),
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error?.message ?? "Failed to send invitation.");
-      toast.success("Invitation sent", { message: `${form.name} will receive an email shortly.` });
-      setForm({ name: "", email: "", role: "Admin", note: "" });
+      toast.success("Staff member invited", { message: `${form.name} has been added.` });
+      // Reset form
+      setForm({
+        name: "", username: "", email: "", phone: "", password: "",
+        role: "viewer", permissions: permissionsFromRole("viewer"),
+        branchId: "", expiry: "lifetime", customFrom: "", customTo: "",
+        note: "", inviteChannels: [],
+      });
+      setPermsOpen(false);
       onSuccess();
       onClose();
     } catch (err) {
@@ -200,13 +324,15 @@ function InviteDrawer({
     `w-full h-10 px-3 rounded-[8px] border font-dm text-[14px] text-(--neutral-900) bg-white dark:bg-(--dark-surface) dark:text-(--dark-text) outline-none transition-colors focus:border-(--green-600) ${
       errors[field] ? "border-(--danger)" : "border-(--neutral-300) dark:border-(--dark-border)"
     }`;
+  const selectCls =
+    "w-full h-10 pl-3 pr-9 rounded-[8px] border border-(--neutral-300) dark:border-(--dark-border) font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) bg-white dark:bg-(--dark-surface) outline-none appearance-none focus:border-(--green-600) transition-colors";
 
   return (
     <Drawer
       open={open}
       onClose={onClose}
       title="Invite Staff Member"
-      width={480}
+      width={640}
       footer={
         <>
           <button
@@ -228,6 +354,7 @@ function InviteDrawer({
       }
     >
       <form id="invite-form" onSubmit={handleSubmit} className="flex flex-col gap-5">
+
         {/* Full name */}
         <div className="flex flex-col gap-1.5">
           <label className="font-dm text-[13px] font-medium text-(--neutral-700)">Full name</label>
@@ -239,6 +366,21 @@ function InviteDrawer({
             autoComplete="name"
           />
           {errors.name && <p className="font-dm text-[12px] text-(--danger)">{errors.name}</p>}
+        </div>
+
+        {/* Username */}
+        <div className="flex flex-col gap-1.5">
+          <label className="font-dm text-[13px] font-medium text-(--neutral-700)">
+            Username <span className="text-(--neutral-400) font-normal">(optional)</span>
+          </label>
+          <input
+            className={inputCls("username")}
+            placeholder="jane_admin"
+            value={form.username}
+            onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))}
+            autoComplete="off"
+          />
+          {errors.username && <p className="font-dm text-[12px] text-(--danger)">{errors.username}</p>}
         </div>
 
         {/* Email */}
@@ -255,24 +397,181 @@ function InviteDrawer({
           {errors.email && <p className="font-dm text-[12px] text-(--danger)">{errors.email}</p>}
         </div>
 
+        {/* Phone */}
+        <div className="flex flex-col gap-1.5">
+          <label className="font-dm text-[13px] font-medium text-(--neutral-700)">
+            Phone <span className="text-(--neutral-400) font-normal">(optional, for SMS invite)</span>
+          </label>
+          <input
+            type="tel"
+            className={inputCls("phone")}
+            placeholder="+254700000000"
+            value={form.phone}
+            onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
+            autoComplete="tel"
+          />
+        </div>
+
+        {/* Password + generate */}
+        <div className="flex flex-col gap-1.5">
+          <label className="font-dm text-[13px] font-medium text-(--neutral-700)">Password</label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                type={showPw ? "text" : "password"}
+                className={`${inputCls("password")} pr-10`}
+                placeholder="Set an initial password"
+                value={form.password}
+                onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
+                autoComplete="new-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPw((s) => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-(--neutral-500) hover:text-(--neutral-800)"
+                tabIndex={-1}
+                aria-label={showPw ? "Hide password" : "Show password"}
+              >
+                {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setForm((p) => ({ ...p, password: generatePassword() }))}
+              className="h-10 px-3 rounded-[8px] border border-(--neutral-300) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) whitespace-nowrap transition-colors"
+            >
+              Generate
+            </button>
+          </div>
+          {errors.password && <p className="font-dm text-[12px] text-(--danger)">{errors.password}</p>}
+        </div>
+
+        {/* Branch select */}
+        <div className="flex flex-col gap-1.5">
+          <label className="font-dm text-[13px] font-medium text-(--neutral-700)">Branch</label>
+          <div className="relative">
+            <select
+              value={form.branchId}
+              onChange={(e) => setForm((p) => ({ ...p, branchId: e.target.value }))}
+              className={selectCls}
+            >
+              <option value="">All Branches</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+            <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-(--neutral-500) pointer-events-none" />
+          </div>
+        </div>
+
         {/* Role select */}
         <div className="flex flex-col gap-1.5">
           <label className="font-dm text-[13px] font-medium text-(--neutral-700)">Role</label>
           <div className="relative">
             <select
               value={form.role}
-              onChange={(e) => setForm((p) => ({ ...p, role: e.target.value as StaffRole }))}
-              className="w-full h-10 pl-3 pr-9 rounded-[8px] border border-(--neutral-300) dark:border-(--dark-border) font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) bg-white dark:bg-(--dark-surface) outline-none appearance-none focus:border-(--green-600) transition-colors"
+              onChange={(e) => handleRoleChange(e.target.value as InviteRole)}
+              className={selectCls}
             >
-              {ROLES.map((r) => (
-                <option key={r} value={r}>{r}</option>
+              {INVITE_ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {r.charAt(0).toUpperCase() + r.slice(1).replace("_", " ")}
+                </option>
               ))}
             </select>
             <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-(--neutral-500) pointer-events-none" />
           </div>
-          <p className="font-dm text-[12px] text-(--neutral-400)">
-            Managers can manage products and orders but cannot change settings or staff.
-          </p>
+        </div>
+
+        {/* Page permissions accordion */}
+        <div className="border border-(--neutral-200) dark:border-(--dark-border) rounded-[10px] overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setPermsOpen((o) => !o)}
+            className="w-full flex items-center justify-between px-4 py-3 font-dm text-[13px] font-medium text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+          >
+            <span>Page permissions</span>
+            {permsOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+          </button>
+          {permsOpen && (
+            <div className="px-4 pb-4 grid grid-cols-4 gap-x-3 gap-y-3 border-t border-(--neutral-200) dark:border-(--dark-border) pt-4">
+              {ALL_PAGES.map((page) => (
+                <label key={page} className="flex flex-col items-center gap-1 cursor-pointer">
+                  <CheckboxGreen
+                    checked={form.permissions.pages.includes(page)}
+                    onChange={() => togglePage(page)}
+                  />
+                  <span className="font-dm text-[11px] text-(--neutral-600) text-center capitalize leading-tight">
+                    {page.replace("_", " ")}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Access timeframe */}
+        <div className="flex flex-col gap-1.5">
+          <label className="font-dm text-[13px] font-medium text-(--neutral-700)">Access timeframe</label>
+          <div className="relative">
+            <select
+              value={form.expiry}
+              onChange={(e) => setForm((p) => ({ ...p, expiry: e.target.value }))}
+              className={selectCls}
+            >
+              {EXPIRY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-(--neutral-500) pointer-events-none" />
+          </div>
+          {form.expiry === "custom" && (
+            <div className="flex gap-3 mt-2">
+              <div className="flex flex-col gap-1 flex-1">
+                <label className="font-dm text-[12px] text-(--neutral-500)">From</label>
+                <input
+                  type="date"
+                  className={inputCls("customFrom")}
+                  value={form.customFrom}
+                  onChange={(e) => setForm((p) => ({ ...p, customFrom: e.target.value }))}
+                />
+              </div>
+              <div className="flex flex-col gap-1 flex-1">
+                <label className="font-dm text-[12px] text-(--neutral-500)">To</label>
+                <input
+                  type="date"
+                  className={inputCls("customTo")}
+                  value={form.customTo}
+                  onChange={(e) => setForm((p) => ({ ...p, customTo: e.target.value }))}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Invitation channels */}
+        <div className="flex flex-col gap-2">
+          <label className="font-dm text-[13px] font-medium text-(--neutral-700)">Send invite via</label>
+          <div className="flex gap-2">
+            {["email", "sms"].map((channel) => {
+              const active = form.inviteChannels.includes(channel);
+              return (
+                <button
+                  key={channel}
+                  type="button"
+                  onClick={() => toggleChannel(channel)}
+                  className={[
+                    "h-9 px-4 rounded-[8px] font-dm text-[13px] font-medium border transition-colors capitalize",
+                    active
+                      ? "bg-(--green-800) text-white border-(--green-800)"
+                      : "bg-white border-(--neutral-300) text-(--neutral-700) hover:bg-(--neutral-50)",
+                  ].join(" ")}
+                >
+                  {channel.toUpperCase()}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Personal note */}

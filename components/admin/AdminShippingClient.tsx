@@ -8,6 +8,7 @@ import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
+import Switch from "@/components/ui/Switch";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,30 +50,6 @@ const labelCls =
 
 function formatKes(cents: number) {
   return `KES ${(cents / 100).toLocaleString("en-KE")}`;
-}
-
-// ---------------------------------------------------------------------------
-// Toggle switch
-// ---------------------------------------------------------------------------
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
-  return (
-    <label className="flex items-center gap-2.5 cursor-pointer select-none">
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className="relative w-10 h-[22px] rounded-full transition-colors"
-        style={{ backgroundColor: checked ? "var(--green-800)" : "var(--neutral-300)" }}
-      >
-        <span
-          className="absolute top-[3px] left-[3px] w-4 h-4 bg-white rounded-full shadow transition-transform"
-          style={{ transform: checked ? "translateX(18px)" : "translateX(0)" }}
-        />
-      </button>
-      <span className="font-dm text-[13px] text-(--neutral-700)">{label}</span>
-    </label>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -340,11 +317,13 @@ export function AdminShippingClient() {
             </div>
           </div>
 
-          <Toggle
-            checked={form.isActive}
-            onChange={(v) => patchForm({ isActive: v })}
-            label="Active (available at checkout)"
-          />
+          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            <Switch
+              checked={form.isActive}
+              onChange={(v) => patchForm({ isActive: v })}
+            />
+            <span className="font-dm text-[13px] text-(--neutral-700)">Active (available at checkout)</span>
+          </label>
         </div>
       </Drawer>
 

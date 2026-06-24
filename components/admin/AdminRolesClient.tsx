@@ -15,6 +15,7 @@ import { useState, useEffect } from "react";
 import { Check, X, Save } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { toast } from "@/lib/toast";
+import Switch from "@/components/ui/Switch";
 
 // ---------------------------------------------------------------------------
 // Static permissions matrix definition
@@ -102,38 +103,6 @@ const DEFAULT_MATRIX: Record<RoleKey, Record<PermKey, boolean>> = {
 };
 
 const STORAGE_KEY = "fechi-admin-role-matrix";
-
-// ---------------------------------------------------------------------------
-// Toggle switch
-// ---------------------------------------------------------------------------
-function Toggle({
-  checked,
-  disabled,
-  onChange,
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  onChange?: (v: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => !disabled && onChange?.(!checked)}
-      disabled={disabled}
-      aria-pressed={checked}
-      className={`relative w-10 h-5.5 rounded-full transition-colors ${
-        checked ? "bg-(--green-600)" : "bg-(--neutral-200)"
-      } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-      style={{ width: 40, height: 22 }}
-    >
-      <span
-        className={`absolute top-[3px] w-4 h-4 rounded-full bg-white shadow transition-transform ${
-          checked ? "translate-x-[20px]" : "translate-x-[3px]"
-        }`}
-      />
-    </button>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -255,7 +224,7 @@ export function AdminRolesClient() {
                       return (
                         <td key={role} className="px-4 py-4">
                           <div className="flex flex-col items-center gap-2">
-                            <Toggle
+                            <Switch
                               checked={enabled}
                               disabled={role === "Admin"}
                               onChange={() => toggle(role, perm.key)}

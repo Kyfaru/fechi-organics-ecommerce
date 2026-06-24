@@ -9,41 +9,60 @@ import {
   LayoutDashboard, Package, ShoppingBag, Users, Warehouse, Truck,
   Mail, Tag, Heart, FileText, Layout, Star, HelpCircle, Image as ImageIcon,
   BarChart2, CreditCard, Shield, Settings, LogOut, ArrowLeft,
-  ChevronLeft, ChevronRight, Menu, X,
+  ChevronLeft, ChevronRight, Menu, X, User,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { signOut } from "@/lib/auth-client";
 import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
+import { canAccess, type AdminPage } from "@/lib/permissions";
 
-const NAV_GROUPS = [
+// Each nav item optionally maps to an AdminPage key for permission filtering.
+// Items without a page key (e.g. Dashboard) are always shown.
+type NavItem = {
+  href: string;
+  icon: React.ElementType;
+  label: string;
+  exact?: boolean;
+  page?: AdminPage;
+};
+
+type NavGroup = {
+  label: string;
+  items: NavItem[];
+};
+
+const NAV_GROUPS: NavGroup[] = [
   { label: "STORE", items: [
-    { href: "/admin", icon: LayoutDashboard, label: "Dashboard", exact: true },
-    { href: "/admin/products", icon: Package, label: "Products" },
-    { href: "/admin/orders", icon: ShoppingBag, label: "Orders" },
-    { href: "/admin/customers", icon: Users, label: "Customers" },
+    { href: "/admin",          icon: LayoutDashboard, label: "Dashboard", exact: true },
+    { href: "/admin/products", icon: Package,         label: "Products",  page: "products" },
+    { href: "/admin/orders",   icon: ShoppingBag,     label: "Orders",    page: "orders" },
+    { href: "/admin/customers",icon: Users,           label: "Customers", page: "customers" },
   ]},
   { label: "OPERATIONS", items: [
-    { href: "/admin/inventory", icon: Warehouse, label: "Inventory" },
-    { href: "/admin/suppliers", icon: Truck, label: "Suppliers" },
+    { href: "/admin/inventory", icon: Warehouse, label: "Inventory", page: "inventory" },
+    { href: "/admin/suppliers", icon: Truck,     label: "Suppliers", page: "suppliers" },
   ]},
   { label: "MARKETING", items: [
-    { href: "/admin/marketing", icon: Mail, label: "Campaigns" },
-    { href: "/admin/marketing/promotions", icon: Tag, label: "Promotions" },
-    { href: "/admin/loyalty", icon: Heart, label: "Loyalty" },
+    { href: "/admin/marketing",             icon: Mail,  label: "Campaigns",   page: "campaigns" },
+    { href: "/admin/marketing/promotions",  icon: Tag,   label: "Promotions",  page: "promotions" },
+    { href: "/admin/loyalty",               icon: Heart, label: "Loyalty",     page: "marketing" },
   ]},
   { label: "CONTENT", items: [
-    { href: "/admin/content/blog", icon: FileText, label: "Blog" },
-    { href: "/admin/content/homepage", icon: Layout, label: "Homepage" },
-    { href: "/admin/content/testimonials", icon: Star, label: "Testimonials" },
-    { href: "/admin/content/faqs", icon: HelpCircle, label: "FAQs" },
-    { href: "/admin/content/banners", icon: ImageIcon, label: "Banners" },
+    { href: "/admin/content/blog",         icon: FileText,  label: "Blog",         page: "content" },
+    { href: "/admin/content/homepage",     icon: Layout,    label: "Homepage",     page: "content" },
+    { href: "/admin/content/testimonials", icon: Star,      label: "Testimonials", page: "content" },
+    { href: "/admin/content/faqs",         icon: HelpCircle,label: "FAQs",         page: "content" },
+    { href: "/admin/content/banners",      icon: ImageIcon, label: "Banners",      page: "content" },
   ]},
   { label: "ANALYTICS", items: [
-    { href: "/admin/analytics", icon: BarChart2, label: "Reports" },
-    { href: "/admin/finance", icon: CreditCard, label: "Finance" },
+    { href: "/admin/analytics", icon: BarChart2, label: "Reports", page: "analytics" },
+    { href: "/admin/finance",   icon: CreditCard,label: "Finance", page: "finance" },
   ]},
   { label: "SETTINGS", items: [
-    { href: "/admin/staff", icon: Shield, label: "Staff & Roles" },
-    { href: "/admin/settings", icon: Settings, label: "Settings" },
+    { href: "/admin/staff",    icon: Shield,  label: "Staff & Roles", page: "staff" },
+    { href: "/admin/profile",  icon: User,    label: "My Profile",    page: "profile" },
+    { href: "/admin/security", icon: Shield,  label: "Security",      page: "settings" },
+    { href: "/admin/settings", icon: Settings,label: "Settings",      page: "settings" },
   ]},
 ];
 
@@ -57,6 +76,24 @@ export function AdminSidebar() {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Fetch current admin profile to drive permission-based nav filtering.
+  // Cached for 5 minutes — sidebar doesn't need real-time permission updates.
+  const { data: me } = useQuery({
+    queryKey: ["admin-me"],
+    queryFn: () => fetch("/api/admin/me").then((r) => r.json()),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Returns true if the current user can see this nav item.
+  function canSeeItem(item: NavItem): boolean {
+    // Items with no page key (e.g. Dashboard) are always shown.
+    if (!item.page) return true;
+    // Super-admins see everything.
+    if (me?.isSuperAdmin) return true;
+    const perms = (me?.permissions ?? {}) as Record<string, unknown>;
+    return canAccess(perms, item.page);
+  }
 
   useEffect(() => {
     const stored = localStorage.getItem("adminSidebarCollapsed");
@@ -104,44 +141,49 @@ export function AdminSidebar() {
 
         {/* Nav groups */}
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
-          {NAV_GROUPS.map((group) => (
-            <div key={group.label}>
-              {(!collapsed || mobile) && (
-                <div className="font-dm text-[11px] font-semibold uppercase tracking-wider text-(--green-200) dark:text-(--dark-muted) px-2 mb-2">
-                  {group.label}
+          {NAV_GROUPS.map((group) => {
+            const visibleItems = group.items.filter(canSeeItem);
+            // Hide the entire group when all items are filtered out
+            if (visibleItems.length === 0) return null;
+            return (
+              <div key={group.label}>
+                {(!collapsed || mobile) && (
+                  <div className="font-dm text-[11px] font-semibold uppercase tracking-wider text-(--green-200) dark:text-(--dark-muted) px-2 mb-2">
+                    {group.label}
+                  </div>
+                )}
+                <div className="space-y-0.5">
+                  {visibleItems.map((item) => {
+                    const active = isActive(pathname, item.href, item.exact);
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        title={collapsed && !mobile ? item.label : undefined}
+                        onClick={() => mobile && setMobileOpen(false)}
+                        className={[
+                          "relative flex items-center gap-3 h-11 rounded-[8px] transition-colors overflow-hidden",
+                          collapsed && !mobile ? "justify-center px-0" : "px-3",
+                          active
+                            ? "bg-white/15 text-white dark:bg-(--dark-accent)/15 dark:text-(--dark-accent)"
+                            : "text-white/80 dark:text-(--dark-text) hover:bg-(--green-800) dark:hover:bg-(--dark-border)",
+                        ].join(" ")}
+                      >
+                        {active && (
+                          <span className="absolute left-0 top-[20%] h-[60%] w-[3px] bg-(--gold-500) dark:bg-(--dark-accent) rounded-r" />
+                        )}
+                        <Icon size={20} className="shrink-0" />
+                        {(!collapsed || mobile) && (
+                          <span className="font-dm text-[14px] font-medium">{item.label}</span>
+                        )}
+                      </Link>
+                    );
+                  })}
                 </div>
-              )}
-              <div className="space-y-0.5">
-                {group.items.map((item) => {
-                  const active = isActive(pathname, item.href, item.exact);
-                  const Icon = item.icon;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      title={collapsed && !mobile ? item.label : undefined}
-                      onClick={() => mobile && setMobileOpen(false)}
-                      className={[
-                        "relative flex items-center gap-3 h-11 rounded-[8px] transition-colors overflow-hidden",
-                        collapsed && !mobile ? "justify-center px-0" : "px-3",
-                        active
-                          ? "bg-white/15 text-white dark:bg-(--dark-accent)/15 dark:text-(--dark-accent)"
-                          : "text-white/80 dark:text-(--dark-text) hover:bg-(--green-800) dark:hover:bg-(--dark-border)",
-                      ].join(" ")}
-                    >
-                      {active && (
-                        <span className="absolute left-0 top-[20%] h-[60%] w-[3px] bg-(--gold-500) dark:bg-(--dark-accent) rounded-r" />
-                      )}
-                      <Icon size={20} className="shrink-0" />
-                      {(!collapsed || mobile) && (
-                        <span className="font-dm text-[14px] font-medium">{item.label}</span>
-                      )}
-                    </Link>
-                  );
-                })}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </nav>
 
         {/* Bottom section */}
@@ -156,7 +198,7 @@ export function AdminSidebar() {
           </Link>
           <button
             onClick={() => setLogoutConfirming(true)}
-            className={["w-full flex items-center gap-3 h-10 rounded-[8px] px-3 text-white/70 dark:text-(--dark-muted) hover:text-(--gold-500) dark:hover:text-(--dark-accent) hover:bg-(--green-800) dark:hover:bg-(--dark-border) transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}
+            className={["w-full flex items-center gap-3 h-10 rounded-[8px] px-3 text-[#ff4545] hover:text-[#ff0f0f] hover:bg-(--green-800) dark:hover:bg-(--dark-border) transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}
             title={collapsed && !mobile ? "Sign out" : undefined}
           >
             <LogOut size={18} />

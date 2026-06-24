@@ -54,13 +54,6 @@ function readStoredPromo() {
   return sessionStorage.getItem("fechi_promo") ?? "";
 }
 
-function promoDiscountFor(subtotalKes: number, promoCode: string) {
-  const code = promoCode.trim().toUpperCase();
-  if (code === "FECHI10") return Math.round(subtotalKes * 0.1);
-  if (code === "NEWUSER") return 50000;
-  return 0;
-}
-
 function capture(event: string, props?: Record<string, unknown>) {
   const posthog = (window as unknown as { posthog?: { capture: (event: string, props?: Record<string, unknown>) => void } }).posthog;
   posthog?.capture(event, props);
@@ -84,6 +77,9 @@ export function DeliveryClient({ user }: Props) {
   const [notes, setNotes] = useState("");
   const [storeId, setStoreId] = useState<string>(PICKUP_STORES[0].id);
   const [promoCode, setPromoCode] = useState(readStoredPromo);
+  const [promoInput, setPromoInput] = useState(readStoredPromo);
+  const [promoStatus, setPromoStatus] = useState<"idle" | "loading" | "valid" | "error">(() => (readStoredPromo() ? "valid" : "idle"));
+  const [promoMessage, setPromoMessage] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
 
   const isKenya = country === "KE";
@@ -138,7 +134,9 @@ export function DeliveryClient({ user }: Props) {
   const feeLabel = mode === "PICKUP" ? "Free pickup" : pricingQuery.data?.data?.label ?? selectedZone?.name ?? "";
   const items = cartQuery.data?.data?.items ?? [];
   const subtotalKes = cartQuery.data?.data?.subtotalKes ?? 0;
-  const discountKes = promoDiscountFor(subtotalKes, promoCode);
+  // discountAmountKes is stored in state after the API validates the coupon
+  const [discountAmountKes, setDiscountAmountKes] = useState(0);
+  const discountKes = promoStatus === "valid" ? discountAmountKes : 0;
   const totalKes = subtotalKes + feeKes - discountKes;
   const noZones = mode === "DELIVERY" && isKenya && county && !zonesQuery.isLoading && zones.length === 0;
 
@@ -149,20 +147,55 @@ export function DeliveryClient({ user }: Props) {
     return Boolean(country && (state || stateText).trim() && address.trim() && postalCode.trim());
   }, [address, country, county, email, firstName, isKenya, lastName, mode, noZones, phone, postalCode, pricingQuery.isFetching, state, stateText, storeId, submitting, zoneId]);
 
-  function applyPromo() {
-    const next = promoCode.trim().toUpperCase();
+  async function applyPromo() {
+    const next = promoInput.trim().toUpperCase();
     if (!next) {
-      sessionStorage.removeItem("fechi_promo");
-      setPromoCode("");
+      removePromo();
       return;
     }
-    if (!["FECHI10", "NEWUSER"].includes(next)) {
-      toast.error("Invalid promo code");
-      return;
+    setPromoStatus("loading");
+    try {
+      const res = await fetch(
+        `/api/coupons/validate?code=${encodeURIComponent(next)}&subtotal=${subtotalKes}`,
+      );
+      const json = await res.json() as {
+        ok: boolean;
+        data?: { valid: boolean; discount?: { amountKes: number }; message?: string; error?: string };
+        error?: { message: string };
+      };
+
+      if (!json.ok) {
+        setPromoStatus("error");
+        setPromoMessage(json.error?.message ?? "Could not validate coupon");
+        return;
+      }
+
+      const data = json.data!;
+      if (!data.valid) {
+        setPromoStatus("error");
+        setPromoMessage(data.error ?? "Invalid coupon code");
+        return;
+      }
+
+      // Coupon is valid — save to state and session
+      setPromoCode(next);
+      setDiscountAmountKes(data.discount?.amountKes ?? 0);
+      setPromoMessage(data.message ?? "Coupon applied");
+      setPromoStatus("valid");
+      sessionStorage.setItem("fechi_promo", next);
+    } catch {
+      setPromoStatus("error");
+      setPromoMessage("Failed to validate coupon — please try again");
     }
-    sessionStorage.setItem("fechi_promo", next);
-    setPromoCode(next);
-    toast.success("Promo code applied.");
+  }
+
+  function removePromo() {
+    setPromoCode("");
+    setPromoInput("");
+    setPromoStatus("idle");
+    setPromoMessage("");
+    setDiscountAmountKes(0);
+    sessionStorage.removeItem("fechi_promo");
   }
 
   function handleCountryChange(next: string) {
@@ -339,9 +372,49 @@ export function DeliveryClient({ user }: Props) {
               )) : <p className="text-sm text-[#40493c]">Your cart is empty.</p>}
             </div>
 
-            <div className="mt-6 flex gap-2">
-              <input className={inputClass} value={promoCode} onChange={(e) => setPromoCode(e.target.value.toUpperCase())} placeholder="Promo code" />
-              <button type="button" onClick={applyPromo} className="h-13 rounded-[8px] bg-[#eeeeee] px-5 text-[13px] font-bold text-[#1a1c1c] hover:bg-[#fec700]">Apply</button>
+            {/* Coupon input — shows applied tag when valid, error text when invalid */}
+            <div className="mt-6">
+              {promoStatus === "valid" ? (
+                <div className="flex items-center gap-2 rounded-[8px] border border-[#27731e] bg-[#f0fbed] px-4 py-3">
+                  <Icon icon="mdi:tag-check-outline" width={16} className="shrink-0 text-[#27731e]" />
+                  <span className="flex-1 text-[13px] font-bold text-[#27731e]">{promoMessage}</span>
+                  <button
+                    type="button"
+                    onClick={removePromo}
+                    aria-label="Remove coupon"
+                    className="ml-2 text-[#27731e] hover:text-[#0b4a10]"
+                  >
+                    <Icon icon="mdi:close" width={16} />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex gap-2">
+                    <input
+                      className={inputClass}
+                      value={promoInput}
+                      onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoStatus("idle"); }}
+                      placeholder="Coupon code"
+                      disabled={promoStatus === "loading"}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void applyPromo(); } }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void applyPromo()}
+                      disabled={promoStatus === "loading" || !promoInput.trim()}
+                      className="h-13 rounded-[8px] bg-[#eeeeee] px-5 text-[13px] font-bold text-[#1a1c1c] hover:bg-[#fec700] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {promoStatus === "loading" ? <Icon icon="mdi:loading" width={16} className="animate-spin" /> : "Apply"}
+                    </button>
+                  </div>
+                  {promoStatus === "error" && (
+                    <p className="mt-2 flex items-center gap-1.5 text-[12px] text-red-600">
+                      <Icon icon="mdi:alert-circle-outline" width={14} />
+                      {promoMessage}
+                    </p>
+                  )}
+                </>
+              )}
             </div>
 
             <div className="my-6 h-px bg-[#e6ebe3]" />

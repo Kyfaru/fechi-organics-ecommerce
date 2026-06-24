@@ -3,13 +3,18 @@ import { ok, Err } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { connection } from "next/server";
+import { NextRequest } from "next/server";
+import { requireAdminPage } from "@/lib/admin-guard";
 
 /** PATCH /api/admin/campaigns/[id] */
 export async function PATCH(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   await connection();
+
+  const denied = await requireAdminPage(req, 'campaigns');
+  if (denied) return denied;
 
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
@@ -49,10 +54,13 @@ export async function PATCH(
 
 /** DELETE /api/admin/campaigns/[id] */
 export async function DELETE(
-  _req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   await connection();
+
+  const denied = await requireAdminPage(req, 'campaigns');
+  if (denied) return denied;
 
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();

@@ -10,11 +10,16 @@ import { ok, Err } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { connection } from "next/server";
+import { NextRequest } from "next/server";
+import { requireAdminPage } from "@/lib/admin-guard";
 
 interface Params { params: Promise<{ id: string }> }
 
-export async function PATCH(req: Request, { params }: Params) {
+export async function PATCH(req: NextRequest, { params }: Params) {
   await connection();
+
+  const denied = await requireAdminPage(req, 'staff');
+  if (denied) return denied;
 
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();

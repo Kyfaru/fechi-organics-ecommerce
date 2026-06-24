@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Icon } from "@iconify/react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AccountLayout } from "@/components/account/AccountLayout";
 
 // ---------------------------------------------------------------------------
@@ -160,6 +160,26 @@ function OrderThumbnails({ items }: { items: OrderItem[] }) {
 
 function OrderCard({ order }: { order: Order }) {
   const [expanded, setExpanded] = useState(false);
+  const qc = useQueryClient();
+
+  const markDelivered = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/orders/${order.id}/delivered`, { method: "POST" });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error?.message ?? "Failed to update order");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["account-orders"] });
+    },
+    onError: (e: Error) => {
+      console.error("[AccountOrders] markDelivered failed:", e.message);
+    },
+  });
+
+  function handleMarkDelivered() {
+    if (!window.confirm("Mark this order as delivered?")) return;
+    markDelivered.mutate();
+  }
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-[16px] border border-[#e2e2e2] dark:border-gray-700 mb-3 overflow-hidden">
@@ -191,8 +211,17 @@ function OrderCard({ order }: { order: Order }) {
               {formatKes(order.totalKes)}
             </span>
           </div>
-          <div className="mt-2">
+          <div className="mt-2 flex items-center gap-2 flex-wrap">
             <StatusBadge status={order.status} />
+            {order.status === "SHIPPED" && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleMarkDelivered(); }}
+                disabled={markDelivered.isPending}
+                className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 transition-colors"
+              >
+                {markDelivered.isPending ? "Updating…" : "Mark as Delivered"}
+              </button>
+            )}
           </div>
         </div>
 

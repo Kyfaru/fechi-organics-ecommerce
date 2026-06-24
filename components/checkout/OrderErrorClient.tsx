@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
@@ -21,6 +22,21 @@ function formatKes(cents: number) {
 }
 
 export function OrderErrorClient({ order }: { order: Order }) {
+  const router = useRouter();
+
+  function handleTryAgain() {
+    // Check whether the user's delivery data is still in sessionStorage.
+    // If it is, go directly to the payment step so they don't have to
+    // re-enter their delivery details. If it's gone (tab was closed and
+    // re-opened, or sessionStorage was cleared), send them back to the
+    // delivery step to start fresh — the payment page would immediately
+    // redirect them there anyway.
+    const hasDelivery = Boolean(
+      typeof window !== "undefined" && sessionStorage.getItem("fechi_delivery")
+    );
+    router.push(hasDelivery ? "/payment" : "/delivery");
+  }
+
   return (
     <div className="min-h-screen bg-[#fbfbfa] dark:bg-gray-950">
       <Navbar />
@@ -51,7 +67,14 @@ export function OrderErrorClient({ order }: { order: Order }) {
         </div>
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-          <Link href="/payment" className="flex h-14 min-w-[184px] items-center justify-center rounded-full bg-[#fec700] px-8 text-[15px] font-black text-[#1a1c1c]">Try Again</Link>
+          {/* Navigate to /payment if delivery sessionStorage is intact, else /delivery.
+              The cart stays on the server — nothing is cleared. */}
+          <button
+            onClick={handleTryAgain}
+            className="flex h-14 min-w-[184px] items-center justify-center rounded-full bg-[#fec700] px-8 text-[15px] font-black text-[#1a1c1c]"
+          >
+            Try Again
+          </button>
           <Link href="/contact" className="flex h-14 min-w-[184px] items-center justify-center rounded-full border border-[#707a6b] px-8 text-[15px] font-black text-[#1a1c1c] dark:text-white">Contact Support</Link>
         </div>
       </main>

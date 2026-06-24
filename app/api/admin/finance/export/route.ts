@@ -13,6 +13,7 @@ import { connection } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Err } from "@/lib/api";
+import { requireAdminPage } from "@/lib/admin-guard";
 
 async function requireAdmin(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -23,6 +24,9 @@ async function requireAdmin(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   await connection();
+
+  const denied = await requireAdminPage(req, 'finance');
+  if (denied) return denied;
 
   const admin = await requireAdmin(req);
   if (!admin) return Err.forbidden();
