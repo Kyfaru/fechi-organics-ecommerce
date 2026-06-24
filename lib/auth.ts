@@ -4,6 +4,7 @@ import { emailOTP, admin, twoFactor } from "better-auth/plugins";
 import { db } from "@/lib/db";
 import { sendOTPEmail } from "@/lib/email";
 import { Argon2id } from "oslo/password";
+import { permissionsFromRole } from "@/lib/permissions";
 
 export const auth = betterAuth({
   database: prismaAdapter(db, {
@@ -112,12 +113,13 @@ export const auth = betterAuth({
           // Auto-create the matching profile row whenever a user is created.
           // adminProfile and clientProfile are defined in the schema redesign.
           if (user.role === "admin") {
-          
+
             await db.adminProfile.create({
               data: {
                 userId: user.id,
                 fullName: user.name,
-                permissions: {},
+                isSuperAdmin: true,
+                permissions: permissionsFromRole("admin"),
               },
             });
           } else {
