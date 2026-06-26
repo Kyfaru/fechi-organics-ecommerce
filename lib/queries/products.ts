@@ -23,6 +23,9 @@ export type ProductCard = {
 
 export type ProductDetail = ProductCard & {
   description: string;
+  sizes: string[];
+  howToUse: string | null;
+  ingredients: string | null;
   images: { url: string; alt: string; isPrimary: boolean }[];
 };
 
@@ -137,6 +140,9 @@ export async function getProductBySlug(slug: string): Promise<ProductDetail | nu
   return {
     ...toCard(p),
     description: p.description,
+    sizes: p.sizes,
+    howToUse: p.howToUse,
+    ingredients: p.ingredients,
     images: p.images.map((i) => ({
       url: r2PublicUrl(i.objectKey),
       alt: i.alt || p.name,

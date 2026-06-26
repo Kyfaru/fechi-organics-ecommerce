@@ -98,19 +98,19 @@ function ProfileTrigger({
           >
             <div className="py-1">
               <DropdownLink
-                href="/wishlist"
+                href="/account/wishlist"
                 icon="mdi:heart-outline"
                 label="Wishlist"
                 onClick={() => setProfileOpen(false)}
               />
               <DropdownLink
-                href="/orders"
+                href="/account/orders"
                 icon="mdi:receipt-outline"
                 label="My Orders"
                 onClick={() => setProfileOpen(false)}
               />
               <DropdownLink
-                href="/settings"
+                href="/account"
                 icon="mdi:cog-outline"
                 label="Settings"
                 onClick={() => setProfileOpen(false)}
@@ -242,13 +242,13 @@ function LogoutModal({
 
 // ── Navbar ───────────────────────────────────────────────────────────────────
 
-export function Navbar() {
+export function Navbar({ flat = false }: { flat?: boolean } = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
+  const [scrolled, setScrolled] = useState(flat);
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -268,14 +268,15 @@ export function Navbar() {
 
   // Transition from floating pill → flush bar after scrolling past 120 px
   useEffect(() => {
+    if (flat) return;
     function onScroll() {
       const scrollY = window.scrollY || document.documentElement.scrollTop;
       setScrolled(scrollY > 120);
     }
-    onScroll(); // initialise state on mount
+    onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+  }, [flat]);
 
   useEffect(() => {
     if (searchOpen) {
@@ -316,7 +317,7 @@ export function Navbar() {
       <div
         aria-hidden
         className={`hidden md:block transition-[height] duration-300 ${
-          scrolled ? "h-[76px]" : "h-[-7px]"
+          flat || scrolled ? "h-[76px]" : "h-[0px]"
         }`}
       />
 
@@ -325,7 +326,9 @@ export function Navbar() {
         className={[
           "hidden md:flex items-center justify-between h-[76px] bg-white/95 dark:bg-[#111]/95 px-8 shadow-sm",
           "fixed z-[9999] transition-all duration-300 backdrop-blur-sm",
-          scrolled
+          flat
+            ? "top-0 left-0 right-0 rounded-none shadow-sm"
+            : scrolled
             ? "top-4 left-[5px] right-[5px] rounded-none shadow-md"
             : "top-[2em] left-12 right-12 rounded-[40px]",
         ].join(" ")}

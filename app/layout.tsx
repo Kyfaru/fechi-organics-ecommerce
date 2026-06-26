@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import "./globals.css";
 import { Syne, DM_Sans } from "next/font/google";
 import { Providers } from "./providers";
+import { SessionProvider } from "@/components/providers/session-provider";
 import { Toaster } from "sonner";
 import { WhatsAppButton } from "@/components/ui/WhatsAppButton";
 import StyledComponentsRegistry from "@/lib/registry";
@@ -28,9 +29,11 @@ export default function RootLayout({
         <StyledComponentsRegistry>
           <Suspense>
             <Providers>
-              {children}
-              <Toaster position="bottom-right" richColors />
-              <WhatsAppButton />
+              <SessionProvider>
+                {children}
+                <Toaster position="bottom-right" richColors />
+                <WhatsAppButton />
+              </SessionProvider>
             </Providers>
           </Suspense>
         </StyledComponentsRegistry>

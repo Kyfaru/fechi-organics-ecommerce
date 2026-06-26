@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Package, ShoppingBag, Users, Warehouse, Truck,
   Mail, Tag, Heart, FileText, Layout, Star, HelpCircle, Image as ImageIcon,
   BarChart2, CreditCard, Shield, Settings, LogOut, ArrowLeft,
-  ChevronLeft, ChevronRight, Menu, X, User,
+  ChevronLeft, ChevronRight, Menu, X, User, Bell,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { signOut } from "@/lib/auth-client";
@@ -59,6 +59,7 @@ const NAV_GROUPS: NavGroup[] = [
     { href: "/admin/finance",   icon: CreditCard,label: "Finance", page: "finance" },
   ]},
   { label: "SETTINGS", items: [
+    { href: "/admin/notifications", icon: Bell,    label: "Notifications" },
     { href: "/admin/staff",    icon: Shield,  label: "Staff & Roles", page: "staff" },
     { href: "/admin/profile",  icon: User,    label: "My Profile",    page: "profile" },
     { href: "/admin/security", icon: Shield,  label: "Security",      page: "settings" },

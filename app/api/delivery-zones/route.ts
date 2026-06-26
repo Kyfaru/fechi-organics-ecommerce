@@ -16,10 +16,10 @@ export async function GET(req: NextRequest) {
       orderBy: { name: "asc" },
       select: { id: true, name: true, deliveryFeeKes: true, branchId: true },
     });
-    return ok({ zones: zones.length ? zones : exampleZonesForCounty(county) });
+    return ok({ zones });
   } catch (e) {
     if (isPrismaTableMissingError(e)) {
-      return ok({ zones: exampleZonesForCounty(county) });
+      return ok({ zones: [] });
     }
 
     console.error("[delivery-zones] GET error", e);

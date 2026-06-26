@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -18,27 +18,26 @@ type Zone = { id: string; name: string; deliveryFeeKes: number; branchId: string
 type StateOption = { code: string; name: string };
 type CartItem = { productId: string; name: string; quantity: number; lineTotalKes: number; primaryImageUrl?: string };
 type CartResponse = { ok: boolean; data: { items: CartItem[]; subtotalKes: number; itemCount: number } };
+type SelectOption = { value: string; label: string; icon?: string };
 
 type Props = {
-  user: {
-    fullName: string;
-    email: string;
-    phone: string;
-    country: string;
-  };
+  user: { fullName: string; email: string; phone: string; country: string };
 };
 
 const PICKUP_STORES = [
-  { id: "pickup-nairobi", branchId: "branch-nairobi", city: "Nairobi", county: "Nairobi", name: "Nairobi - Spur Mall, 1st Floor, Shop F12" },
-  { id: "pickup-nakuru", branchId: "branch-nakuru", city: "Nakuru", county: "Nakuru", name: "Nakuru - Baraka Plaza, 1st Floor, Shop F2" },
-  { id: "pickup-kitengela", branchId: null, city: "Kitengela", county: "Kajiado", name: "Kitengela - Next to Eastmart, 2nd Floor, Shop 63" },
-  { id: "pickup-eldoret", branchId: "branch-eldoret", city: "Eldoret", county: "Uasin Gishu", name: "Eldoret - Eldo Center, 1st Floor, Shop 6" },
-  { id: "pickup-mwea", branchId: null, city: "Mwea", county: "Kirinyaga", name: "Mwea - MTC Building, Opp. Nice City, 1st Floor" },
+  { id: "pickup-nairobi",   branchId: "branch-nairobi",  city: "Nairobi",     county: "Nairobi",      name: "Nairobi — Spur Mall, 1st Floor, Shop F12" },
+  { id: "pickup-nakuru",    branchId: "branch-nakuru",   city: "Nakuru",      county: "Nakuru",       name: "Nakuru — Baraka Plaza, 1st Floor, Shop F2" },
+  { id: "pickup-kitengela", branchId: null,              city: "Kitengela",   county: "Kajiado",      name: "Kitengela — Next to Eastmart, 2nd Floor, Shop 63" },
+  { id: "pickup-eldoret",   branchId: "branch-eldoret",  city: "Eldoret",     county: "Uasin Gishu",  name: "Eldoret — Eldo Center, 1st Floor, Shop 6" },
+  { id: "pickup-mwea",      branchId: null,              city: "Mwea",        county: "Kirinyaga",    name: "Mwea — MTC Building, Opp. Nice City, 1st Floor" },
 ] as const;
 
-const inputClass =
-  "w-full h-13 rounded-[8px] border border-[#c0cab8] bg-[#fbfbfb] dark:bg-gray-800 px-4 text-[15px] text-[#1a1c1c] dark:text-white outline-none transition-colors placeholder:text-[#6b7280] focus:border-[#27731e] focus:ring-2 focus:ring-[#27731e]/10";
 const labelClass = "block mb-2 text-[12px] font-semibold tracking-[0.08em] text-[#40493c] dark:text-gray-300";
+const inputBase = "w-full h-13 rounded-[8px] border bg-[#fbfbfb] dark:bg-gray-800 px-4 text-[15px] text-[#1a1c1c] dark:text-white outline-none transition-colors placeholder:text-[#6b7280] focus:ring-2";
+const inputNormal = `${inputBase} border-[#c0cab8] focus:border-[#27731e] focus:ring-[#27731e]/10`;
+const inputError  = `${inputBase} border-red-400 focus:border-red-400 focus:ring-red-100`;
+
+function inputCls(hasError: boolean) { return hasError ? inputError : inputNormal; }
 
 function formatKes(cents: number) {
   return `KES ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;
@@ -49,16 +48,129 @@ function splitName(fullName: string) {
   return { firstName: parts[0] ?? "", lastName: parts.slice(1).join(" ") };
 }
 
-function readStoredPromo() {
-  if (typeof window === "undefined") return "";
-  return sessionStorage.getItem("fechi_promo") ?? "";
+function ss(key: string, fallback = "") {
+  if (typeof window === "undefined") return fallback;
+  return sessionStorage.getItem(key) ?? fallback;
 }
 
 function capture(event: string, props?: Record<string, unknown>) {
-  const posthog = (window as unknown as { posthog?: { capture: (event: string, props?: Record<string, unknown>) => void } }).posthog;
-  posthog?.capture(event, props);
+  const ph = (window as unknown as { posthog?: { capture: (e: string, p?: Record<string, unknown>) => void } }).posthog;
+  ph?.capture(event, props);
 }
 
+// ---------------------------------------------------------------------------
+// Custom Preline-style select dropdown
+// ---------------------------------------------------------------------------
+function SelectDropdown({
+  value, onChange, options, placeholder, disabled, hasError, id, searchable, loading,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: SelectOption[];
+  placeholder?: string;
+  disabled?: boolean;
+  hasError?: boolean;
+  id?: string;
+  searchable?: boolean;
+  loading?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const selected = options.find((o) => o.value === value);
+  const filtered = searchable && search
+    ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
+    : options;
+
+  const borderCls = hasError
+    ? "border-red-400 focus:border-red-400"
+    : "border-gray-200 dark:border-neutral-700 hover:bg-gray-50 dark:hover:bg-neutral-700";
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        id={id}
+        type="button"
+        disabled={disabled || loading}
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className={`relative py-3 ps-4 pe-9 flex items-center gap-2 text-nowrap w-full cursor-pointer bg-white dark:bg-neutral-800 border ${borderCls} rounded-lg text-start text-sm disabled:pointer-events-none disabled:opacity-50 focus:outline-none`}
+      >
+        {loading ? (
+          <span className="text-gray-400 text-[13px]">Loading...</span>
+        ) : selected ? (
+          <>
+            {selected.icon && <img className="size-4 rounded-full shrink-0 object-cover" src={selected.icon} alt="" />}
+            <span className="text-gray-800 dark:text-white text-[14px]">{selected.label}</span>
+          </>
+        ) : (
+          <span className="text-gray-400 dark:text-neutral-400 text-[13px]">{placeholder ?? "Select option..."}</span>
+        )}
+        <div className="absolute top-1/2 end-3 -translate-y-1/2">
+          <svg className="shrink-0 size-3.5 text-gray-500 dark:text-neutral-400" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m7 15 5 5 5-5" /><path d="m7 9 5-5 5 5" />
+          </svg>
+        </div>
+      </button>
+
+      {open && (
+        <div className="absolute mt-2 z-50 w-full max-h-72 bg-white dark:bg-neutral-900 border border-transparent rounded-lg shadow-xl overflow-hidden overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-gray-100 dark:[&::-webkit-scrollbar-track]:bg-neutral-700 [&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-thumb]:bg-neutral-500">
+          {searchable && (
+            <div className="bg-white dark:bg-neutral-900 p-2 sticky top-0 border-b border-gray-100 dark:border-neutral-800">
+              <input
+                autoFocus
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search..."
+                className="block w-full text-sm bg-transparent border border-gray-200 dark:border-neutral-700 rounded-lg text-gray-800 dark:text-neutral-200 placeholder:text-gray-400 py-1.5 px-3 focus:outline-none focus:border-[#27731e]"
+              />
+            </div>
+          )}
+          <div className="p-1 space-y-0.5">
+            {filtered.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => { onChange(opt.value); setOpen(false); setSearch(""); }}
+                className={`${value === opt.value ? "bg-gray-100 dark:bg-neutral-800" : ""} py-2 px-4 w-full text-sm text-gray-800 dark:text-neutral-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-neutral-800 rounded-lg flex justify-between items-center text-left`}
+              >
+                <div className="flex items-center gap-2">
+                  {opt.icon && <img className="size-4 rounded-full shrink-0 object-cover" src={opt.icon} alt="" />}
+                  <span>{opt.label}</span>
+                </div>
+                {value === opt.value && (
+                  <svg className="shrink-0 size-3.5 text-[#27731e]" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                )}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <p className="py-2 px-4 text-sm text-gray-400">No results found</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 export function DeliveryClient({ user }: Props) {
   const router = useRouter();
   const initialName = splitName(user.fullName);
@@ -66,8 +178,16 @@ export function DeliveryClient({ user }: Props) {
   const [firstName, setFirstName] = useState(initialName.firstName);
   const [lastName, setLastName] = useState(initialName.lastName);
   const [email, setEmail] = useState(user.email);
-  const [phone, setPhone] = useState<PhoneValue | undefined>((user.phone || undefined) as PhoneValue | undefined);
-  const [country, setCountry] = useState(user.country || "KE");
+  const [phone, setPhone] = useState<PhoneValue | undefined>(() => {
+    const p = user.phone;
+    if (!p) return undefined;
+    if (p.startsWith("+")) return p as PhoneValue;
+    if (p.startsWith("0")) return `+254${p.slice(1)}` as PhoneValue;
+    return p as PhoneValue;
+  });
+
+  // Always default to Kenya — user's stored country may be a name not a code
+  const [country, setCountry] = useState("KE");
   const [county, setCounty] = useState("");
   const [zoneId, setZoneId] = useState("");
   const [state, setState] = useState("");
@@ -76,15 +196,31 @@ export function DeliveryClient({ user }: Props) {
   const [postalCode, setPostalCode] = useState("");
   const [notes, setNotes] = useState("");
   const [storeId, setStoreId] = useState<string>(PICKUP_STORES[0].id);
-  const [promoCode, setPromoCode] = useState(readStoredPromo);
-  const [promoInput, setPromoInput] = useState(readStoredPromo);
-  const [promoStatus, setPromoStatus] = useState<"idle" | "loading" | "valid" | "error">(() => (readStoredPromo() ? "valid" : "idle"));
-  const [promoMessage, setPromoMessage] = useState<string>("");
+
+  // Promo — initialised from cart sessionStorage so discount carries over
+  const [promoCode, setPromoCode] = useState(() => ss("fechi_promo"));
+  const [promoInput, setPromoInput] = useState(() => ss("fechi_promo"));
+  const [promoStatus, setPromoStatus] = useState<"idle" | "loading" | "valid" | "error">(() =>
+    ss("fechi_promo") ? "valid" : "idle",
+  );
+  const [promoMessage, setPromoMessage] = useState(() => {
+    const code = ss("fechi_promo");
+    return code ? `Coupon "${code}" applied` : "";
+  });
+  const [discountAmountKes, setDiscountAmountKes] = useState(() => {
+    const v = ss("fechi_promo_amount");
+    return v ? parseInt(v, 10) : 0;
+  });
+  const [freeDelivery, setFreeDelivery] = useState(() => ss("fechi_promo_free_shipping") === "1");
   const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   const isKenya = country === "KE";
-  const selectedStore = PICKUP_STORES.find((store) => store.id === storeId) ?? PICKUP_STORES[0];
+  const selectedStore = PICKUP_STORES.find((s) => s.id === storeId) ?? PICKUP_STORES[0];
 
+  // ---------------------------------------------------------------------------
+  // Queries
+  // ---------------------------------------------------------------------------
   const countriesQuery = useQuery<{ ok: boolean; data: { countries: Country[] } }>({
     queryKey: ["countries"],
     queryFn: () => fetch("/api/countries").then((r) => r.json()),
@@ -104,9 +240,10 @@ export function DeliveryClient({ user }: Props) {
   });
 
   const zones = zonesQuery.data?.data?.zones ?? [];
-  const selectedZone = zones.find((zone) => zone.id === zoneId);
+  const selectedZone = zones.find((z) => z.id === zoneId);
   const stateOptions = statesQuery.data?.data?.states ?? [];
   const stateFallback = Boolean(statesQuery.data?.data?.fallback) || stateOptions.length === 0;
+  const noZones = mode === "DELIVERY" && isKenya && Boolean(county) && !zonesQuery.isLoading && zones.length === 0;
 
   const pricingQuery = useQuery<{ ok: boolean; data: { feeKes: number; label: string } }>({
     queryKey: ["delivery-pricing", mode, country, county, zoneId, state, stateText],
@@ -128,61 +265,66 @@ export function DeliveryClient({ user }: Props) {
     staleTime: 0,
   });
 
+  // ---------------------------------------------------------------------------
+  // Derived values
+  // ---------------------------------------------------------------------------
   const countries = countriesQuery.data?.data?.countries ?? [{ code: "KE", name: "Kenya", flag: "https://flagcdn.com/w40/ke.png" }];
-  const selectedCountry = countries.find((item) => item.code === country) ?? countries[0];
-  const feeKes = mode === "PICKUP" ? 0 : pricingQuery.data?.data?.feeKes ?? 0;
-  const feeLabel = mode === "PICKUP" ? "Free pickup" : pricingQuery.data?.data?.label ?? selectedZone?.name ?? "";
+  const selectedCountry = countries.find((c) => c.code === country) ?? countries[0];
+  const rawFeeKes = mode === "PICKUP" ? 0 : pricingQuery.data?.data?.feeKes ?? 0;
+  const feeKes = freeDelivery ? 0 : rawFeeKes;
+  const feeLabel = mode === "PICKUP" ? "Free pickup" : freeDelivery ? "Free (coupon)" : (pricingQuery.data?.data?.label ?? selectedZone?.name ?? "");
   const items = cartQuery.data?.data?.items ?? [];
   const subtotalKes = cartQuery.data?.data?.subtotalKes ?? 0;
-  // discountAmountKes is stored in state after the API validates the coupon
-  const [discountAmountKes, setDiscountAmountKes] = useState(0);
   const discountKes = promoStatus === "valid" ? discountAmountKes : 0;
   const totalKes = subtotalKes + feeKes - discountKes;
-  const noZones = mode === "DELIVERY" && isKenya && county && !zonesQuery.isLoading && zones.length === 0;
 
-  const canContinue = useMemo(() => {
-    if (submitting || pricingQuery.isFetching || !firstName.trim() || !lastName.trim() || !email.trim() || !phone) return false;
-    if (mode === "PICKUP") return Boolean(storeId);
-    if (isKenya) return Boolean(country && county && zoneId && !noZones);
-    return Boolean(country && (state || stateText).trim() && address.trim() && postalCode.trim());
-  }, [address, country, county, email, firstName, isKenya, lastName, mode, noZones, phone, postalCode, pricingQuery.isFetching, state, stateText, storeId, submitting, zoneId]);
+  // ---------------------------------------------------------------------------
+  // Validation errors (computed, only surfaced when submitted)
+  // ---------------------------------------------------------------------------
+  const errors = useMemo(() => {
+    const e: Record<string, string> = {};
+    if (mode === "DELIVERY") {
+      if (isKenya) {
+        if (!county) e.county = "Please select your county";
+        else if (noZones) e.zone = "No delivery zones available for this county — contact the store or pick another county";
+        else if (!zoneId) e.zone = "Please select a delivery zone";
+        if (!address.trim()) e.address = "Please enter your town, estate, or building";
+      } else {
+        if (!state && !stateText.trim()) e.state = "Please select or enter your state / province";
+        if (!address.trim()) e.address = "Please enter your address";
+        if (!postalCode.trim()) e.postalCode = "Please enter your postal code";
+      }
+    }
+    return e;
+  }, [mode, isKenya, county, noZones, zoneId, address, state, stateText, postalCode]);
 
+  // ---------------------------------------------------------------------------
+  // Promo handlers
+  // ---------------------------------------------------------------------------
   async function applyPromo() {
     const next = promoInput.trim().toUpperCase();
-    if (!next) {
-      removePromo();
-      return;
-    }
+    if (!next) { removePromo(); return; }
     setPromoStatus("loading");
     try {
-      const res = await fetch(
-        `/api/coupons/validate?code=${encodeURIComponent(next)}&subtotal=${subtotalKes}`,
-      );
+      const res = await fetch(`/api/coupons/validate?code=${encodeURIComponent(next)}&subtotal=${subtotalKes}`);
       const json = await res.json() as {
         ok: boolean;
-        data?: { valid: boolean; discount?: { amountKes: number }; message?: string; error?: string };
+        data?: { valid: boolean; discount?: { amountKes: number; deliveryFree?: boolean }; message?: string; error?: string };
         error?: { message: string };
       };
-
-      if (!json.ok) {
-        setPromoStatus("error");
-        setPromoMessage(json.error?.message ?? "Could not validate coupon");
-        return;
-      }
-
+      if (!json.ok) { setPromoStatus("error"); setPromoMessage(json.error?.message ?? "Could not validate coupon"); return; }
       const data = json.data!;
-      if (!data.valid) {
-        setPromoStatus("error");
-        setPromoMessage(data.error ?? "Invalid coupon code");
-        return;
-      }
-
-      // Coupon is valid — save to state and session
+      if (!data.valid) { setPromoStatus("error"); setPromoMessage(data.error ?? "Invalid coupon code"); return; }
+      const amountKes = data.discount?.amountKes ?? 0;
+      const isFreeDelivery = Boolean(data.discount?.deliveryFree);
       setPromoCode(next);
-      setDiscountAmountKes(data.discount?.amountKes ?? 0);
+      setDiscountAmountKes(amountKes);
+      setFreeDelivery(isFreeDelivery);
       setPromoMessage(data.message ?? "Coupon applied");
       setPromoStatus("valid");
       sessionStorage.setItem("fechi_promo", next);
+      sessionStorage.setItem("fechi_promo_amount", String(amountKes));
+      sessionStorage.setItem("fechi_promo_free_shipping", isFreeDelivery ? "1" : "0");
     } catch {
       setPromoStatus("error");
       setPromoMessage("Failed to validate coupon — please try again");
@@ -190,47 +332,45 @@ export function DeliveryClient({ user }: Props) {
   }
 
   function removePromo() {
-    setPromoCode("");
-    setPromoInput("");
-    setPromoStatus("idle");
-    setPromoMessage("");
-    setDiscountAmountKes(0);
+    setPromoCode(""); setPromoInput(""); setPromoStatus("idle"); setPromoMessage("");
+    setDiscountAmountKes(0); setFreeDelivery(false);
     sessionStorage.removeItem("fechi_promo");
+    sessionStorage.removeItem("fechi_promo_amount");
+    sessionStorage.removeItem("fechi_promo_free_shipping");
   }
 
   function handleCountryChange(next: string) {
-    setCountry(next);
-    setCounty("");
-    setZoneId("");
-    setState("");
-    setStateText("");
+    setCountry(next); setCounty(""); setZoneId(""); setState(""); setStateText("");
     capture("delivery_country_selected", { country: next });
   }
 
+  // ---------------------------------------------------------------------------
+  // Submit
+  // ---------------------------------------------------------------------------
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!canContinue) return;
+    setSubmitted(true);
+    if (!firstName.trim() || !lastName.trim() || !email.trim() || !phone) return;
+    if (mode === "DELIVERY" && Object.keys(errors).length > 0) return;
+    if (pricingQuery.isFetching) return;
 
     setSubmitting(true);
     try {
       const deliveryData = {
         fullName: `${firstName} ${lastName}`.trim(),
-        firstName,
-        lastName,
-        email,
+        firstName, lastName, email,
         phone: phone as string,
         country,
         countryName: selectedCountry?.name ?? country,
-        county: mode === "PICKUP" ? selectedStore.county : isKenya ? county : "",
-        state: mode === "PICKUP" ? selectedStore.city : isKenya ? county : state || stateText,
-        zoneId: mode === "DELIVERY" ? zoneId || null : null,
-        deliveryZone: mode === "DELIVERY" ? selectedZone?.name ?? null : null,
+        county:  mode === "PICKUP" ? selectedStore.county : isKenya ? county : "",
+        state:   mode === "PICKUP" ? selectedStore.city  : isKenya ? county : state || stateText,
+        zoneId:  mode === "DELIVERY" ? (zoneId || null) : null,
+        deliveryZone: mode === "DELIVERY" ? (selectedZone?.name ?? null) : null,
         address,
-        city: mode === "PICKUP" ? selectedStore.city : isKenya ? county : state || stateText,
-        postalCode,
-        notes,
+        city:       mode === "PICKUP" ? selectedStore.city : isKenya ? county : state || stateText,
+        postalCode, notes,
         deliveryType: mode,
-        branchId: mode === "PICKUP" ? selectedStore.branchId : selectedZone?.branchId ?? null,
+        branchId:   mode === "PICKUP" ? selectedStore.branchId : (selectedZone?.branchId ?? null),
         branchName: mode === "PICKUP" ? selectedStore.name : null,
         deliveryKes: feeKes,
         deliveryFeeLabel: feeLabel,
@@ -246,115 +386,187 @@ export function DeliveryClient({ user }: Props) {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Render helpers
+  // ---------------------------------------------------------------------------
+  const showErr = (key: string) => submitted ? errors[key] : undefined;
+
+  const countryOptions: SelectOption[] = countries.map((c) => ({ value: c.code, label: c.name, icon: c.flag }));
+  const countyOptions: SelectOption[] = KENYA_COUNTIES.map((c) => ({ value: c, label: c }));
+  const zoneOptions: SelectOption[] = zones.map((z) => ({ value: z.id, label: `${z.name} — ${formatKes(z.deliveryFeeKes)}` }));
+  const storeOptions: SelectOption[] = PICKUP_STORES.map((s) => ({ value: s.id, label: s.name }));
+  const stateSelectOptions: SelectOption[] = stateOptions.map((s) => ({ value: s.name, label: s.name }));
+
+  // ---------------------------------------------------------------------------
+  // JSX
+  // ---------------------------------------------------------------------------
   return (
     <div className="min-h-screen bg-[#f8f8f7] dark:bg-gray-950">
       <Navbar />
       <main className="mx-auto w-full max-w-[1180px] px-4 py-10 md:py-14">
         <div className="mb-8"><StepIndicator step={2} /></div>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_430px] lg:items-start">
+
+          {/* ─── Left: form ─── */}
           <section>
             <h1 className="mb-6 font-heading text-[32px] font-bold text-[#1a1c1c] dark:text-white">Delivery Details</h1>
 
+            {/* Mode toggle */}
             <div className="mb-6 grid grid-cols-2 gap-2 rounded-[10px] bg-[#f0f0ef] p-2">
-              {(["DELIVERY", "PICKUP"] as const).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setMode(value)}
-                  className={`flex h-10 items-center justify-center gap-2 rounded-[8px] text-[13px] font-bold transition-colors ${mode === value ? "bg-white text-[#0b6b13] shadow-sm" : "text-[#40493c]"}`}
-                >
-                  <Icon icon={value === "DELIVERY" ? "mdi:truck-delivery-outline" : "mdi:store-outline"} width={16} />
-                  {value === "DELIVERY" ? "Home Delivery" : "Pickup from Store"}
+              {(["DELIVERY", "PICKUP"] as const).map((v) => (
+                <button key={v} type="button" onClick={() => setMode(v)}
+                  className={`flex h-10 items-center justify-center gap-2 rounded-[8px] text-[13px] font-bold transition-colors ${mode === v ? "bg-white text-[#0b6b13] shadow-sm" : "text-[#40493c]"}`}>
+                  <Icon icon={v === "DELIVERY" ? "mdi:truck-delivery-outline" : "mdi:store-outline"} width={16} />
+                  {v === "DELIVERY" ? "Home Delivery" : "Pickup from Store"}
                 </button>
               ))}
             </div>
 
             <form id="delivery-details-form" onSubmit={handleSubmit} className="rounded-[12px] border border-[#dce4d8] bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-900 md:p-8">
+              {/* Contact fields */}
               <div className="grid gap-5 sm:grid-cols-2">
-                <Field label="First Name"><input className={inputClass} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Jane" /></Field>
-                <Field label="Last Name"><input className={inputClass} value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="e.g. Doe" /></Field>
+                <Field label="First Name">
+                  <input className={inputNormal} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Jane" />
+                </Field>
+                <Field label="Last Name">
+                  <input className={inputNormal} value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="e.g. Doe" />
+                </Field>
                 <PhoneInput label="Phone Number" value={phone} onChange={setPhone} />
-                <Field label="Email Address"><input type="email" className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" /></Field>
+                <Field label="Email Address">
+                  <input type="email" className={inputNormal} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" />
+                </Field>
               </div>
 
               <div className="my-6 h-px bg-[#e6ebe3]" />
 
+              {/* ─── Delivery mode ─── */}
               {mode === "DELIVERY" ? (
                 <div className="space-y-5">
                   <div className="grid gap-5 sm:grid-cols-2">
+                    {/* Country */}
                     <Field label="Country">
-                      <div className="relative">
-                        {selectedCountry?.flag?.startsWith("https://") && (
-                          <Image src={selectedCountry.flag} alt="" width={22} height={16} className="absolute left-4 top-1/2 z-10 -translate-y-1/2 rounded-[2px]" />
-                        )}
-                        <select disabled={countriesQuery.isLoading} className={`${inputClass} pl-12`} value={country} onChange={(e) => handleCountryChange(e.target.value)}>
-                          {countries.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
-                        </select>
-                      </div>
+                      <SelectDropdown
+                        value={country}
+                        onChange={handleCountryChange}
+                        options={countryOptions}
+                        placeholder="Select country..."
+                        loading={countriesQuery.isLoading}
+                        searchable
+                      />
                     </Field>
 
+                    {/* County (Kenya) / State (International) */}
                     {isKenya ? (
-                      <Field label="County">
-                        <select className={inputClass} value={county} onChange={(e) => { setCounty(e.target.value); setZoneId(""); }}>
-                          <option value="">Select a county</option>
-                          {KENYA_COUNTIES.map((item) => <option key={item} value={item}>{item}</option>)}
-                        </select>
+                      <Field label="County" error={showErr("county")}>
+                        <SelectDropdown
+                          value={county}
+                          onChange={(v) => { setCounty(v); setZoneId(""); }}
+                          options={countyOptions}
+                          placeholder="Select a county"
+                          hasError={!!showErr("county")}
+                          searchable
+                        />
                       </Field>
                     ) : (
-                      <Field label="State / Province">
+                      <Field label="State / Province" error={showErr("state")}>
                         {statesQuery.isLoading ? (
                           <div className="h-13 rounded-[8px] bg-[#eef4eb] animate-pulse" />
                         ) : stateFallback ? (
-                          <input className={inputClass} value={stateText} onChange={(e) => setStateText(e.target.value)} placeholder="State or province" />
+                          <input
+                            className={inputCls(!!showErr("state"))}
+                            value={stateText}
+                            onChange={(e) => setStateText(e.target.value)}
+                            placeholder="State or province"
+                          />
                         ) : (
-                          <select className={inputClass} value={state} onChange={(e) => setState(e.target.value)}>
-                            <option value="">Select state</option>
-                            {stateOptions.map((item) => <option key={item.code || item.name} value={item.name}>{item.name}</option>)}
-                          </select>
+                          <SelectDropdown
+                            value={state}
+                            onChange={setState}
+                            options={stateSelectOptions}
+                            placeholder="Select state"
+                            hasError={!!showErr("state")}
+                            searchable
+                          />
                         )}
                       </Field>
                     )}
                   </div>
 
+                  {/* Delivery Zone (Kenya only) */}
+                  {isKenya && (
+                    <Field label="Delivery Zone" error={showErr("zone")}>
+                      <SelectDropdown
+                        value={zoneId}
+                        onChange={(v) => { setZoneId(v); capture("delivery_zone_selected", { zoneId: v }); }}
+                        options={zoneOptions}
+                        placeholder={
+                          !county ? "Select a county first" :
+                          noZones ? "No zones available — contact us or pick another county" :
+                          "Select a delivery zone"
+                        }
+                        disabled={!county || noZones}
+                        loading={zonesQuery.isLoading && Boolean(county)}
+                        hasError={!!showErr("zone")}
+                      />
+                    </Field>
+                  )}
+
+                  {/* Town / Estate / Building (Kenya) or Address (International) */}
                   {isKenya ? (
-                    <Field label="Delivery Zone">
-                      <select className={inputClass} value={zoneId} onChange={(e) => { setZoneId(e.target.value); capture("delivery_zone_selected", { zoneId: e.target.value }); }} disabled={!county || noZones || zonesQuery.isLoading}>
-                        <option value="">{noZones ? "No delivery zones in this county - contact the store or pick another county." : zonesQuery.isLoading ? "Loading zones..." : "Select a delivery zone"}</option>
-                        {zones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name} - {formatKes(zone.deliveryFeeKes)}</option>)}
-                      </select>
+                    <Field label="Town / Estate / Building" error={showErr("address")}>
+                      <input
+                        className={inputCls(!!showErr("address"))}
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        placeholder={!zoneId ? "Select a delivery zone first" : "e.g. Westlands, The Mirage"}
+                        disabled={!zoneId}
+                      />
                     </Field>
                   ) : (
                     <div className="grid gap-5 sm:grid-cols-2">
-                      <Field label="Address Line"><input className={inputClass} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street, building, apartment" /></Field>
-                      <Field label="Zip / Postal Code"><input className={inputClass} value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder="Postal code" /></Field>
+                      <Field label="Address Line" error={showErr("address")}>
+                        <input
+                          className={inputCls(!!showErr("address"))}
+                          value={address}
+                          onChange={(e) => setAddress(e.target.value)}
+                          placeholder="Street, building, apartment"
+                        />
+                      </Field>
+                      <Field label="Zip / Postal Code" error={showErr("postalCode")}>
+                        <input
+                          className={inputCls(!!showErr("postalCode"))}
+                          value={postalCode}
+                          onChange={(e) => setPostalCode(e.target.value)}
+                          placeholder="Postal code"
+                        />
+                      </Field>
                     </div>
                   )}
 
-                  {isKenya && (
-                    <Field label="Town / Estate / Building">
-                      <input className={inputClass} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="e.g. Westlands, The Mirage" />
-                    </Field>
-                  )}
-
                   <Field label="Delivery Notes (Optional)">
-                    <textarea rows={4} className={`${inputClass} h-auto resize-none py-4`} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any specific instructions for the rider?" />
+                    <textarea rows={4} className={`${inputNormal} h-auto resize-none py-4`} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any specific instructions for the rider?" />
                   </Field>
                 </div>
               ) : (
+                /* ─── Pickup mode ─── */
                 <div className="space-y-5">
                   <Field label="Store Location">
-                    <select className={inputClass} value={storeId} onChange={(e) => setStoreId(e.target.value)}>
-                      {PICKUP_STORES.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
-                    </select>
+                    <SelectDropdown
+                      value={storeId}
+                      onChange={setStoreId}
+                      options={storeOptions}
+                      placeholder="Select a store"
+                    />
                   </Field>
                   <Field label="Additional Notes (Optional)">
-                    <textarea rows={4} className={`${inputClass} h-auto resize-none py-4`} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the store team should know?" />
+                    <textarea rows={4} className={`${inputNormal} h-auto resize-none py-4`} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the store team should know?" />
                   </Field>
                 </div>
               )}
             </form>
           </section>
 
+          {/* ─── Right: Order summary ─── */}
           <aside className="rounded-[12px] border border-[#dce4d8] bg-white p-6 shadow-[0_12px_40px_rgba(0,0,0,0.05)] dark:border-gray-700 dark:bg-gray-900 md:p-8 lg:sticky lg:top-24">
             <h2 className="font-heading text-[24px] font-bold text-[#1a1c1c] dark:text-white">Order Summary</h2>
             <div className="mt-6 space-y-4">
@@ -372,18 +584,13 @@ export function DeliveryClient({ user }: Props) {
               )) : <p className="text-sm text-[#40493c]">Your cart is empty.</p>}
             </div>
 
-            {/* Coupon input — shows applied tag when valid, error text when invalid */}
+            {/* Coupon */}
             <div className="mt-6">
               {promoStatus === "valid" ? (
                 <div className="flex items-center gap-2 rounded-[8px] border border-[#27731e] bg-[#f0fbed] px-4 py-3">
                   <Icon icon="mdi:tag-check-outline" width={16} className="shrink-0 text-[#27731e]" />
                   <span className="flex-1 text-[13px] font-bold text-[#27731e]">{promoMessage}</span>
-                  <button
-                    type="button"
-                    onClick={removePromo}
-                    aria-label="Remove coupon"
-                    className="ml-2 text-[#27731e] hover:text-[#0b4a10]"
-                  >
+                  <button type="button" onClick={removePromo} aria-label="Remove coupon" className="ml-2 text-[#27731e] hover:text-[#0b4a10]">
                     <Icon icon="mdi:close" width={16} />
                   </button>
                 </div>
@@ -391,7 +598,7 @@ export function DeliveryClient({ user }: Props) {
                 <>
                   <div className="flex gap-2">
                     <input
-                      className={inputClass}
+                      className={inputNormal}
                       value={promoInput}
                       onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoStatus("idle"); }}
                       placeholder="Coupon code"
@@ -421,8 +628,11 @@ export function DeliveryClient({ user }: Props) {
 
             <div className="space-y-3 text-[15px]">
               <SummaryRow label="Subtotal" value={formatKes(subtotalKes)} />
-              <SummaryRow label={mode === "PICKUP" ? "Pickup" : "Delivery"} value={pricingQuery.isFetching ? "Calculating..." : feeKes ? formatKes(feeKes) : "Free"} />
-              <SummaryRow label="Discount" value={`- ${formatKes(discountKes)}`} green />
+              <SummaryRow
+                label={mode === "PICKUP" ? "Pickup" : "Delivery"}
+                value={pricingQuery.isFetching ? "Calculating..." : (feeKes ? formatKes(feeKes) : "Free")}
+              />
+              {discountKes > 0 && <SummaryRow label="Discount" value={`- ${formatKes(discountKes)}`} green />}
             </div>
 
             <div className="my-6 h-px bg-[#e6ebe3]" />
@@ -435,7 +645,7 @@ export function DeliveryClient({ user }: Props) {
             <button
               type="submit"
               form="delivery-details-form"
-              disabled={!canContinue}
+              disabled={submitting || pricingQuery.isFetching}
               className="mt-8 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#fec700] text-[12px] font-black uppercase tracking-[0.12em] text-[#1a1c1c] transition-colors hover:bg-[#f0b800] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting ? <Icon icon="mdi:loading" width={16} className="animate-spin" /> : null}
@@ -453,11 +663,20 @@ export function DeliveryClient({ user }: Props) {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+// ---------------------------------------------------------------------------
+// Small helpers
+// ---------------------------------------------------------------------------
+function Field({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) {
   return (
     <div>
       <label className={labelClass}>{label}</label>
       {children}
+      {error && (
+        <p className="mt-1.5 flex items-center gap-1.5 text-[12px] text-red-600">
+          <Icon icon="mdi:alert-circle-outline" width={14} />
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -465,8 +684,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function SummaryRow({ label, value, green }: { label: string; value: string; green?: boolean }) {
   return (
     <div className={`flex items-center justify-between ${green ? "text-[#0b6b13]" : "text-[#40493c] dark:text-gray-300"}`}>
-      <span>{label}</span>
-      <span>{value}</span>
+      <span>{label}</span><span>{value}</span>
     </div>
   );
 }

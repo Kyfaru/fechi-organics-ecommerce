@@ -118,13 +118,11 @@ export async function POST(req: NextRequest) {
 
     const userId = createResult.user.id;
 
-    // Update username on the user record if provided
-    if (username) {
-      await db.user.update({
-        where: { id: userId },
-        data: { username },
-      });
-    }
+    // Force a password change on first login and set the username if provided.
+    await db.user.update({
+      where: { id: userId },
+      data: { mustChangePassword: true, ...(username ? { username } : {}) },
+    });
 
     // Build or resolve permissions object
     const resolvedPermissions = permissions ?? { pages: [] };
@@ -160,7 +158,7 @@ export async function POST(req: NextRequest) {
         await sendAdminNotificationEmail({
           to: email.toLowerCase(),
           subject: "You've been invited to the Fechi Organics admin panel",
-          html: buildInviteEmailHTML({ name: name.trim(), email: email.toLowerCase(), role, note }),
+          html: buildInviteEmailHTML({ name: name.trim(), email: email.toLowerCase(), role, note, password }),
         });
       } catch (emailErr) {
         // Email failure is non-fatal — account was created; log and continue
@@ -181,6 +179,10 @@ export async function POST(req: NextRequest) {
         console.error("[staff/invite] SMS send failed:", smsErr);
       }
     }
+
+    // Non-fatal notification
+    const { createNotification } = await import("@/lib/notify");
+    createNotification("admin", "New admin added", `${name.trim()} (${role}) joined the team`, `/admin/staff`).catch(() => {});
 
     console.info("[staff/invite] Staff created:", {
       invitedBy: session.user.email,
@@ -205,6 +207,7 @@ function buildInviteEmailHTML(args: {
   email: string;
   role: string;
   note?: string;
+  password?: string;
 }): string {
   const loginUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://fechiorganics.com"}/admin/login`;
   const roleDisplay = args.role.charAt(0).toUpperCase() + args.role.slice(1).replace("_", " ");
@@ -229,6 +232,9 @@ function buildInviteEmailHTML(args: {
             </p>
             ${args.note ? `<p style="font-size:14px;color:#40493c;line-height:1.6;background:#f4f6f3;border-radius:8px;padding:16px;margin:0 0 24px;">${args.note}</p>` : ""}
             <p style="font-size:14px;color:#666;margin:0 0 8px;">Your login email: <strong>${args.email}</strong></p>
+            ${args.password ? `<p style="font-size:14px;color:#666;margin:0 0 8px;">Your temporary password:</p>
+            <div style="font-family:'Courier New',monospace;font-size:18px;font-weight:700;letter-spacing:1px;color:#1a1c1c;background:#f4f6f3;border:1px dashed #27731e;border-radius:8px;padding:14px 20px;margin:0 0 8px;text-align:center;">${args.password}</div>
+            <p style="font-size:13px;color:#999;margin:0 0 8px;">You'll be asked to change this password when you first sign in.</p>` : ""}
             <a href="${loginUrl}" style="display:inline-block;margin-top:24px;background:#27731e;color:#ffffff;padding:14px 32px;border-radius:40px;font-size:15px;font-weight:700;text-decoration:none;">
               Sign in to Admin Panel
             </a>

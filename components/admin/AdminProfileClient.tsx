@@ -14,9 +14,17 @@
  *       PATCH /api/admin/profile/password { currentPassword, newPassword }
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { User, Settings, Bell, Lock, Eye, EyeOff } from "lucide-react";
+
+const R2_BASE = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "").replace(/\/$/, "");
+
+function avatarUrl(key: string): string {
+  if (!key) return "";
+  if (key.startsWith("http")) return key;
+  return R2_BASE ? `${R2_BASE}/${key}` : `/${key}`;
+}
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { toast } from "@/lib/toast";
 import Switch from "@/components/ui/Switch";
@@ -29,6 +37,7 @@ interface AdminUser {
   name: string;
   email: string;
   phone: string | null;
+  image: string | null;
   role: string;
   twoFactorEnabled: boolean;
   adminProfile: {
@@ -136,10 +145,32 @@ function ProfileTab({ user, saving, onSave }: { user: AdminUser; saving: boolean
     fullName:   user.adminProfile?.fullName ?? user.name ?? "",
     department: user.adminProfile?.department ?? "",
   });
+  const avatarRef = useRef<HTMLInputElement>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   function handleSave() {
     if (!form.name.trim()) { toast.error("Name is required."); return; }
     onSave(form);
+  }
+
+  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingAvatar(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("category", "avatars");
+      const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Upload failed");
+      onSave({ image: json.objectKey });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploadingAvatar(false);
+      if (avatarRef.current) avatarRef.current.value = "";
+    }
   }
 
   return (
@@ -147,17 +178,30 @@ function ProfileTab({ user, saving, onSave }: { user: AdminUser; saving: boolean
       {/* Avatar */}
       <Card>
         <div className="flex items-center gap-5">
-          <div className="w-24 h-24 rounded-full bg-(--green-200) text-(--green-800) flex items-center justify-center font-syne text-[28px] font-bold shrink-0">
-            {getInitials(user.name ?? "A")}
+          <div className="w-24 h-24 rounded-full bg-(--green-200) text-(--green-800) flex items-center justify-center font-syne text-[28px] font-bold shrink-0 overflow-hidden">
+            {user.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={avatarUrl(user.image)} alt={user.name} className="w-full h-full object-cover" />
+            ) : (
+              getInitials(user.name ?? "A")
+            )}
           </div>
           <div className="flex-1">
             <div className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">{user.name}</div>
             <div className="font-dm text-[13px] text-(--neutral-500) dark:text-(--dark-muted) mt-0.5">{user.email}</div>
+            <input
+              ref={avatarRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={handleAvatarUpload}
+            />
             <button
-              onClick={() => toast.info("Photo upload coming soon — wire to /api/admin/upload")}
-              className="mt-3 h-8 px-4 rounded-[6px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+              onClick={() => avatarRef.current?.click()}
+              disabled={uploadingAvatar || saving}
+              className="mt-3 h-8 px-4 rounded-[6px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors disabled:opacity-50"
             >
-              Upload photo
+              {uploadingAvatar ? "Uploading…" : "Upload photo"}
             </button>
           </div>
         </div>

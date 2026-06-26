@@ -31,6 +31,7 @@ interface OrderItem {
 
 interface Order {
   id: string;
+  orderNumber: string | null;
   status: OrderStatus;
   paymentStatus: string;
   subtotalKes: number;
@@ -197,7 +198,7 @@ function OrderCard({ order }: { order: Order }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <span className="text-[14px] font-semibold text-[#1a1c1c] dark:text-white">
-              Order #{truncateId(order.id)}
+              {order.orderNumber ? `Order ${order.orderNumber}` : `Order #${truncateId(order.id)}`}
             </span>
             <span className="text-[13px] text-[#40493c] dark:text-gray-400">
               {formatDate(order.createdAt)}

@@ -42,6 +42,9 @@ type AdminProduct = {
   priceKes: number;
   compareAtPriceKes: number | null;
   variantLabel: string | null;
+  sizes: string[];
+  howToUse: string | null;
+  ingredients: string | null;
   bestSeller: boolean;
   isActive: boolean;
   stock: number;
@@ -71,6 +74,10 @@ type DrawerFormData = {
   isActive: boolean;
   // Images (objectKeys in order, index 0 = primary)
   imageKeys: string[];
+  // Product details
+  sizes: string[];
+  howToUse: string;
+  ingredients: string;
   // SEO
   seoTitle: string;
   metaDescription: string;
@@ -187,7 +194,8 @@ function blankForm(): DrawerFormData {
     name: "", slug: "", description: "", shortDescription: "",
     categoryId: "", priceKes: "", compareAtPriceKes: "", variantLabel: "",
     stock: "0", bestSeller: false, isActive: true,
-    imageKeys: [], seoTitle: "", metaDescription: "",
+    imageKeys: [], sizes: [], howToUse: "", ingredients: "",
+    seoTitle: "", metaDescription: "",
   };
 }
 
@@ -208,6 +216,7 @@ function productToForm(p: AdminProduct): DrawerFormData {
     variantLabel: p.variantLabel ?? "",
     stock: String(p.stock), bestSeller: p.bestSeller, isActive: p.isActive,
     imageKeys: sortedImages.map((i) => i.objectKey),
+    sizes: p.sizes ?? [], howToUse: p.howToUse ?? "", ingredients: p.ingredients ?? "",
     seoTitle: "", metaDescription: "",
   };
 }
@@ -271,7 +280,7 @@ function CardMenu({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -4 }}
             transition={{ duration: 0.12 }}
-            className="absolute right-0 bottom-full mb-1 w-44 bg-white rounded-[10px] shadow-(--e3) border border-(--neutral-200) z-20 overflow-hidden py-1"
+            className="absolute right-0 bottom-full mb-1 w-44 bg-white rounded-[10px] shadow-(--e3) border border-(--neutral-200) z-50 overflow-hidden py-1"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -498,7 +507,7 @@ function CategoryDropdown({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.98 }}
             transition={{ duration: 0.13 }}
-            className="absolute left-0 right-0 top-full mt-1 bg-white rounded-[10px] border border-(--neutral-200) shadow-(--e3) z-30 overflow-hidden"
+            className="absolute left-0 right-0 top-full mt-1 bg-white rounded-[10px] border border-(--neutral-200) shadow-(--e3) z-50 overflow-hidden"
           >
             {mode === "list" ? (
               <div className="py-1 max-h-56 overflow-y-auto">
@@ -849,6 +858,66 @@ function PriceInput({
 }
 
 // ---------------------------------------------------------------------------
+// Size tag input
+// ---------------------------------------------------------------------------
+function SizeTagInput({ sizes, onChange }: { sizes: string[]; onChange: (s: string[]) => void }) {
+  const [input, setInput] = useState("");
+
+  function addSize() {
+    const val = input.trim();
+    if (!val || sizes.includes(val)) { setInput(""); return; }
+    onChange([...sizes, val]);
+    setInput("");
+  }
+
+  function removeSize(s: string) {
+    onChange(sizes.filter((x) => x !== s));
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap gap-1.5 min-h-[28px]">
+        {sizes.map((s) => (
+          <span
+            key={s}
+            className="flex items-center gap-1 bg-(--green-50) text-(--green-800) border border-(--green-200) rounded-full px-2.5 py-0.5 font-dm text-[12px] font-medium"
+          >
+            {s}
+            <button
+              type="button"
+              onClick={() => removeSize(s)}
+              className="ml-0.5 hover:text-(--danger) transition-colors"
+              aria-label={`Remove size ${s}`}
+            >
+              <X size={10} />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input
+          className={inputCls}
+          placeholder="e.g. 250ml — press Enter to add"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); addSize(); }
+          }}
+        />
+        <button
+          type="button"
+          onClick={addSize}
+          disabled={!input.trim()}
+          className="h-[38px] px-3 rounded-[8px] bg-(--green-800) text-white font-dm text-[13px] flex items-center gap-1 hover:opacity-90 transition-opacity disabled:opacity-40"
+        >
+          <Plus size={14} /> Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Product Drawer (640px)
 // ---------------------------------------------------------------------------
 function ProductDrawer({
@@ -1063,7 +1132,39 @@ function ProductDrawer({
           />
         </section>
 
-        {/* ── 4. Inventory ── */}
+        {/* ── 4. Product Details ── */}
+        <section>
+          <h3 className={sectionTitleCls}>Product Details</h3>
+          <div className="flex flex-col gap-4">
+            <div>
+              <label className={labelCls}>Sizes</label>
+              <SizeTagInput sizes={form.sizes} onChange={(s) => onChange({ sizes: s })} />
+              <p className="font-dm text-[11px] text-(--neutral-400) mt-1">
+                e.g. 250ml, 500ml, 1kg — displayed as selectable buttons on the product page.
+              </p>
+            </div>
+            <div>
+              <label className={labelCls}>How to Use</label>
+              <textarea
+                className={`${inputCls} resize-none h-24`}
+                placeholder="Describe how to use this product…"
+                value={form.howToUse}
+                onChange={(e) => onChange({ howToUse: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Ingredients</label>
+              <textarea
+                className={`${inputCls} resize-none h-24`}
+                placeholder="List the key ingredients…"
+                value={form.ingredients}
+                onChange={(e) => onChange({ ingredients: e.target.value })}
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* ── 5. Inventory ── */}
         <section>
           <h3 className={sectionTitleCls}>Inventory</h3>
           <div className="grid grid-cols-2 gap-4 mb-4">
@@ -1094,7 +1195,7 @@ function ProductDrawer({
           </div>
         </section>
 
-        {/* ── 5. SEO (collapsible) ── */}
+        {/* ── 6. SEO (collapsible) ── */}
         <section>
           <details className="group">
             <summary className="flex items-center justify-between cursor-pointer list-none">
@@ -1408,6 +1509,9 @@ export function AdminProductsClient() {
       bestSeller: form.bestSeller,
       isActive,
       imageObjectKeys: form.imageKeys,
+      sizes: form.sizes,
+      howToUse: form.howToUse.trim() || null,
+      ingredients: form.ingredients.trim() || null,
     };
   }
 

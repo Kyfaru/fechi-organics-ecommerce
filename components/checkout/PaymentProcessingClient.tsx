@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { Navbar } from "@/components/layout/Navbar";
 import { toast } from "@/lib/toast";
+import { usePaymentStream } from "@/hooks/use-payment-stream";
 
 type Order = {
   id: string;
@@ -20,8 +21,6 @@ type Order = {
   failureReason: string | null;
   items: { id: string; name: string; quantity: number; imageUrl: string | null }[];
 };
-
-type PaymentStatus = "PENDING" | "PAID" | "FAILED";
 
 function formatKes(cents: number) {
   return `KES ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;
@@ -47,62 +46,38 @@ function errorMessage(reason: string | null) {
   return reason?.replace(/^\d+:/, "") || "Payment not completed. Try again or contact support.";
 }
 
-export function PaymentProcessingClient({ order, method }: { order: Order; method: "mpesa" | "payhero" }) {
+export function PaymentProcessingClient({ order, method }: { order: Order; method: "mpesa" | "card" }) {
   const router = useRouter();
-  const pollCount = useRef(0);
-  const [status, setStatus] = useState<PaymentStatus>("PENDING");
-  const [failureReason, setFailureReason] = useState(order.failureReason);
-  const [timedOut, setTimedOut] = useState(false);
+  const { status, reason } = usePaymentStream(order.id);
 
-  const maxPolls = method === "mpesa" ? 5 : 45;
   const location = order.deliveryType === "PICKUP"
     ? "Pickup from selected store"
     : [order.deliveryZone, order.deliveryCity, order.deliveryCounty].filter(Boolean).join(", ");
 
   useEffect(() => {
     capture("payment_processing_viewed", { orderId: order.id, method });
-    toast.info("Waiting for payment confirmation...", { duration: method === "mpesa" ? 10000 : 90000 });
+    toast.info("Waiting for payment confirmation...", { duration: 90000 });
+  }, [method, order.id]);
 
-    const interval = window.setInterval(async () => {
-      pollCount.current += 1;
-      try {
-        const res = await fetch(`/api/payments/status/${order.id}`);
-        const json = await res.json();
-        const nextStatus = json.data?.paymentStatus as PaymentStatus | undefined;
-        setFailureReason(json.data?.failureReason ?? null);
+  useEffect(() => {
+    if (status === "success") {
+      capture("payment_success", { orderId: order.id, method });
+      router.push(`/order-success/${order.id}`);
+    } else if (status === "failed") {
+      capture("payment_failed", { orderId: order.id, method });
+    } else if (status === "timeout") {
+      capture("payment_timeout", { orderId: order.id, method });
+      // Clean up the pending order — payment window expired
+      fetch(`/api/payments/status/${order.id}`, { method: "DELETE" }).catch(() => {});
+    }
+  }, [status, method, order.id, router]);
 
-        if (nextStatus === "PAID") {
-          window.clearInterval(interval);
-          capture("payment_success", { orderId: order.id, method });
-          router.push(`/order-success/${order.id}`);
-          return;
-        }
-        if (nextStatus === "FAILED") {
-          window.clearInterval(interval);
-          setStatus("FAILED");
-          capture("payment_failed", { orderId: order.id, method });
-          return;
-        }
-      } catch {
-        // Keep polling through transient network errors.
-      }
-
-      if (pollCount.current >= maxPolls) {
-        window.clearInterval(interval);
-        setTimedOut(true);
-        capture("payment_timeout", { orderId: order.id, method });
-      }
-    }, 2000);
-
-    return () => window.clearInterval(interval);
-  }, [maxPolls, method, order.id, router]);
-
-  const failed = status === "FAILED" || timedOut;
-  const message = timedOut
+  const failed = status === "failed" || status === "timeout";
+  const message = status === "timeout"
     ? method === "mpesa"
       ? "Request timed out - phone didn't respond. Try again."
       : "Taking longer than expected. Check your email or contact support."
-    : errorMessage(failureReason);
+    : errorMessage(reason ?? order.failureReason);
 
   const itemNames = useMemo(() => order.items.map((item) => item.name).join(", "), [order.items]);
 
@@ -152,7 +127,7 @@ export function PaymentProcessingClient({ order, method }: { order: Order; metho
                   <Icon icon={method === "mpesa" ? "mdi:cellphone-message" : "mdi:credit-card-clock-outline"} width={34} className="text-[#27731e] animate-pulse" />
                 </div>
                 <p className="mt-4 text-sm font-semibold text-[#1a1c1c] dark:text-white">
-                  {method === "mpesa" ? "Enter your PIN on your phone" : "Complete payment in the PayHero interface"}
+                  {method === "mpesa" ? "Enter your PIN on your phone" : "Redirecting to payment page..."}
                 </p>
                 <Icon icon="mdi:loading" width={24} className="mt-5 mx-auto animate-spin text-[#27731e]" />
                 <p className="mt-4 text-xs text-[#40493c] dark:text-gray-400">Do not go back or refresh this page</p>

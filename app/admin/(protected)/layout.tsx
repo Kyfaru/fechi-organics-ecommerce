@@ -6,11 +6,13 @@ import { db } from "@/lib/db";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { AdminHeader } from "@/components/admin/AdminHeader";
 import { AdminFooter } from "@/components/admin/AdminFooter";
+import { PrelineInit } from "@/components/admin/PrelineInit";
 import { Spinner } from "@/components/ui/spinner";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="admin-shell min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
+      <PrelineInit />
       <AdminSidebar />
       <main className="md:ml-[var(--sidebar-w,264px)] min-h-screen flex flex-col transition-all duration-200">
         <AdminHeader />
@@ -38,6 +40,9 @@ async function AdminGuard({ children }: { children: React.ReactNode }) {
 
   const user = await db.user.findUnique({ where: { id: session.user.id } });
   if (user?.role !== "admin") redirect("/");
+
+  // Force password change on first login
+  if (user.mustChangePassword) redirect("/admin/change-password");
 
   return <>{children}</>;
 }

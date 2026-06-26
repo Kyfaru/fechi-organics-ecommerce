@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, ImageIcon, ChevronDown } from "lucide-react";
+import { Plus, ImageIcon, ChevronDown, Upload } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
 
-const R2_BASE = process.env.NEXT_PUBLIC_R2_PUBLIC_BASE ?? "";
+const R2_BASE = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "").replace(/\/$/, "");
 
 interface Banner {
   id: string;
@@ -57,6 +57,29 @@ export function AdminBannersClient() {
   });
   const [form, setForm] = useState(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<Banner | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("category", "banners");
+      const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Upload failed");
+      setForm((f) => ({ ...f, imageKey: json.objectKey }));
+      toast.success("Image uploaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin-banners"],
@@ -305,12 +328,28 @@ export function AdminBannersClient() {
             />
           </FormField>
 
-          <FormField label="Image URL / Key" required>
+          <FormField label="Image" required>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={handleImageUpload}
+            />
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="flex items-center justify-center gap-2 w-full h-10 px-3 rounded-[8px] border-2 border-dashed border-(--neutral-200) hover:border-(--green-800) font-dm text-[13px] text-(--neutral-600) transition-colors disabled:opacity-50"
+            >
+              <Upload size={14} />
+              {uploading ? "Uploading…" : form.imageKey ? "Replace image" : "Upload image"}
+            </button>
             <input
               value={form.imageKey}
               onChange={(e) => setForm((f) => ({ ...f, imageKey: e.target.value }))}
-              placeholder="banners/summer-hero.jpg"
-              className={inputCls}
+              placeholder="or paste a key: banners/summer-hero.jpg"
+              className={`${inputCls} mt-2`}
             />
           </FormField>
 

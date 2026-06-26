@@ -2,10 +2,6 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Underline from "@tiptap/extension-underline";
-import Link from "@tiptap/extension-link";
 import { toast } from "sonner";
 import {
   Plus,
@@ -21,6 +17,7 @@ import {
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { StatCard } from "@/components/admin/ui/StatCard";
 import { DataTable } from "@/components/admin/ui/DataTable";
+import RichTextEditor from "@/components/admin/ui/RichTextEditor";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
@@ -95,19 +92,6 @@ export function AdminCampaignsClient() {
     content: "",
     audienceCustomerIds: [] as string[],
     scheduledAt: "",
-  });
-
-  // ── Tiptap editor (only active for EMAIL / ALL types) ─────────────────────
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Underline,
-      Link.configure({ openOnClick: false }),
-    ],
-    content: form.content ?? "",
-    onUpdate: ({ editor }) =>
-      setForm((f) => ({ ...f, content: editor.getHTML() })),
-    editable: true,
   });
 
   // ── Fetch campaigns ────────────────────────────────────────────────────────
@@ -229,8 +213,6 @@ export function AdminCampaignsClient() {
       scheduledAt: "",
     });
     setSendMode("now");
-    // Reset Tiptap editor content
-    editor?.commands.setContent("");
     setDrawerOpen(true);
   }
 
@@ -644,202 +626,10 @@ export function AdminCampaignsClient() {
             {/* Content — Tiptap for email types, plain textarea for SMS/PUSH/WHATSAPP */}
             {isEmailType ? (
               <Field label="Content" hint="Rich text — formatting preserved in email">
-                <div className="bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 rounded-xl overflow-hidden">
-                  {/* Toolbar */}
-                  <div className="sticky top-0 bg-white dark:bg-neutral-800 flex align-middle gap-x-0.5 border-b border-gray-200 dark:border-neutral-700 p-2">
-                    {/* Bold */}
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        editor?.chain().focus().toggleBold().run();
-                      }}
-                      className={`size-8 inline-flex justify-center items-center rounded-full text-sm text-gray-800 dark:text-neutral-200 hover:bg-gray-100 dark:hover:bg-neutral-700 ${editor?.isActive("bold") ? "bg-gray-100 dark:bg-neutral-700" : ""}`}
-                    >
-                      <svg
-                        className="shrink-0 size-4"
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M14 12a4 4 0 0 0 0-8H6v8" />
-                        <path d="M15 20a4 4 0 0 0 0-8H6v8Z" />
-                      </svg>
-                    </button>
-                    {/* Italic */}
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        editor?.chain().focus().toggleItalic().run();
-                      }}
-                      className={`size-8 inline-flex justify-center items-center rounded-full text-sm text-gray-800 dark:text-neutral-200 hover:bg-gray-100 dark:hover:bg-neutral-700 ${editor?.isActive("italic") ? "bg-gray-100 dark:bg-neutral-700" : ""}`}
-                    >
-                      <svg
-                        className="shrink-0 size-4"
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <line x1="19" x2="10" y1="4" y2="4" />
-                        <line x1="14" x2="5" y1="20" y2="20" />
-                        <line x1="15" x2="9" y1="4" y2="20" />
-                      </svg>
-                    </button>
-                    {/* Underline */}
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        editor?.chain().focus().toggleUnderline().run();
-                      }}
-                      className={`size-8 inline-flex justify-center items-center rounded-full text-sm text-gray-800 dark:text-neutral-200 hover:bg-gray-100 dark:hover:bg-neutral-700 ${editor?.isActive("underline") ? "bg-gray-100 dark:bg-neutral-700" : ""}`}
-                    >
-                      <svg
-                        className="shrink-0 size-4"
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M6 4v6a6 6 0 0 0 12 0V4" />
-                        <line x1="4" x2="20" y1="20" y2="20" />
-                      </svg>
-                    </button>
-                    {/* Strike */}
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        editor?.chain().focus().toggleStrike().run();
-                      }}
-                      className={`size-8 inline-flex justify-center items-center rounded-full text-sm text-gray-800 dark:text-neutral-200 hover:bg-gray-100 dark:hover:bg-neutral-700 ${editor?.isActive("strike") ? "bg-gray-100 dark:bg-neutral-700" : ""}`}
-                    >
-                      <svg
-                        className="shrink-0 size-4"
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M16 4H9a3 3 0 0 0-2.83 4" />
-                        <path d="M14 12a4 4 0 0 1 0 8H6" />
-                        <line x1="4" x2="20" y1="12" y2="12" />
-                      </svg>
-                    </button>
-                    {/* Ordered list */}
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        editor?.chain().focus().toggleOrderedList().run();
-                      }}
-                      className={`size-8 inline-flex justify-center items-center rounded-full text-sm text-gray-800 dark:text-neutral-200 hover:bg-gray-100 dark:hover:bg-neutral-700 ${editor?.isActive("orderedList") ? "bg-gray-100 dark:bg-neutral-700" : ""}`}
-                    >
-                      <svg
-                        className="shrink-0 size-4"
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <line x1="10" x2="21" y1="6" y2="6" />
-                        <line x1="10" x2="21" y1="12" y2="12" />
-                        <line x1="10" x2="21" y1="18" y2="18" />
-                        <path d="M4 6h1v4" />
-                        <path d="M4 10h2" />
-                        <path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" />
-                      </svg>
-                    </button>
-                    {/* Bullet list */}
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        editor?.chain().focus().toggleBulletList().run();
-                      }}
-                      className={`size-8 inline-flex justify-center items-center rounded-full text-sm text-gray-800 dark:text-neutral-200 hover:bg-gray-100 dark:hover:bg-neutral-700 ${editor?.isActive("bulletList") ? "bg-gray-100 dark:bg-neutral-700" : ""}`}
-                    >
-                      <svg
-                        className="shrink-0 size-4"
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <line x1="8" x2="21" y1="6" y2="6" />
-                        <line x1="8" x2="21" y1="12" y2="12" />
-                        <line x1="8" x2="21" y1="18" y2="18" />
-                        <line x1="3" x2="3.01" y1="6" y2="6" />
-                        <line x1="3" x2="3.01" y1="12" y2="12" />
-                        <line x1="3" x2="3.01" y1="18" y2="18" />
-                      </svg>
-                    </button>
-                    {/* Blockquote */}
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        editor?.chain().focus().toggleBlockquote().run();
-                      }}
-                      className={`size-8 inline-flex justify-center items-center rounded-full text-sm text-gray-800 dark:text-neutral-200 hover:bg-gray-100 dark:hover:bg-neutral-700 ${editor?.isActive("blockquote") ? "bg-gray-100 dark:bg-neutral-700" : ""}`}
-                    >
-                      <svg
-                        className="shrink-0 size-4"
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M17 6H3" />
-                        <path d="M21 12H8" />
-                        <path d="M21 18H8" />
-                        <path d="M3 12v6" />
-                      </svg>
-                    </button>
-                  </div>
-                  <EditorContent
-                    editor={editor}
-                    className="h-40 overflow-auto p-3 prose dark:prose-invert max-w-none text-sm"
-                  />
-                </div>
+                <RichTextEditor
+                  value={form.content}
+                  onChange={(content) => setForm((f) => ({ ...f, content }))}
+                />
               </Field>
             ) : (
               <Field

@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Search, Bell, Settings, Sun, Moon } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
+import { useQuery } from "@tanstack/react-query";
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -27,6 +28,14 @@ export function AdminHeader() {
   const userInitial = userName.charAt(0).toUpperCase();
   const userImage = session?.user?.image ?? null;
 
+  const { data: unreadData } = useQuery({
+    queryKey: ["admin-notifications-unread"],
+    queryFn: () => fetch("/api/admin/notifications?unread=true").then((r) => r.json()),
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
+  });
+  const hasUnread = (unreadData?.data?.notifications?.length ?? 0) > 0;
+
   useEffect(() => {
     const stored = localStorage.getItem("adminTheme");
     if (stored === "dark") {
@@ -46,10 +55,10 @@ export function AdminHeader() {
     <header className="h-[72px] bg-white dark:bg-(--dark-surface) border-b border-(--green-200) dark:border-(--dark-border) shadow-(--e1) flex items-center px-6 gap-6 sticky top-0 z-20">
       {/* Greeting */}
       <div className="hidden lg:block min-w-[220px]">
-        <div className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text) leading-tight">
+        <div className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text) leading-tight" suppressHydrationWarning>
           {getGreeting()}, {userName.split(" ")[0]}
         </div>
-        <div className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted)">
+        <div className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted)" suppressHydrationWarning>
           {formatDate()}
         </div>
       </div>
@@ -81,10 +90,10 @@ export function AdminHeader() {
           {dark ? <Sun size={18} /> : <Moon size={18} />}
         </button>
 
-        <button className="relative w-9 h-9 flex items-center justify-center rounded-full text-(--neutral-500) hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) transition-colors">
+        <Link href="/admin/notifications" className="relative w-9 h-9 flex items-center justify-center rounded-full text-(--neutral-500) hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) transition-colors">
           <Bell size={18} />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-(--danger) rounded-full" />
-        </button>
+          {hasUnread && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-(--danger) rounded-full" />}
+        </Link>
 
         <Link
           href="/admin/settings"

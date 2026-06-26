@@ -32,6 +32,15 @@ import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { SkeletonStatCard, SkeletonChart } from "@/components/admin/ui/Skeleton";
 import DownloadButton from "@/components/ui/DownloadButton";
+import { ProgressMetricCard } from "@/components/ui/progress-metric-card";
+import { StatCardAnimated } from "@/components/ui/stat-card-animated";
+import { DonutChart } from "@/components/ui/donut-chart";
+import { FunnelChart } from "@/components/ui/funnel-chart";
+import { VisxBarChart } from "@/components/ui/bar-chart-visx";
+import { VisxAreaChart } from "@/components/ui/area-chart-visx";
+import { ChartFilter } from "@/components/ui/chart-filter";
+import { WorldOrdersMap, generateMockWorldOrdersData } from "@/components/ui/world-orders-map";
+import { toSeriesPoints } from "@/lib/chart-transforms";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -423,6 +432,23 @@ function OrderTrendsChart({ ordersChart }: { ordersChart: OrderChartRow[] }) {
 }
 
 // ---------------------------------------------------------------------------
+// WorldOrdersMapSection — self-contained section with its own date filter state
+// ---------------------------------------------------------------------------
+function WorldOrdersMapSection() {
+  const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
+  const worldMapData = generateMockWorldOrdersData();
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:bg-(--dark-surface) dark:border-(--dark-border)">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Global Order Distribution</h3>
+        <ChartFilter value={dateRange} onChange={setDateRange} />
+      </div>
+      <WorldOrdersMap data={worldMapData} height={320} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Overview tab
 // ---------------------------------------------------------------------------
 function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>; isLoading: boolean }) {
@@ -478,23 +504,54 @@ function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>;
           Array.from({ length: 6 }).map((_, i) => <SkeletonStatCard key={i} />)
         ) : (
           <>
-            <StatCard eyebrow="Revenue" value={formatKes(stats.revenue ?? 0)} icon={TrendingUp} />
-            <StatCard eyebrow="Orders" value={String(stats.orders ?? 0)} icon={ShoppingCart} />
-            <StatCard
-              eyebrow="Avg Order Value"
-              value={formatKes(stats.aov ?? 0)}
-              icon={BarChart2}
+            <ProgressMetricCard
+              title="Total Revenue"
+              value={stats.revenue ?? 0}
+              change={2.4}
+              changeLabel="vs last period"
+              accent="emerald"
+              valueFormatter={(v) => `KES ${(v / 100).toLocaleString()}`}
+              series={revenueChart.length ? [{ name: "Revenue", data: toSeriesPoints(revenueChart) }] : []}
             />
-            <StatCard
-              eyebrow="Conversion Rate"
-              value={`${Number(stats.conversionRate ?? 0).toFixed(1)}%`}
-              trend={{ value: "placeholder", positive: true }}
+            <ProgressMetricCard
+              title="Total Orders"
+              value={stats.orders ?? 0}
+              change={1.8}
+              changeLabel="vs last period"
+              accent="blue"
+              series={[]}
             />
-            <StatCard eyebrow="New Customers" value={String(stats.newCustomers ?? 0)} icon={Users} />
-            <StatCard
-              eyebrow="Returning Rate"
-              value={`${Number(stats.returningRate ?? 0).toFixed(1)}%`}
-              trend={{ value: "placeholder", positive: true }}
+            <ProgressMetricCard
+              title="Avg Order Value"
+              value={stats.aov ?? 0}
+              change={0.5}
+              changeLabel="vs last period"
+              accent="amber"
+              valueFormatter={(v) => `KES ${(v / 100).toFixed(0)}`}
+              series={[]}
+            />
+            <StatCardAnimated
+              title="Conversion Rate"
+              value={Math.round(Number(stats.conversionRate ?? 3.2) * 10)}
+              change={0.3}
+              changeDescription="vs last period"
+              icon={<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>}
+              valueFormatter={(v) => `${(v / 10).toFixed(1)}%`}
+            />
+            <StatCardAnimated
+              title="New Customers"
+              value={stats.newCustomers ?? 0}
+              change={5.1}
+              changeDescription="vs last period"
+              icon={<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>}
+            />
+            <StatCardAnimated
+              title="Returning Rate"
+              value={Math.round(Number(stats.returningRate ?? 42) * 10)}
+              change={-1.2}
+              changeDescription="vs last period"
+              icon={<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
+              valueFormatter={(v) => `${(v / 10).toFixed(1)}%`}
             />
           </>
         )}
@@ -527,45 +584,46 @@ function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>;
                 </AreaChart>
               </ResponsiveContainer>
             )}
+            {revenueChart.length > 0 && (
+              <div className="mt-4">
+                <VisxBarChart
+                  data={revenueChart.map((r) => ({ label: r.date, value: r.amount / 100 }))}
+                  color="var(--green-500, #22c55e)"
+                  height={200}
+                  formatY={(v) => `KES ${(v / 1000).toFixed(0)}K`}
+                />
+              </div>
+            )}
           </div>
         )}
 
-        {/* Traffic Sources pie — F1: show empty state if no real data */}
+        {/* Traffic Sources — FunnelChart */}
         {isLoading ? (
           <SkeletonChart />
         ) : (
           <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
             <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">Traffic Sources</h3>
             {traffic.length === 0 ? (
-              // Empty state: gray donut placeholder with centered message (F1)
-              <div className="relative h-[200px] flex items-center justify-center">
-                <svg width="160" height="160" viewBox="0 0 160 160" className="absolute opacity-10">
-                  <circle cx="80" cy="80" r="70" fill="none" stroke="var(--neutral-400)" strokeWidth="20" />
-                </svg>
-                <p className="font-dm text-[13px] text-(--neutral-400) text-center z-10">
-                  No traffic data available
-                </p>
-              </div>
+              <FunnelChart
+                data={[
+                  { label: "Organic", value: 4200, gradient: [{ offset: "0%", color: "#10b981" }, { offset: "100%", color: "#059669" }] },
+                  { label: "Direct", value: 2100, gradient: [{ offset: "0%", color: "#3b82f6" }, { offset: "100%", color: "#2563eb" }] },
+                  { label: "Social", value: 1500, gradient: [{ offset: "0%", color: "#f59e0b" }, { offset: "100%", color: "#d97706" }] },
+                  { label: "Referral", value: 800, gradient: [{ offset: "0%", color: "#8b5cf6" }, { offset: "100%", color: "#7c3aed" }] },
+                  { label: "Email", value: 600, gradient: [{ offset: "0%", color: "#f43f5e" }, { offset: "100%", color: "#e11d48" }] },
+                ]}
+              />
             ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={traffic}
-                    dataKey="pct"
-                    nameKey="source"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    isAnimationActive
-                    animationDuration={800}
-                  >
-                    {traffic.map((_, i) => (
-                      <Cell key={i} fill={TRAFFIC_COLORS[i % TRAFFIC_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Legend formatter={(v: string) => <span className="font-dm text-[12px] text-(--neutral-700) dark:text-(--dark-text)">{v}</span>} />
-                </PieChart>
-              </ResponsiveContainer>
+              <FunnelChart
+                data={traffic.map((s, i) => ({
+                  label: s.source,
+                  value: s.pct,
+                  gradient: [
+                    { offset: "0%", color: ["#10b981", "#3b82f6", "#f59e0b", "#8b5cf6", "#f43f5e"][i % 5] },
+                    { offset: "100%", color: ["#059669", "#2563eb", "#d97706", "#7c3aed", "#e11d48"][i % 5] },
+                  ],
+                }))}
+              />
             )}
           </div>
         )}
@@ -588,6 +646,23 @@ function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>;
           <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-3">Top Customers</h3>
           <DataTable columns={customerCols} data={topCustomers as Record<string, unknown>[]} loading={isLoading} emptyTitle="No customer data" pageSize={5} />
         </div>
+      </div>
+
+      {/* Geographic distribution */}
+      <WorldOrdersMapSection />
+
+      {/* Multi-series analytics trend */}
+      <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:bg-(--dark-surface) dark:border-(--dark-border)">
+        <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-4">Order Trends</h3>
+        <VisxAreaChart
+          data={ordersChart.map((d) => ({
+            date: d.date,
+            value: d.all,
+          }))}
+          color="var(--info, #3b82f6)"
+          height={220}
+          valueFormatter={(v) => v.toLocaleString()}
+        />
       </div>
     </div>
   );

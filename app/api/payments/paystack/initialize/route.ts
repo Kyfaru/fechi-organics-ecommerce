@@ -1,0 +1,220 @@
+/**
+ * POST /api/payments/paystack/initialize
+ *
+ * Creates an order from the authenticated user's cart and initializes a
+ * Paystack card transaction. Returns the authorization URL so the client can
+ * redirect the customer to Paystack's hosted checkout.
+ *
+ * Requires an active session. Guests cannot use this endpoint.
+ */
+
+import { NextRequest } from "next/server";
+import { headers } from "next/headers";
+import { z } from "zod";
+import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { ok, err, Err } from "@/lib/api";
+import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
+import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
+import { resolvePromo } from "@/lib/promo";
+import { initializeTransaction } from "@/lib/paystack/client";
+import { getRedis } from "@/lib/redis";
+
+const deliveryDataSchema = z.object({
+  fullName: z.string().min(1),
+  phone: z.string().min(9),
+  email: z.string().email().optional(),
+  country: z.string().min(2).default("KE"),
+  county: z.string().optional().default(""),
+  state: z.string().optional(),
+  zoneId: z.string().optional().nullable(),
+  deliveryZone: z.string().optional().nullable(),
+  deliveryKes: z.number().int().nonnegative().optional(),
+  promoCode: z.string().optional().nullable(),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  postalCode: z.string().optional(),
+  notes: z.string().optional(),
+  deliveryType: z.enum(["PICKUP", "DELIVERY"]),
+  branchId: z.string().optional().nullable(),
+  branchName: z.string().optional().nullable(),
+});
+
+const bodySchema = z.object({
+  deliveryData: deliveryDataSchema,
+});
+
+export async function POST(req: NextRequest) {
+  // 1. Authenticate
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) return Err.authRequired();
+
+  const userId = session.user.id;
+  const userEmail = session.user.email;
+
+  // 2. Parse and validate body
+  let parsed: z.infer<typeof bodySchema>;
+  try {
+    const raw = await req.json();
+    parsed = bodySchema.parse(raw);
+  } catch {
+    return Err.validation("Invalid request body");
+  }
+
+  const { deliveryData } = parsed;
+
+  try {
+    // 3. Load cart and validate it is not empty
+    const cart = await db.cart.findUnique({
+      where: { userId },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: { id: true, name: true, priceKes: true, isActive: true, stock: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!cart || cart.items.length === 0) {
+      return err("CART_EMPTY", "Your cart is empty", 400);
+    }
+
+    const activeItems = cart.items.filter((item) => item.product.isActive);
+    if (activeItems.length === 0) {
+      return err("CART_EMPTY", "No active products in cart", 400);
+    }
+
+    const redis = getRedis();
+    const rateKey = `payment_attempt:${userId}:paystack`;
+    const attempts = await redis.incr(rateKey);
+    if (attempts === 1) await redis.expire(rateKey, 60);
+    if (attempts > 3) return Err.rateLimited();
+
+    // 4. Calculate totals — never trust client amounts
+    const subtotalCents = activeItems.reduce(
+      (sum, item) => sum + item.product.priceKes * item.quantity,
+      0,
+    );
+    const pricing = await calculateDeliveryPricing({
+      country: deliveryData.country,
+      county: deliveryData.county,
+      zoneId: deliveryData.zoneId,
+      deliveryType: deliveryData.deliveryType,
+    });
+    const promoCode = deliveryData.promoCode?.trim().toUpperCase();
+    let discountCents = 0;
+    let deliveryCents = pricing.feeKes;
+    if (promoCode) {
+      try {
+        const r = await resolvePromo(promoCode, subtotalCents);
+        discountCents = r.discountKes;
+        if (r.deliveryFree) deliveryCents = 0;
+      } catch {
+        /* invalid/expired — discount stays 0 */
+      }
+    }
+    const totalCents = Math.max(0, subtotalCents + deliveryCents - discountCents);
+
+    // 5. Resolve branch — international orders route to the main branch
+    let branch: Awaited<ReturnType<typeof db.branch.findUnique>> | null = null;
+    const isInternational = deliveryData.country.toUpperCase() !== "KE";
+
+    if (deliveryData.branchId) {
+      branch = await db.branch.findUnique({
+        where: { id: deliveryData.branchId, isActive: true },
+      });
+    }
+
+    if (!branch && isInternational) {
+      branch = await db.branch.findFirst({ where: { isMain: true, isActive: true } });
+    }
+
+    if (!branch) {
+      const resolved = await resolveBranchForCounty(deliveryData.county || "Nairobi", {
+        zoneId: deliveryData.zoneId,
+      });
+      if (resolved) {
+        branch = await db.branch.findUnique({ where: { id: resolved.id } });
+      }
+    }
+
+    if (!branch) {
+      return err("NO_BRANCH", "No active branch available", 503);
+    }
+
+    if (!branch.paystackSubaccount) {
+      return Err.internal("Branch not configured for card payments");
+    }
+
+    // 6. Create order
+    const order = await db.order.create({
+      data: {
+        userId,
+        subtotalKes: subtotalCents,
+        deliveryKes: deliveryCents,
+        discountKes: discountCents,
+        totalKes: totalCents,
+        promoCode: promoCode ?? null,
+        paymentStatus: "PENDING",
+        status: "PENDING",
+        deliveryType: deliveryData.deliveryType,
+        deliveryPhone: deliveryData.phone,
+        deliveryAddress: deliveryData.address ?? null,
+        deliveryCity: deliveryData.city ?? deliveryData.state ?? null,
+        deliveryCounty: deliveryData.county || deliveryData.country,
+        deliveryZone: deliveryData.deliveryZone ?? pricing.label,
+        isInternational,
+        branchId: branch.id,
+        items: {
+          create: activeItems.map((item) => ({
+            productId: item.product.id,
+            name: item.product.name,
+            priceKes: item.product.priceKes,
+            quantity: item.quantity,
+          })),
+        },
+      },
+    });
+
+    // 7. Generate reference and create transaction record (PENDING)
+    const reference = `fechi_${order.id}_${Date.now()}`;
+
+    await db.transaction.create({
+      data: {
+        orderId: order.id,
+        provider: "PAYSTACK",
+        branchId: branch.id,
+        amount: totalCents,
+        status: "PENDING",
+        paystackReference: reference,
+      },
+    });
+
+    // 8. Initialize Paystack transaction
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.MPESA_CALLBACK_BASE_URL ?? "";
+    const paystackRes = await initializeTransaction({
+      email: userEmail,
+      amount: totalCents,
+      reference,
+      subaccount: branch.paystackSubaccount,
+      callback_url: `${baseUrl}/api/payments/paystack/verify?reference=${reference}`,
+      metadata: { orderId: order.id, userId },
+    });
+
+    console.info(
+      `[paystack/initialize] transaction initialized — order=${order.id} reference=${reference}`,
+    );
+
+    return ok({
+      authorization_url: paystackRes.data.authorization_url,
+      reference,
+      orderId: order.id,
+    });
+  } catch (e) {
+    console.error("[paystack/initialize] POST error", e);
+    return Err.internal();
+  }
+}

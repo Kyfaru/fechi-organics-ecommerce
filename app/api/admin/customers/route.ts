@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get("status") ?? "all";
     const sort = searchParams.get("sort") ?? "newest";
 
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { role: "client" };
 
     if (search) {
       where.OR = [

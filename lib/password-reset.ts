@@ -21,12 +21,16 @@ const EXPIRES_IN = new TimeSpan(1, "h");
  * Creates a signed JWT password-reset token for the given user ID.
  *
  * @param userId - The Prisma user.id to embed as the JWT subject.
- * @returns A compact JWT string valid for 1 hour.
+ * @param expiresIn - Optional token lifetime (defaults to 1 hour).
+ * @returns A compact JWT string.
  */
-export async function createResetToken(userId: string): Promise<string> {
+export async function createResetToken(
+  userId: string,
+  expiresIn: TimeSpan = EXPIRES_IN,
+): Promise<string> {
   return await createJWT("HS256", SECRET, { purpose: "password-reset" }, {
     subject: userId,
-    expiresIn: EXPIRES_IN,
+    expiresIn,
     includeIssuedTimestamp: true,
   });
 }

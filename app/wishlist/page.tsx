@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 };
 
 /**
- * /wishlist — Wishlist page.
+ * /account/wishlist — Wishlist page.
  * Navbar and Footer are provided by AccountLayout inside WishlistClient.
  */
 export default function WishlistPage() {

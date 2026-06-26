@@ -1,72 +1,38 @@
-/**
- * GET /api/payments/status/[orderId]
- *
- * Returns the current payment and order status for the given order.
- * The payment page polls this endpoint after initiating STK push.
- *
- * Requires an active session. The order must belong to the calling user.
- */
+// Called by the payment page when the SSE stream times out with no callback.
+// Deletes the still-PENDING order so it doesn't linger in the DB.
+// GET (polling) has been removed — use GET /api/payments/stream for SSE-based status.
 
 import { NextRequest } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-
-export async function GET(
+import { markPaymentFailed } from "@/lib/payments/post-payment";
+export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ orderId: string }> },
 ) {
-  // 1. Authenticate
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
 
   const { orderId } = await params;
 
-  if (!orderId) {
-    return Err.validation("orderId is required");
-  }
-
   try {
-    // 2. Load the order — only fields the client needs
     const order = await db.order.findUnique({
       where: { id: orderId },
-      select: {
-        id: true,
-        userId: true,
-        paymentStatus: true,
-        status: true,
-      },
+      select: { id: true, userId: true, paymentStatus: true },
     });
 
-    if (!order) return Err.notFound("Order");
+    if (!order || order.userId !== session.user.id) return ok({ deleted: false });
+    if (order.paymentStatus !== "PENDING") return ok({ deleted: false });
 
-    // 3. Ownership check — users can only see their own orders
-    if (order.userId !== session.user.id) return Err.forbidden();
+    const tx = await db.transaction.findFirst({ where: { orderId }, select: { id: true } });
+    if (tx) await markPaymentFailed({ transactionId: tx.id, orderId });
+    else await db.order.delete({ where: { id: orderId } });
 
-    // 4. Load the most recent transaction for this order
-    const transaction = await db.transaction.findFirst({
-      where: { orderId },
-      orderBy: { createdAt: "desc" },
-      select: {
-        status: true,
-        provider: true,
-        mpesaReceiptNumber: true,
-        failureReason: true,
-      },
-    });
-
-    return ok({
-      orderId: order.id,
-      paymentStatus: order.paymentStatus,
-      orderStatus: order.status,
-      transactionStatus: transaction?.status ?? null,
-      provider: transaction?.provider ?? null,
-      mpesaReceiptNumber: transaction?.mpesaReceiptNumber ?? null,
-      failureReason: transaction?.failureReason ?? null,
-    });
+    return ok({ deleted: true });
   } catch (e) {
-    console.error("[payments/status] GET error", e);
+    console.error("[payments/status] DELETE error", e);
     return Err.internal();
   }
 }

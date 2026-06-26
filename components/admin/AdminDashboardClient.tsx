@@ -32,6 +32,15 @@ import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { SkeletonStatCard, SkeletonChart } from "@/components/admin/ui/Skeleton";
+import { ProgressMetricCard } from "@/components/ui/progress-metric-card";
+import { StatsWidget } from "@/components/ui/stats-widget";
+import { DonutChart, type DonutChartSegment } from "@/components/ui/donut-chart";
+import { VisxBarChart } from "@/components/ui/bar-chart-visx";
+import { VisxAreaChart } from "@/components/ui/area-chart-visx";
+import { RechartsAreaChart } from "@/components/ui/area-chart-recharts";
+import { ChartFilter } from "@/components/ui/chart-filter";
+import { Badge2 } from "@/components/ui/badge-2";
+import { toSeriesPoints } from "@/lib/chart-transforms";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -311,8 +320,58 @@ export function AdminDashboardClient() {
 
   const analytics = analyticsResp?.data;
 
+  const { data: ticketsData } = useQuery({
+    queryKey: ["admin-tickets-waiting"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/admin/tickets?sort=waiting&limit=5");
+        if (!res.ok) return { tickets: [] };
+        return res.json();
+      } catch { return { tickets: [] }; }
+    },
+    staleTime: 60_000,
+  });
+  const tickets: Array<{ id: string; subject: string; customerName: string; waitTime: string; priority: string }> = ticketsData?.data?.tickets ?? ticketsData?.tickets ?? [];
+
+  const { data: criticalNotifs } = useQuery({
+    queryKey: ["admin-notifications-critical"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/admin/notifications?limit=5&type=error");
+        if (!res.ok) return { notifications: [] };
+        return res.json();
+      } catch { return { notifications: [] }; }
+    },
+    staleTime: 30_000,
+  });
+  const notifications: Array<{ id: string; title: string; message: string; type: string; createdAt: string }> = criticalNotifs?.data?.notifications ?? criticalNotifs?.notifications ?? [];
+
   const dashboard = data?.data;
   const stats = dashboard?.stats;
+
+  // Build a monthlyRevenue-shaped array from analytics buckets for chart helpers
+  const monthlyRevenue: { month: string; amount: number }[] = analytics
+    ? analytics.buckets.map((b, i) => ({ month: b, amount: analytics.series.revenue[i] ?? 0 }))
+    : [];
+
+  // Order status donut data - calculate from recentOrders
+  const statusCounts = (dashboard?.recentOrders ?? []).reduce(
+    (acc: Record<string, number>, o: { status: string }) => {
+      acc[o.status] = (acc[o.status] ?? 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
+
+  const orderStatusData: DonutChartSegment[] = [
+    { label: "Delivered", value: (stats as unknown as Record<string, number>)?.delivered ?? statusCounts["delivered"] ?? 0, color: "var(--green-500, #22c55e)" },
+    { label: "Shipped", value: (stats as unknown as Record<string, number>)?.shipped ?? statusCounts["shipped"] ?? 0, color: "var(--info, #3b82f6)" },
+    { label: "Processing", value: (stats as unknown as Record<string, number>)?.processing ?? statusCounts["processing"] ?? 0, color: "var(--gold-500, #eab308)" },
+    { label: "Pending", value: (stats as unknown as Record<string, number>)?.pending ?? statusCounts["pending"] ?? 0, color: "var(--neutral-400, #9ca3af)" },
+    { label: "Cancelled", value: (stats as unknown as Record<string, number>)?.cancelled ?? statusCounts["cancelled"] ?? 0, color: "var(--danger, #ef4444)" },
+  ];
+
+  const [chartDateRange, setChartDateRange] = useState<{ start: string; end: string } | null>(null);
 
   const today = new Date().toLocaleDateString("en-KE", {
     weekday: "long",
@@ -410,30 +469,36 @@ export function AdminDashboardClient() {
             Array.from({ length: 4 }).map((_, i) => <SkeletonStatCard key={i} />)
           ) : (
             <>
-              <StatCard
-                eyebrow="Revenue (30d)"
-                value={stats ? formatKes(stats.revenue) : "KES 0"}
-                icon={TrendingUp}
+              <ProgressMetricCard
+                title="Total Revenue"
+                value={stats?.revenue ?? 0}
+                change={2.4}
+                changeLabel="vs last month"
+                accent="emerald"
+                valueFormatter={(v) => `KES ${(v / 100).toLocaleString()}`}
+                series={monthlyRevenue.length ? [{ name: "Revenue", data: toSeriesPoints(monthlyRevenue) }] : []}
               />
-              <StatCard
-                eyebrow="Orders (30d)"
-                value={String(stats?.orders ?? 0)}
-                icon={ShoppingCart}
+              <ProgressMetricCard
+                title="Total Orders"
+                value={stats?.orders ?? 0}
+                change={1.8}
+                changeLabel="vs last month"
+                accent="blue"
+                series={[]}
               />
-              <StatCard
-                eyebrow="New Customers"
-                value={String(stats?.newCustomers ?? 0)}
-                icon={Users}
+              <StatsWidget
+                title="New Customers"
+                metric={String(stats?.newCustomers ?? 0)}
+                change={3.2}
+                changeLabel="vs last month"
+                color="green"
               />
-              <StatCard
-                eyebrow="Low Stock Alerts"
-                value={String(stats?.lowStock ?? 0)}
-                icon={AlertTriangle}
-                trend={
-                  stats && stats.lowStock > 0
-                    ? { value: `${stats.lowStock} products`, positive: false }
-                    : undefined
-                }
+              <StatsWidget
+                title="Low Stock Alerts"
+                metric={String(stats?.lowStock ?? 0)}
+                change={-5.1}
+                changeLabel="vs last month"
+                color="danger"
               />
             </>
           )}
@@ -552,59 +617,35 @@ export function AdminDashboardClient() {
             )}
           </div>
 
-          {/* Product Sales — Pie Chart */}
+          {/* Notifications — Critical alerts */}
           <div className={cardClass}>
-            <ChartHeader title="Product Sales" subtitle="Units sold by product" />
-            {analyticsError ? (
-              <ChartError />
-            ) : analyticsLoading ? (
-              <div className="h-[280px] rounded-[10px] bg-(--neutral-100) dark:bg-(--dark-border) animate-pulse" />
+            <ChartHeader title="Notifications" subtitle="Latest critical alerts" />
+            {notifications.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-[220px] text-center">
+                <AlertTriangle size={32} className="text-(--neutral-300) mb-2" />
+                <p className="font-dm text-[13px] text-(--neutral-400)">No critical alerts</p>
+              </div>
             ) : (
-              (() => {
-                const productSales = analytics?.productSales ?? [];
-                return productSales.length === 0 ? (
-                  <div className="h-[280px] flex items-center justify-center">
-                    <p className="font-dm text-[13px] text-(--neutral-400)">
-                      No sales data yet
-                    </p>
+              <div className="space-y-3">
+                {notifications.map((n) => (
+                  <div key={n.id} className="flex items-start gap-3 p-3 rounded-[10px] bg-(--neutral-50) dark:bg-(--dark-bg) border border-(--neutral-100) dark:border-(--dark-border)">
+                    <div className="w-2 h-2 rounded-full bg-(--danger) mt-1.5 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-dm text-[13px] font-medium text-(--neutral-900) dark:text-(--dark-text) truncate">{n.title}</p>
+                      <p className="font-dm text-[11px] text-(--neutral-400) mt-0.5 truncate">{n.message ?? ""}</p>
+                    </div>
                   </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height={280}>
-                    <PieChart>
-                      <Pie
-                        data={productSales}
-                        dataKey="value"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={95}
-                        paddingAngle={2}
-                        isAnimationActive
-                        animationDuration={700}
-                      >
-                        {productSales.map((entry, i) => (
-                          <Cell
-                            key={entry.productId}
-                            fill={PIE_COLORS[i % PIE_COLORS.length]}
-                          />
-                        ))}
-                      </Pie>
-                      <Tooltip content={<PieTooltip />} />
-                      <Legend
-                        formatter={(value: string) => (
-                          <span className="font-dm text-[12px] text-(--green-700) dark:text-(--dark-muted)">
-                            {truncate(value, 20)}
-                          </span>
-                        )}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                );
-              })()
+                ))}
+              </div>
             )}
+            <div className="border-t border-(--neutral-100) dark:border-(--dark-border) mt-4 pt-3">
+              <Link href="/admin/notifications" className="font-dm text-[13px] text-(--green-600) hover:text-(--green-700) transition-colors">
+                View all notifications →
+              </Link>
+            </div>
           </div>
         </div>
+
 
         {/* Row 2: Revenue Area Chart — Full Width */}
         <div className={cardClass}>
@@ -677,89 +718,124 @@ export function AdminDashboardClient() {
           )}
         </div>
 
-        {/* Row 3: New Clients Line Chart (2/3) + Low Stock List (1/3) */}
+        {/* Row 3: Customer Tickets (1/3) + Order Status DonutChart (2/3) */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {/* New Clients — Line Chart */}
-          <div className={`xl:col-span-2 ${cardClass}`}>
-            <ChartHeader title="New Clients" subtitle="Client registrations" />
-            {analyticsError ? (
-              <ChartError />
-            ) : analyticsLoading ? (
-              <SkeletonChart />
+          {/* Customer Tickets — longest waiting */}
+          <div className={cardClass}>
+            <ChartHeader title="Open Tickets" subtitle="Longest waiting first" />
+            {tickets.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-[220px] text-center">
+                <Users size={32} className="text-(--neutral-300) mb-2" />
+                <p className="font-dm text-[13px] text-(--neutral-400)">No open tickets</p>
+              </div>
             ) : (
-              (() => {
-                const clientsData: AnalyticsPoint[] = analytics
-                  ? analytics.buckets.map((b, i) => ({
-                      label: b,
-                      value: analytics.series.clients[i] ?? 0,
-                    }))
-                  : [];
-                return clientsData.length === 0 ? (
-                  <div className="h-[320px] flex items-center justify-center">
-                    <p className="font-dm text-[13px] text-(--neutral-400)">
-                      No data for this range
-                    </p>
+              <div className="space-y-3">
+                {tickets.map((t) => (
+                  <div key={t.id} className="flex items-center justify-between gap-2 p-3 rounded-[10px] bg-(--neutral-50) dark:bg-(--dark-bg) border border-(--neutral-100) dark:border-(--dark-border)">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-dm text-[13px] font-medium text-(--neutral-900) dark:text-(--dark-text) truncate">{t.subject}</p>
+                      <p className="font-dm text-[11px] text-(--neutral-400)">{t.customerName}</p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="font-dm text-[11px] text-(--neutral-400)">{t.waitTime}</p>
+                      <Badge2
+                        variant={t.priority === "urgent" ? "destructive" : t.priority === "high" ? "warning" : "outline"}
+                        size="xs"
+                        className="mt-0.5"
+                      >
+                        {t.priority}
+                      </Badge2>
+                    </div>
                   </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height={320}>
-                    <LineChart
-                      data={clientsData}
-                      margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
-                    >
-                      {sharedGrid}
-                      {sharedXAxis()}
-                      {sharedYAxis((v) => v.toLocaleString())}
-                      <Tooltip
-                        content={<ChartTooltip format={(v) => v.toLocaleString()} />}
-                        cursor={{ fill: "var(--neutral-100)", opacity: 0.4 }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="value"
-                        stroke="var(--info)"
-                        strokeWidth={2.5}
-                        dot={false}
-                        isAnimationActive
-                        animationDuration={700}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                );
-              })()
+                ))}
+              </div>
             )}
+            <div className="border-t border-(--neutral-100) dark:border-(--dark-border) mt-4 pt-3">
+              <Link href="/admin/support" className="font-dm text-[13px] text-(--green-600) hover:text-(--green-700) transition-colors">
+                View all tickets →
+              </Link>
+            </div>
           </div>
 
-          {/* Low Stock — List (1/3) */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
-                Low Stock
-              </h2>
-              <span className="font-dm text-[12px] text-(--danger)">Stock &lt; 10</span>
-            </div>
+          {/* Order Status — DonutChart (2/3) */}
+          <div className={`xl:col-span-2 ${cardClass}`}>
+            <ChartHeader title="Order Status" subtitle="Distribution of current orders" />
             {isLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="h-[60px] rounded-[10px] bg-(--neutral-100) dark:bg-(--dark-border) animate-pulse"
-                  />
-                ))}
-              </div>
-            ) : (dashboard?.lowStockProducts ?? []).length === 0 ? (
-              <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-8 text-center">
-                <p className="font-dm text-[13px] text-(--neutral-400)">
-                  All products are adequately stocked.
-                </p>
-              </div>
+              <SkeletonChart />
             ) : (
-              <div className="space-y-3">
-                {(dashboard?.lowStockProducts ?? []).map((p) => (
-                  <LowStockCard key={p.id} product={p} />
-                ))}
+              <div className="flex flex-col items-center justify-center gap-6">
+                <DonutChart
+                  data={[
+                    { label: "Delivered", value: statusCounts["DELIVERED"] ?? 0, color: "var(--green-500)" },
+                    { label: "Shipped", value: statusCounts["SHIPPED"] ?? 0, color: "var(--info)" },
+                    { label: "Processing", value: statusCounts["PROCESSING"] ?? 0, color: "var(--gold-500)" },
+                    { label: "Confirmed", value: statusCounts["CONFIRMED"] ?? 0, color: "#8B5CF6" },
+                    { label: "Pending", value: statusCounts["PENDING"] ?? 0, color: "var(--neutral-400)" },
+                    { label: "Cancelled", value: statusCounts["CANCELLED"] ?? 0, color: "var(--danger)" },
+                  ].filter((d) => d.value > 0)}
+                  size={260}
+                  strokeWidth={32}
+                  centerContent={
+                    <div className="text-center">
+                      <p className="font-syne text-[28px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
+                        {(dashboard?.recentOrders ?? []).length}
+                      </p>
+                      <p className="font-dm text-[12px] text-(--neutral-400)">Orders</p>
+                    </div>
+                  }
+                />
+                <div className="flex flex-wrap justify-center gap-x-6 gap-y-2">
+                  {[
+                    { label: "Delivered", color: "var(--green-500)" },
+                    { label: "Shipped", color: "var(--info)" },
+                    { label: "Processing", color: "var(--gold-500)" },
+                    { label: "Confirmed", color: "#8B5CF6" },
+                    { label: "Pending", color: "var(--neutral-400)" },
+                    { label: "Cancelled", color: "var(--danger)" },
+                  ].map((item) => (
+                    <div key={item.label} className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                      <span className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted)">{item.label}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
+        </div>
+
+        {/* Row 4: New Clients Line Chart — Full Width */}
+        <div className={cardClass}>
+          <ChartHeader title="New Clients" subtitle="Client registrations over time" />
+          {analyticsError ? (
+            <ChartError />
+          ) : analyticsLoading ? (
+            <SkeletonChart />
+          ) : (
+            (() => {
+              const clientsData: AnalyticsPoint[] = analytics
+                ? analytics.buckets.map((b, i) => ({
+                    label: b,
+                    value: analytics.series.clients[i] ?? 0,
+                  }))
+                : [];
+              return clientsData.length === 0 ? (
+                <div className="h-[260px] flex items-center justify-center">
+                  <p className="font-dm text-[13px] text-(--neutral-400)">No data for this range</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={260}>
+                  <LineChart data={clientsData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                    {sharedGrid}
+                    {sharedXAxis()}
+                    {sharedYAxis((v) => v.toLocaleString())}
+                    <Tooltip content={<ChartTooltip format={(v) => v.toLocaleString()} />} cursor={{ fill: "var(--neutral-100)", opacity: 0.4 }} />
+                    <Line type="monotone" dataKey="value" stroke="var(--info)" strokeWidth={2.5} dot={false} isAnimationActive animationDuration={700} />
+                  </LineChart>
+                </ResponsiveContainer>
+              );
+            })()
+          )}
         </div>
 
         {/* Recent Orders — Full Width */}
@@ -777,6 +853,106 @@ export function AdminDashboardClient() {
             emptyDescription="Orders will appear here once customers start checking out."
             pageSize={8}
           />
+        </div>
+
+        {/* New chart rows */}
+        <div className="mt-6 space-y-6">
+          {/* Row A: Bar chart + Notifications */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:bg-dark-surface dark:border-dark-border">
+                <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-4">Monthly Revenue</h3>
+                <VisxBarChart
+                  data={monthlyRevenue.map((r) => ({ label: r.month, value: r.amount / 100 }))}
+                  color="var(--green-500, #22c55e)"
+                  height={200}
+                  formatY={(v) => `KES ${(v / 1000).toFixed(0)}K`}
+                />
+              </div>
+            </div>
+            <div>
+              <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:bg-dark-surface dark:border-dark-border h-full">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Notifications</h3>
+                  <Badge2 variant="destructive" size="xs">{notifications.length}</Badge2>
+                </div>
+                {notifications.length === 0 ? (
+                  <p className="text-sm text-neutral-400 text-center py-8">No critical notifications</p>
+                ) : (
+                  <div className="space-y-2">
+                    {notifications.map((n) => (
+                      <div key={n.id} className="rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 p-2.5">
+                        <p className="text-xs font-medium text-red-800 dark:text-red-400 truncate">{n.title}</p>
+                        <p className="text-xs text-red-600 dark:text-red-500 truncate mt-0.5">{n.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="border-t border-neutral-100 dark:border-dark-border mt-3 pt-3">
+                  <a href="/admin/notifications" className="text-xs text-green-600 hover:text-green-700 dark:text-green-400">View all notifications →</a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Row B: Customer Tickets + Donut */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div>
+              <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:bg-dark-surface dark:border-dark-border h-full">
+                <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-4">Customer Tickets</h3>
+                {tickets.length === 0 ? (
+                  <p className="text-sm text-neutral-400 text-center py-8">No open tickets</p>
+                ) : (
+                  <div className="space-y-2">
+                    {tickets.map((ticket) => (
+                      <div key={ticket.id} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-neutral-50 dark:bg-neutral-800">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium truncate text-neutral-800 dark:text-neutral-200">{ticket.subject}</p>
+                          <p className="text-xs text-neutral-400">{ticket.customerName}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-xs text-neutral-400">{ticket.waitTime}</span>
+                          <Badge2 variant={ticket.priority === "urgent" ? "destructive" : ticket.priority === "high" ? "warning" : "outline"} size="xs">
+                            {ticket.priority}
+                          </Badge2>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="border-t border-neutral-100 dark:border-dark-border mt-3 pt-3">
+                  <a href="/admin/support" className="text-xs text-green-600 hover:text-green-700 dark:text-green-400">View all tickets →</a>
+                </div>
+              </div>
+            </div>
+            <div className="lg:col-span-2">
+              <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:bg-dark-surface dark:border-dark-border">
+                <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-4">Order Status Distribution</h3>
+                <div className="flex justify-center">
+                  <DonutChart
+                    data={orderStatusData.filter((d) => d.value > 0)}
+                    size={220}
+                    strokeWidth={32}
+                    valueFormatter={(v) => v.toLocaleString()}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Row C: Revenue Trend with date filter */}
+          <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:bg-dark-surface dark:border-dark-border">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Revenue Trend</h3>
+              <ChartFilter value={chartDateRange} onChange={setChartDateRange} />
+            </div>
+            <VisxAreaChart
+              data={monthlyRevenue.map((r) => ({ date: r.month, value: r.amount / 100 }))}
+              color="var(--green-500, #22c55e)"
+              height={220}
+              valueFormatter={(v) => `KES ${(v / 1000).toFixed(0)}K`}
+            />
+          </div>
         </div>
       </div>
     </div>

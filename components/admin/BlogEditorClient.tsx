@@ -1,10 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, ChevronDown } from "lucide-react";
+import { ArrowLeft, ChevronDown, Upload } from "lucide-react";
+import RichTextEditor from "@/components/admin/ui/RichTextEditor";
+
+const R2_BASE = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "").replace(/\/$/, "");
+
+function blogImageUrl(key: string): string {
+  if (!key) return "";
+  if (key.startsWith("http")) return key;
+  return R2_BASE ? `${R2_BASE}/${key}` : `/${key}`;
+}
 
 interface BlogPost {
   id: string;
@@ -38,6 +47,29 @@ export function BlogEditorClient() {
 
   const [postRef, setPostRef] = useState<string | null>(postId ?? null);
   const [slugTouched, setSlugTouched] = useState(false);
+  const imageRef = useRef<HTMLInputElement>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  async function handleFeaturedImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("category", "blog");
+      const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Upload failed");
+      setForm((f) => ({ ...f, featuredImage: json.objectKey }));
+      toast.success("Cover image uploaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploadingImage(false);
+      if (imageRef.current) imageRef.current.value = "";
+    }
+  }
   const [form, setForm] = useState({
     title: "",
     slug: "",
@@ -189,12 +221,34 @@ export function BlogEditorClient() {
             />
           </FormField>
 
-          <FormField label="Cover Image URL">
+          <FormField label="Cover Image">
+            <input
+              ref={imageRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={handleFeaturedImageUpload}
+            />
+            <button
+              type="button"
+              onClick={() => imageRef.current?.click()}
+              disabled={uploadingImage}
+              className="flex items-center justify-center gap-2 w-full h-10 px-3 rounded-[8px] border-2 border-dashed border-(--neutral-200) hover:border-(--green-800) font-dm text-[13px] text-(--neutral-600) transition-colors disabled:opacity-50"
+            >
+              <Upload size={14} />
+              {uploadingImage ? "Uploading…" : form.featuredImage ? "Replace image" : "Upload image"}
+            </button>
+            {form.featuredImage && (
+              <div className="mt-2 rounded-[8px] border border-(--neutral-200) overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={blogImageUrl(form.featuredImage)} alt="Cover preview" className="w-full h-28 object-cover" />
+              </div>
+            )}
             <input
               value={form.featuredImage}
               onChange={(e) => setForm((f) => ({ ...f, featuredImage: e.target.value }))}
-              placeholder="https://..."
-              className={inputCls}
+              placeholder="or paste a key / URL"
+              className={`${inputCls} mt-2`}
             />
           </FormField>
 
@@ -235,11 +289,10 @@ export function BlogEditorClient() {
 
         <div>
           <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-1.5">Content</label>
-          <textarea
+          <RichTextEditor
             value={form.content}
-            onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
+            onChange={(content) => setForm((f) => ({ ...f, content }))}
             placeholder="Write your post content here..."
-            className="w-full min-h-[560px] p-4 rounded-[12px] border border-(--neutral-200) bg-white font-dm text-[15px] leading-relaxed text-(--neutral-900) placeholder:text-(--neutral-400) focus:outline-none focus:ring-2 focus:ring-(--green-500) focus:border-transparent transition-shadow resize-y"
           />
         </div>
       </div>

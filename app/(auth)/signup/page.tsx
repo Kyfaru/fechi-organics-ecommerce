@@ -508,7 +508,7 @@ export default function SignupPage() {
       </section>
 
       {showSignupLoader && (
-        <SignupLoader onDone={() => router.push("/dashboard")} />
+        <SignupLoader onDone={() => router.push("/")} />
       )}
     </main>
   );

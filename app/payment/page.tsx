@@ -3,11 +3,20 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Icon } from "@iconify/react";
 import { Navbar } from "@/components/layout/Navbar";
 import { toast } from "@/lib/toast";
+import { usePaymentStream } from "@/hooks/use-payment-stream";
+
+const PAYSTACK_ERROR_MESSAGES: Record<string, string> = {
+  payment_failed: "Payment was not completed. Please try again.",
+  missing_reference: "Payment reference missing. Please try again.",
+  not_found: "Payment record not found. Please try again.",
+  forbidden: "Payment access denied. Please try again.",
+  verify_failed: "Could not verify payment. Please try again.",
+};
 
 interface DeliveryData {
   fullName: string;
@@ -26,19 +35,12 @@ interface DeliveryData {
   promoCode?: string | null;
 }
 
-type PaymentMethod = "mpesa" | "card" | "paypal" | "cod";
+type PaymentMethod = "mpesa" | "card";
 type CartItem = { productId: string; name: string; quantity: number; lineTotalKes: number; primaryImageUrl?: string };
 type CartResponse = { ok: boolean; data: { items: CartItem[]; subtotalKes: number; itemCount: number } };
-type DemoResult = { outcome: "success" | "failed"; method: PaymentMethod; phase: "deciding" | "saving" };
 
 function formatKes(cents: number) {
   return `KSh ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;
-}
-
-function promoDiscountFor(subtotalKes: number, promoCode?: string | null) {
-  if (promoCode === "FECHI10") return Math.round(subtotalKes * 0.1);
-  if (promoCode === "NEWUSER") return 50000;
-  return 0;
 }
 
 function capture(event: string, props?: Record<string, unknown>) {
@@ -48,11 +50,20 @@ function capture(event: string, props?: Record<string, unknown>) {
 
 export default function PaymentPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [deliveryData, setDeliveryData] = useState<DeliveryData | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("mpesa");
   const [mpesaPhone, setMpesaPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [demoResult, setDemoResult] = useState<DemoResult | null>(null);
+  const [promoDiscountKes, setPromoDiscountKes] = useState(0);
+  const [freeShipping, setFreeShipping] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const [failureCount, setFailureCount] = useState(0);
+
+  // Paystack redirects back with ?error= on failure — show banner immediately
+  const paystackError = searchParams.get("error");
+  const paystackErrorMessage = paystackError ? (PAYSTACK_ERROR_MESSAGES[paystackError] ?? "Payment failed. Please try again.") : null;
 
   const cartQuery = useQuery<CartResponse>({
     queryKey: ["cart"],
@@ -69,8 +80,13 @@ export default function PaymentPage() {
       }
       const parsed = JSON.parse(raw) as DeliveryData;
       const promoCode = sessionStorage.getItem("fechi_promo");
+      const promoAmountRaw = sessionStorage.getItem("fechi_promo_amount");
+      const promoAmount = promoAmountRaw ? parseInt(promoAmountRaw, 10) : 0;
+      const freeShippingFlag = sessionStorage.getItem("fechi_promo_free_shipping") === "1";
       const data = { ...parsed, promoCode };
       setDeliveryData(data);
+      setPromoDiscountKes(promoAmount);
+      setFreeShipping(freeShippingFlag);
       setMpesaPhone(data.phone ?? "");
       capture("checkout_payment_viewed", { deliveryType: data.deliveryType, country: data.country });
     }, 0);
@@ -78,8 +94,8 @@ export default function PaymentPage() {
 
   const items = cartQuery.data?.data?.items ?? [];
   const subtotalKes = cartQuery.data?.data?.subtotalKes ?? 0;
-  const deliveryKes = deliveryData?.deliveryKes ?? 0;
-  const discountKes = promoDiscountFor(subtotalKes, deliveryData?.promoCode);
+  const deliveryKes = freeShipping ? 0 : (deliveryData?.deliveryKes ?? 0);
+  const discountKes = promoDiscountKes;
   const totalKes = subtotalKes + deliveryKes - discountKes;
 
   const deliveryLocation = useMemo(() => {
@@ -93,48 +109,54 @@ export default function PaymentPage() {
     ].filter(Boolean).join("\n");
   }, [deliveryData]);
 
-  async function completeOrder(outcome: "success" | "failed" = "success") {
-    if (!deliveryData) return;
+  async function handleMpesaPay() {
+    if (!deliveryData || !mpesaPhone.trim()) return;
     setSubmitting(true);
-    setDemoResult((current) => current ? { ...current, phase: "saving" } : current);
-    capture("payment_initiated", { method: selectedMethod, mocked: true, outcome });
+    capture("payment_initiated", { method: "mpesa" });
     try {
-      const res = await fetch("/api/payments/mock/checkout", {
+      const res = await fetch("/api/payments/mpesa/initiate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          deliveryData: { ...deliveryData, phone: selectedMethod === "mpesa" ? mpesaPhone : deliveryData.phone },
-          paymentMethod: selectedMethod,
-          outcome,
+          phone: mpesaPhone,
+          deliveryData,
         }),
       });
-      const json = await res.json();
-      const orderId = json.data?.orderId as string | undefined;
-      if (!res.ok || !orderId) {
-        setDemoResult(null);
-        toast.error(json.error?.message ?? "Could not complete order.");
+      const json = await res.json() as { ok: boolean; data?: { orderId: string }; error?: { message: string } };
+      if (!res.ok || !json.data?.orderId) {
+        toast.error(json.error?.message ?? "Could not initiate payment. Please try again.");
         return;
       }
-      router.push(outcome === "success" ? `/order-success/${orderId}` : `/order-error/${orderId}`);
+      setActiveOrderId(json.data.orderId);
+      setShowModal(true);
     } catch {
-      setDemoResult(null);
-      toast.error("Could not complete order. Please try again.");
+      toast.error("Could not initiate payment. Please try again.");
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function startDemoPayment() {
-    if (selectedMethod === "mpesa" && !mpesaPhone.trim()) return;
-
-    const outcome = selectedMethod === "mpesa" || selectedMethod === "card"
-      ? Math.random() >= 0.5 ? "success" : "failed"
-      : "success";
-
-    setDemoResult({ outcome, method: selectedMethod, phase: "deciding" });
-    window.setTimeout(() => {
-      void completeOrder(outcome);
-    }, 1200);
+  async function handleCardPay() {
+    if (!deliveryData) return;
+    setSubmitting(true);
+    capture("payment_initiated", { method: "card" });
+    try {
+      const res = await fetch("/api/payments/paystack/initialize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deliveryData }),
+      });
+      const json = await res.json() as { ok: boolean; data?: { authorization_url: string; reference: string; orderId: string }; error?: { message: string } };
+      if (!res.ok || !json.data?.authorization_url) {
+        toast.error(json.error?.message ?? "Could not start card payment. Please try again.");
+        return;
+      }
+      window.location.href = json.data.authorization_url;
+    } catch {
+      toast.error("Could not start card payment. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   if (!deliveryData) {
@@ -151,6 +173,13 @@ export default function PaymentPage() {
       <main className="mx-auto max-w-[1180px] px-4 py-16 md:py-24">
         <h1 className="mb-20 text-center font-heading text-[34px] font-bold text-[#1a1c1c] dark:text-white">Complete Your Order</h1>
 
+        {paystackErrorMessage ? (
+          <div className="mb-8 flex items-start gap-3 rounded-[10px] border border-red-200 bg-red-50 px-5 py-4 text-[14px] text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+            <Icon icon="mdi:alert-circle-outline" width={20} className="mt-0.5 shrink-0" />
+            <span>{paystackErrorMessage}</span>
+          </div>
+        ) : null}
+
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_430px]">
           <section className="rounded-[12px] border border-[#e1e8de] bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-900 md:p-8">
             <div className="mb-6 flex items-center gap-3">
@@ -164,8 +193,8 @@ export default function PaymentPage() {
             <div className="space-y-3">
               <PaymentOption active={selectedMethod === "mpesa"} onClick={() => setSelectedMethod("mpesa")} title="M-Pesa STK Push" badge="M-PESA">
                 <p className="mb-4 text-[13px] text-[#40493c]">You will receive a prompt on your phone to complete the payment.</p>
-                <label className="mb-2 block text-[12px] font-semibold tracking-[0.08em] text-[#40493c]">M-Pesa Phone Number</label>
-                <input value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} className="h-12 w-full rounded-[8px] border border-[#c0cab8] bg-[#fbfbfb] px-4 text-[14px] outline-none focus:border-[#27731e]" />
+                <label className="mb-2 block text-[12px] font-semibold tracking-[0.08em] text-[#40493c]">Enter Your M-Pesa Phone Number</label>
+                <input value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} className="h-12 w-full rounded-[8px] border border-[#c0cab8] bg-[#fbfbfb] px-4 text-[14px] text-text-dark dark:text-gray-200 outline-none focus:border-[#27731e]" />
               </PaymentOption>
               <PaymentOption active={selectedMethod === "card"} onClick={() => setSelectedMethod("card")} title="Credit / Debit Card" badge="VISA  MC" />
               
@@ -202,7 +231,7 @@ export default function PaymentPage() {
             <div className="whitespace-pre-line text-[13px] leading-6 text-[#1a1c1c] dark:text-gray-100">
               <p className="mb-2 text-[11px] font-black uppercase tracking-[0.14em] text-[#707a6b]">Delivering To</p>
               <p className="font-bold">{deliveryLocation}</p>
-              <p className="font-bold">{deliveryData.deliveryType === "PICKUP" ? "Free Pickup" : "Standard Delivery (2-3 Days)"}</p>
+              <p className="font-bold">{deliveryData.deliveryType === "PICKUP" ? "Free Pickup" : "Standard Delivery (1-2 Days)"}</p>
             </div>
 
             <div className="my-6 h-px bg-[#e6ebe3]" />
@@ -210,7 +239,7 @@ export default function PaymentPage() {
             <div className="space-y-3 text-[14px] text-[#40493c]">
               <SummaryRow label="Subtotal" value={formatKes(subtotalKes)} />
               <SummaryRow label="Delivery" value={deliveryKes ? formatKes(deliveryKes) : "Free"} />
-              {discountKes > 0 && <SummaryRow label={`Discount (${deliveryData.promoCode})`} value={`- ${formatKes(discountKes)}`} green />}
+              {promoDiscountKes > 0 && <SummaryRow label={`Discount (${deliveryData.promoCode})`} value={`- ${formatKes(promoDiscountKes)}`} green />}
             </div>
 
             <div className="my-6 h-px bg-[#e6ebe3]" />
@@ -221,7 +250,7 @@ export default function PaymentPage() {
             </div>
 
             <button
-              onClick={startDemoPayment}
+              onClick={selectedMethod === "mpesa" ? handleMpesaPay : handleCardPay}
               disabled={submitting || (selectedMethod === "mpesa" && !mpesaPhone.trim())}
               className="mt-8 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-[#fec700] text-[18px] font-black text-[#1a1c1c] transition-colors hover:bg-[#f0b800] disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -234,32 +263,97 @@ export default function PaymentPage() {
         </div>
       </main>
 
-      {demoResult ? <DemoPaymentModal result={demoResult} /> : null}
+      {showModal && activeOrderId ? (
+        <PaymentStatusModal
+          orderId={activeOrderId}
+          onClose={(wasFailure) => {
+            setShowModal(false);
+            setActiveOrderId(null);
+            if (wasFailure) {
+              const next = failureCount + 1;
+              setFailureCount(next);
+              if (next >= 5) {
+                toast.error("Too many failed attempts. Please try again later or contact support.");
+                router.push("/cart");
+              }
+            }
+          }}
+        />
+      ) : null}
     </div>
   );
 }
 
-function DemoPaymentModal({ result }: { result: DemoResult }) {
-  const isSuccess = result.outcome === "success";
-  const methodLabel = result.method === "mpesa" ? "M-Pesa" : result.method === "card" ? "Card" : "";
-  const title = isSuccess ? "Demo payment successful" : "Demo payment failed";
-  const message = result.phase === "deciding"
-    ? `Testing ${methodLabel} payment result...`
-    : isSuccess
-      ? "Creating your confirmed order..."
-      : "Saving the failed payment attempt...";
+function errorMessage(reason: string | null) {
+  const code = reason?.split(":")[0];
+  if (code === "1032") return "Payment cancelled. Tap 'Try Again' to restart.";
+  if (code === "1037") return "Request timed out,phone didn't respond. Try again.";
+  if (code === "2001") return "Wrong M-Pesa PIN entered. Try again.";
+  if (code === "1") return "Insufficient M-Pesa balance. Top up and try again, or switch payment method.";
+  if (code?.startsWith("4")) return "Payment not completed. Try again or contact support.";
+  if (code?.startsWith("5")) return "Payment service error. Please contact support.";
+  return reason?.replace(/^\d+:/, "") || "Payment not completed. Try again or contact support.";
+}
+
+function PaymentStatusModal({ orderId, onClose }: { orderId: string; onClose: (wasFailure?: boolean) => void }) {
+  const router = useRouter();
+  const { status, reason } = usePaymentStream(orderId);
+
+  const phase =
+    status === "success" ? "success" :
+    status === "failed"  ? "failed"  :
+    status === "timeout" ? "timeout" :
+    "waiting";
+
+  useEffect(() => {
+    if (status === "success") {
+      window.setTimeout(() => router.push(`/order-success/${orderId}`), 1500);
+    }
+  }, [status, orderId, router]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
       <div className="w-full max-w-[420px] rounded-[16px] border border-[#e1e8de] bg-white p-8 text-center shadow-2xl dark:border-gray-700 dark:bg-gray-900">
-        <div className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full ${isSuccess ? "bg-[#e7f6e4] text-[#27731e]" : "bg-[#fdeaea] text-[#b42318]"}`}>
-          <Icon icon={isSuccess ? "mdi:check-bold" : "mdi:close-thick"} width={38} />
-        </div>
-        <h2 className="mt-6 font-heading text-[25px] font-black text-[#1a1c1c] dark:text-white">{title}</h2>
-        <p className="mt-3 text-[14px] leading-6 text-[#40493c] dark:text-gray-300">{message}</p>
-        <div className="mx-auto mt-6 h-8 w-8">
-          <Icon icon="mdi:loading" width={32} className="animate-spin text-[#27731e]" />
-        </div>
+        {phase === "waiting" && (
+          <>
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#e7f6e4] text-[#27731e]">
+              <Icon icon="mdi:cellphone-message" width={38} />
+            </div>
+            <h2 className="mt-6 font-heading text-[25px] font-black text-[#1a1c1c] dark:text-white">Waiting for payment...</h2>
+            <p className="mt-3 text-[14px] leading-6 text-[#40493c] dark:text-gray-300">Check your phone and enter your M-Pesa PIN to complete the payment.</p>
+            <div className="mx-auto mt-6 h-8 w-8"><Icon icon="mdi:loading" width={32} className="animate-spin text-[#27731e]" /></div>
+          </>
+        )}
+        {phase === "success" && (
+          <>
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#e7f6e4] text-[#27731e]">
+              <Icon icon="mdi:check-bold" width={38} />
+            </div>
+            <h2 className="mt-6 font-heading text-[25px] font-black text-[#1a1c1c] dark:text-white">Payment successful!</h2>
+            <p className="mt-3 text-[14px] leading-6 text-[#40493c] dark:text-gray-300">Redirecting to your order...</p>
+            <div className="mx-auto mt-6 h-8 w-8"><Icon icon="mdi:loading" width={32} className="animate-spin text-[#27731e]" /></div>
+          </>
+        )}
+        {phase === "failed" && (
+          <>
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#fdeaea] text-[#b42318]">
+              <Icon icon="mdi:close-thick" width={38} />
+            </div>
+            <h2 className="mt-6 font-heading text-[25px] font-black text-[#1a1c1c] dark:text-white">Payment failed</h2>
+            <p className="mt-3 text-[14px] leading-6 text-[#40493c] dark:text-gray-300">{errorMessage(reason ?? null)}</p>
+            <button onClick={() => onClose(true)} className="mt-6 h-12 w-full rounded-full bg-[#fec700] text-[14px] font-black text-[#1a1c1c] transition-colors hover:bg-[#f0b800]">Try Again</button>
+          </>
+        )}
+        {phase === "timeout" && (
+          <>
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#fff8e1] text-[#f59e0b]">
+              <Icon icon="mdi:clock-alert-outline" width={38} />
+            </div>
+            <h2 className="mt-6 font-heading text-[25px] font-black text-[#1a1c1c] dark:text-white">Payment timed out</h2>
+            <p className="mt-3 text-[14px] leading-6 text-[#40493c] dark:text-gray-300">Please check your M-Pesa and try again if you were charged.</p>
+            <button onClick={() => onClose(true)} className="mt-6 h-12 w-full rounded-full bg-[#fec700] text-[14px] font-black text-[#1a1c1c] transition-colors hover:bg-[#f0b800]">Try Again</button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -280,7 +374,7 @@ function PaymentOption({ active, onClick, title, badge, icon, children }: {
       className={`w-full rounded-[10px] border p-4 text-left transition-colors ${active ? "border-[#0b6b13] bg-[#f6fbf5] ring-1 ring-[#0b6b13]" : "border-[#dce4d8] bg-white hover:border-[#a9b8a2]"}`}
     >
       <div className="flex items-center gap-3">
-        <span className={`h-4 w-4 rounded-full border ${active ? "border-[#0b6b13] bg-blue-600 ring-2 ring-[#a4f690]" : "border-[#7b8975]"}`} />
+        <span className={`h-3 w-3 rounded-full border ${active ? "border-[#0b6b13] bg-orange-300 ring-2 ring-[#a4f690]" : "border-[#7b8975]"}`} />
         <span className="flex-1 text-[16px] font-bold text-[#1a1c1c]">{title}</span>
         {badge ? <span className="rounded-[4px] border border-[#dce4d8] px-2 py-1 text-[10px] font-black text-[#0b6b13]">{badge}</span> : null}
         {icon ? <Icon icon={icon} width={22} className="text-[#707a6b]" /> : null}

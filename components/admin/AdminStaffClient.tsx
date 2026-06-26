@@ -41,6 +41,7 @@ interface StaffMember {
     fullName: string;
     department: string | null;
     isActive: boolean;
+    role: string;
   } | null;
 }
 
@@ -93,9 +94,15 @@ function Avatar({ name }: { name: string }) {
 function RowActions({
   staff,
   onDeactivate,
+  onDelete,
+  onResetPassword,
+  onChangeRole,
 }: {
   staff: StaffMember;
   onDeactivate: (s: StaffMember) => void;
+  onDelete: (s: StaffMember) => void;
+  onResetPassword: (s: StaffMember) => void;
+  onChangeRole: (s: StaffMember) => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -111,22 +118,16 @@ function RowActions({
 
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-9 z-20 w-44 bg-white dark:bg-(--dark-surface) rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e2) py-1 overflow-hidden">
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-9 z-50 w-48 bg-white dark:bg-(--dark-surface) rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e2) py-1 overflow-hidden">
             <button
-              onClick={() => { setOpen(false); toast.info("Profile view coming soon"); }}
-              className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
-            >
-              View
-            </button>
-            <button
-              onClick={() => { setOpen(false); toast.info("Role management coming soon"); }}
+              onClick={() => { setOpen(false); onChangeRole(staff); }}
               className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
             >
               Change Role
             </button>
             <button
-              onClick={() => { setOpen(false); toast.info("Password reset coming soon"); }}
+              onClick={() => { setOpen(false); onResetPassword(staff); }}
               className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
             >
               Reset Password
@@ -138,6 +139,14 @@ function RowActions({
             >
               {staff.banned ? "Reactivate" : "Deactivate"}
             </button>
+            {staff.banned && (
+              <button
+                onClick={() => { setOpen(false); onDelete(staff); }}
+                className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
+              >
+                Delete Permanently
+              </button>
+            )}
           </div>
         </>
       )}
@@ -601,6 +610,26 @@ export function AdminStaffClient() {
   const [deactivateTarget, setDeactivateTarget] = useState<StaffMember | null>(null);
   const [deactivating, setDeactivating] = useState(false);
 
+  // Delete modal
+  const [deleteTarget, setDeleteTarget] = useState<StaffMember | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Reset password modal
+  const [resetTarget, setResetTarget] = useState<StaffMember | null>(null);
+  const [resetAdminPw, setResetAdminPw] = useState("");
+  const [resetVerified, setResetVerified] = useState(false);
+  const [resetMode, setResetMode] = useState<"idle" | "link" | "set">("idle");
+  const [newPwForUser, setNewPwForUser] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+
+  // Change role modal
+  const [roleTarget, setRoleTarget] = useState<StaffMember | null>(null);
+  const [roleAdminPw, setRoleAdminPw] = useState("");
+  const [roleVerified, setRoleVerified] = useState(false);
+  const [selectedRole, setSelectedRole] = useState("viewer");
+  const [customPages, setCustomPages] = useState<AdminPage[]>([]);
+  const [roleLoading, setRoleLoading] = useState(false);
+
   // Fetch staff list
   const { data, isLoading } = useQuery({
     queryKey: ["admin-staff"],
@@ -615,6 +644,124 @@ export function AdminStaffClient() {
   const adminCount  = staff.filter((s) => s.role === "admin").length;
   // "managers" = non-admin active staff — placeholder since we only have admin role in DB
   const activeCount = staff.filter((s) => !s.banned).length;
+
+  // Verify admin's own password
+  async function verifyAdminPassword(password: string): Promise<boolean> {
+    const res = await fetch("/api/admin/verify-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    const json = await res.json();
+    return json.ok === true;
+  }
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (target: StaffMember) => {
+      const res = await fetch(`/api/admin/staff/${target.id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error?.message ?? "Delete failed");
+    },
+    onSuccess: (_d, target) => {
+      toast.success(`${target.name} deleted.`);
+      qc.invalidateQueries({ queryKey: ["admin-staff"] });
+      setDeleteTarget(null);
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Delete failed"),
+  });
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try { await deleteMutation.mutateAsync(deleteTarget); } finally { setDeleting(false); }
+  }
+
+  // Reset password handlers
+  async function handleVerifyForReset() {
+    setResetLoading(true);
+    try {
+      const ok = await verifyAdminPassword(resetAdminPw);
+      if (!ok) { toast.error("Incorrect password"); return; }
+      setResetVerified(true);
+    } finally { setResetLoading(false); }
+  }
+
+  async function handleSendResetLink() {
+    if (!resetTarget) return;
+    setResetLoading(true);
+    try {
+      const res = await fetch("/api/admin/staff/send-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: resetTarget.id }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error?.message ?? "Failed");
+      toast.success("Reset link sent (expires in 45 minutes)");
+      closeResetModal();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally { setResetLoading(false); }
+  }
+
+  async function handleSetNewPassword() {
+    if (!resetTarget || newPwForUser.length < 8) { toast.error("Password must be at least 8 characters"); return; }
+    setResetLoading(true);
+    try {
+      const res = await fetch("/api/admin/staff/set-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: resetTarget.id, newPassword: newPwForUser }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error?.message ?? "Failed");
+      toast.success("Password updated");
+      closeResetModal();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally { setResetLoading(false); }
+  }
+
+  function closeResetModal() {
+    setResetTarget(null); setResetAdminPw(""); setResetVerified(false);
+    setResetMode("idle"); setNewPwForUser(""); setResetLoading(false);
+  }
+
+  // Change role handlers
+  async function handleVerifyForRole() {
+    setRoleLoading(true);
+    try {
+      const ok = await verifyAdminPassword(roleAdminPw);
+      if (!ok) { toast.error("Incorrect password"); return; }
+      setRoleVerified(true);
+      setCustomPages(permissionsFromRole(selectedRole).pages);
+    } finally { setRoleLoading(false); }
+  }
+
+  async function handleSaveRole() {
+    if (!roleTarget) return;
+    setRoleLoading(true);
+    try {
+      const res = await fetch(`/api/admin/staff/${roleTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: selectedRole, pages: customPages }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error?.message ?? "Failed");
+      toast.success("Role updated");
+      qc.invalidateQueries({ queryKey: ["admin-staff"] });
+      closeRoleModal();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally { setRoleLoading(false); }
+  }
+
+  function closeRoleModal() {
+    setRoleTarget(null); setRoleAdminPw(""); setRoleVerified(false);
+    setSelectedRole("viewer"); setCustomPages([]); setRoleLoading(false);
+  }
 
   // Deactivate / reactivate mutation
   const deactivateMutation = useMutation({
@@ -699,6 +846,9 @@ export function AdminStaffClient() {
           <RowActions
             staff={s}
             onDeactivate={(target) => setDeactivateTarget(target)}
+            onDelete={(target) => setDeleteTarget(target)}
+            onResetPassword={(target) => { setResetTarget(target); setResetAdminPw(""); setResetVerified(false); setResetMode("idle"); }}
+            onChangeRole={(target) => { setRoleTarget(target); setRoleAdminPw(""); setRoleVerified(false); setSelectedRole(target.adminProfile?.role ?? "viewer"); }}
           />
         );
       },
@@ -764,6 +914,162 @@ export function AdminStaffClient() {
           danger={!deactivateTarget.banned}
           loading={deactivating}
         />
+      )}
+
+      {/* Delete confirm modal */}
+      {deleteTarget && (
+        <ConfirmModal
+          open
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={handleDelete}
+          title="Permanently delete staff member?"
+          description={`This will delete ${deleteTarget.name}'s account, sessions, and profile. This cannot be undone.`}
+          confirmLabel="Delete permanently"
+          danger
+          loading={deleting}
+        />
+      )}
+
+      {/* Reset password modal */}
+      {resetTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
+              Reset password — {resetTarget.name}
+            </h3>
+
+            {!resetVerified ? (
+              <>
+                <p className="font-dm text-[13px] text-(--neutral-500)">Enter your own admin password to continue.</p>
+                <input
+                  type="password"
+                  value={resetAdminPw}
+                  onChange={(e) => setResetAdminPw(e.target.value)}
+                  placeholder="Your password"
+                  className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                />
+                <div className="flex gap-2 justify-end">
+                  <button onClick={closeResetModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
+                  <button onClick={handleVerifyForReset} disabled={resetLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Verify</button>
+                </div>
+              </>
+            ) : resetMode === "idle" ? (
+              <>
+                <p className="font-dm text-[13px] text-(--neutral-500)">Choose how to reset {resetTarget.name}&apos;s password.</p>
+                <div className="flex flex-col gap-2">
+                  <button onClick={() => setResetMode("link")} className="w-full h-11 rounded-xl border border-(--green-500) text-(--green-700) font-dm text-[14px] font-medium hover:bg-(--green-50) transition-colors">
+                    Send reset link (expires 45 min)
+                  </button>
+                  <button onClick={() => setResetMode("set")} className="w-full h-11 rounded-xl bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors">
+                    Set new password directly
+                  </button>
+                </div>
+                <button onClick={closeResetModal} className="w-full text-center font-dm text-[13px] text-(--neutral-500) hover:text-(--neutral-700)">Cancel</button>
+              </>
+            ) : resetMode === "link" ? (
+              <>
+                <p className="font-dm text-[13px] text-(--neutral-500)">A reset link will be emailed and/or SMSed to {resetTarget.name}. Link expires in 45 minutes.</p>
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => setResetMode("idle")} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Back</button>
+                  <button onClick={handleSendResetLink} disabled={resetLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Send Link</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="font-dm text-[13px] text-(--neutral-500)">Set a new password for {resetTarget.name}. They will be able to log in immediately.</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newPwForUser}
+                    onChange={(e) => setNewPwForUser(e.target.value)}
+                    placeholder="New password"
+                    className="flex-1 h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                  />
+                  <button
+                    onClick={() => setNewPwForUser(Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6).toUpperCase())}
+                    className="px-3 rounded-xl border border-(--neutral-200) font-dm text-[12px] text-(--neutral-600) hover:bg-(--neutral-50)"
+                  >
+                    Generate
+                  </button>
+                  <button onClick={() => { navigator.clipboard.writeText(newPwForUser); toast.success("Copied"); }} className="px-3 rounded-xl border border-(--neutral-200) font-dm text-[12px] text-(--neutral-600) hover:bg-(--neutral-50)">
+                    Copy
+                  </button>
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => setResetMode("idle")} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Back</button>
+                  <button onClick={handleSetNewPassword} disabled={resetLoading || newPwForUser.length < 8} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Set Password</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Change role modal */}
+      {roleTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
+              Change role — {roleTarget.name}
+            </h3>
+
+            {!roleVerified ? (
+              <>
+                <p className="font-dm text-[13px] text-(--neutral-500)">Enter your own admin password to continue.</p>
+                <input
+                  type="password"
+                  value={roleAdminPw}
+                  onChange={(e) => setRoleAdminPw(e.target.value)}
+                  placeholder="Your password"
+                  className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                />
+                <div className="flex gap-2 justify-end">
+                  <button onClick={closeRoleModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
+                  <button onClick={handleVerifyForRole} disabled={roleLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Verify</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Role template</label>
+                  <select
+                    value={selectedRole}
+                    onChange={(e) => { setSelectedRole(e.target.value); setCustomPages(permissionsFromRole(e.target.value).pages); }}
+                    className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                  >
+                    {(["super_admin","admin","manager","finance","marketing","inventory","customer_care","viewer"] as const).map((r) => (
+                      <option key={r} value={r}>{r.replace("_", " ")}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <p className="font-dm text-[13px] font-medium text-(--neutral-700) mb-2">Page access</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {ALL_PAGES.map((page) => (
+                      <label key={page} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={customPages.includes(page)}
+                          onChange={(e) => setCustomPages(
+                            e.target.checked ? [...customPages, page] : customPages.filter((p) => p !== page)
+                          )}
+                          className="rounded"
+                        />
+                        <span className="font-dm text-[13px] text-(--neutral-700)">{page}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-2 justify-end">
+                  <button onClick={closeRoleModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
+                  <button onClick={handleSaveRole} disabled={roleLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Save Role</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

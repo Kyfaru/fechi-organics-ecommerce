@@ -20,8 +20,5 @@
     "hooks": "@/hooks"
   },
   "menuColor": "default",
-  "menuAccent": "subtle",
-  "registries": {
-    "@efferd": "https://efferd.com/r/{style}/{name}.json"
-  }
+  "menuAccent": "subtle"
 }

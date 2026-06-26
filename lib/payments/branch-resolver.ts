@@ -14,8 +14,24 @@ import { isPrismaTableMissingError } from "@/lib/prisma-errors";
  */
 export async function resolveBranchForCounty(
   county: string,
-  opts: { zoneId?: string | null; lat?: number | null; lng?: number | null } = {},
+  opts: { zoneId?: string | null; lat?: number | null; lng?: number | null; isInternational?: boolean } = {},
 ) {
+  if (opts.isInternational) {
+    const main = await db.branch.findFirst({
+      where: { isMain: true, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        county: true,
+        mpesaType: true,
+        shortcode: true,
+        lat: true,
+        lng: true,
+      },
+    });
+    if (main) return main;
+  }
+
   if (opts.zoneId) {
     const zone = await db.deliveryZone
       .findFirst({

@@ -1,8 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-    cacheComponents: true,
-  
+  skipTrailingSlashRedirect: true,
+  cacheComponents: true,
+
+  transpilePackages: ['d3-array', 'react-simple-maps'],
+
   serverExternalPackages: [
     "@prisma/client",
     "prisma",

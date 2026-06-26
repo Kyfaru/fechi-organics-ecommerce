@@ -4,6 +4,40 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { sendSms } from "@/lib/twilio";
+
+const STATUS_MESSAGES: Record<string, string> = {
+  PROCESSING: "is being prepared",
+  CONFIRMED:  "has been confirmed",
+  SHIPPED:    "has been shipped. Estimated arrival: 1–3 business days",
+  CANCELLED:  "has been cancelled. Contact us if you have questions",
+};
+
+function notifyOrderStatusChange(
+  orderId: string,
+  userId: string | null,
+  orderRef: string,
+  status: string,
+  phone?: string | null,
+) {
+  const msg = STATUS_MESSAGES[status];
+  if (!msg || !userId) return;
+  const body = `Hi! Your Fechi Organics order ${orderRef} ${msg}.`;
+  // fire-and-forget — don't block the admin response
+  Promise.resolve().then(async () => {
+    try {
+      await db.inboxMessage.create({
+        data: { userId, type: "SYSTEM", title: `Order ${orderRef} — ${status}`, body, orderId },
+      });
+    } catch (e) {
+      console.error("[notify] inbox failed:", e);
+    }
+    const hasTwilio = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER);
+    if (hasTwilio && phone) {
+      try { await sendSms(phone, body); } catch (e) { console.error("[notify] SMS failed:", e); }
+    }
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Auth helper — matches pattern in /api/admin/orders/route.ts
@@ -148,7 +182,10 @@ async function handleFulfillmentAction(
 
   const { action, orderNumber } = parsed.data;
 
-  const order = await db.order.findUnique({ where: { id: orderId } });
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    include: { user: { select: { phone: true } } },
+  });
   if (!order) return Err.notFound("Order");
 
   const terminalStatuses = ["SHIPPED", "DELIVERED", "CANCELLED"];
@@ -168,6 +205,7 @@ async function handleFulfillmentAction(
         include: ORDER_INCLUDE,
       });
       console.info("[admin/orders/[id]] set_processing —", orderId);
+      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "PROCESSING", order.user?.phone);
       return ok({ order: updated });
     }
 
@@ -200,6 +238,7 @@ async function handleFulfillmentAction(
         include: ORDER_INCLUDE,
       });
       console.info("[admin/orders/[id]] confirm —", orderId);
+      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "CONFIRMED", order.user?.phone);
       return ok({ order: updated });
     }
 
@@ -217,6 +256,7 @@ async function handleFulfillmentAction(
         include: ORDER_INCLUDE,
       });
       console.info("[admin/orders/[id]] ship —", orderId);
+      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "SHIPPED", order.user?.phone);
       return ok({ order: updated });
     }
 
@@ -227,6 +267,7 @@ async function handleFulfillmentAction(
         include: ORDER_INCLUDE,
       });
       console.info("[admin/orders/[id]] cancel —", orderId);
+      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "CANCELLED", order.user?.phone);
       return ok({ order: updated });
     }
 

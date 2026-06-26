@@ -6,8 +6,8 @@ function getKey(): Buffer {
   if (!hexKey || hexKey.length !== 64) {
     if (process.env.NODE_ENV === "development") {
       console.warn(
-        "[crypto] BRANCH_SECRET_ENCRYPTION_KEY is not set or invalid. " +
-          "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+        "[crypto] ENCRYPTION_KEY is not set or invalid." +
+          "Generate one"
       );
     }
     // Fallback key for dev (DO NOT USE IN PRODUCTION)

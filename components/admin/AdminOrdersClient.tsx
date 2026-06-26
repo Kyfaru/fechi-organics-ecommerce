@@ -18,6 +18,7 @@ import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
 import CheckboxGreen from "@/components/ui/CheckboxGreen";
+import { PrelineSelect } from "@/components/admin/ui/PrelineSelect";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -252,7 +253,7 @@ function OrderDetailDrawer({
 
   return (
     <>
-      <Drawer open={open} onClose={onClose} title={`Order ${shortId(order.id)}`} width={640} footer={null}>
+      <Drawer open={open} onClose={onClose} title={`Order ${order.orderNumber ?? shortId(order.id)}`} width={640} footer={null}>
         <div className="flex gap-6">
           {/* ── Left ── */}
           <div className="flex-1 min-w-0 flex flex-col gap-6">
@@ -661,11 +662,8 @@ export function AdminOrdersClient() {
         return (
           <div>
             <span className="font-dm text-[13px] font-semibold text-(--neutral-900) font-mono">
-              {shortId(o.id)}
+              {o.orderNumber ?? shortId(o.id)}
             </span>
-            {o.orderNumber && (
-              <p className="font-mono text-[11px] text-(--neutral-400)">{o.orderNumber}</p>
-            )}
           </div>
         );
       },
@@ -796,33 +794,23 @@ export function AdminOrdersClient() {
           )}
         </div>
 
-        <div className="relative">
-          <select
+        <div className="w-[180px]">
+          <PrelineSelect
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value as "" | OrderStatus)}
-            className="h-9 pl-3 pr-8 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) bg-white focus:outline-none focus:border-(--green-800) appearance-none cursor-pointer"
-          >
-            <option value="">All statuses</option>
-            {ALL_STATUSES.map((s) => (
-              <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-            ))}
-          </select>
-          <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
+            onChange={(v) => setFilterStatus(v as "" | OrderStatus)}
+            placeholder="All statuses"
+            options={ALL_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] }))}
+          />
         </div>
 
         {scope?.isSuperAdmin && (
-          <div className="relative">
-            <select
+          <div className="w-[200px]">
+            <PrelineSelect
               value={branchFilter}
-              onChange={(e) => setBranchFilter(e.target.value)}
-              className="h-9 pl-3 pr-8 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) bg-white focus:outline-none focus:border-(--green-800) appearance-none cursor-pointer"
-            >
-              <option value="">All branches</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>{branch.name} - {branch.county}</option>
-              ))}
-            </select>
-            <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
+              onChange={setBranchFilter}
+              placeholder="All branches"
+              options={branches.map((branch) => ({ value: branch.id, label: `${branch.name} - ${branch.county}` }))}
+            />
           </div>
         )}
 

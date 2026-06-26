@@ -13,17 +13,17 @@ import { Footer } from "@/components/layout/Footer";
 // ---------------------------------------------------------------------------
 const NAV_ITEMS = [
   {
-    href: "/settings",
+    href: "/account",
     icon: "mdi:account-circle-outline",
     label: "Profile & Settings",
   },
   {
-    href: "/orders",
+    href: "/account/orders",
     icon: "mdi:receipt-outline",
     label: "My Orders",
   },
   {
-    href: "/wishlist",
+    href: "/account/wishlist",
     icon: "mdi:heart-outline",
     label: "Wishlist",
   },
@@ -43,7 +43,7 @@ interface AccountLayoutProps {
 }
 
 /**
- * Shared layout for /settings, /orders, /wishlist.
+ * Shared layout for /account, /account/orders, /account/wishlist.
  *
  * Desktop (≥ md): fixed 250px left sidebar + main content offset.
  * Mobile (< md): horizontal sticky tab bar below the Navbar.

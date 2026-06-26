@@ -35,7 +35,7 @@ export default async function PaymentProcessingPage({
 
   return (
     <PaymentProcessingClient
-      method={method === "payhero" ? "payhero" : "mpesa"}
+      method="mpesa"
       order={{
         id: order.id,
         createdAt: order.createdAt.toISOString(),

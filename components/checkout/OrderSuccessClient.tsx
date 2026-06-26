@@ -6,9 +6,11 @@ import confetti from "canvas-confetti";
 import { Icon } from "@iconify/react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
+import { toast } from "@/lib/toast";
 
 type Order = {
   id: string;
+  orderNumber?: string | null;
   createdAt: string;
   totalKes: number;
   email: string;
@@ -46,8 +48,16 @@ export function OrderSuccessClient({ order }: { order: Order }) {
     burst();
     const timers = [window.setTimeout(burst, 3000), window.setTimeout(burst, 6000)];
 
+    // Sequential: queue receipt email first, then send inbox + SMS
     fetch(`/api/orders/${order.id}/receipt`, { method: "POST" })
       .then(() => capture("receipt_queued", { orderId: order.id }))
+      .then(() => fetch(`/api/orders/${order.id}/notify`, { method: "POST" }))
+      .then((r) => r.json() as Promise<{ inboxOk: boolean; smsOk: boolean }>)
+      .then(({ inboxOk, smsOk }) => {
+        if (!inboxOk && !smsOk) {
+          toast.error("Could not send order confirmation. Please check your inbox later.");
+        }
+      })
       .catch(() => undefined);
 
     return () => timers.forEach(window.clearTimeout);
@@ -62,13 +72,13 @@ export function OrderSuccessClient({ order }: { order: Order }) {
         </div>
         <h1 className="mt-8 font-heading text-[46px] font-black leading-tight text-[#1a1c1c] dark:text-white">Order Confirmed!</h1>
         <p className="mt-4 max-w-[520px] text-[20px] leading-8 text-[#40493c] dark:text-gray-300">
-          Thank you, {order.customerName.split(" ")[0] || "there"}! Your order <span className="font-bold text-[#0b6b13]">{shortId(order.id)}</span> has been placed. You will receive an email and text message confirmation shortly.
+          Thank you, {order.customerName.split(" ")[0] || "there"}! Your order <span className="font-bold text-[#0b6b13]">{order.orderNumber ?? shortId(order.id)}</span> has been placed. You will receive an email and text message confirmation shortly.
         </p>
 
         <div className="mt-12 grid w-full max-w-[575px] gap-6 rounded-[14px] border border-[#c8d7c3] bg-white p-6 text-left shadow-sm dark:border-gray-700 dark:bg-gray-900 sm:grid-cols-3">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#707a6b]">Order Number</p>
-            <p className="mt-2 text-[16px] font-black text-[#1a1c1c] dark:text-white">{shortId(order.id)}</p>
+            <p className="mt-2 text-[16px] font-black text-[#1a1c1c] dark:text-white">{order.orderNumber ?? shortId(order.id)}</p>
           </div>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#707a6b]">Est. Delivery</p>
@@ -81,13 +91,13 @@ export function OrderSuccessClient({ order }: { order: Order }) {
         </div>
 
         <div className="mt-12 flex flex-col gap-3 sm:flex-row">
-          <Link href="/orders" className="flex h-14 min-w-[184px] items-center justify-center rounded-full bg-[#fec700] px-8 text-[15px] font-black text-[#1a1c1c]">Track My Order</Link>
+          <Link href={`/account/orders/${order.id}`} className="flex h-14 min-w-[184px] items-center justify-center rounded-full bg-[#fec700] px-8 text-[15px] font-black text-[#1a1c1c]">Track My Order</Link>
           <Link href="/shop" className="flex h-14 min-w-[216px] items-center justify-center rounded-full border border-[#707a6b] px-8 text-[15px] font-black text-[#1a1c1c] dark:text-white">Continue Shopping</Link>
         </div>
 
         <div className="mt-12 inline-flex items-center gap-2 rounded-full bg-[#f1f1f1] px-4 py-2 text-[13px] text-[#40493c]">
           <Icon icon="mdi:message-text-outline" width={16} className="text-[#27731e]" />
-          We&apos;ll message you on WhatsApp soon
+          We&apos;ll message you soon
         </div>
       </main>
       <Footer />

@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { zohoPost } from "@/lib/zoho";
 import { r2PublicUrl } from "@/lib/r2";
+import { resolvePromo as resolvePromoBase } from "@/lib/promo";
+import { createNotification } from "@/lib/notify";
 import type { ZohoSalesOrderPayload } from "@/lib/zoho";
 
 // ---------------------------------------------------------------------------
@@ -35,6 +37,7 @@ export async function GET(req: NextRequest) {
     // Shape each order to include resolved image URLs
     const shaped = orders.map((order) => ({
       id: order.id,
+      orderNumber: order.orderNumber,
       status: order.status,
       paymentStatus: order.paymentStatus,
       subtotalKes: order.subtotalKes,
@@ -69,62 +72,40 @@ export async function GET(req: NextRequest) {
 
 const DELIVERY_KES = 35000; // 350 KES × 100 cents
 
+type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+// Generate a unique "#FO-XXXXXXXX" order number with collision retry inside a tx.
+async function generateOrderNumber(tx: TxClient): Promise<string> {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  for (let i = 0; i < 5; i++) {
+    const suffix = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * 36)]).join("");
+    const num = `#FO-${suffix}`;
+    const exists = await tx.order.findUnique({ where: { orderNumber: num } });
+    if (!exists) return num;
+  }
+  throw new Error("Could not generate unique order number after 5 retries");
+}
+
 // ---------------------------------------------------------------------------
-// Validate a promo code against the promotions table.
-// Returns the promotion row and the discount amount in cents (KES × 100),
-// or throws a Response that can be returned directly.
+// Validate a promo code at checkout: shared validation + per-user redemption
+// check. Throws a Response that can be returned directly.
 // ---------------------------------------------------------------------------
 async function resolvePromo(
   promoCode: string,
   userId: string,
   subtotalKes: number,
 ): Promise<{ promo: { id: string; type: string; value: number }; discountKes: number; deliveryFree: boolean }> {
-  const now = new Date();
-
-  const promo = await db.promotion.findFirst({
-    where: {
-      code: promoCode,
-      status: "active",
-      OR: [{ startDate: null }, { startDate: { lte: now } }],
-      AND: [
-        { OR: [{ endDate: null }, { endDate: { gte: now } }] },
-      ],
-    },
-  });
-
-  if (!promo) {
-    throw Err.validation("Invalid or expired coupon code");
-  }
-
-  if (promo.maxUses !== null && promo.usedCount >= promo.maxUses) {
-    throw Err.validation("Coupon usage limit reached");
-  }
+  const result = await resolvePromoBase(promoCode, subtotalKes);
 
   // Check this user hasn't already redeemed this coupon
   const alreadyUsed = await db.couponRedemption.findUnique({
-    where: { couponId_userId: { couponId: promo.id, userId } },
+    where: { couponId_userId: { couponId: result.promo.id, userId } },
   });
   if (alreadyUsed) {
     throw Err.validation("You have already used this coupon");
   }
 
-  if (promo.minOrder !== null && subtotalKes < promo.minOrder) {
-    throw Err.validation("Order does not meet minimum for this coupon");
-  }
-
-  let discountKes = 0;
-  let deliveryFree = false;
-
-  if (promo.type === "PERCENTAGE") {
-    discountKes = Math.round(subtotalKes * promo.value / 100);
-  } else if (promo.type === "FIXED") {
-    // promo.value is stored in KES; convert to cents, cap at subtotal
-    discountKes = Math.min(Math.round(promo.value * 100), subtotalKes);
-  } else if (promo.type === "FREE_SHIPPING") {
-    deliveryFree = true;
-  }
-
-  return { promo, discountKes, deliveryFree };
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -207,8 +188,6 @@ export async function POST(req: NextRequest) {
     const totalKes = subtotalKes + resolvedDeliveryKes - discountKes;
 
     // 7. Prisma transaction: create order, record redemption, increment promo, clear cart
-    type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
-
     const order = await db.$transaction(async (tx: TxClient) => {
       // Create order
       const newOrder = await tx.order.create({
@@ -220,6 +199,7 @@ export async function POST(req: NextRequest) {
           totalKes,
           promoCode: promoCode ?? null,
           status: "PENDING",
+          orderNumber: await generateOrderNumber(tx),
           items: {
             create: cart.items.map((ci: (typeof cart.items)[number]) => ({
               productId: ci.productId,
@@ -289,13 +269,15 @@ export async function POST(req: NextRequest) {
       }
     })();
 
-    // Assign a human-readable order number after creation.
-    // Count is used as a sequence — not perfectly contiguous but collision-safe.
-    const orderCount = await db.order.count();
-    const orderNumber = `FO-${new Date().getFullYear()}-${String(orderCount).padStart(4, "0")}`;
-    await db.order.update({ where: { id: order.id }, data: { orderNumber } });
+    console.info("[orders] Created order", order.id, "orderNumber", order.orderNumber, "for user", userId);
 
-    console.info("[orders] Created order", order.id, "orderNumber", orderNumber, "for user", userId);
+    createNotification(
+      "order",
+      "New Order",
+      `Order ${order.orderNumber ?? order.id.slice(0, 8)} was placed`,
+      "/admin/orders",
+    ).catch(() => {});
+
     return ok({ orderId: order.id });
   } catch (e) {
     console.error("[orders] POST error", e);

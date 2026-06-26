@@ -47,11 +47,12 @@ export async function PATCH(req: Request) {
     return Err.validation("Invalid JSON body.");
   }
 
-  const { name, phone, fullName, department } = body as {
+  const { name, phone, fullName, department, image } = body as {
     name?: string;
     phone?: string;
     fullName?: string;
     department?: string;
+    image?: string;
   };
 
   try {
@@ -59,6 +60,7 @@ export async function PATCH(req: Request) {
     const userUpdate: Record<string, unknown> = {};
     if (name && typeof name === "string") userUpdate.name = name.trim();
     if (typeof phone === "string") userUpdate.phone = phone.trim() || null;
+    if (typeof image === "string") userUpdate.image = image.trim() || null;
 
     if (Object.keys(userUpdate).length > 0) {
       await db.user.update({ where: { id: user.id }, data: userUpdate });

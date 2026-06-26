@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Icon } from "@iconify/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
@@ -11,6 +11,11 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { toast } from "@/lib/toast";
 import { Spinner } from "@/components/ui/spinner";
 import type { ProductCard as ProductCardType } from "@/lib/queries/products";
+
+type CartData = {
+  ok: boolean;
+  data: { items: Array<{ productId: string; quantity: number }> };
+};
 
 type Props = {
   product: ProductCardType;
@@ -94,6 +99,53 @@ export function ProductCard({ product }: Props) {
     },
   });
 
+  // Cart state — queryFn required even when reading shared cache
+  const { data: cartData } = useQuery<CartData>({
+    queryKey: ["cart"],
+    queryFn: () => fetch("/api/cart").then((r) => r.json()),
+    staleTime: 30_000,
+  });
+  const cartItem = cartData?.data?.items?.find((i) => i.productId === product.id);
+  const inCart = !!cartItem;
+  const cartQty = cartItem?.quantity ?? 0;
+
+  const updateCartQtyMutation = useMutation({
+    mutationFn: async (qty: number) => {
+      if (qty <= 0) {
+        return fetch(`/api/cart/items/${product.id}`, { method: "DELETE" }).then((r) => r.json());
+      }
+      return fetch(`/api/cart/items/${product.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quantity: qty }),
+      }).then((r) => r.json());
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["cart"] }),
+  });
+
+  // Optimistic qty — instant UI, debounced API (600ms)
+  const [pendingQty, setPendingQty] = useState<number | null>(null);
+  const qtyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const displayQty = pendingQty !== null ? pendingQty : cartQty;
+  const showInCart = displayQty > 0;
+
+  function handleQtyChange(newQty: number) {
+    const clamped = Math.max(0, newQty);
+    setPendingQty(clamped);
+    if (qtyTimerRef.current) clearTimeout(qtyTimerRef.current);
+    qtyTimerRef.current = setTimeout(() => {
+      updateCartQtyMutation.mutate(clamped, {
+        onSettled: () => setPendingQty(null),
+      });
+    }, 600);
+  }
+
+  function handleAddToCart() {
+    if (qtyTimerRef.current) clearTimeout(qtyTimerRef.current);
+    setPendingQty(null);
+    cartMutation.mutate();
+  }
+
   const hasDiscount = !!product.compareAtPriceKes;
   const discountPct = hasDiscount
     ? Math.round((1 - product.priceKes / product.compareAtPriceKes!) * 100)
@@ -126,6 +178,7 @@ export function ProductCard({ product }: Props) {
     <button
       onClick={() => favMutation.mutate()}
       className="absolute w-[46px] h-[46px] bg-white dark:bg-gray-800 rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-transform"
+      title="favourite"
     >
           <Icon
             icon={isFavorited ? "mdi:heart" : "hugeicons:favourite"}
@@ -169,58 +222,107 @@ export function ProductCard({ product }: Props) {
           </p>
         )}
 
-        {/* Price row + Add to Cart */}
-        <div className="flex items-center justify-between mt-2">
-          {/* Price */}
-          <div className="flex flex-col">
-            <span className="text-[20px] font-body text-black dark:text-white leading-tight">
-              {format(product.priceKes)}
-            </span>
-            {hasDiscount && (
-              <span className="text-[12px] text-[#c4c4c4] line-through font-body">
-                {format(product.compareAtPriceKes!)}
+        {/* Price + CTA */}
+        <div className="mt-2">
+          <div className="flex items-center justify-between">
+            {/* Price */}
+            <div className="flex flex-col">
+              <span className="text-[20px] font-body text-black dark:text-white leading-tight">
+                {format(product.priceKes)}
               </span>
+              {hasDiscount && (
+                <span className="text-[12px] text-[#c4c4c4] line-through font-body">
+                  {format(product.compareAtPriceKes!)}
+                </span>
+              )}
+            </div>
+
+            {/* CTA — Add to Cart OR Go to Cart */}
+            {!showInCart ? (
+              <Tooltip label="Add to cart">
+                <AnimatePresence mode="wait">
+                  <motion.button
+                    key={justAdded ? "added" : "add"}
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.9, opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    onClick={handleAddToCart}
+                    disabled={cartMutation.isPending || product.stock === 0}
+                    className={[
+                      "flex items-center gap-1 border rounded-[40px] px-3 py-2 text-[13px] font-body transition-all",
+                      justAdded
+                        ? "bg-[#27731e] text-white border-[#27731e]"
+                        : "border-black dark:border-gray-600 text-black dark:text-gray-200 hover:bg-[#27731e] hover:text-white hover:border-[#27731e]",
+                      "disabled:opacity-40 disabled:cursor-not-allowed",
+                    ].join(" ")}
+                    aria-label="Add to cart"
+                  >
+                    {justAdded ? (
+                      <><Icon icon="mdi:check" width={14} />Added</>
+                    ) : (
+                      <>{cartMutation.isPending ? <Spinner size={14} invert /> : <Icon icon="mdi:cart-plus" width={14} />}Add to Cart</>
+                    )}
+                  </motion.button>
+                </AnimatePresence>
+              </Tooltip>
+            ) : (
+              <Link
+                href="/cart"
+                className="flex items-center gap-1.5 rounded-[40px] px-3 py-2 text-[13px] font-body font-semibold transition-all shadow-sm"
+                style={{ background: "#fec700", color: "#1a1c1c" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "#e5b600"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "#fec700"; }}
+              >
+                <Icon icon="mdi:cart-check" width={14} />
+                Go to Cart
+              </Link>
             )}
           </div>
 
-          {/* Add to Cart */}
-          <Tooltip label="Add to cart">
-            <AnimatePresence mode="wait">
-              <motion.button
-                key={justAdded ? "added" : "add"}
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                onClick={() => cartMutation.mutate()}
-                disabled={cartMutation.isPending || product.stock === 0}
-                className={[
-                  "flex items-center gap-1 border rounded-[40px] px-3 py-2 text-[13px] font-body transition-all",
-                  justAdded
-                    ? "bg-[#27731e] text-white border-[#27731e]"
-                    : "border-black dark:border-gray-600 text-black dark:text-gray-200 hover:bg-[#27731e] hover:text-white hover:border-[#27731e]",
-                  "disabled:opacity-40 disabled:cursor-not-allowed",
-                ].join(" ")}
-                aria-label="Add to cart"
-              >
-                {justAdded ? (
-                  <>
-                    <Icon icon="mdi:check" width={14} />
-                    Added
-                  </>
-                ) : (
-                  <>
-                    {cartMutation.isPending ? (
-                      <Spinner size={14} invert />
-                    ) : (
-                      <Icon icon="mdi:cart-plus" width={14} />
-                    )}
-                    Add to Cart
-                  </>
-                )}
-              </motion.button>
-            </AnimatePresence>
-          </Tooltip>
+          {/* Quantity input — own row, only when in cart */}
+          {showInCart && (
+            <div className="flex justify-center mt-3">
+              <div className="py-1.5 px-3 inline-flex bg-white dark:bg-gray-900 border border-[#c0cab8] dark:border-gray-600 rounded-[10px]">
+                <div className="flex items-center gap-x-2">
+                  <button
+                    type="button"
+                    onClick={() => handleQtyChange(displayQty - 1)}
+                    className="size-6 inline-flex justify-center items-center rounded-md border border-[#c0cab8] dark:border-gray-600 text-[#1a1c1c] dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none transition-colors"
+                    aria-label="Decrease"
+                  >
+                    <svg className="shrink-0 size-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12h14"/>
+                    </svg>
+                  </button>
+                  <input
+                    className="p-0 w-7 bg-transparent border-0 text-[#1a1c1c] dark:text-neutral-200 text-center focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none font-body text-[14px] font-semibold"
+                    style={{ MozAppearance: "textfield" } as React.CSSProperties}
+                    type="number"
+                    value={displayQty}
+                    min={0}
+                    max={99}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (!isNaN(v) && v >= 0) handleQtyChange(v);
+                    }}
+                    aria-label="Cart quantity"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleQtyChange(displayQty + 1)}
+                    className="size-6 inline-flex justify-center items-center rounded-md border border-[#c0cab8] dark:border-gray-600 text-[#1a1c1c] dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none transition-colors"
+                    aria-label="Increase"
+                  >
+                    <svg className="shrink-0 size-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12h14"/>
+                      <path d="M12 5v14"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </motion.div>

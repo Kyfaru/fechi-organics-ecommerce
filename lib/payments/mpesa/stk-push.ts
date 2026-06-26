@@ -105,14 +105,17 @@ export async function initiateSTKPush(params: {
   const { branch, phone, amountKes, orderId, callbackUrl } = params;
 
   const token = await getDarajaToken(branch);
+  if (!branch.passkeyEnc) throw new Error(`[stk-push] Branch ${branch.id} has no passkey configured`);
   const passkey = decrypt(branch.passkeyEnc);
   const timestamp = darajaTimestamp();
   const normalised = normalisePhone(phone);
   const password = buildPassword(branch.shortcode, passkey, timestamp);
 
-  // PayBill uses CustomerPayBillOnline; Till uses CustomerBuyGoodsOnline
+  // Sandbox only supports CustomerPayBillOnline with test shortcode 174379.
+  // In production, use the correct type based on branch mpesaType.
+  const isProduction = process.env.DARAJA_ENV === "production";
   const transactionType =
-    branch.mpesaType === "PAYBILL"
+    !isProduction || branch.mpesaType === "PAYBILL"
       ? "CustomerPayBillOnline"
       : "CustomerBuyGoodsOnline";
 
@@ -127,7 +130,7 @@ export async function initiateSTKPush(params: {
     PhoneNumber: normalised,
     CallBackURL: callbackUrl,
     AccountReference: orderId.slice(0, 12), // Daraja max length is 12 chars
-    TransactionDesc: "Fechi Organics Order",
+    TransactionDesc: "Fechi Order",  // max 13 chars per Daraja spec
   };
 
   const res = await fetch(`${DARAJA_BASE}/mpesa/stkpush/v1/processrequest`, {

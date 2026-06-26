@@ -3,7 +3,7 @@ import countriesData from "world-countries";
 import { getRedis } from "@/lib/redis";
 import { ok } from "@/lib/api";
 
-type Country = { code: string; name: string; flag: string };
+type Country = { code: string; name: string; flag: string; phoneCode: string };
 
 function buildCountries(): Country[] {
   return countriesData
@@ -11,6 +11,9 @@ function buildCountries(): Country[] {
       code: country.cca2.toUpperCase(),
       name: country.name.common,
       flag: `https://flagcdn.com/w40/${country.cca2.toLowerCase()}.png`,
+      phoneCode: (country as any).callingCodes?.[0] ?? (country as any).idd?.root
+        ? `${(country as any).idd?.root}${(country as any).idd?.suffixes?.[0] ?? ""}`
+        : "",
     }))
     .sort((a, b) => {
       if (a.code === "KE") return -1;

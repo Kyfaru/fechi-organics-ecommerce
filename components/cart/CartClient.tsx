@@ -33,6 +33,8 @@ export function CartClient() {
   const [promoCode, setPromoCode] = useState("");
   const [appliedPromo, setAppliedPromo] = useState<string | null>(null);
   const [promoDiscount, setPromoDiscount] = useState(0);
+  const [freeShipping, setFreeShipping] = useState(false);
+  const [promoLoading, setPromoLoading] = useState(false);
 
   const { data, isLoading } = useQuery<CartResponse>({
     queryKey: ["cart"],
@@ -137,25 +139,41 @@ export function CartClient() {
     onSettled: () => qc.invalidateQueries({ queryKey: ["cart"] }),
   });
 
-  function handleApplyPromo() {
-    if (promoCode.trim().toUpperCase() === "FECHI10") {
-      const discount = Math.round((cart?.subtotalKes ?? 0) * 0.1);
-      setAppliedPromo("FECHI10");
-      setPromoDiscount(discount);
-      posthog.capture("promo_code_applied", { code: "FECHI10", discount_kes: discount });
-      toast.success("Promo code applied! 10% off your order.");
-    } else if (promoCode.trim().toUpperCase() === "NEWUSER") {
-      setAppliedPromo("NEWUSER");
-      setPromoDiscount(50000);
-      posthog.capture("promo_code_applied", { code: "NEWUSER", discount_kes: 50000 });
-      toast.success("Promo code applied! KES 500 off your order.");
-    } else {
-      toast.error("Invalid promo code");
+  const subtotalKes = cart?.subtotalKes ?? 0;
+
+  async function handleApplyPromo() {
+    const code = promoCode.trim().toUpperCase();
+    if (!code) return;
+    setPromoLoading(true);
+    try {
+      const res = await fetch("/api/promo/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, subtotalKes }),
+      });
+      const json = await res.json();
+      const data = json?.data;
+      if (!res.ok || !json.ok || !data?.valid) {
+        toast.error(json?.error?.message ?? data?.message ?? "Invalid promo code");
+        setAppliedPromo(null);
+        setPromoDiscount(0);
+        setFreeShipping(false);
+      } else {
+        setAppliedPromo(code);
+        setPromoDiscount(data.discountKes);
+        setFreeShipping(!!data.freeShipping);
+        posthog.capture("promo_code_applied", { code, discount_kes: data.discountKes });
+        toast.success(data.message ?? "Coupon applied!");
+      }
+    } catch {
+      toast.error("Failed to validate coupon");
+    } finally {
+      setPromoLoading(false);
     }
   }
 
-  const subtotalKes = cart?.subtotalKes ?? 0;
-  const totalKes = subtotalKes + DELIVERY_KES - promoDiscount;
+  const deliveryKes = freeShipping ? 0 : DELIVERY_KES;
+  const totalKes = subtotalKes + deliveryKes - promoDiscount;
 
   function handleStartDelivery() {
     if (!items.length) return;
@@ -332,7 +350,11 @@ export function CartClient() {
                   label={`Subtotal (${cart?.itemCount ?? 0} ${(cart?.itemCount ?? 0) === 1 ? "item" : "items"})`}
                   value={format(subtotalKes)}
                 />
-                <SummaryRow label="Delivery" value={format(DELIVERY_KES)} />
+                <SummaryRow
+                  label="Delivery"
+                  value={freeShipping ? "FREE" : format(DELIVERY_KES)}
+                  green={freeShipping}
+                />
                 {appliedPromo && (
                   <SummaryRow
                     label="Discount"
@@ -367,13 +389,15 @@ export function CartClient() {
                     onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
                     onKeyDown={(e) => e.key === "Enter" && handleApplyPromo()}
                     placeholder="ENTER CODE"
-                    className="flex-1 min-w-0 border border-[#c0cab8] dark:border-gray-600 rounded-[6px] px-3 py-2.5 font-body text-[13px] text-[#1a1c1c] dark:text-white placeholder-[#6b7280] uppercase outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] bg-white dark:bg-gray-800"
+                    disabled={promoLoading}
+                    className="flex-1 min-w-0 border border-[#c0cab8] dark:border-gray-600 rounded-[6px] px-3 py-2.5 font-body text-[13px] text-[#1a1c1c] dark:text-white placeholder-[#6b7280] uppercase outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] bg-white dark:bg-gray-800 disabled:opacity-60"
                   />
                   <button
                     onClick={handleApplyPromo}
-                    className="bg-[#e2e2e2] dark:bg-gray-700 hover:bg-[#27731e] hover:text-white text-[#1a1c1c] dark:text-gray-200 rounded-[6px] px-4 py-2.5 font-body font-medium text-[13px] transition-colors flex-shrink-0"
+                    disabled={promoLoading}
+                    className="bg-[#e2e2e2] dark:bg-gray-700 hover:bg-[#27731e] hover:text-white text-[#1a1c1c] dark:text-gray-200 rounded-[6px] px-4 py-2.5 font-body font-medium text-[13px] transition-colors flex-shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    Apply
+                    {promoLoading ? "..." : "Apply"}
                   </button>
                 </div>
               </div>

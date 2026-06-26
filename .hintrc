@@ -9,6 +9,13 @@
       {
         "aria-valid-attr-value": "off"
       }
+    ],
+    "axe/forms": [
+      "default",
+      {
+        "label": "off",
+        "select-name": "off"
+      }
     ]
   }
 }

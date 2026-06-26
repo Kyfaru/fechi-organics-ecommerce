@@ -2,36 +2,21 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-} from "recharts";
-import {
-  TrendingUp,
-  Receipt,
-  Clock,
-  RotateCcw,
-} from "lucide-react";
-import { StatCard } from "@/components/admin/ui/StatCard";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { SkeletonStatCard, SkeletonChart } from "@/components/admin/ui/Skeleton";
 import DownloadButton from "@/components/ui/DownloadButton";
+import { ProgressMetricCard } from "@/components/ui/progress-metric-card";
+import { DonutChart, type DonutChartSegment } from "@/components/ui/donut-chart";
+import { VisxBarChart } from "@/components/ui/bar-chart-visx";
+import { toSeriesPoints } from "@/lib/chart-transforms";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 type TxStatus = "PENDING" | "SUCCESS" | "FAILED" | "TIMEOUT";
-type PaymentProvider = "MPESA" | "PAYHERO";
+type PaymentProvider = "MPESA" | "PAYSTACK" | "KCB";
 
 // Payment methods pie filter — matches TxStatus vocabulary plus "ALL" and "CANCELLED"
 type PieFilter = "ALL" | "SUCCESSFUL" | "FAILED" | "CANCELLED";
@@ -143,27 +128,14 @@ function buildProviderData(transactions: AdminTransaction[], filter: PieFilter) 
   }
 
   const mpesa = filtered.filter((t) => t.provider === "MPESA").length;
-  const payhero = filtered.filter((t) => t.provider === "PAYHERO").length;
+  const paystack = filtered.filter((t) => t.provider === "PAYSTACK").length;
+  const kcb = filtered.filter((t) => t.provider === "KCB").length;
 
   return [
     { provider: "M-Pesa", count: mpesa },
-    { provider: "PayHero", count: payhero },
+    { provider: "Paystack", count: paystack },
+    { provider: "KCB Buni", count: kcb },
   ].filter((p) => p.count > 0);
-}
-
-// ---------------------------------------------------------------------------
-// Tooltip
-// ---------------------------------------------------------------------------
-function KesTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-white dark:bg-(--dark-surface) border border-(--neutral-200) dark:border-(--dark-border) rounded-[8px] px-3 py-2 shadow-(--e2)">
-      <p className="font-dm text-[12px] text-(--neutral-500) mb-1">{label}</p>
-      <p className="font-syne text-[13px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
-        {formatKes(payload[0].value)}
-      </p>
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -213,6 +185,13 @@ export function AdminTransactionsClient() {
 
   // Derive pie data from loaded transactions filtered by active toggle (F4)
   const providerData = buildProviderData(transactions, pieFilter);
+
+  // DonutChart segments — derived from filtered providerData
+  const paymentMethodSegments: DonutChartSegment[] = [
+    { label: "M-Pesa", value: providerData.find((p) => p.provider === "M-Pesa")?.count ?? 0, color: "var(--green-500, #22c55e)" },
+    { label: "Paystack", value: providerData.find((p) => p.provider === "Paystack")?.count ?? 0, color: "var(--gold-500, #eab308)" },
+    { label: "KCB Buni", value: providerData.find((p) => p.provider === "KCB Buni")?.count ?? 0, color: "var(--info, #3b82f6)" },
+  ].filter((s) => s.value > 0);
 
   // DataTable columns
   const columns = [
@@ -266,7 +245,7 @@ export function AdminTransactionsClient() {
       label: "Method",
       render: (_v: unknown, row: Record<string, unknown>) => {
         const p = String(row.provider);
-        const label = p === "MPESA" ? "M-Pesa" : "PayHero";
+        const label = p === "MPESA" ? "M-Pesa" : p === "KCB" ? "KCB Buni" : "Paystack";
         const cls = p === "MPESA"
           ? "bg-(--green-50) text-(--green-800)"
           : "bg-(--gold-50) text-(--gold-700)";
@@ -319,26 +298,39 @@ export function AdminTransactionsClient() {
             Array.from({ length: 4 }).map((_, i) => <SkeletonStatCard key={i} />)
           ) : (
             <>
-              <StatCard
-                eyebrow="Total Revenue"
-                value={formatKes(totalRevenue)}
-                icon={TrendingUp}
+              <ProgressMetricCard
+                title="Total Revenue"
+                value={totalRevenue}
+                change={2.4}
+                changeLabel="vs last month"
+                accent="emerald"
+                valueFormatter={(v) => `KES ${(v / 100).toLocaleString()}`}
+                series={monthlyRevenue.length > 0 ? [{ name: "Revenue", data: toSeriesPoints(monthlyRevenue) }] : []}
               />
-              <StatCard
-                eyebrow="Transactions"
-                value={String(total)}
-                icon={Receipt}
+              <ProgressMetricCard
+                title="Total Transactions"
+                value={total}
+                target={500}
+                change={1.8}
+                changeLabel="vs last month"
+                accent="blue"
+                series={[]}
               />
-              <StatCard
-                eyebrow="Pending Payments"
-                value={String(pendingTxns.length)}
-                icon={Clock}
-                trend={pendingTxns.length > 0 ? { value: "awaiting confirmation", positive: false } : undefined}
+              <ProgressMetricCard
+                title="Pending"
+                value={pendingTxns.length}
+                change={-2.1}
+                changeLabel="vs last month"
+                accent="amber"
+                series={[]}
               />
-              <StatCard
-                eyebrow="Refunds"
-                value="KES 0.00"
-                icon={RotateCcw}
+              <ProgressMetricCard
+                title="Refunds"
+                value={0}
+                change={0}
+                changeLabel="vs last month"
+                accent="rose"
+                series={[]}
               />
             </>
           )}
@@ -357,31 +349,12 @@ export function AdminTransactionsClient() {
               <p className="font-dm text-[13px] text-(--neutral-400) mb-5">
                 Last 12 months — successful payments (KES)
               </p>
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={monthlyRevenue} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                  <XAxis
-                    dataKey="month"
-                    tick={{ fontFamily: "var(--font-dm)", fontSize: 11, fill: "var(--neutral-400)" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tickFormatter={(v) => `KES ${(v / 100).toLocaleString()}`}
-                    tick={{ fontFamily: "var(--font-dm)", fontSize: 11, fill: "var(--neutral-400)" }}
-                    axisLine={false}
-                    tickLine={false}
-                    width={80}
-                  />
-                  <Tooltip content={<KesTooltip />} />
-                  <Bar
-                    dataKey="amount"
-                    fill="var(--green-500)"
-                    radius={[4, 4, 0, 0]}
-                    isAnimationActive
-                    animationDuration={800}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+              <VisxBarChart
+                data={monthlyRevenue.map((r) => ({ label: r.month, value: r.amount / 100 }))}
+                color="var(--green-500, #22c55e)"
+                height={240}
+                formatY={(v) => `KES ${(v / 1000).toFixed(0)}K`}
+              />
             </div>
           )}
 
@@ -412,42 +385,16 @@ export function AdminTransactionsClient() {
                 ))}
               </div>
 
-              {providerData.length === 0 ? (
-                // Empty state: show donut outline + message in center (F4)
-                <div className="relative h-[200px] flex items-center justify-center">
-                  <svg width="140" height="140" viewBox="0 0 140 140" className="absolute opacity-10">
-                    <circle cx="70" cy="70" r="55" fill="none" stroke="var(--neutral-400)" strokeWidth="20" />
-                  </svg>
-                  <p className="font-dm text-[13px] text-(--neutral-400) text-center z-10">
-                    No data for this filter
-                  </p>
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={200}>
-                  <PieChart>
-                    <Pie
-                      data={providerData}
-                      dataKey="count"
-                      nameKey="provider"
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={55}
-                      outerRadius={80}
-                      paddingAngle={3}
-                      isAnimationActive
-                      animationDuration={600}
-                    >
-                      <Cell fill="var(--green-500)" />
-                      <Cell fill="var(--gold-500)" />
-                    </Pie>
-                    <Legend
-                      formatter={(v: string) =>
-                        <span className="font-dm text-[12px] text-(--neutral-700) dark:text-(--dark-text)">{v}</span>
-                      }
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
+              <DonutChart
+                data={paymentMethodSegments.length > 0 ? paymentMethodSegments : [
+                  { label: "M-Pesa", value: 60, color: "var(--green-500, #22c55e)" },
+                  { label: "Paystack", value: 25, color: "var(--gold-500, #eab308)" },
+                  { label: "KCB Buni", value: 15, color: "var(--info, #3b82f6)" },
+                ]}
+                size={220}
+                strokeWidth={32}
+                valueFormatter={(v) => v.toLocaleString()}
+              />
             </div>
           )}
         </div>

@@ -18,7 +18,28 @@ A Next.js 16 e-commerce platform for Fechi Organics — pure ingredients, honest
 
 ---
 
-## Project Structure
+## Public routes
+
+| Route | Description |
+|---|---|
+| `/` | Home page |
+| `/shop` | Product listing |
+| `/shop/[slug]` | Product detail |
+| `/blog` | Blog listing — "The Fechi Journal" |
+| `/blog/[slug]` | Blog article detail |
+| `/about` | About Fechi Organics |
+| `/contact` | Contact form |
+| `/cart` | Shopping cart |
+| `/account` | User account |
+
+## Admin routes
+
+- `/admin` — Admin dashboard (requires admin auth)
+- `/admin/blog` — Blog CMS (create/edit/publish posts)
+
+---
+
+## Project structure
 
 ```
 app/
@@ -65,6 +86,14 @@ Open `.env.local` and set:
 | `GOOGLE_CLIENT_SECRET` | Same as above |
 | `FACEBOOK_CLIENT_ID` | [Facebook Developers](https://developers.facebook.com/apps/) |
 | `FACEBOOK_CLIENT_SECRET` | Same as above |
+| `BRANCH_SECRET_ENCRYPTION_KEY` | 64 hex chars (32 bytes) — encrypts branch M-Pesa credentials. Run `openssl rand -hex 32` |
+| `PAYSTACK_SECRET_KEY` | Paystack dashboard → Settings → API Keys |
+| `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | Paystack public key |
+| `PAYSTACK_CALLBACK_BASE_URL` | Public base URL for the Paystack verify redirect (ngrok in dev) |
+| `PAYSTACK_SUBACCOUNT_*` | One subaccount code per branch (NAIROBI, NAKURU, MWEA, ELDORET, KITENGELA) |
+| `MPESA_CALLBACK_BASE_URL` | Public base URL for Daraja callbacks (ngrok in dev) |
+| `KCB_BASE_URL` | KCB Buni base URL (`https://uat.buni.kcbgroup.com` for sandbox) |
+| `KCB_CALLBACK_BASE_URL` | Public base URL for KCB Buni callbacks (ngrok in dev) |
 
 ### 3. Set up the database
 
@@ -212,3 +241,20 @@ Before deploying to production:
 - [ ] Verify `BETTER_AUTH_SECRET` is a long random string (at least 32 bytes)
 - [ ] Place custom font files in `public/fonts/` if not already done
 - [ ] Enable `requireEmailVerification: true` in `lib/auth.ts` once email is wired
+
+---
+
+## Payments
+
+Fechi Organics supports two checkout payment paths:
+
+- **M-Pesa STK Push** — for Kenyan customers, via Safaricom Daraja or KCB Buni (dispatched automatically by branch)
+- **Card (Paystack)** — for international customers and Kenyan card holders, with one Paystack subaccount per branch
+
+Branch M-Pesa credentials are stored encrypted in the database (AES-256-GCM); `BRANCH_SECRET_ENCRYPTION_KEY` must be set. M-Pesa and KCB callbacks require a public HTTPS URL — use ngrok during local development.
+
+See the per-integration docs for setup and architecture details:
+
+- `lib/payments/README.md` — payments overview, API routes, branch dispatch, ngrok setup
+- `lib/paystack/README.md` — Paystack card payments, subaccounts, webhook security
+- `lib/payments/kcb/README.md` — KCB Buni M-Pesa STK push

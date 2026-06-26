@@ -14,7 +14,7 @@ export default async function OrderSuccessPage({ params }: { params: Promise<{ o
     include: { items: true, user: { select: { email: true, phone: true, name: true } }, branch: { select: { name: true } } },
   });
 
-  if (!order || order.userId !== session.user.id) redirect("/orders");
+  if (!order || order.userId !== session.user.id) redirect(`/account/orders/${orderId}`);
 
   const paidOrder = order.paymentStatus === "PAID"
     ? order

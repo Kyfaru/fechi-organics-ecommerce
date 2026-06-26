@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
+import { resolvePromo } from "@/lib/promo";
 
 const DeliverySchema = z.object({
   fullName: z.string().min(1),
@@ -31,16 +32,9 @@ const DeliverySchema = z.object({
 
 const BodySchema = z.object({
   deliveryData: DeliverySchema,
-  paymentMethod: z.enum(["mpesa", "card", "paypal", "cod"]),
+  paymentMethod: z.enum(["mpesa", "card"]),
   outcome: z.enum(["success", "failed"]).default("success"),
 });
-
-function discountFor(subtotalKes: number, promoCode?: string | null) {
-  const code = promoCode?.trim().toUpperCase();
-  if (code === "FECHI10") return Math.round(subtotalKes * 0.1);
-  if (code === "NEWUSER") return 50000;
-  return 0;
-}
 
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -85,8 +79,16 @@ export async function POST(req: NextRequest) {
       deliveryType: deliveryData.deliveryType,
     });
     const promoCode = deliveryData.promoCode?.trim().toUpperCase() || null;
-    const discountKes = discountFor(subtotalKes, promoCode);
-    const totalKes = Math.max(0, subtotalKes + pricing.feeKes - discountKes);
+    let discountKes = 0;
+    let deliveryFeeKes = pricing.feeKes;
+    if (promoCode) {
+      try {
+        const r = await resolvePromo(promoCode, subtotalKes);
+        discountKes = r.discountKes;
+        if (r.deliveryFree) deliveryFeeKes = 0;
+      } catch { /* invalid/expired — discount stays 0 */ }
+    }
+    const totalKes = Math.max(0, subtotalKes + deliveryFeeKes - discountKes);
 
     const branch = deliveryData.branchId
       ? await db.branch.findUnique({ where: { id: deliveryData.branchId, isActive: true } })
@@ -97,7 +99,7 @@ export async function POST(req: NextRequest) {
         data: {
           userId: session.user.id,
           subtotalKes,
-          deliveryKes: pricing.feeKes,
+          deliveryKes: deliveryFeeKes,
           discountKes,
           totalKes,
           promoCode,
@@ -126,7 +128,7 @@ export async function POST(req: NextRequest) {
         data: {
           orderId: created.id,
           branchId: branch?.id ?? null,
-          provider: paymentMethod === "mpesa" ? "MPESA" : "PAYHERO",
+          provider: paymentMethod === "mpesa" ? "MPESA" : "PAYSTACK",
           amount: totalKes,
           status: outcome === "success" ? "SUCCESS" : "FAILED",
           failureReason: outcome === "failed" ? "Mock checkout failed" : null,

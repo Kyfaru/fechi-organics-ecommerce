@@ -18,7 +18,9 @@ import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
 import { getDarajaToken } from "@/lib/payments/mpesa/daraja-client";
 import { initiateSTKPush } from "@/lib/payments/mpesa/stk-push";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
+import { resolvePromo } from "@/lib/promo";
 import { getRedis } from "@/lib/redis";
+import { markPaymentFailed } from "@/lib/payments/post-payment";
 
 // ---------------------------------------------------------------------------
 // Input validation
@@ -108,14 +110,18 @@ export async function POST(req: NextRequest) {
       zoneId: deliveryData.zoneId,
       deliveryType: deliveryData.deliveryType,
     });
-    const deliveryCents = pricing.feeKes;
     const promoCode = deliveryData.promoCode?.trim().toUpperCase();
-    const discountCents =
-      promoCode === "FECHI10"
-        ? Math.round(subtotalCents * 0.1)
-        : promoCode === "NEWUSER"
-          ? 50000
-          : 0;
+    let discountCents = 0;
+    let deliveryCents = pricing.feeKes;
+    if (promoCode) {
+      try {
+        const r = await resolvePromo(promoCode, subtotalCents);
+        discountCents = r.discountKes;
+        if (r.deliveryFree) deliveryCents = 0;
+      } catch {
+        /* invalid/expired — discount stays 0 */
+      }
+    }
     const totalCents = Math.max(0, subtotalCents + deliveryCents - discountCents);
     const totalKes = totalCents / 100; // Convert cents to whole KES for Daraja
 
@@ -182,30 +188,55 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // 8. Fetch Daraja token then initiate STK push
-    await getDarajaToken(branch); // warm-up / validate credentials early
+    // 8. Dispatch by gateway
+    let checkoutRequestId: string;
 
-    const callbackUrl = `${process.env.MPESA_CALLBACK_BASE_URL}/api/payments/mpesa/callback`;
-
-    const stkResponse = await initiateSTKPush({
-      branch,
-      phone,
-      amountKes: totalKes,
-      orderId: order.id,
-      callbackUrl,
-    });
+    if (branch.mpesaGateway === "KCB_BUNI") {
+      const { initiateKcbStkPush } = await import("@/lib/payments/kcb/kcb-client");
+      const kcbRes = await initiateKcbStkPush({
+        branch: {
+          id: branch.id,
+          shortcode: branch.shortcode,
+          invoiceNumber: branch.invoiceNumber ?? null,
+          consumerKeyEnc: branch.consumerKeyEnc,
+          consumerSecretEnc: branch.consumerSecretEnc,
+          apiKeyEnc: branch.apiKeyEnc ?? null,
+        },
+        phone,
+        amountKes: totalCents,
+        orderId: order.id,
+        callbackUrl: `${process.env.KCB_CALLBACK_BASE_URL ?? process.env.MPESA_CALLBACK_BASE_URL}/api/payments/kcb/callback`,
+      });
+      if (!kcbRes.CheckoutRequestID) {
+        await markPaymentFailed({
+          transactionId: transaction.id,
+          orderId: order.id,
+          reason: "KCB STK push did not return a CheckoutRequestID",
+        });
+        return err("STK_FAILED", "Could not initiate M-Pesa prompt. Please try again.", 502);
+      }
+      checkoutRequestId = kcbRes.CheckoutRequestID;
+    } else {
+      await getDarajaToken(branch); // warm-up / validate credentials early
+      const callbackUrl = `${process.env.MPESA_CALLBACK_BASE_URL}/api/payments/mpesa/callback`;
+      const stkResponse = await initiateSTKPush({
+        branch,
+        phone,
+        amountKes: totalKes,
+        orderId: order.id,
+        callbackUrl,
+      });
+      checkoutRequestId = stkResponse.CheckoutRequestID;
+    }
 
     // 9. Persist CheckoutRequestID so the callback can look up the transaction
     await db.transaction.update({
       where: { id: transaction.id },
-      data: { checkoutRequestId: stkResponse.CheckoutRequestID },
+      data: { checkoutRequestId },
     });
 
-    // 10. Clear the cart — order has been captured
-    await db.cartItem.deleteMany({ where: { cartId: cart.id } });
-
     console.info(
-      `[mpesa/initiate] STK push initiated — order=${order.id} checkout=${stkResponse.CheckoutRequestID}`,
+      `[mpesa/initiate] STK push initiated — order=${order.id} checkout=${checkoutRequestId}`,
     );
 
     return ok({ orderId: order.id });

@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     // Look up the transaction by CheckoutRequestID
     const transaction = await db.transaction.findUnique({
       where: { checkoutRequestId: CheckoutRequestID },
-      include: { order: { select: { userId: true } } },
+      select: { id: true, orderId: true, status: true, mpesaReceiptNumber: true },
     });
 
     if (!transaction) {
@@ -95,8 +95,7 @@ export async function POST(req: NextRequest) {
       await markPaymentFailed({
         transactionId: transaction.id,
         orderId: transaction.orderId,
-        userId: transaction.order.userId,
-        transactionData,
+        reason: `${ResultCode}:${ResultDesc}`,
       });
     }
 

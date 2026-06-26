@@ -64,6 +64,9 @@ const CreateSchema = z.object({
   stock: z.number().int().min(0, "Stock cannot be negative").default(0),
   bestSeller: z.boolean().default(false),
   isActive: z.boolean().default(true),
+  sizes: z.array(z.string()).default([]),
+  howToUse: z.string().nullable().optional(),
+  ingredients: z.string().nullable().optional(),
   // imageObjectKeys: ordered array; index 0 = primary.
   imageObjectKeys: z.array(z.string()).optional(),
 });
@@ -136,6 +139,12 @@ const UpdateSchema = z.object({
   stock: z.number().int().min(0).optional(),
   bestSeller: z.boolean().optional(),
   isActive: z.boolean().optional(),
+  sizes: z.array(z.string()).optional(),
+  howToUse: z.string().nullable().optional(),
+  ingredients: z.string().nullable().optional(),
+  // imageObjectKeys: ordered array; index 0 = primary.
+  // Passing this replaces all existing images with the new set.
+  imageObjectKeys: z.array(z.string()).optional(),
 });
 
 export async function PATCH(req: NextRequest) {
@@ -148,12 +157,27 @@ export async function PATCH(req: NextRequest) {
     const parsed = UpdateSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
-    const { id, ...data } = parsed.data;
+    const { id, imageObjectKeys, ...data } = parsed.data;
 
     const product = await db.product.update({
       where: { id },
       data,
     });
+
+    // If imageObjectKeys provided, replace all images for this product
+    if (imageObjectKeys !== undefined) {
+      await db.productImage.deleteMany({ where: { productId: id } });
+      if (imageObjectKeys.length > 0) {
+        await db.productImage.createMany({
+          data: imageObjectKeys.map((objectKey, idx) => ({
+            productId: id,
+            objectKey,
+            isPrimary: idx === 0,
+            sortOrder: idx,
+          })),
+        });
+      }
+    }
 
     console.info("[admin/products] PATCH — updated product", id);
     return ok({ product });

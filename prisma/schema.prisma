@@ -12,6 +12,13 @@ datasource db {
 // Enums
 // ============================================================================
 
+enum MpesaGateway {
+  DARAJA
+  KCB_BUNI
+
+  @@schema("public")
+}
+
 enum OrderStatus {
   PENDING
   CONFIRMED
@@ -19,6 +26,18 @@ enum OrderStatus {
   SHIPPED
   DELIVERED
   CANCELLED
+  WAITING_TO_PACKAGE
+  READY_FOR_PICKUP
+  PICKED_UP
+
+  @@schema("public")
+}
+
+enum MessageType {
+  ORDER_UPDATE
+  SYSTEM
+  PROMOTION
+  ALERT
 
   @@schema("public")
 }
@@ -57,7 +76,8 @@ enum TxStatus {
 
 enum PaymentProvider {
   MPESA
-  PAYHERO
+  PAYSTACK
+  KCB
 
   @@schema("public")
 }
@@ -160,9 +180,18 @@ model user {
   banned           Boolean   @default(false)
   banReason        String?
   banExpires       DateTime?
-  twoFactorEnabled Boolean   @default(false)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  twoFactorEnabled    Boolean   @default(false)
+  mustChangePassword  Boolean   @default(false)
+  usernameChanges      Int       @default(0)
+  lastUsernameChange   DateTime?
+  phoneCode            String?
+  langPreference       String    @default("en-GB")
+  currencyDisplay      String    @default("KES")
+  notifBotanicalUpdates Boolean  @default(true)
+  notifOrderTracking    Boolean  @default(true)
+  notifPersonalized     Boolean  @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
   sessions         session[]
   accounts         account[]
   cart             cart?
@@ -174,6 +203,8 @@ model user {
   supportTickets   supportTicket[]
   blogPosts        blogPost[]
   loyaltyPoints    loyaltyPoints?
+  inboxMessages    inboxMessage[]
+  wishlistItems    wishlistItem[]
 
   @@index([role])
   @@schema("public")
@@ -265,6 +296,9 @@ model product {
   priceKes          Int
   compareAtPriceKes Int?
   variantLabel      String?
+  sizes             String[]       @default([])
+  howToUse          String?
+  ingredients       String?
   bestSeller        Boolean        @default(false)
   isActive          Boolean        @default(true)
   stock             Int            @default(0)
@@ -384,12 +418,16 @@ model order {
   deliveryCounty    String?
   deliveryZone      String?
   deliveryPhone     String?
-  deliveryType      DeliveryType  @default(DELIVERY)
-  isInternational   Boolean       @default(false)
-  paymentStatus     PaymentStatus @default(PENDING)
-  receiptSent       Boolean       @default(false)
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  deliveryType          DeliveryType  @default(DELIVERY)
+  isInternational       Boolean       @default(false)
+  paymentStatus         PaymentStatus @default(PENDING)
+  receiptSent           Boolean       @default(false)
+  pickupCode            String?
+  pickupCodeExpiresAt   DateTime?
+  pickedUpAt            DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  statusEvents          orderStatusEvent[]
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
@@ -418,9 +456,14 @@ model branch {
   lng               Float?
   mpesaType         MpesaType
   shortcode         String
+  invoiceNumber     String?       // KCB Buni invoice/account number (plaintext)
   consumerKeyEnc    String
   consumerSecretEnc String
-  passkeyEnc        String
+  passkeyEnc        String?
+  mpesaGateway      MpesaGateway  @default(DARAJA)
+  paystackSubaccount String?
+  apiKeyEnc         String?
+  isMain            Boolean       @default(false)
   isActive          Boolean       @default(true)
   orders            order[]
   deliveryZones     DeliveryZone[]
@@ -457,7 +500,7 @@ model transaction {
   branch               branch?         @relation(fields: [branchId], references: [id])
   provider             PaymentProvider
   checkoutRequestId    String?         @unique
-  payheroReference     String?
+  paystackReference    String?         @unique
   amount               Int
   status               TxStatus        @default(PENDING)
   rawRequestPayload    Json?
@@ -534,6 +577,19 @@ model systemConfig {
   value     Json
   updatedAt DateTime @updatedAt
 
+  @@schema("admin")
+}
+
+model notification {
+  id        String   @id @default(cuid())
+  type      String
+  title     String
+  body      String
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([read, createdAt])
   @@schema("admin")
 }
 
@@ -767,4 +823,51 @@ model loyaltyTier {
   color      String
 
   @@schema("admin")
+}
+
+// ============================================================================
+// Account Dashboard models (public schema)
+// ============================================================================
+
+model orderStatusEvent {
+  id         String      @id @default(cuid())
+  orderId    String
+  order      order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status     OrderStatus
+  note       String?
+  occurredAt DateTime    @default(now())
+
+  @@index([orderId])
+  @@schema("public")
+}
+
+model inboxMessage {
+  id        String      @id @default(cuid())
+  userId    String
+  user      user        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      MessageType @default(SYSTEM)
+  title     String
+  body      String
+  orderId   String?
+  isRead    Boolean     @default(false)
+  createdAt DateTime    @default(now())
+
+  @@index([userId, isRead])
+  @@schema("public")
+}
+
+model wishlistItem {
+  id               String   @id @default(cuid())
+  userId           String
+  user             user     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId        String
+  productName      String
+  productImage     String?
+  priceKes         Int
+  originalPriceKes Int?
+  addedAt          DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@schema("public")
 }

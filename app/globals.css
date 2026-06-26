@@ -33,6 +33,20 @@
   --color-border-input:    #c0cab8;
   --color-border-error:    #ef4444;
   --color-bg-form:         #f9f9f9;
+  /* Chart color utilities */
+  --color-chart-primary: var(--green-500);
+  --color-chart-secondary: var(--gold-500);
+  --color-chart-danger: var(--danger);
+  --color-chart-info: var(--info);
+  --color-chart-background: var(--chart-background);
+  --color-chart-foreground: var(--chart-foreground);
+  --color-chart-line-primary: var(--chart-line-primary);
+  --color-chart-line-secondary: var(--chart-line-secondary);
+  --color-chart-grid: var(--chart-grid);
+  --color-chart-crosshair: var(--chart-crosshair);
+  --color-chart-label: var(--chart-label);
+  --color-chart-tooltip-foreground: var(--chart-tooltip-text);
+  --color-chart-tooltip-muted: var(--chart-label);
 }
 
 /* Admin design tokens */
@@ -372,6 +386,22 @@
   --dark-accent-hover: #FFD84D;
   --orange-500: #F97316;
   --orange-700: #C2410C;
+  /* Chart design tokens */
+  --chart-background: var(--neutral-50);
+  --chart-foreground: var(--neutral-900);
+  --chart-line-primary: var(--green-500);
+  --chart-line-secondary: var(--gold-500);
+  --chart-crosshair: var(--neutral-300);
+  --chart-grid: var(--neutral-200);
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-border: var(--neutral-200);
+  --chart-tooltip-text: var(--neutral-900);
+  --chart-label: var(--neutral-400);
+  --chart-1: var(--green-500);
+  --chart-2: var(--gold-500);
+  --chart-3: var(--info);
+  --chart-4: var(--danger);
+  --chart-5: var(--neutral-400);
 }
 
 /* =============================================================================
@@ -457,6 +487,14 @@ h1, h2, h3, h4, h5, h6 {
   --color-text-body:    #b0bfac;
   --color-text-muted:   rgba(176, 191, 172, 0.6);
   --color-border-input: #2d3a2b;
+  --chart-background: var(--dark-bg);
+  --chart-foreground: var(--dark-text);
+  --chart-crosshair: var(--dark-border);
+  --chart-grid: var(--dark-border);
+  --chart-tooltip-bg: var(--dark-surface);
+  --chart-tooltip-border: var(--dark-border);
+  --chart-tooltip-text: var(--dark-text);
+  --chart-label: var(--dark-muted);
 }
 
 /* Apply dark background/color to body; transition for smooth toggling */

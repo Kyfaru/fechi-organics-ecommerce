@@ -1,10 +1,12 @@
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
 import { Argon2id } from "oslo/password";
 import dotenv from "dotenv";
-import { encrypt } from "../lib/crypto";
-
 dotenv.config({ path: ".env.local" });
+import { encrypt } from "../lib/crypto";
+import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+
+
+
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter } as ConstructorParameters<typeof PrismaClient>[0]);
@@ -408,59 +410,90 @@ async function main() {
       id: "branch-nairobi",
       name: "Nairobi Branch",
       county: "Nairobi",
+      isMain: true,
+      mpesaGateway: "KCB_BUNI" as const,
       mpesaType: "PAYBILL" as const,
-      shortcode: "000000",
-    },
-    {
-      id: "branch-mombasa",
-      name: "Mombasa Branch",
-      county: "Mombasa",
-      mpesaType: "PAYBILL" as const,
-      shortcode: "000000",
-    },
-    {
-      id: "branch-kisumu",
-      name: "Kisumu Branch",
-      county: "Kisumu",
-      mpesaType: "TILL" as const,
-      shortcode: "000000",
+      shortcode: "placeholder",
+      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_NAIROBI ?? "ACCT_cd1z3skedyfumdv",
     },
     {
       id: "branch-nakuru",
       name: "Nakuru Branch",
       county: "Nakuru",
+      isMain: false,
+      mpesaGateway: "KCB_BUNI" as const,
       mpesaType: "PAYBILL" as const,
-      shortcode: "000000",
+      shortcode: "placeholder",
+      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_NAKURU ?? "ACCT_par1ka0zbibyhxk",
+    },
+    {
+      id: "branch-mwea",
+      name: "Mwea Branch",
+      county: "Kirinyaga",
+      isMain: false,
+      mpesaGateway: "DARAJA" as const,
+      mpesaType: "TILL" as const,
+      shortcode: "placeholder",
+      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_MWEA ?? "ACCT_uq3xnsh72bgijv5",
     },
     {
       id: "branch-eldoret",
       name: "Eldoret Branch",
       county: "Uasin Gishu",
-      mpesaType: "PAYBILL" as const,
-      shortcode: "000000",
+      isMain: false,
+      mpesaGateway: "DARAJA" as const,
+      mpesaType: "TILL" as const,
+      shortcode: "placeholder",
+      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_ELDORET ?? "ACCT_par1ka0zbibyhxk",
+    },
+    {
+      id: "branch-kitengela",
+      name: "Kitengela Branch",
+      county: "Kajiado",
+      isMain: false,
+      mpesaGateway: "DARAJA" as const,
+      mpesaType: "TILL" as const,
+      shortcode: "placeholder",
+      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_KITENGELA ?? "ACCT_par1ka0zbibyhxk",
     },
   ];
 
   for (const b of branchDefs) {
     await prisma.branch.upsert({
       where: { id: b.id },
-      update: {},
+      update: {
+        name: b.name,
+        county: b.county,
+        isMain: b.isMain,
+        mpesaGateway: b.mpesaGateway,
+        mpesaType: b.mpesaType,
+        paystackSubaccount: b.paystackSubaccount,
+        isActive: true,
+      },
       create: {
         id: b.id,
         name: b.name,
         county: b.county,
+        isMain: b.isMain,
+        mpesaGateway: b.mpesaGateway,
         mpesaType: b.mpesaType,
         shortcode: b.shortcode,
+        paystackSubaccount: b.paystackSubaccount,
         consumerKeyEnc: encrypt("PLACEHOLDER"),
         consumerSecretEnc: encrypt("PLACEHOLDER"),
         passkeyEnc: encrypt("PLACEHOLDER"),
+        apiKeyEnc: encrypt("PLACEHOLDER"),
         isActive: true,
       },
     });
   }
 
   console.log(`✅ ${branchDefs.length} branches seeded`);
-
+  if(!branchDefs.some(b => b.paystackSubaccount)){
+    console.log("✅ No branches seeded with Paystack subaccounts");
+  } else {
+    console.log(`✅ ${branchDefs.filter(b => b.paystackSubaccount).length} branches seeded with Paystack subaccounts`);
+  }
   console.log("🎉 Seeding complete!");
 }
 
