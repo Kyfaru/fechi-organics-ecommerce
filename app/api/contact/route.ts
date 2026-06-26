@@ -36,6 +36,47 @@ export async function POST(req: NextRequest) {
       data: { name, email, phone, subject, message },
     });
 
+    // Fire-and-forget: create admin notification + support ticket (if user account exists)
+    Promise.resolve().then(async () => {
+      try {
+        // Always notify admin inbox
+        await db.notification.create({
+          data: {
+            type: "contact",
+            title: `New contact: ${subject}`,
+            body: `${name} (${email}) — ${message.slice(0, 120)}${message.length > 120 ? "…" : ""}`,
+            link: `/admin/contacts`,
+          },
+        });
+
+        // Create a support ticket if the email matches a registered user
+        const user = await db.user.findFirst({ where: { email } });
+        if (user) {
+          const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+          const suffix = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * 36)]).join("");
+          const ticketNumber = `TKT-${suffix}`;
+          const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+          await db.supportTicket.create({
+            data: {
+              ticketNumber,
+              userId: user.id,
+              subject,
+              expiresAt,
+              messages: {
+                create: {
+                  senderType: "CUSTOMER",
+                  content: `${message}${phone ? `\n\nPhone: ${phone}` : ""}`,
+                },
+              },
+            },
+          });
+          console.info("[contact] Support ticket created:", ticketNumber, "for user:", user.id);
+        }
+      } catch (e) {
+        console.error("[contact] post-submit actions failed:", e);
+      }
+    });
+
     // Send notification email (async, best-effort)
     sendNotificationEmail({ name, email, subject, message, id: record.id }).catch((e) =>
       console.error("[contact] email send error", e)

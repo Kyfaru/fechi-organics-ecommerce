@@ -70,6 +70,9 @@ const UpdateSchema = z.object({
   stock: z.number().int().min(0).optional(),
   bestSeller: z.boolean().optional(),
   isActive: z.boolean().optional(),
+  sizes: z.array(z.string()).optional(),
+  howToUse: z.string().nullable().optional(),
+  ingredients: z.string().nullable().optional(),
   // imageObjectKeys: ordered array; index 0 = primary.
   // Passing this replaces all existing images with the new set.
   imageObjectKeys: z.array(z.string()).optional(),

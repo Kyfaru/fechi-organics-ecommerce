@@ -31,8 +31,7 @@ export async function GET(req: NextRequest) {
         category: { select: { id: true, name: true, slug: true } },
         images: {
           orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }],
-          take: 1,
-          select: { objectKey: true, isPrimary: true },
+          select: { id: true, objectKey: true, isPrimary: true, sortOrder: true, alt: true },
         },
       },
     });
@@ -108,6 +107,15 @@ export async function POST(req: NextRequest) {
     });
 
     console.info("[admin/products] POST — created product", product.id, product.slug);
+    // Notify admin inbox about new product
+    db.notification.create({
+      data: {
+        type: "admin",
+        title: `New product added: ${product.name}`,
+        body: `"${product.name}" has been published to the store.`,
+        link: `/admin/products`,
+      },
+    }).catch((e) => console.error("[admin/products] notification create failed:", e));
     return ok({ product });
   } catch (e: unknown) {
     console.error("[admin/products] POST error", e);

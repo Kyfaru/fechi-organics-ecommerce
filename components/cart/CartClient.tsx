@@ -144,6 +144,16 @@ export function CartClient() {
   async function handleApplyPromo() {
     const code = promoCode.trim().toUpperCase();
     if (!code) return;
+
+    // Client-side reuse guard
+    try {
+      const used: string[] = JSON.parse(localStorage.getItem("fechi_used_coupons") ?? "[]");
+      if (used.includes(code)) {
+        toast.error("You've already used this coupon");
+        return;
+      }
+    } catch { /* ignore */ }
+
     setPromoLoading(true);
     try {
       const res = await fetch("/api/promo/validate", {

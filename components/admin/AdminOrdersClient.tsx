@@ -8,11 +8,11 @@ import {
   ChevronDown, MoreHorizontal, X, Tag, User, CreditCard, Printer, Link2,
   MapPin, Check, Copy,
 } from "lucide-react";
+import { StatsCard } from "@/components/ui/stats-card";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import { Spinner } from "@/components/ui/spinner";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
-import { StatCard } from "@/components/admin/ui/StatCard";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
@@ -245,7 +245,8 @@ function OrderDetailDrawer({
   if (!order) return null;
 
   const totalQty = order.items.reduce((s, i) => s + i.quantity, 0);
-  const isConfirmed = ["CONFIRMED", "SHIPPED", "DELIVERED"].includes(order.status);
+  const isConfirmed = ["CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"].includes(order.status);
+  const isProcessed = !!order.processingBy && ["PROCESSING", "SHIPPED", "DELIVERED"].includes(order.status);
 
   function handleFulfillment(action: string, orderNumber?: string) {
     fulfillMutation.mutate({ id: order!.id, action, orderNumber });
@@ -276,33 +277,16 @@ function OrderDetailDrawer({
                   </button>
                 </div>
               ) : (
-                <span className="font-dm text-[13px] text-(--neutral-400)">Not assigned</span>
+                <span className="font-dm text-[13px] text-(--neutral-400) italic">Will be assigned on confirmation</span>
               )}
             </div>
 
-            {/* Fulfillment panel */}
+            {/* Fulfillment panel — flow: Confirmed → Processing → Shipped */}
             <div className="bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200)">
               <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-4">Fulfillment</p>
 
               <div className="flex flex-col gap-4">
-                {/* Processing */}
-                <div className="flex items-center gap-3">
-                  <CheckboxGreen
-                    checked={!!order.processingBy}
-                    onChange={() => handleFulfillment(order.processingBy ? "unset_processing" : "set_processing")}
-                    disabled={fulfillMutation.isPending || ["SHIPPED", "DELIVERED", "CANCELLED"].includes(order.status)}
-                  />
-                  <div>
-                    <p className="font-dm text-[14px] font-medium text-(--neutral-900)">Processing</p>
-                    {order.processingBy && (
-                      <p className="font-dm text-[12px] text-(--neutral-500)">
-                        Checked at {formatDate(order.processedAt)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Confirmed */}
+                {/* Step 1: Confirmed */}
                 <div className="flex items-center gap-3">
                   <CheckboxGreen
                     checked={isConfirmed}
@@ -313,18 +297,39 @@ function OrderDetailDrawer({
                   />
                   <div>
                     <p className="font-dm text-[14px] font-medium text-(--neutral-900)">Confirmed</p>
-                    {order.confirmedAt && (
+                    {order.confirmedAt ? (
                       <p className="font-dm text-[12px] text-(--neutral-500)">
                         Confirmed at {formatDate(order.confirmedAt)}
                       </p>
+                    ) : (
+                      <p className="font-dm text-[12px] text-(--neutral-400)">Verify the order and confirm</p>
                     )}
                   </div>
                 </div>
 
-                {/* Ship button */}
+                {/* Step 2: Processing (Packaging) */}
+                <div className="flex items-center gap-3">
+                  <CheckboxGreen
+                    checked={isProcessed}
+                    onChange={() => handleFulfillment(isProcessed ? "unset_processing" : "set_processing")}
+                    disabled={fulfillMutation.isPending || !isConfirmed || ["SHIPPED", "DELIVERED", "CANCELLED"].includes(order.status)}
+                  />
+                  <div>
+                    <p className="font-dm text-[14px] font-medium text-(--neutral-900)">Processing</p>
+                    {isProcessed ? (
+                      <p className="font-dm text-[12px] text-(--neutral-500)">
+                        Packaging started {formatDate(order.processedAt)}
+                      </p>
+                    ) : (
+                      <p className="font-dm text-[12px] text-(--neutral-400)">Waiting to be packaged / shipped</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Step 3: Ship button */}
                 <div className="flex items-center gap-3 pl-[52px]">
                   <button
-                    disabled={!order.processingBy || order.status !== "CONFIRMED" || fulfillMutation.isPending}
+                    disabled={order.status !== "PROCESSING" || fulfillMutation.isPending}
                     onClick={() => {
                       if (window.confirm("Mark this order as shipped?")) {
                         handleFulfillment("ship");
@@ -337,7 +342,7 @@ function OrderDetailDrawer({
                   </button>
                 </div>
 
-                {/* Delivered indicator */}
+                {/* Step 4: Delivered indicator */}
                 <div className="flex items-center gap-3 opacity-70">
                   <div className="w-10 h-10 rounded-full border-2 border-dashed border-(--neutral-300) flex items-center justify-center shrink-0">
                     {order.status === "DELIVERED"
@@ -771,10 +776,10 @@ export function AdminOrdersClient() {
 
       {/* ── Stat cards ── */}
       <div className="px-6 mb-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard eyebrow="Today's Orders" value={String(todayOrders)} icon={ShoppingBag} />
-        <StatCard eyebrow="Processing" value={String(processingOrders)} icon={Clock} />
-        <StatCard eyebrow="Shipped" value={String(shippedOrders)} icon={Truck} />
-        <StatCard eyebrow="Delivered This Month" value={String(deliveredThisMonth)} icon={CheckCircle} />
+        <StatsCard title="Today's Orders" value={String(todayOrders)} icon={<ShoppingBag className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+        <StatsCard title="Processing" value={String(processingOrders)} icon={<Clock className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+        <StatsCard title="Shipped" value={String(shippedOrders)} icon={<Truck className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+        <StatsCard title="Delivered This Month" value={String(deliveredThisMonth)} icon={<CheckCircle className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
       </div>
 
       {/* ── Filter toolbar ── */}

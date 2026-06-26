@@ -107,11 +107,13 @@ export async function POST(req: NextRequest) {
     const promoCode = deliveryData.promoCode?.trim().toUpperCase();
     let discountCents = 0;
     let deliveryCents = pricing.feeKes;
+    let resolvedPromoId: string | null = null;
     if (promoCode) {
       try {
         const r = await resolvePromo(promoCode, subtotalCents);
         discountCents = r.discountKes;
         if (r.deliveryFree) deliveryCents = 0;
+        resolvedPromoId = r.promo.id;
       } catch {
         /* invalid/expired — discount stays 0 */
       }
@@ -178,6 +180,19 @@ export async function POST(req: NextRequest) {
         },
       },
     });
+
+    // Record coupon redemption
+    if (resolvedPromoId && promoCode) {
+      await db.couponRedemption.upsert({
+        where: { couponId_userId: { couponId: resolvedPromoId, userId } },
+        create: { couponId: resolvedPromoId, userId, orderId: order.id },
+        update: {},
+      });
+      await db.promotion.update({
+        where: { id: resolvedPromoId },
+        data: { usedCount: { increment: 1 } },
+      });
+    }
 
     // 7. Generate reference and create transaction record (PENDING)
     const reference = `fechi_${order.id}_${Date.now()}`;

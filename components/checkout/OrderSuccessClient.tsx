@@ -39,9 +39,21 @@ function capture(event: string, props?: Record<string, unknown>) {
 
 export function OrderSuccessClient({ order }: { order: Order }) {
   useEffect(() => {
+    // Mark the coupon as used before clearing session
+    const usedPromo = sessionStorage.getItem("fechi_promo");
+    if (usedPromo) {
+      try {
+        const used: string[] = JSON.parse(localStorage.getItem("fechi_used_coupons") ?? "[]");
+        if (!used.includes(usedPromo)) {
+          localStorage.setItem("fechi_used_coupons", JSON.stringify([...used, usedPromo]));
+        }
+      } catch { /* ignore */ }
+    }
     sessionStorage.removeItem("fechi_delivery");
     sessionStorage.removeItem("fechi_pending_order");
     sessionStorage.removeItem("fechi_promo");
+    sessionStorage.removeItem("fechi_promo_amount");
+    sessionStorage.removeItem("fechi_promo_free_shipping");
     capture("order_success_viewed", { orderId: order.id });
 
     const burst = () => confetti({ particleCount: 120, spread: 80, colors: ["#27731e", "#fec700", "#a4f690"], origin: { y: 0.42 } });

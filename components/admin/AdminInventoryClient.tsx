@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Warehouse, Package, AlertTriangle, XCircle, Search, ChevronDown, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
-import { StatCard } from "@/components/admin/ui/StatCard";
+import { StatsCard } from "@/components/ui/stats-card";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
@@ -248,23 +248,10 @@ export function AdminInventoryClient() {
       <div className="px-6 pb-6 space-y-6">
         {/* Stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard eyebrow="Total SKUs" value={String(stats.totalSKUs)} icon={Warehouse} />
-          <StatCard
-            eyebrow="In Stock"
-            value={String(stats.inStock)}
-            icon={Package}
-            trend={{ value: "Healthy", positive: true }}
-          />
-          <StatCard
-            eyebrow="Low Stock"
-            value={String(stats.lowStock)}
-            icon={AlertTriangle}
-          />
-          <StatCard
-            eyebrow="Out of Stock"
-            value={String(stats.outOfStock)}
-            icon={XCircle}
-          />
+          <StatsCard title="Total SKUs" value={String(stats.totalSKUs)} icon={<Warehouse className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+          <StatsCard title="In Stock" value={String(stats.inStock)} icon={<Package className="h-4 w-4 text-muted-foreground" />} change="Healthy" changeType="positive" />
+          <StatsCard title="Low Stock" value={String(stats.lowStock)} icon={<AlertTriangle className="h-4 w-4 text-muted-foreground" />} change="—" changeType="negative" />
+          <StatsCard title="Out of Stock" value={String(stats.outOfStock)} icon={<XCircle className="h-4 w-4 text-muted-foreground" />} change="—" changeType="negative" />
         </div>
 
         {/* Filter toolbar */}

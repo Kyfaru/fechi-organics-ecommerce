@@ -7,11 +7,23 @@ import { ok, Err } from "@/lib/api";
 import { sendSms } from "@/lib/twilio";
 
 const STATUS_MESSAGES: Record<string, string> = {
-  PROCESSING: "is being prepared",
   CONFIRMED:  "has been confirmed",
+  PROCESSING: "is being packaged and prepared for shipment",
   SHIPPED:    "has been shipped. Estimated arrival: 1–3 business days",
   CANCELLED:  "has been cancelled. Contact us if you have questions",
 };
+
+// Generate a unique order number (non-transaction version)
+async function generateOrderNumber(): Promise<string> {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  for (let i = 0; i < 5; i++) {
+    const suffix = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * 36)]).join("");
+    const num = `#FO-${suffix}`;
+    const exists = await db.order.findUnique({ where: { orderNumber: num } });
+    if (!exists) return num;
+  }
+  throw new Error("Could not generate unique order number after 5 retries");
+}
 
 function notifyOrderStatusChange(
   orderId: string,
@@ -191,9 +203,34 @@ async function handleFulfillmentAction(
   const terminalStatuses = ["SHIPPED", "DELIVERED", "CANCELLED"];
 
   switch (action) {
+    case "confirm": {
+      // New flow: PENDING → CONFIRMED (first step)
+      // Auto-generate order number if not set; otherwise require the admin to type it
+      if (order.orderNumber) {
+        if (!orderNumber || orderNumber !== order.orderNumber) {
+          return Err.validation("Order number does not match — confirmation rejected");
+        }
+      }
+      const resolvedOrderNumber = order.orderNumber ?? (await generateOrderNumber());
+      const updated = await db.order.update({
+        where: { id: orderId },
+        data: {
+          status: "CONFIRMED",
+          confirmedBy: adminUserId,
+          confirmedAt: new Date(),
+          orderNumber: resolvedOrderNumber,
+        },
+        include: ORDER_INCLUDE,
+      });
+      console.info("[admin/orders/[id]] confirm —", orderId, "orderNumber:", resolvedOrderNumber);
+      notifyOrderStatusChange(orderId, order.userId, resolvedOrderNumber, "CONFIRMED", order.user?.phone);
+      return ok({ order: updated });
+    }
+
     case "set_processing": {
-      if (terminalStatuses.includes(order.status)) {
-        return Err.validation(`Cannot process an order with status ${order.status}`);
+      // New flow: CONFIRMED → PROCESSING (packaging/preparing)
+      if (order.status !== "CONFIRMED") {
+        return Err.validation("Order must be CONFIRMED before it can be processed");
       }
       const updated = await db.order.update({
         where: { id: orderId },
@@ -210,10 +247,13 @@ async function handleFulfillmentAction(
     }
 
     case "unset_processing": {
+      if (order.status !== "PROCESSING") {
+        return Err.validation("Order is not in PROCESSING status");
+      }
       const updated = await db.order.update({
         where: { id: orderId },
         data: {
-          status: "PENDING",
+          status: "CONFIRMED",
           processingBy: null,
           processedAt: null,
         },
@@ -223,29 +263,10 @@ async function handleFulfillmentAction(
       return ok({ order: updated });
     }
 
-    case "confirm": {
-      // Require the admin to type the order number to prevent accidental confirmation
-      if (!orderNumber || orderNumber !== order.orderNumber) {
-        return Err.validation("Order number does not match — confirmation rejected");
-      }
-      const updated = await db.order.update({
-        where: { id: orderId },
-        data: {
-          status: "CONFIRMED",
-          confirmedBy: adminUserId,
-          confirmedAt: new Date(),
-        },
-        include: ORDER_INCLUDE,
-      });
-      console.info("[admin/orders/[id]] confirm —", orderId);
-      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "CONFIRMED", order.user?.phone);
-      return ok({ order: updated });
-    }
-
     case "ship": {
-      // Must be CONFIRMED and have a processor assigned before shipping
-      if (!order.processingBy || order.status !== "CONFIRMED") {
-        return Err.validation("Order must be CONFIRMED and assigned to a processor before shipping");
+      // Must be PROCESSING before shipping
+      if (order.status !== "PROCESSING") {
+        return Err.validation("Order must be in PROCESSING status before it can be shipped");
       }
       const updated = await db.order.update({
         where: { id: orderId },

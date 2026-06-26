@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Heart, Star, Award, Edit2, Crown } from "lucide-react";
+import { Heart, Star, Award, Edit2, Crown, Users, Trophy } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { EmptyState } from "@/components/admin/ui/EmptyState";
+import { StatsCard } from "@/components/ui/stats-card";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -230,6 +231,14 @@ export function AdminLoyaltyClient() {
       />
 
       <div className="px-6 pb-8 space-y-8">
+        {/* Stats */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatsCard title="Total Members" value={isLoading ? "—" : String(topCustomers.length)} icon={<Users className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+          <StatsCard title="Active Tiers" value={isLoading ? "—" : String(tiers.length)} icon={<Trophy className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+          <StatsCard title="Top Points" value={isLoading ? "—" : String(topCustomers[0]?.points?.toLocaleString() ?? 0)} icon={<Star className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+          <StatsCard title="Gold Members" value={isLoading ? "—" : String(topCustomers.filter(c => c.tier.toLowerCase() === "gold" || c.tier.toLowerCase() === "platinum").length)} icon={<Crown className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+        </div>
+
         {/* Tier cards */}
         <div>
           <h2 className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">

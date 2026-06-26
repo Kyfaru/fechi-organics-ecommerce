@@ -304,6 +304,17 @@ export function DeliveryClient({ user }: Props) {
   async function applyPromo() {
     const next = promoInput.trim().toUpperCase();
     if (!next) { removePromo(); return; }
+
+    // Client-side reuse guard
+    try {
+      const used: string[] = JSON.parse(localStorage.getItem("fechi_used_coupons") ?? "[]");
+      if (used.includes(next)) {
+        setPromoStatus("error");
+        setPromoMessage("You've already used this coupon");
+        return;
+      }
+    } catch { /* ignore */ }
+
     setPromoStatus("loading");
     try {
       const res = await fetch(`/api/coupons/validate?code=${encodeURIComponent(next)}&subtotal=${subtotalKes}`);

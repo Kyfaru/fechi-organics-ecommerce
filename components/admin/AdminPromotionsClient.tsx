@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Tag, RefreshCw, ChevronDown, Trash2 } from "lucide-react";
+import { Plus, Tag, RefreshCw, ChevronDown, Trash2, Copy, Check } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
@@ -53,6 +53,14 @@ export function AdminPromotionsClient() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Promotion | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Promotion | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  function copyCode(id: string, code: string) {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 1500);
+    });
+  }
 
   const EMPTY_FORM = {
     name: "",
@@ -192,11 +200,20 @@ export function AdminPromotionsClient() {
     {
       key: "code",
       label: "Code",
-      render: (v: unknown) =>
+      render: (v: unknown, row: Record<string, unknown>) =>
         v ? (
-          <code className="px-2 py-0.5 rounded bg-(--neutral-100) font-dm text-[13px] font-semibold text-(--neutral-900) tracking-wider">
-            {String(v)}
-          </code>
+          <div className="flex items-center gap-1.5">
+            <code className="px-2 py-0.5 rounded bg-(--neutral-100) font-dm text-[13px] font-semibold text-(--neutral-900) tracking-wider">
+              {String(v)}
+            </code>
+            <button
+              onClick={(e) => { e.stopPropagation(); copyCode(String(row.id), String(v)); }}
+              className="h-6 w-6 flex items-center justify-center rounded-[4px] text-(--neutral-400) hover:bg-(--neutral-100) hover:text-(--neutral-700) transition-colors"
+              title="Copy code"
+            >
+              {copiedId === String(row.id) ? <Check size={12} className="text-(--green-700)" /> : <Copy size={12} />}
+            </button>
+          </div>
         ) : (
           <span className="text-(--neutral-400) text-[14px]">—</span>
         ),
