@@ -482,6 +482,7 @@ h1, h2, h3, h4, h5, h6 {
 .dark {
   --color-bg-page:      #0f1210;
   --color-bg-card:      #1a1f18;
+  --color-card-bg:      #171717;
   --color-bg-input:     #1e261c;
   --color-text-dark:    #edf2ec;
   --color-text-body:    #b0bfac;

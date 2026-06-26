@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Heart, Pencil, Check, X, Plus } from "lucide-react";
+import { Heart, Pencil, Check, X, Plus, Award, Layers  } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
-import { StatCard } from "@/components/admin/ui/StatCard";
+import { StatsCard } from "@/components/ui/stats-card";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -263,9 +263,29 @@ export function AdminLoyaltyTiersClient() {
       <div className="px-6 pb-6 space-y-8">
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4">
-          <StatCard eyebrow="Total Members" value={String(totalMembers)} icon={Heart} />
-          <StatCard eyebrow="Total Points Issued" value={totalPoints.toLocaleString()} />
-          <StatCard eyebrow="Active Tiers" value={String(tiers.length)} />
+          <StatsCard
+  title="Total Members"
+  value={String(totalMembers)}
+  icon={<Heart className="h-4 w-4 text-muted-foreground" />}
+  change="—"
+  changeType="positive"
+/>
+
+<StatsCard
+  title="Total Points Issued"
+  value={totalPoints.toLocaleString()}
+  icon={<Award className="h-4 w-4 text-muted-foreground" />}
+  change="Issued"
+  changeType="positive"
+/>
+
+<StatsCard
+  title="Active Tiers"
+  value={String(tiers.length)}
+  icon={<Layers className="h-4 w-4 text-muted-foreground" />}
+  change="Active"
+  changeType="positive"
+/>
         </div>
 
         {/* Tier cards */}

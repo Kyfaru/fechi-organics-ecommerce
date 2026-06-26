@@ -7,7 +7,7 @@ import { Edit, MapPin, Plus, Trash2, Truck } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { Drawer } from "@/components/admin/ui/Drawer";
-import { StatCard } from "@/components/admin/ui/StatCard";
+import { StatsCard } from "@/components/ui/stats-card";
 import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
 import { KENYA_COUNTIES } from "@/lib/kenya-counties";
 import { toast } from "@/lib/toast";
@@ -167,9 +167,29 @@ export function AdminDeliveryZonesClient() {
       <PageHeader title="Delivery Zones" description="Manage delivery zones, branch routing, and checkout fees" />
 
       <div className="px-6 mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard eyebrow="Zones" value={String(zones.length)} icon={MapPin} />
-        <StatCard eyebrow="Active" value={String(activeZones)} icon={Truck} />
-        <StatCard eyebrow="Average Fee" value={avgFee ? formatKes(avgFee) : "KES 0"} icon={Truck} />
+        <StatsCard
+  title="Zones"
+  value={String(zones.length)}
+  icon={<MapPin className="h-4 w-4 text-muted-foreground" />}
+  change="—"
+  changeType="positive"
+/>
+
+<StatsCard
+  title="Active"
+  value={String(activeZones)}
+  icon={<Truck className="h-4 w-4 text-muted-foreground" />}
+  change="Active"
+  changeType="positive"
+/>
+
+<StatsCard
+  title="Average Fee"
+  value={avgFee ? formatKes(avgFee) : "KES 0"}
+  icon={<Truck className="h-4 w-4 text-muted-foreground" />}
+  change="Average"
+  changeType="positive"
+/>
       </div>
 
       <div className="px-6 mb-5 flex flex-wrap items-center gap-3">

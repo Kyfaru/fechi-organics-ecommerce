@@ -12,10 +12,12 @@ import {
   ChevronDown,
   Trash2,
   Phone,
+  PencilLine,
+  Megaphone,
   Zap,
 } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
-import { StatCard } from "@/components/admin/ui/StatCard";
+import { StatsCard } from "@/components/ui/stats-card";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import RichTextEditor from "@/components/admin/ui/RichTextEditor";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
@@ -365,17 +367,9 @@ export function AdminCampaignsClient() {
       <div className="px-6 pb-6 space-y-6">
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4">
-          <StatCard
-            eyebrow="Total Campaigns"
-            value={String(stats.total)}
-            icon={Mail}
-          />
-          <StatCard
-            eyebrow="Sent This Month"
-            value={String(stats.sentThisMonth)}
-            icon={Send}
-          />
-          <StatCard eyebrow="Drafts" value={String(stats.drafts)} />
+          <StatsCard title="Total Campaigns" value={String(stats.total)} icon={<Megaphone className="h-4 w-4 text-muted-foreground" />} change="Healthy" changeType="positive" />
+          <StatsCard title="Sent This Month" value={String(stats.sentThisMonth)} icon={<Send className="h-4 w-4 text-muted-foreground" />} change="—" changeType="negative" />
+          <StatsCard title="Drafts" value={String(stats.drafts)} icon={<PencilLine className="h-4 w-4 text-muted-foreground" />} change="—" changeType="negative" />
         </div>
 
         <DataTable

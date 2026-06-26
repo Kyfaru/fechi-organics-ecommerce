@@ -11,22 +11,19 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
 } from "recharts";
 import {
   TrendingUp,
   ShoppingCart,
   Users,
   Package,
-  BarChart2,
+  Warehouse,
+  AlertTriangle, 
+  XCircle,
   Mail,
   Layers,
-  FileText,
 } from "lucide-react";
-import { StatCard } from "@/components/admin/ui/StatCard";
+import { StatsCard } from "@/components/ui/stats-card";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
@@ -788,10 +785,10 @@ function InventoryTab({ payload, isLoading }: { payload: Record<string, unknown>
           Array.from({ length: 4 }).map((_, i) => <SkeletonStatCard key={i} />)
         ) : (
           <>
-            <StatCard eyebrow="Total SKUs" value={String(payload.totalSKUs ?? 0)} icon={Package} />
-            <StatCard eyebrow="In Stock" value={String(payload.inStock ?? 0)} />
-            <StatCard eyebrow="Low Stock" value={String(payload.lowStock ?? 0)} trend={(payload.lowStock as number) > 0 ? { value: "needs attention", positive: false } : undefined} />
-            <StatCard eyebrow="Out of Stock" value={String(payload.outOfStock ?? 0)} trend={(payload.outOfStock as number) > 0 ? { value: "restock needed", positive: false } : undefined} />
+          <StatsCard title="Total SKUs" value={String(payload.totalSKUs ?? 0)} icon={<Warehouse className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+          <StatsCard title="In Stock" value={String(payload.inStock ?? 0)} icon={<Package className="h-4 w-4 text-muted-foreground" />} change="Healthy" changeType="positive" />
+          <StatsCard title="Low Stock" value={String(payload.lowStock ?? 0)} icon={<AlertTriangle className="h-4 w-4 text-muted-foreground" />} change="—" changeType="negative" />
+          <StatsCard title="Out of Stock" value={String(payload.outOfStock ?? 0)} icon={<XCircle className="h-4 w-4 text-muted-foreground" />} change="—" changeType="negative" />
           </>
         )}
       </div>

@@ -18,7 +18,7 @@ import {
 import CheckboxGreen from "@/components/ui/CheckboxGreen";
 import { ALL_PAGES, permissionsFromRole, type AdminPage } from "@/lib/permissions";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
-import { StatCard } from "@/components/admin/ui/StatCard";
+import { StatsCard } from "@/components/ui/stats-card";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
@@ -874,10 +874,10 @@ export function AdminStaffClient() {
       <div className="px-6 pb-6 space-y-6">
         {/* Stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard eyebrow="Total Staff" value={isLoading ? "—" : String(totalStaff)} icon={Users} />
-          <StatCard eyebrow="Admins" value={isLoading ? "—" : String(adminCount)} icon={ShieldCheck} />
-          <StatCard eyebrow="Active" value={isLoading ? "—" : String(activeCount)} icon={UserCog} />
-          <StatCard eyebrow="Active Sessions" value="1" icon={Activity} />
+          <StatsCard title="Total Staff" value={String(totalStaff)} icon={<Users className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+          <StatsCard title="Admins" value={String(adminCount)} icon={<ShieldCheck className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+          <StatsCard title="Active" value={String(activeCount)} icon={<UserCog className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+          <StatsCard title="Active Sessions" value="1" icon={<Activity className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
         </div>
 
         {/* Staff table */}

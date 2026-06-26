@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Star, Check, X, MessageSquare } from "lucide-react";
+import { Star, Check, X, MessageSquare,Calendar } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { StatCard } from "@/components/admin/ui/StatCard";
+import { StatsCard } from "@/components/ui/stats-card";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
@@ -211,10 +211,37 @@ export function AdminProductReviewsClient() {
 
       {/* Stats */}
       <div className="px-6 mb-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard eyebrow="Total Reviews" value={String(stats.total)} icon={Star} />
-        <StatCard eyebrow="Avg Rating" value={stats.avg ? stats.avg.toFixed(1) : "—"} icon={Star} />
-        <StatCard eyebrow="Pending" value={String(stats.pending)} icon={MessageSquare} />
-        <StatCard eyebrow="This Month" value={String(stats.thisMonth)} />
+        <StatsCard
+  title="Total Reviews"
+  value={String(stats.total)}
+  icon={<Star className="h-4 w-4 text-muted-foreground" />}
+  change="—"
+  changeType="positive"
+/>
+
+<StatsCard
+  title="Avg Rating"
+  value={stats.avg ? stats.avg.toFixed(1) : "—"}
+  icon={<Star className="h-4 w-4 text-muted-foreground" />}
+  change="—"
+  changeType="positive"
+/>
+
+<StatsCard
+  title="Pending"
+  value={String(stats.pending)}
+  icon={<MessageSquare className="h-4 w-4 text-muted-foreground" />}
+  change="Pending"
+  changeType="negative"
+/>
+
+<StatsCard
+  title="This Month"
+  value={String(stats.thisMonth)}
+  icon={<Calendar className="h-4 w-4 text-muted-foreground" />}
+  change="This Month"
+  changeType="positive"
+/>
       </div>
 
       <div className="px-6">

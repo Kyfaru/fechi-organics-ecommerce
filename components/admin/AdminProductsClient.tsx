@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect,} from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -1657,6 +1658,8 @@ export function AdminProductsClient() {
     },
   ];
 
+  const router = useRouter();
+
   const addButton = (
     <div className="flex items-center gap-2">
       {/* Sync with Zoho — POST /api/admin/zoho/sync */}
@@ -1675,6 +1678,14 @@ export function AdminProductsClient() {
       >
         <Plus size={16} />
         Add Product
+      </button>
+      
+      <button
+        onClick={() => router.push('/admin/products/reviews')}
+        className="h-10 px-5 rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+      >
+        <Star size={16} />
+        View Reviews
       </button>
     </div>
   );
