@@ -53,7 +53,7 @@ export default function AdminChangePasswordPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full h-11 px-4 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+              className="w-full h-11 px-4 rounded-xl border border-(--neutral-200) font-dm text-[14px] text-black/70 outline-none focus:border-(--green-500)"
               placeholder="Min 8 characters"
               required
             />
@@ -64,7 +64,7 @@ export default function AdminChangePasswordPage() {
               type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              className="w-full h-11 px-4 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+              className="w-full h-11 px-4 rounded-xl border border-(--neutral-200) font-dm text-[14px] text-black/70 outline-none focus:border-(--green-500)"
               placeholder="Repeat password"
               required
             />
