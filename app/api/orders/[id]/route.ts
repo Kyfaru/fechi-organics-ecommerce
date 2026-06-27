@@ -24,6 +24,9 @@ export async function GET(
         items: {
           include: { product: { select: { name: true } } },
         },
+        branch: { select: { name: true, county: true, phone: true } },
+        transactions: true,
+        statusEvents: { orderBy: { occurredAt: "asc" } },
       },
     });
 

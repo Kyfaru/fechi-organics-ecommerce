@@ -4,13 +4,14 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Icon } from "@iconify/react"
 
-const TABS = [
+const TABS: Array<{ href: string; icon: string; label: string }> = [
   { href: "/account/profile",  icon: "lucide:user",         label: "Profile"  },
   { href: "/account/orders",   icon: "lucide:shopping-bag", label: "Orders"   },
+  { href: "/account/reviews",  icon: "lucide:star",         label: "Reviews"  },
   { href: "/account/settings", icon: "lucide:settings",     label: "Settings" },
   { href: "/account/inbox",    icon: "lucide:inbox",        label: "Inbox"    },
   { href: "/account/wishlist", icon: "lucide:heart",        label: "Wishlist" },
-] as const
+]
 
 export default function MobileAccountNav({ unreadCount = 0 }: { unreadCount?: number }) {
   const pathname = usePathname()

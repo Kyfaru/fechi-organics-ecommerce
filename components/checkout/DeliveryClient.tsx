@@ -11,6 +11,7 @@ import { StepIndicator } from "@/components/checkout/StepIndicator";
 import PhoneInput from "@/components/auth/PhoneInput";
 import { KENYA_COUNTIES } from "@/lib/kenya-counties";
 import { toast } from "@/lib/toast";
+import { useCurrency } from "@/app/providers";
 
 type DeliveryMode = "DELIVERY" | "PICKUP";
 type Country = { code: string; name: string; flag: string };
@@ -38,10 +39,6 @@ const inputNormal = `${inputBase} border-[#c0cab8] focus:border-[#27731e] focus:
 const inputError  = `${inputBase} border-red-400 focus:border-red-400 focus:ring-red-100`;
 
 function inputCls(hasError: boolean) { return hasError ? inputError : inputNormal; }
-
-function formatKes(cents: number) {
-  return `KES ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;
-}
 
 function splitName(fullName: string) {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -173,6 +170,7 @@ function SelectDropdown({
 // ---------------------------------------------------------------------------
 export function DeliveryClient({ user }: Props) {
   const router = useRouter();
+  const { format } = useCurrency();
   const initialName = splitName(user.fullName);
   const [mode, setMode] = useState<DeliveryMode>("DELIVERY");
   const [firstName, setFirstName] = useState(initialName.firstName);
@@ -404,7 +402,7 @@ export function DeliveryClient({ user }: Props) {
 
   const countryOptions: SelectOption[] = countries.map((c) => ({ value: c.code, label: c.name, icon: c.flag }));
   const countyOptions: SelectOption[] = KENYA_COUNTIES.map((c) => ({ value: c, label: c }));
-  const zoneOptions: SelectOption[] = zones.map((z) => ({ value: z.id, label: `${z.name} — ${formatKes(z.deliveryFeeKes)}` }));
+  const zoneOptions: SelectOption[] = zones.map((z) => ({ value: z.id, label: `${z.name} — ${format(z.deliveryFeeKes)}` }));
   const storeOptions: SelectOption[] = PICKUP_STORES.map((s) => ({ value: s.id, label: s.name }));
   const stateSelectOptions: SelectOption[] = stateOptions.map((s) => ({ value: s.name, label: s.name }));
 
@@ -590,7 +588,7 @@ export function DeliveryClient({ user }: Props) {
                     <p className="truncate text-[13px] font-bold text-[#1a1c1c] dark:text-white">{item.name}</p>
                     <p className="text-[12px] text-[#40493c] dark:text-gray-400">Qty: {item.quantity}</p>
                   </div>
-                  <p className="text-[14px] font-bold text-[#1a1c1c] dark:text-white">{formatKes(item.lineTotalKes)}</p>
+                  <p className="text-[14px] font-bold text-[#1a1c1c] dark:text-white">{format(item.lineTotalKes)}</p>
                 </div>
               )) : <p className="text-sm text-[#40493c]">Your cart is empty.</p>}
             </div>
@@ -638,19 +636,19 @@ export function DeliveryClient({ user }: Props) {
             <div className="my-6 h-px bg-[#e6ebe3]" />
 
             <div className="space-y-3 text-[15px]">
-              <SummaryRow label="Subtotal" value={formatKes(subtotalKes)} />
+              <SummaryRow label="Subtotal" value={format(subtotalKes)} />
               <SummaryRow
                 label={mode === "PICKUP" ? "Pickup" : "Delivery"}
-                value={pricingQuery.isFetching ? "Calculating..." : (feeKes ? formatKes(feeKes) : "Free")}
+                value={pricingQuery.isFetching ? "Calculating..." : (feeKes ? format(feeKes) : "Free")}
               />
-              {discountKes > 0 && <SummaryRow label="Discount" value={`- ${formatKes(discountKes)}`} green />}
+              {discountKes > 0 && <SummaryRow label="Discount" value={`- ${format(discountKes)}`} green />}
             </div>
 
             <div className="my-6 h-px bg-[#e6ebe3]" />
 
             <div className="flex items-end justify-between">
               <span className="text-[22px] font-bold text-[#1a1c1c] dark:text-white">Total</span>
-              <span className="text-[32px] font-black text-[#1a1c1c] dark:text-white">{formatKes(totalKes)}</span>
+              <span className="text-[32px] font-black text-[#1a1c1c] dark:text-white">{format(totalKes)}</span>
             </div>
 
             <button

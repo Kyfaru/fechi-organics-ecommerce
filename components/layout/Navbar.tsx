@@ -11,6 +11,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { useSession, signOut } from "@/lib/auth-client";
 import { useTheme } from "@/app/providers";
 import { posthog } from "@/lib/posthog";
+import { useUnreadCount } from "@/hooks/useUnreadCount";
 
 const NAV_LINKS = [
   { href: "/", label: "Home" },
@@ -39,9 +40,11 @@ interface NavUser {
 function ProfileTrigger({
   user,
   onLogout,
+  unreadCount = 0,
 }: {
   user: NavUser;
   onLogout: () => void;
+  unreadCount?: number;
 }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const displayName = user.name ?? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() ?? "Account";
@@ -107,6 +110,12 @@ function ProfileTrigger({
                 href="/account/orders"
                 icon="mdi:receipt-outline"
                 label="My Orders"
+                onClick={() => setProfileOpen(false)}
+              />
+              <DropdownLink
+                href="/account/inbox"
+                icon="mdi:inbox-outline"
+                label={unreadCount > 0 ? `Inbox (${unreadCount})` : "Inbox"}
                 onClick={() => setProfileOpen(false)}
               />
               <DropdownLink
@@ -266,6 +275,8 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
   });
   const cartCount = cartData?.data?.itemCount ?? 0;
 
+  const unreadCount = useUnreadCount();
+
   // Transition from floating pill → flush bar after scrolling past 120 px
   useEffect(() => {
     if (flat) return;
@@ -378,7 +389,7 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
                 exit={{ opacity: 0, width: 40 }}
                 transition={{ type: "spring", stiffness: 300, damping: 28 }}
                 onSubmit={handleSearchSubmit}
-                className="absolute right-[148px] top-1/2 -translate-y-1/2 z-20 overflow-hidden"
+                className="absolute top-1/2 -translate-y-1/2 z-40 overflow-hidden"
               >
                 <div className="relative flex items-center">
                   <input
@@ -434,6 +445,20 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
             </Link>
           </Tooltip>
 
+          {/* Notifications bell */}
+          <Tooltip label="Inbox">
+            <Link
+              href="/account/inbox"
+              className="relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              aria-label="Notifications"
+            >
+              <Icon icon="lucide:bell" width={20} className="text-[#1a1c1c] dark:text-white" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+              )}
+            </Link>
+          </Tooltip>
+
           {/* Dark mode toggle */}
           <Tooltip label={theme === "dark" ? "Light mode" : "Dark mode"}>
             <button
@@ -451,7 +476,7 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
 
           {/* Profile trigger or Log in */}
           {user ? (
-            <ProfileTrigger user={user} onLogout={() => setLogoutModalOpen(true)} />
+            <ProfileTrigger user={user} onLogout={() => setLogoutModalOpen(true)} unreadCount={unreadCount} />
           ) : (
             <Link
               href="/login"
@@ -485,6 +510,12 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
               <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] bg-[#27731e] text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none">
                 {cartCount > 99 ? "99+" : cartCount}
               </span>
+            )}
+          </Link>
+          <Link href="/account/inbox" className="relative p-2" aria-label="Notifications">
+            <Icon icon="lucide:bell" width={20} className="text-[#1a1c1c] dark:text-white" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
             )}
           </Link>
           <button

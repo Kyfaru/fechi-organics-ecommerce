@@ -50,7 +50,7 @@ export default function AdminChangePasswordPage() {
           <div>
             <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">New Password</label>
             <input
-              type="password"
+              type="text"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full h-11 px-4 rounded-xl border border-(--neutral-200) font-dm text-[14px] text-black/70 outline-none focus:border-(--green-500)"
@@ -61,7 +61,7 @@ export default function AdminChangePasswordPage() {
           <div>
             <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Confirm Password</label>
             <input
-              type="password"
+              type="text"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               className="w-full h-11 px-4 rounded-xl border border-(--neutral-200) font-dm text-[14px] text-black/70 outline-none focus:border-(--green-500)"

@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import Link from "next/link"
 import { Icon } from "@iconify/react"
 import { ORDER_STATUS_CLIENT_LABELS, type OrderStatusValue } from "@/types/account"
@@ -57,6 +58,9 @@ interface Order {
   deliveryCounty?: string | null
   deliveryPhone?: string | null
   pickupCode?: string | null
+  deliveryZone?: string | null
+  branch?: { name: string; county: string; phone?: string | null } | null
+  reviewedAt?: string | null
   items: OrderItem[]
   transactions: Transaction[]
   statusEvents: StatusEvent[]
@@ -69,6 +73,11 @@ function fmt(date: string) {
 export default function OrderDetailContent({ order }: { order: Order }) {
   const label = ORDER_STATUS_CLIENT_LABELS[order.status as OrderStatusValue] ?? order.status
   const colorClass = STATUS_COLORS[order.status] ?? "bg-neutral-100 text-neutral-600 border-neutral-200"
+
+  // Workstream I: mark order-related inbox messages as read when order is viewed
+  useEffect(() => {
+    fetch(`/api/account/inbox?markReadByOrderId=${order.id}`, { method: "PATCH" }).catch(() => {})
+  }, [order.id])
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -156,6 +165,11 @@ export default function OrderDetailContent({ order }: { order: Order }) {
             deliveryCounty={order.deliveryCounty}
             deliveryPhone={order.deliveryPhone}
             pickupCode={order.pickupCode}
+            deliveryZone={order.deliveryZone}
+            branch={order.branch}
+            hasReview={!!order.reviewedAt}
+            status={order.status}
+            orderId={order.id}
           />
         </div>
       </div>

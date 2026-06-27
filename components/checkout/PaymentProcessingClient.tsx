@@ -8,6 +8,7 @@ import { Icon } from "@iconify/react";
 import { Navbar } from "@/components/layout/Navbar";
 import { toast } from "@/lib/toast";
 import { usePaymentStream } from "@/hooks/use-payment-stream";
+import { useCurrency } from "@/app/providers";
 
 type Order = {
   id: string;
@@ -21,10 +22,6 @@ type Order = {
   failureReason: string | null;
   items: { id: string; name: string; quantity: number; imageUrl: string | null }[];
 };
-
-function formatKes(cents: number) {
-  return `KES ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;
-}
 
 function shortId(id: string) {
   return id.slice(0, 8).toUpperCase();
@@ -48,6 +45,7 @@ function errorMessage(reason: string | null) {
 
 export function PaymentProcessingClient({ order, method }: { order: Order; method: "mpesa" | "card" }) {
   const router = useRouter();
+  const { format } = useCurrency();
   const { status, reason } = usePaymentStream(order.id);
 
   const location = order.deliveryType === "PICKUP"
@@ -93,7 +91,7 @@ export function PaymentProcessingClient({ order, method }: { order: Order; metho
               </div>
               <h1 className="font-heading text-2xl font-bold text-[#1a1c1c] dark:text-white">ORDER #{shortId(order.id)}</h1>
               <p className="mt-2 text-sm text-[#40493c] dark:text-gray-400">
-                {new Date(order.createdAt).toLocaleString("en-KE")} - {formatKes(order.totalKes)} - {location || "Delivery"}
+                {new Date(order.createdAt).toLocaleString("en-KE")} - {format(order.totalKes)} - {location || "Delivery"}
               </p>
               <p className="mt-6 text-sm font-semibold text-red-600">{message}</p>
               <div className="mt-6 flex flex-col sm:flex-row gap-3">
@@ -118,7 +116,7 @@ export function PaymentProcessingClient({ order, method }: { order: Order; metho
               </div>
               <div className="mt-5 text-sm text-[#40493c] dark:text-gray-400">
                 <p>{itemNames}</p>
-                <p className="mt-1 font-bold text-[#1a1c1c] dark:text-white">{formatKes(order.totalKes)}</p>
+                <p className="mt-1 font-bold text-[#1a1c1c] dark:text-white">{format(order.totalKes)}</p>
                 <p className="mt-1">Delivery: {location || "Delivery"} - Est. {order.deliveryType === "PICKUP" ? "same day" : "1-3 business days"}</p>
               </div>
               <div className="my-8 h-px bg-[#e2e2e2] dark:bg-gray-700" />

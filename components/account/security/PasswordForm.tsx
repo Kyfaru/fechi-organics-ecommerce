@@ -48,7 +48,7 @@ function strength(pw: string) {
 const STRENGTH_LABELS = ["", "Very Weak", "Weak", "Fair", "Strong", "Very Strong"]
 const STRENGTH_COLORS = ["", "bg-red-500", "bg-orange-400", "bg-yellow-400", "bg-[#15803D]", "bg-[#15803D]"]
 
-export default function PasswordForm() {
+export default function PasswordForm({ isOAuthOnly = false }: { isOAuthOnly?: boolean }) {
   const [current, setCurrent] = useState("")
   const [newPw, setNewPw] = useState("")
   const [confirm, setConfirm] = useState("")
@@ -58,12 +58,13 @@ export default function PasswordForm() {
   const mismatch = confirm.length > 0 && newPw !== confirm
 
   function handleSave() {
-    if (!current || !newPw || !confirm) { toast.error("All fields are required"); return }
+    if (!isOAuthOnly && !current) { toast.error("Current password is required"); return }
+    if (!newPw || !confirm) { toast.error("New password fields are required"); return }
     if (newPw !== confirm) { toast.error("Passwords do not match"); return }
     if (score < 3) { toast.error("Password is too weak"); return }
 
     start(async () => {
-      const res = await authClient.changePassword({ currentPassword: current, newPassword: newPw, revokeOtherSessions: false })
+      const res = await authClient.changePassword({ currentPassword: isOAuthOnly ? "" : current, newPassword: newPw, revokeOtherSessions: false })
       if (res.error) { toast.error(res.error.message ?? "Failed to update password"); return }
       toast.success("Password updated")
       setCurrent(""); setNewPw(""); setConfirm("")
@@ -77,7 +78,9 @@ export default function PasswordForm() {
         <h2 className="text-sm font-semibold text-neutral-700 uppercase tracking-wide">Change Password</h2>
       </div>
       <div className="p-6 space-y-5 max-w-lg">
-        <PasswordInput label="Current Password" value={current} onChange={setCurrent} />
+        {!isOAuthOnly && (
+          <PasswordInput label="Current Password" value={current} onChange={setCurrent} />
+        )}
         <PasswordInput label="New Password" value={newPw} onChange={setNewPw} />
 
         {/* Strength bar */}

@@ -32,14 +32,14 @@ export default function AccountRightPanel({ user }: { user: AccountUser }) {
 
       {/* Security + Identity badges */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-white border border-neutral-200 rounded-xl p-3 text-center">
-          <Icon icon="lucide:shield-check" width={16} className="text-neutral-400 mx-auto mb-1" />
-          <p className="text-[10px] uppercase tracking-wider text-neutral-500">Security</p>
+        <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl p-3 text-center">
+          <Icon icon="lucide:shield-check" width={16} className="text-neutral-400 dark:text-neutral-500 mx-auto mb-1" />
+          <p className="text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Security</p>
           <p className="text-sm font-semibold text-[#15803D]">Strong</p>
         </div>
-        <div className="bg-white border border-neutral-200 rounded-xl p-3 text-center">
-          <Icon icon="lucide:badge-check" width={16} className="text-neutral-400 mx-auto mb-1" />
-          <p className="text-[10px] uppercase tracking-wider text-neutral-500">Identity</p>
+        <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl p-3 text-center">
+          <Icon icon="lucide:badge-check" width={16} className="text-neutral-400 dark:text-neutral-500 mx-auto mb-1" />
+          <p className="text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Identity</p>
           <p className="text-sm font-semibold text-[#15803D]">Verified</p>
         </div>
       </div>

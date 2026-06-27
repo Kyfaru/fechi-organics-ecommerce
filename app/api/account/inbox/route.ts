@@ -7,7 +7,15 @@ export async function GET(req: Request) {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 })
 
+  // countOnly mode — for navbar bell unread count
   const { searchParams } = new URL(req.url)
+  if (searchParams.get("countOnly") === "true") {
+    const unreadCount = await db.inboxMessage.count({
+      where: { userId: session.user.id, isRead: false },
+    })
+    return NextResponse.json({ ok: true, unreadCount })
+  }
+
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"))
   const take = 20
 
@@ -28,6 +36,17 @@ export async function GET(req: Request) {
 export async function PATCH(req: Request) {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user) return NextResponse.json({ ok: false }, { status: 401 })
+
+  // markReadByOrderId — marks all messages for an order as read
+  const { searchParams: patchParams } = new URL(req.url)
+  const markReadByOrderId = patchParams.get("markReadByOrderId")
+  if (markReadByOrderId) {
+    await db.inboxMessage.updateMany({
+      where: { userId: session.user.id, orderId: markReadByOrderId, isRead: false },
+      data: { isRead: true },
+    })
+    return NextResponse.json({ ok: true })
+  }
 
   const body = await req.json().catch(() => ({}))
   const { id, readAll } = body as { id?: string; readAll?: boolean }

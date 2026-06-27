@@ -31,7 +31,7 @@ export async function getTestimonials(): Promise<TestimonialItem[]> {
     location: t.location,
     quote: t.quote,
     rating: t.rating,
-    beforeUrl: r2PublicUrl(t.beforeKey),
-    afterUrl: r2PublicUrl(t.afterKey),
+    beforeUrl: t.beforeKey ? r2PublicUrl(t.beforeKey) : "",
+    afterUrl: t.afterKey ? r2PublicUrl(t.afterKey) : "",
   }));
 }

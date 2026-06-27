@@ -11,6 +11,9 @@ const STATUS_MESSAGES: Record<string, string> = {
   PROCESSING: "is being packaged and prepared for shipment",
   SHIPPED:    "has been shipped. Estimated arrival: 1–3 business days",
   CANCELLED:  "has been cancelled. Contact us if you have questions",
+  WAITING_TO_PACKAGE: "is being packaged for pickup at our store",
+  READY_FOR_PICKUP:   "is ready for pickup — please bring your pickup code",
+  PICKED_UP:          "has been picked up. Thank you for your order!",
 };
 
 // Generate a unique order number (non-transaction version)
@@ -129,7 +132,7 @@ export async function GET(
 //   2. Legacy status/paymentStatus update: { status?, paymentStatus? }
 // ---------------------------------------------------------------------------
 const FulfillmentSchema = z.object({
-  action: z.enum(["set_processing", "unset_processing", "confirm", "ship", "cancel"]),
+  action: z.enum(["set_processing", "unset_processing", "confirm", "ship", "cancel", "set_packaging", "set_ready", "set_picked_up"]),
   orderNumber: z.string().optional(),
 });
 
@@ -196,7 +199,10 @@ async function handleFulfillmentAction(
 
   const order = await db.order.findUnique({
     where: { id: orderId },
-    include: { user: { select: { phone: true } } },
+    include: {
+      user: { select: { phone: true } },
+      branch: { select: { name: true } }
+    },
   });
   if (!order) return Err.notFound("Order");
 
@@ -229,6 +235,9 @@ async function handleFulfillmentAction(
 
     case "set_processing": {
       // New flow: CONFIRMED → PROCESSING (packaging/preparing)
+      if (order.deliveryType === "PICKUP") {
+        return Err.validation("Use set_packaging for pickup orders — set_processing is for delivery orders only");
+      }
       if (order.status !== "CONFIRMED") {
         return Err.validation("Order must be CONFIRMED before it can be processed");
       }
@@ -265,6 +274,9 @@ async function handleFulfillmentAction(
 
     case "ship": {
       // Must be PROCESSING before shipping
+      if (order.deliveryType === "PICKUP") {
+        return Err.validation("Use set_ready for pickup orders — ship is for delivery orders only");
+      }
       if (order.status !== "PROCESSING") {
         return Err.validation("Order must be in PROCESSING status before it can be shipped");
       }
@@ -289,6 +301,72 @@ async function handleFulfillmentAction(
       });
       console.info("[admin/orders/[id]] cancel —", orderId);
       notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "CANCELLED", order.user?.phone);
+      return ok({ order: updated });
+    }
+
+    case "set_packaging": {
+      if (order.deliveryType !== "PICKUP") {
+        return Err.validation("set_packaging is only for PICKUP orders");
+      }
+      if (order.status !== "CONFIRMED") {
+        return Err.validation("Order must be CONFIRMED before packaging can begin");
+      }
+      const updated = await db.order.update({
+        where: { id: orderId },
+        data: {
+          status: "WAITING_TO_PACKAGE",
+          processingBy: adminUserId,
+          processedAt: new Date(),
+        },
+        include: ORDER_INCLUDE,
+      });
+      console.info("[admin/orders/[id]] set_packaging —", orderId);
+      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "WAITING_TO_PACKAGE", order.user?.phone);
+      return ok({ order: updated });
+    }
+
+    case "set_ready": {
+      if (order.status !== "WAITING_TO_PACKAGE") {
+        return Err.validation("Order must be in WAITING_TO_PACKAGE status before it can be marked ready");
+      }
+      const branchName = (order as any).branch?.name;
+      const readyMsg = branchName
+        ? `Your order is ready for pickup at ${branchName}. Bring your pickup code!`
+        : "Your order is ready for pickup. Please bring your pickup code!";
+      const updated = await db.order.update({
+        where: { id: orderId },
+        data: { status: "READY_FOR_PICKUP" },
+        include: ORDER_INCLUDE,
+      });
+      console.info("[admin/orders/[id]] set_ready —", orderId);
+      // Custom message for ready — override STATUS_MESSAGES
+      if (order.userId) {
+        const orderRef = order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`;
+        Promise.resolve().then(async () => {
+          try {
+            await db.inboxMessage.create({
+              data: { userId: order.userId!, type: "SYSTEM", title: `Order ${orderRef} — Ready for Pickup`, body: readyMsg, orderId },
+            });
+          } catch (e) { console.error("[notify] inbox failed:", e); }
+        });
+      }
+      return ok({ order: updated });
+    }
+
+    case "set_picked_up": {
+      if (order.status !== "READY_FOR_PICKUP") {
+        return Err.validation("Order must be in READY_FOR_PICKUP status before it can be marked as picked up");
+      }
+      const updated = await db.order.update({
+        where: { id: orderId },
+        data: {
+          status: "PICKED_UP",
+          pickedUpAt: new Date(),
+        },
+        include: ORDER_INCLUDE,
+      });
+      console.info("[admin/orders/[id]] set_picked_up —", orderId);
+      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "PICKED_UP", order.user?.phone);
       return ok({ order: updated });
     }
 

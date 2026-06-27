@@ -21,7 +21,7 @@ function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (
       disabled={disabled}
       className={[
         "relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors duration-200 focus:outline-none",
-        checked ? "bg-[#15803D]" : "bg-neutral-200",
+        checked ? "bg-[#15803D]" : "bg-neutral-200 dark:bg-neutral-700",
         disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer",
       ].join(" ")}
     >
@@ -72,17 +72,17 @@ export default function CommunicationToggles({ notifBotanicalUpdates, notifOrder
   }
 
   return (
-    <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
-      <div className="px-6 py-5 border-b border-neutral-100 flex items-center gap-2">
+    <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden">
+      <div className="px-6 py-5 border-b border-neutral-100 dark:border-neutral-800 flex items-center gap-2">
         <Icon icon="lucide:bell" width={16} className="text-[#15803D]" />
-        <h2 className="text-sm font-semibold text-neutral-700 uppercase tracking-wide">Communication Preferences</h2>
+        <h2 className="text-sm font-semibold text-neutral-700 dark:text-neutral-200 uppercase tracking-wide">Communication Preferences</h2>
       </div>
-      <div className="divide-y divide-neutral-100">
+      <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
         {TOGGLES.map(({ key, label, desc }) => (
           <div key={key} className="flex items-center justify-between gap-4 px-6 py-5">
             <div>
-              <p className="text-[15px] font-medium text-neutral-900">{label}</p>
-              <p className="text-sm text-neutral-400 mt-1">{desc}</p>
+              <p className="text-[15px] font-medium text-neutral-900 dark:text-white">{label}</p>
+              <p className="text-sm text-neutral-400 dark:text-neutral-500 mt-1">{desc}</p>
             </div>
             <Toggle
               checked={values[key]}

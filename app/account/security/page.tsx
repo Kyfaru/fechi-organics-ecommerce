@@ -19,8 +19,16 @@ export default async function SecurityPage() {
       usernameChanges: true, lastUsernameChange: true, phoneCode: true,
       langPreference: true, currencyDisplay: true,
       notifBotanicalUpdates: true, notifOrderTracking: true, notifPersonalized: true,
+      twoFaEmail: true,
+      twoFaPhone: true,
     },
   })
+
+  const credentialAccount = await db.account.findFirst({
+    where: { userId: u.id, providerId: "credential" },
+    select: { id: true },
+  })
+  const isOAuthOnly = !credentialAccount
 
   const user: AccountUser = {
     id: u.id, name: u.name,
@@ -46,8 +54,14 @@ export default async function SecurityPage() {
           description="Manage your password and two-factor authentication settings."
         />
 
-        <PasswordForm />
-        <TwoFactorSection enabled={user.twoFactorEnabled} />
+        <PasswordForm isOAuthOnly={isOAuthOnly} />
+        <TwoFactorSection
+          enabled={user.twoFactorEnabled}
+          twoFaEmail={dbUser?.twoFaEmail ?? false}
+          twoFaPhone={dbUser?.twoFaPhone ?? false}
+          userEmail={u.email}
+          userPhone={(u as any).phone ?? null}
+        />
       </div>
       <AccountRightPanel user={user} />
     </div>

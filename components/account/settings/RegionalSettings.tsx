@@ -4,6 +4,8 @@ import { useState, useTransition } from "react"
 import { Icon } from "@iconify/react"
 import { toast } from "sonner"
 import { updateRegional } from "@/lib/account/actions"
+import { useCurrency } from "@/app/providers"
+import type { CurrencyCode } from "@/lib/currency"
 
 const LANGUAGES = [
   { value: "en-GB", label: "English (United Kingdom)" },
@@ -12,7 +14,7 @@ const LANGUAGES = [
 ]
 
 const CURRENCIES = [
-  { value: "KES", label: "KES (Kenyan Shilling)" },
+  { value: "KSH", label: "KSH (Kenyan Shilling)" },
   { value: "USD", label: "USD (US Dollar)" },
   { value: "GBP", label: "GBP (British Pound)" },
 ]
@@ -31,11 +33,13 @@ export default function RegionalSettings({
   const [lang, setLang] = useState(langPreference)
   const [currency, setCurrency] = useState(currencyDisplay)
   const [pending, start] = useTransition()
+  const { setCurrency: syncCurrencyCtx } = useCurrency()
 
   function handleSave() {
     start(async () => {
       try {
         await updateRegional({ langPreference: lang, currencyDisplay: currency })
+        syncCurrencyCtx(currency as CurrencyCode)
         toast.success("Regional settings saved")
       } catch {
         toast.error("Failed to save")

@@ -21,11 +21,11 @@ async function requireAdmin() {
 // Attach resolved public URLs to a testimonial row before returning to client.
 // Keeps URL construction server-side where NEXT_PUBLIC_R2_PUBLIC_URL is stable.
 // ---------------------------------------------------------------------------
-function withUrls(t: { beforeKey: string; afterKey: string; [key: string]: unknown }) {
+function withUrls(t: { beforeKey: string | null; afterKey: string | null; [key: string]: unknown }) {
   return {
     ...t,
-    beforeUrl: r2PublicUrl(t.beforeKey),
-    afterUrl: r2PublicUrl(t.afterKey),
+    beforeUrl: t.beforeKey ? r2PublicUrl(t.beforeKey) : "",
+    afterUrl: t.afterKey ? r2PublicUrl(t.afterKey) : "",
   };
 }
 

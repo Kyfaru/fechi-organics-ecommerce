@@ -11,7 +11,7 @@ const COMPANY_LINKS = [
   { label: "Home", href: "/" },
   { label: "Contact", href: "/contact" },
   { label: "About Us", href: "/about" },
-  { label: "FAQs", href: "/#faq" },
+  { label: "FAQs", href: "/faq" },
   { label: "Blog", href: "/blog" },
 ];
 

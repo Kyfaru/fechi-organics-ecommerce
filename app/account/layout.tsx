@@ -55,12 +55,12 @@ export default async function AccountLayout({ children }: { children: React.Reac
   const unreadCount = dbUser?.inboxMessages.length ?? 0
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F9FAFB]">
+    <div className="min-h-screen flex flex-col bg-[#F9FAFB] dark:bg-neutral-950">
       <Navbar flat />
 
       <div className="flex flex-1">
         {/* Sidebar — sticky, desktop only */}
-        <aside className="hidden lg:flex flex-col w-72 shrink-0 sticky top-[76px] h-[calc(100vh-76px)] overflow-y-auto border-r border-neutral-200 bg-white">
+        <aside className="hidden lg:flex flex-col w-72 shrink-0 sticky top-[76px] h-[calc(100vh-76px)] overflow-y-auto border-r border-neutral-200 bg-white dark:bg-neutral-900 dark:border-neutral-800">
           <AccountSidebar user={user} unreadCount={unreadCount} />
         </aside>
 

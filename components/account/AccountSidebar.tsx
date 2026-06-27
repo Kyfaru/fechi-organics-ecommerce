@@ -5,14 +5,15 @@ import { usePathname } from "next/navigation"
 import { Icon } from "@iconify/react"
 import type { AccountUser } from "@/types/account"
 
-const NAV_ITEMS = [
+const NAV_ITEMS: Array<{ href: string; label: string; icon: string; badge?: boolean }> = [
   { href: "/account/profile",  label: "Profile",  icon: "lucide:user"         },
   { href: "/account/orders",   label: "Orders",   icon: "lucide:shopping-bag" },
+  { href: "/account/reviews",  label: "Reviews",  icon: "lucide:star"         },
   { href: "/account/settings", label: "Settings", icon: "lucide:settings"     },
   { href: "/account/security", label: "Security", icon: "lucide:shield"       },
   { href: "/account/inbox",    label: "Inbox",    icon: "lucide:inbox", badge: true },
   { href: "/account/wishlist", label: "Wishlist", icon: "lucide:heart"        },
-] as const
+]
 
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/)
@@ -36,14 +37,14 @@ export default function AccountSidebar({
       {/* Header */}
       <div className="px-6 mb-6">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-bold uppercase tracking-[0.15em] text-neutral-400">
+          <span className="text-[11px] font-bold uppercase tracking-[0.15em] text-neutral-400 dark:text-neutral-500">
             Account Dashboard
           </span>
           <Link href="/account/settings" className="text-neutral-400 hover:text-[#15803D] transition-colors">
             <Icon icon="lucide:settings" width={15} />
           </Link>
         </div>
-        <h2 className="text-xl font-bold text-neutral-900 leading-tight">My Account</h2>
+        <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight">My Account</h2>
       </div>
 
       {/* User card */}
@@ -64,14 +65,14 @@ export default function AccountSidebar({
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-neutral-900 truncate leading-tight">{displayName}</p>
-            <p className="text-xs text-neutral-500 truncate mt-0.5">@{username}</p>
+            <p className="text-sm font-semibold text-neutral-900 dark:text-white truncate leading-tight">{displayName}</p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate mt-0.5">@{username}</p>
           </div>
         </div>
       </div>
 
       {/* Divider */}
-      <div className="mx-4 mb-2 h-px bg-neutral-100" />
+      <div className="mx-4 mb-2 h-px bg-neutral-100 dark:bg-neutral-800" />
 
       {/* Navigation */}
       <nav className="flex flex-col gap-1 px-3 flex-1" aria-label="Account navigation">
@@ -86,13 +87,13 @@ export default function AccountSidebar({
                 "flex items-center gap-3 px-4 py-3 rounded-lg text-[15px] font-medium transition-all duration-150",
                 isActive
                   ? "bg-[#15803D] text-white shadow-sm"
-                  : "text-neutral-600 hover:bg-[#F0FDF4] hover:text-[#15803D]",
+                  : "text-neutral-600 dark:text-neutral-300 hover:bg-[#F0FDF4] dark:hover:bg-neutral-800 hover:text-[#15803D]",
               ].join(" ")}
             >
               <Icon
                 icon={item.icon}
                 width={18}
-                className={`shrink-0 ${isActive ? "text-white" : "text-neutral-400"}`}
+                className={`shrink-0 ${isActive ? "text-white" : "text-neutral-400 dark:text-neutral-500"}`}
               />
               <span className="flex-1">{item.label}</span>
               {"badge" in item && item.badge && unreadCount > 0 && (
@@ -111,10 +112,10 @@ export default function AccountSidebar({
       </nav>
 
       {/* Bottom logout */}
-      <div className="px-3 pt-3 mt-3 border-t border-neutral-100">
+      <div className="px-3 pt-3 mt-3 border-t border-neutral-100 dark:border-neutral-800">
         <Link
           href="/logout"
-          className="flex items-center gap-3 px-4 py-3 rounded-lg text-[15px] font-medium text-neutral-400 hover:bg-red-50 hover:text-red-500 transition-all duration-150"
+          className="flex items-center gap-3 px-4 py-3 rounded-lg text-[15px] font-medium text-neutral-400 dark:text-neutral-500 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-500 transition-all duration-150"
         >
           <Icon icon="lucide:log-out" width={18} />
           <span>Log Out</span>

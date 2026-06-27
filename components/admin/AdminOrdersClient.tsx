@@ -23,7 +23,7 @@ import { PrelineSelect } from "@/components/admin/ui/PrelineSelect";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-type OrderStatus = "PENDING" | "CONFIRMED" | "PROCESSING" | "SHIPPED" | "DELIVERED" | "CANCELLED";
+type OrderStatus = "PENDING" | "CONFIRMED" | "PROCESSING" | "SHIPPED" | "DELIVERED" | "CANCELLED" | "WAITING_TO_PACKAGE" | "READY_FOR_PICKUP" | "PICKED_UP";
 type PaymentStatus = "PENDING" | "PAID" | "FAILED";
 
 type OrderItemDetail = {
@@ -69,6 +69,9 @@ type AdminOrder = {
 const STATUS_LABELS: Record<OrderStatus, string> = {
   PENDING: "Placed", CONFIRMED: "Confirmed", PROCESSING: "Processing",
   SHIPPED: "Shipped", DELIVERED: "Delivered", CANCELLED: "Cancelled",
+  WAITING_TO_PACKAGE: "Packaging",
+  READY_FOR_PICKUP: "Ready for Pickup",
+  PICKED_UP: "Picked Up",
 };
 
 const R2_BASE = process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "";
@@ -281,83 +284,138 @@ function OrderDetailDrawer({
               )}
             </div>
 
-            {/* Fulfillment panel — flow: Confirmed → Processing → Shipped */}
+            {/* Fulfillment panel */}
             <div className="bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200)">
               <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-4">Fulfillment</p>
 
               <div className="flex flex-col gap-4">
-                {/* Step 1: Confirmed */}
+                {/* Step 1: Confirmed (shared by both flows) */}
                 <div className="flex items-center gap-3">
                   <CheckboxGreen
                     checked={isConfirmed}
-                    onChange={() => {
-                      if (!isConfirmed) setConfirmModal1Open(true);
-                    }}
+                    onChange={() => { if (!isConfirmed) setConfirmModal1Open(true); }}
                     disabled={fulfillMutation.isPending || isConfirmed || order.status === "CANCELLED"}
                   />
                   <div>
                     <p className="font-dm text-[14px] font-medium text-(--neutral-900)">Confirmed</p>
                     {order.confirmedAt ? (
-                      <p className="font-dm text-[12px] text-(--neutral-500)">
-                        Confirmed at {formatDate(order.confirmedAt)}
-                      </p>
+                      <p className="font-dm text-[12px] text-(--neutral-500)">Confirmed at {formatDate(order.confirmedAt)}</p>
                     ) : (
                       <p className="font-dm text-[12px] text-(--neutral-400)">Verify the order and confirm</p>
                     )}
                   </div>
                 </div>
 
-                {/* Step 2: Processing (Packaging) */}
-                <div className="flex items-center gap-3">
-                  <CheckboxGreen
-                    checked={isProcessed}
-                    onChange={() => handleFulfillment(isProcessed ? "unset_processing" : "set_processing")}
-                    disabled={fulfillMutation.isPending || !isConfirmed || ["SHIPPED", "DELIVERED", "CANCELLED"].includes(order.status)}
-                  />
-                  <div>
-                    <p className="font-dm text-[14px] font-medium text-(--neutral-900)">Processing</p>
-                    {isProcessed ? (
-                      <p className="font-dm text-[12px] text-(--neutral-500)">
-                        Packaging started {formatDate(order.processedAt)}
-                      </p>
-                    ) : (
-                      <p className="font-dm text-[12px] text-(--neutral-400)">Waiting to be packaged / shipped</p>
+                {order.deliveryType === "PICKUP" ? (
+                  <>
+                    {/* PICKUP: Step 2 — Prepare Package */}
+                    <div className="flex items-center gap-3">
+                      <CheckboxGreen
+                        checked={["WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP"].includes(order.status)}
+                        onChange={() => {
+                          if (!["WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP"].includes(order.status)) {
+                            handleFulfillment("set_packaging");
+                          }
+                        }}
+                        disabled={fulfillMutation.isPending || !isConfirmed || ["WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP", "CANCELLED"].includes(order.status)}
+                      />
+                      <div>
+                        <p className="font-dm text-[14px] font-medium text-(--neutral-900)">Prepare Package</p>
+                        <p className="font-dm text-[12px] text-(--neutral-400)">
+                          {["WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP"].includes(order.status) ? "Package preparation started" : "Start preparing the customer's package"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* PICKUP: Step 3 — Ready for Pickup button */}
+                    <div className="flex items-center gap-3 pl-[52px]">
+                      <button
+                        disabled={order.status !== "WAITING_TO_PACKAGE" || fulfillMutation.isPending}
+                        onClick={() => {
+                          if (window.confirm("Mark this order as ready for pickup?")) {
+                            handleFulfillment("set_ready");
+                          }
+                        }}
+                        className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-amber-500 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-amber-600 transition-colors flex items-center gap-1.5"
+                      >
+                        {fulfillMutation.isPending ? <Spinner size={12} /> : <MapPin size={13} />}
+                        Ready for Pickup
+                      </button>
+                    </div>
+
+                    {/* PICKUP: Step 4 — Picked Up button */}
+                    <div className="flex items-center gap-3 pl-[52px]">
+                      <button
+                        disabled={order.status !== "READY_FOR_PICKUP" || fulfillMutation.isPending}
+                        onClick={() => {
+                          if (window.confirm("Confirm the customer has picked up this order?")) {
+                            handleFulfillment("set_picked_up");
+                          }
+                        }}
+                        className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-[#15803D] text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#16A34A] transition-colors flex items-center gap-1.5"
+                      >
+                        {fulfillMutation.isPending ? <Spinner size={12} /> : <Check size={13} />}
+                        Mark Picked Up
+                      </button>
+                    </div>
+
+                    {/* PICKUP: Final state */}
+                    {order.status === "PICKED_UP" && (
+                      <div className="flex items-center gap-2 text-[#15803D]">
+                        <CheckCircle size={16} />
+                        <p className="font-dm text-[13px] font-semibold">Order picked up</p>
+                      </div>
                     )}
-                  </div>
-                </div>
+                  </>
+                ) : (
+                  <>
+                    {/* DELIVERY: Step 2 — Processing */}
+                    <div className="flex items-center gap-3">
+                      <CheckboxGreen
+                        checked={isProcessed}
+                        onChange={() => handleFulfillment(isProcessed ? "unset_processing" : "set_processing")}
+                        disabled={fulfillMutation.isPending || !isConfirmed || ["SHIPPED", "DELIVERED", "CANCELLED"].includes(order.status)}
+                      />
+                      <div>
+                        <p className="font-dm text-[14px] font-medium text-(--neutral-900)">Processing</p>
+                        {isProcessed ? (
+                          <p className="font-dm text-[12px] text-(--neutral-500)">Packaging started {formatDate(order.processedAt)}</p>
+                        ) : (
+                          <p className="font-dm text-[12px] text-(--neutral-400)">Waiting to be packaged / shipped</p>
+                        )}
+                      </div>
+                    </div>
 
-                {/* Step 3: Ship button */}
-                <div className="flex items-center gap-3 pl-[52px]">
-                  <button
-                    disabled={order.status !== "PROCESSING" || fulfillMutation.isPending}
-                    onClick={() => {
-                      if (window.confirm("Mark this order as shipped?")) {
-                        handleFulfillment("ship");
-                      }
-                    }}
-                    className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors flex items-center gap-1.5"
-                  >
-                    {fulfillMutation.isPending ? <Spinner size={12} /> : <Truck size={13} />}
-                    Mark Shipped
-                  </button>
-                </div>
+                    {/* DELIVERY: Step 3 — Ship button */}
+                    <div className="flex items-center gap-3 pl-[52px]">
+                      <button
+                        disabled={order.status !== "PROCESSING" || fulfillMutation.isPending}
+                        onClick={() => {
+                          if (window.confirm("Mark this order as shipped?")) {
+                            handleFulfillment("ship");
+                          }
+                        }}
+                        className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors flex items-center gap-1.5"
+                      >
+                        {fulfillMutation.isPending ? <Spinner size={12} /> : <Truck size={13} />}
+                        Mark Shipped
+                      </button>
+                    </div>
 
-                {/* Step 4: Delivered indicator */}
-                <div className="flex items-center gap-3 opacity-70">
-                  <div className="w-10 h-10 rounded-full border-2 border-dashed border-(--neutral-300) flex items-center justify-center shrink-0">
-                    {order.status === "DELIVERED"
-                      ? <Check className="w-5 h-5 text-green-500" />
-                      : <span className="text-[11px] text-(--neutral-400)">—</span>
-                    }
-                  </div>
-                  <p className="font-dm text-[13px] text-(--neutral-500)">
-                    {order.status === "SHIPPED"
-                      ? "Awaiting customer confirmation"
-                      : order.status === "DELIVERED"
-                      ? "Delivered"
-                      : "Not shipped yet"}
-                  </p>
-                </div>
+                    {/* DELIVERY: Step 4 — Delivered indicator */}
+                    <div className="flex items-center gap-3 opacity-70">
+                      <div className="w-10 h-10 rounded-full border-2 border-dashed border-(--neutral-300) flex items-center justify-center shrink-0">
+                        {order.status === "DELIVERED"
+                          ? <Check className="w-5 h-5 text-green-500" />
+                          : <span className="text-[11px] text-(--neutral-400)">—</span>
+                        }
+                      </div>
+                      <p className="font-dm text-[13px] text-(--neutral-500)">
+                        {order.status === "SHIPPED" ? "Awaiting customer confirmation" : order.status === "DELIVERED" ? "Delivered" : "Not shipped yet"}
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -768,7 +826,7 @@ export function AdminOrdersClient() {
     },
   ];
 
-  const ALL_STATUSES: OrderStatus[] = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"];
+  const ALL_STATUSES: OrderStatus[] = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP"];
 
   return (
     <div className="min-h-screen">

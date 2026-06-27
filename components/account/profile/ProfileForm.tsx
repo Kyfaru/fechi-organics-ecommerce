@@ -13,7 +13,7 @@ import UsernameField from "./UsernameField"
 import DangerZone from "./DangerZone"
 
 function inputClass(extra = "") {
-  return `w-full px-4 py-3 border border-neutral-300 rounded-lg text-[15px] bg-white text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:border-[#15803D] focus:ring-1 focus:ring-[#15803D] ${extra}`
+  return `w-full px-4 py-3 border border-neutral-300 dark:border-neutral-700 rounded-lg text-[15px] bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-500 focus:outline-none focus:border-[#15803D] focus:ring-1 focus:ring-[#15803D] ${extra}`
 }
 
 export default function ProfileForm({ user }: { user: AccountUser }) {
@@ -79,12 +79,12 @@ export default function ProfileForm({ user }: { user: AccountUser }) {
       <div>
         <div className="flex items-center gap-2 mb-1">
           <Icon icon="lucide:settings" width={15} className="text-[#15803D]" />
-          <span className="text-xs font-semibold uppercase tracking-widest text-neutral-500">
+          <span className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
             Profile Settings
           </span>
         </div>
-        <h1 className="text-3xl font-bold text-neutral-900">Personal Details</h1>
-        <p className="text-base text-neutral-500 mt-1.5">
+        <h1 className="text-3xl font-bold text-neutral-900 dark:text-white">Personal Details</h1>
+        <p className="text-base text-neutral-500 dark:text-neutral-400 mt-1.5">
           Update your name, email, phone, country, city and username.
         </p>
       </div>
@@ -96,11 +96,11 @@ export default function ProfileForm({ user }: { user: AccountUser }) {
         onUploaded={setAvatarUrl}
       />
 
-      <div className="bg-white rounded-xl border border-neutral-200 p-7 space-y-6">
+      <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-7 space-y-6">
         {/* Name row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div>
-            <label className="block text-sm font-semibold text-neutral-600 mb-2">
+            <label className="block text-sm font-semibold text-neutral-600 dark:text-neutral-300 mb-2">
               First Name
             </label>
             <input
@@ -112,7 +112,7 @@ export default function ProfileForm({ user }: { user: AccountUser }) {
             />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-neutral-600 mb-2">
+            <label className="block text-sm font-semibold text-neutral-600 dark:text-neutral-300 mb-2">
               Last Name
             </label>
             <input
@@ -128,16 +128,16 @@ export default function ProfileForm({ user }: { user: AccountUser }) {
         {/* Email + Phone */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div>
-            <label className="block text-sm font-semibold text-neutral-600 mb-2">
+            <label className="block text-sm font-semibold text-neutral-600 dark:text-neutral-300 mb-2">
               Email Address
             </label>
             <input
               type="email"
               value={user.email}
               disabled
-              className={inputClass("disabled:bg-neutral-50 disabled:text-neutral-400 disabled:cursor-not-allowed")}
+              className={inputClass("disabled:bg-neutral-50 dark:disabled:bg-neutral-800/60 disabled:text-neutral-400 dark:disabled:text-neutral-500 disabled:cursor-not-allowed")}
             />
-            <p className="text-sm text-neutral-400 mt-1.5">Email cannot be changed here.</p>
+            <p className="text-sm text-neutral-400 dark:text-neutral-500 mt-1.5">Email cannot be changed here.</p>
           </div>
           <PhoneInput
             phone={phone}
@@ -167,12 +167,12 @@ export default function ProfileForm({ user }: { user: AccountUser }) {
         />
 
         {/* Actions */}
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-100">
+        <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-100 dark:border-neutral-800">
           <button
             type="button"
             onClick={handleDiscard}
             disabled={pending}
-            className="px-6 py-3 rounded-lg border border-neutral-300 text-neutral-700 text-[15px] font-medium hover:bg-neutral-50 transition-colors disabled:opacity-50"
+            className="px-6 py-3 rounded-lg border border-neutral-300 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 text-[15px] font-medium hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50"
           >
             Discard Changes
           </button>

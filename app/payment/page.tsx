@@ -9,6 +9,7 @@ import { Icon } from "@iconify/react";
 import { Navbar } from "@/components/layout/Navbar";
 import { toast } from "@/lib/toast";
 import { usePaymentStream } from "@/hooks/use-payment-stream";
+import { useCurrency } from "@/app/providers";
 
 const PAYSTACK_ERROR_MESSAGES: Record<string, string> = {
   payment_failed: "Payment was not completed. Please try again.",
@@ -39,10 +40,6 @@ type PaymentMethod = "mpesa" | "card";
 type CartItem = { productId: string; name: string; quantity: number; lineTotalKes: number; primaryImageUrl?: string };
 type CartResponse = { ok: boolean; data: { items: CartItem[]; subtotalKes: number; itemCount: number } };
 
-function formatKes(cents: number) {
-  return `KSh ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;
-}
-
 function capture(event: string, props?: Record<string, unknown>) {
   const posthog = (window as unknown as { posthog?: { capture: (event: string, props?: Record<string, unknown>) => void } }).posthog;
   posthog?.capture(event, props);
@@ -50,6 +47,7 @@ function capture(event: string, props?: Record<string, unknown>) {
 
 export default function PaymentPage() {
   const router = useRouter();
+  const { format } = useCurrency();
   const searchParams = useSearchParams();
   const [deliveryData, setDeliveryData] = useState<DeliveryData | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("mpesa");
@@ -221,7 +219,7 @@ export default function PaymentPage() {
                     <p className="truncate text-[13px] font-bold text-[#1a1c1c] dark:text-white">{item.name}</p>
                     <p className="text-[12px] text-[#40493c]">Qty: {item.quantity}</p>
                   </div>
-                  <p className="text-[13px] font-bold text-[#1a1c1c] dark:text-white">{formatKes(item.lineTotalKes)}</p>
+                  <p className="text-[13px] font-bold text-[#1a1c1c] dark:text-white">{format(item.lineTotalKes)}</p>
                 </div>
               ))}
             </div>
@@ -237,16 +235,16 @@ export default function PaymentPage() {
             <div className="my-6 h-px bg-[#e6ebe3]" />
 
             <div className="space-y-3 text-[14px] text-[#40493c]">
-              <SummaryRow label="Subtotal" value={formatKes(subtotalKes)} />
-              <SummaryRow label="Delivery" value={deliveryKes ? formatKes(deliveryKes) : "Free"} />
-              {promoDiscountKes > 0 && <SummaryRow label={`Discount (${deliveryData.promoCode})`} value={`- ${formatKes(promoDiscountKes)}`} green />}
+              <SummaryRow label="Subtotal" value={format(subtotalKes)} />
+              <SummaryRow label="Delivery" value={deliveryKes ? format(deliveryKes) : "Free"} />
+              {promoDiscountKes > 0 && <SummaryRow label={`Discount (${deliveryData.promoCode})`} value={`- ${format(promoDiscountKes)}`} green />}
             </div>
 
             <div className="my-6 h-px bg-[#e6ebe3]" />
 
             <div className="flex items-center justify-between">
               <span className="text-[21px] font-bold text-[#1a1c1c] dark:text-white">Total</span>
-              <span className="text-[28px] font-black text-[#27731e]">{formatKes(totalKes)}</span>
+              <span className="text-[28px] font-black text-[#27731e]">{format(totalKes)}</span>
             </div>
 
             <button

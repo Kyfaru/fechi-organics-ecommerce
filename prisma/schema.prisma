@@ -181,6 +181,8 @@ model user {
   banReason        String?
   banExpires       DateTime?
   twoFactorEnabled    Boolean   @default(false)
+  twoFaEmail          Boolean   @default(false)
+  twoFaPhone          Boolean   @default(false)
   mustChangePassword  Boolean   @default(false)
   usernameChanges      Int       @default(0)
   lastUsernameChange   DateTime?
@@ -379,8 +381,11 @@ model testimonial {
   location   String?
   quote      String
   rating     Int               @default(5)
-  beforeKey  String
-  afterKey   String
+  title      String?
+  orderId    String?
+  userId     String?
+  beforeKey  String?
+  afterKey   String?
   source     TestimonialSource @default(manual)
   approved   Boolean           @default(false)
   sortOrder  Int               @default(0)
@@ -425,6 +430,7 @@ model order {
   pickupCode            String?
   pickupCodeExpiresAt   DateTime?
   pickedUpAt            DateTime?
+  reviewedAt            DateTime?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
   statusEvents          orderStatusEvent[]
@@ -452,6 +458,7 @@ model branch {
   id                String        @id @default(uuid())
   name              String
   county            String
+  phone             String?
   lat               Float?
   lng               Float?
   mpesaType         MpesaType
