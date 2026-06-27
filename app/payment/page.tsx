@@ -10,6 +10,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { toast } from "@/lib/toast";
 import { usePaymentStream } from "@/hooks/use-payment-stream";
 import { useCurrency } from "@/app/providers";
+import { StepIndicator } from "@/components/checkout/StepIndicator";
 
 const PAYSTACK_ERROR_MESSAGES: Record<string, string> = {
   payment_failed: "Payment was not completed. Please try again.",
@@ -166,9 +167,12 @@ export default function PaymentPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8f8f7] dark:bg-gray-950">
-      <Navbar />
+    <>
+    <Navbar />
+    <div className="min-h-full bg-[#f8f8f7] dark:bg-gray-950">
+      
       <main className="mx-auto max-w-[1180px] px-4 py-16 md:py-24">
+        <div className="mb-8"><StepIndicator step={3} /></div>
         <h1 className="mb-20 text-center font-heading text-[34px] font-bold text-[#1a1c1c] dark:text-white">Complete Your Order</h1>
 
         {paystackErrorMessage ? (
@@ -180,6 +184,10 @@ export default function PaymentPage() {
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_430px]">
           <section className="rounded-[12px] border border-[#e1e8de] bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-900 md:p-8">
+            <div className="mb-6 flex items-center gap-3 font-semibold text-[14px] text-[#27731e]">
+              <Icon icon="mdi:arrow-left-thin" width={14} className="text-[#0b6b13]" />
+              <Link href="/delivery" className="mt-4 block text-left text-[14px]  text-[#27731e]">Back to delivery details</Link>
+            </div>
             <div className="mb-6 flex items-center gap-3">
               <Icon icon="mdi:wallet-outline" width={22} className="text-[#0b6b13]" />
               <div>
@@ -192,7 +200,7 @@ export default function PaymentPage() {
               <PaymentOption active={selectedMethod === "mpesa"} onClick={() => setSelectedMethod("mpesa")} title="M-Pesa STK Push" badge="M-PESA">
                 <p className="mb-4 text-[13px] text-[#40493c]">You will receive a prompt on your phone to complete the payment.</p>
                 <label className="mb-2 block text-[12px] font-semibold tracking-[0.08em] text-[#40493c]">Enter Your M-Pesa Phone Number</label>
-                <input value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} className="h-12 w-full rounded-[8px] border border-[#c0cab8] bg-[#fbfbfb] px-4 text-[14px] text-text-dark dark:text-gray-200 outline-none focus:border-[#27731e]" />
+                <input value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} className="h-12 w-full rounded-[8px] border border-[#c0cab8] dark:border-yellow-cta bg-[#fbfbfb] dark:bg-gray-700 px-4 text-[14px] text-text-dark dark:text-white/95 outline-none focus:border-[#27731e]" />
               </PaymentOption>
               <PaymentOption active={selectedMethod === "card"} onClick={() => setSelectedMethod("card")} title="Credit / Debit Card" badge="VISA  MC" />
               
@@ -279,6 +287,7 @@ export default function PaymentPage() {
         />
       ) : null}
     </div>
+    </>
   );
 }
 
@@ -369,12 +378,12 @@ function PaymentOption({ active, onClick, title, badge, icon, children }: {
     <button
       type="button"
       onClick={onClick}
-      className={`w-full rounded-[10px] border p-4 text-left transition-colors ${active ? "border-[#0b6b13] bg-[#f6fbf5] ring-1 ring-[#0b6b13]" : "border-[#dce4d8] bg-white hover:border-[#a9b8a2]"}`}
+      className={`w-full rounded-[10px] border p-4 text-left transition-colors ${active ? "border-[#0b6b13] bg-[#f6fbf5] dark:bg-[#333433] ring-1 ring-[#0b6b13]" : "border-[#dce4d8] bg-white dark:bg-gray-700 hover:border-[#a9b8a2]"}`}
     >
       <div className="flex items-center gap-3">
-        <span className={`h-3 w-3 rounded-full border ${active ? "border-[#0b6b13] bg-orange-300 ring-2 ring-[#a4f690]" : "border-[#7b8975]"}`} />
-        <span className="flex-1 text-[16px] font-bold text-[#1a1c1c]">{title}</span>
-        {badge ? <span className="rounded-[4px] border border-[#dce4d8] px-2 py-1 text-[10px] font-black text-[#0b6b13]">{badge}</span> : null}
+        <span className={`h-3 w-3 rounded-full border ${active ? "border-[#0b6b13] bg-[#a4f690] ring-2 ring-offset-2 ring-[#a4f690]" : "border-[#7b8975]"}`} />
+        <span className="flex-1 text-[16px] font-bold text-[#1a1c1c] dark:text-white">{title}</span>
+        {badge ? <span className="rounded-[4px] border border-[#dce4d8] dark:border-gray-600 px-2 py-1 text-[10px] font-black text-[#0b6b13] dark:text-green-400">{badge}</span> : null}
         {icon ? <Icon icon={icon} width={22} className="text-[#707a6b]" /> : null}
       </div>
       {active && children ? <div className="ml-8 mt-5">{children}</div> : null}
@@ -384,8 +393,8 @@ function PaymentOption({ active, onClick, title, badge, icon, children }: {
 
 function SummaryRow({ label, value, green }: { label: string; value: string; green?: boolean }) {
   return (
-    <div className={`flex items-center justify-between ${green ? "text-[#0b6b13]" : ""}`}>
-      <span>{label}</span>
+    <div className={`flex items-center justify-between ${green ? "text-[#0b6b13] dark:text-mint" : ""}`}>
+      <span className="text-text-dark dark:text-white">{label}</span>
       <span>{value}</span>
     </div>
   );

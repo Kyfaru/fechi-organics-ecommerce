@@ -410,8 +410,10 @@ export function DeliveryClient({ user }: Props) {
   // JSX
   // ---------------------------------------------------------------------------
   return (
+    <>
+    <Navbar />
     <div className="min-h-screen bg-[#f8f8f7] dark:bg-gray-950">
-      <Navbar />
+      
       <main className="mx-auto w-full max-w-[1180px] px-4 py-10 md:py-14">
         <div className="mb-8"><StepIndicator step={2} /></div>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_430px] lg:items-start">
@@ -669,6 +671,7 @@ export function DeliveryClient({ user }: Props) {
         </div>
       </main>
     </div>
+    </>
   );
 }
 

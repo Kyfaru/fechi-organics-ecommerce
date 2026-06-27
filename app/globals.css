@@ -31,6 +31,7 @@
 
   /* Form / UI */
   --color-border-input:    #c0cab8;
+  --color-border-focus:    #fec700;
   --color-border-error:    #ef4444;
   --color-bg-form:         #f9f9f9;
   /* Chart color utilities */

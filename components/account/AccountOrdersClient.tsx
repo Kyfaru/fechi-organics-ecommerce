@@ -270,7 +270,7 @@ function OrderCard({ order }: { order: Order }) {
                     <p className="text-[14px] font-medium text-[#1a1c1c] dark:text-white truncate">
                       {item.name}
                     </p>
-                    <p className="text-[13px] text-[#40493c] dark:text-gray-400">
+                    <p className="text-[13px] text-[#40493c] dark:text-mint">
                       Qty {item.quantity} &times; {formatKes(item.priceKes)}
                     </p>
                   </div>
