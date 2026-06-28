@@ -228,6 +228,7 @@ async function handleFulfillmentAction(
         },
         include: ORDER_INCLUDE,
       });
+      await db.orderStatusEvent.create({ data: { orderId, status: "CONFIRMED", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] confirm —", orderId, "orderNumber:", resolvedOrderNumber);
       notifyOrderStatusChange(orderId, order.userId, resolvedOrderNumber, "CONFIRMED", order.user?.phone);
       return ok({ order: updated });
@@ -250,6 +251,7 @@ async function handleFulfillmentAction(
         },
         include: ORDER_INCLUDE,
       });
+      await db.orderStatusEvent.create({ data: { orderId, status: "PROCESSING", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] set_processing —", orderId);
       notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "PROCESSING", order.user?.phone);
       return ok({ order: updated });
@@ -288,6 +290,7 @@ async function handleFulfillmentAction(
         },
         include: ORDER_INCLUDE,
       });
+      await db.orderStatusEvent.create({ data: { orderId, status: "SHIPPED", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] ship —", orderId);
       notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "SHIPPED", order.user?.phone);
       return ok({ order: updated });
@@ -299,6 +302,7 @@ async function handleFulfillmentAction(
         data: { status: "CANCELLED" },
         include: ORDER_INCLUDE,
       });
+      await db.orderStatusEvent.create({ data: { orderId, status: "CANCELLED", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] cancel —", orderId);
       notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "CANCELLED", order.user?.phone);
       return ok({ order: updated });
@@ -320,6 +324,7 @@ async function handleFulfillmentAction(
         },
         include: ORDER_INCLUDE,
       });
+      await db.orderStatusEvent.create({ data: { orderId, status: "WAITING_TO_PACKAGE", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] set_packaging —", orderId);
       notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "WAITING_TO_PACKAGE", order.user?.phone);
       return ok({ order: updated });
@@ -338,6 +343,7 @@ async function handleFulfillmentAction(
         data: { status: "READY_FOR_PICKUP" },
         include: ORDER_INCLUDE,
       });
+      await db.orderStatusEvent.create({ data: { orderId, status: "READY_FOR_PICKUP", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] set_ready —", orderId);
       // Custom message for ready — override STATUS_MESSAGES
       if (order.userId) {
@@ -365,6 +371,7 @@ async function handleFulfillmentAction(
         },
         include: ORDER_INCLUDE,
       });
+      await db.orderStatusEvent.create({ data: { orderId, status: "PICKED_UP", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] set_picked_up —", orderId);
       notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "PICKED_UP", order.user?.phone);
       return ok({ order: updated });

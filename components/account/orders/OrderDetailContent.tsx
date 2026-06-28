@@ -61,6 +61,7 @@ interface Order {
   deliveryZone?: string | null
   branch?: { name: string; county: string; phone?: string | null } | null
   reviewedAt?: string | null
+  pickedUpAt?: string | null
   items: OrderItem[]
   transactions: Transaction[]
   statusEvents: StatusEvent[]
@@ -170,6 +171,7 @@ export default function OrderDetailContent({ order }: { order: Order }) {
             hasReview={!!order.reviewedAt}
             status={order.status}
             orderId={order.id}
+            pickedUpAt={order.pickedUpAt}
           />
         </div>
       </div>

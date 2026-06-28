@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Icon } from "@iconify/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AccountLayout } from "@/components/account/AccountLayout";
+import { ORDER_STATUS_CLIENT_LABELS } from "@/types/account";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -18,7 +19,10 @@ type OrderStatus =
   | "PROCESSING"
   | "SHIPPED"
   | "DELIVERED"
-  | "CANCELLED";
+  | "CANCELLED"
+  | "WAITING_TO_PACKAGE"
+  | "READY_FOR_PICKUP"
+  | "PICKED_UP";
 
 interface OrderItem {
   id: string;
@@ -41,6 +45,8 @@ interface Order {
   promoCode: string | null;
   createdAt: string;
   updatedAt: string;
+  deliveryType?: string | null;
+  pickedUpAt?: string | null;
   items: OrderItem[];
 }
 
@@ -72,27 +78,15 @@ function truncateId(id: string): string {
 // ---------------------------------------------------------------------------
 
 const STATUS_STYLES: Record<OrderStatus, string> = {
-  PENDING:
-    "bg-[#fec700]/20 text-[#7a5f00]",
-  CONFIRMED:
-    "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  PROCESSING:
-    "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  SHIPPED:
-    "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  DELIVERED:
-    "bg-green-100 text-[#27731e] dark:bg-green-900/30 dark:text-[#a4f690]",
-  CANCELLED:
-    "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-};
-
-const STATUS_LABELS: Record<OrderStatus, string> = {
-  PENDING: "Pending",
-  CONFIRMED: "Confirmed",
-  PROCESSING: "Processing",
-  SHIPPED: "Shipped",
-  DELIVERED: "Delivered",
-  CANCELLED: "Cancelled",
+  PENDING:             "bg-[#fec700]/20 text-[#7a5f00]",
+  CONFIRMED:           "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  PROCESSING:          "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+  SHIPPED:             "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+  DELIVERED:           "bg-green-100 text-[#27731e] dark:bg-green-900/30 dark:text-[#a4f690]",
+  CANCELLED:           "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  WAITING_TO_PACKAGE:  "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+  READY_FOR_PICKUP:    "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  PICKED_UP:           "bg-green-100 text-[#27731e] dark:bg-green-900/30 dark:text-[#a4f690]",
 };
 
 function StatusBadge({ status }: { status: OrderStatus }) {
@@ -103,7 +97,7 @@ function StatusBadge({ status }: { status: OrderStatus }) {
         STATUS_STYLES[status] ?? "bg-gray-100 text-gray-600",
       ].join(" ")}
     >
-      {STATUS_LABELS[status] ?? status}
+      {ORDER_STATUS_CLIENT_LABELS[status as keyof typeof ORDER_STATUS_CLIENT_LABELS] ?? status}
     </span>
   );
 }
