@@ -8,7 +8,7 @@ import FormInput from "@/components/auth/FormInput";
 import PasswordInput from "@/components/auth/PasswordInput";
 import PasswordChecklist, { checkRequirements } from "@/components/auth/PasswordChecklist";
 import CountrySelect from "@/components/auth/CountrySelect";
-import PhoneInput from "@/components/auth/PhoneInput";
+import PhoneInput from "@/components/ui/PhoneInput";
 import { toast } from "@/lib/toast";
 import type { Value } from "react-phone-number-input";
 

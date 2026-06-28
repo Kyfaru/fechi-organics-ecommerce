@@ -41,12 +41,12 @@ export default function PhoneInput({
 
       <div
         className={[
-          "flex items-center w-full px-4 py-3 bg-white dark:bg-gray-800",
-          "rounded-[22px] border transition-colors duration-150",
+          "flex items-center w-full px-4 py-4 bg-white dark:bg-gray-800 text-text-dark dark:text-[#ffffff]",
+          "rounded-[10px] border transition-colors duration-150",
           "focus-within:border-[#27731e] focus-within:ring-2 focus-within:ring-[#27731e]/20",
           error
-            ? "border-red-500 focus-within:border-red-500 focus-within:ring-red-200 text-red-700 dark:text-red-500"
-            : "border-[#c0cab8] dark:border-gray-600 text-[#1a1c1c] dark:text-[#ffffff]",
+            ? "border-red-500 focus-within:border-red-500 focus-within:ring-red-200 text-red-600 dark:text-red-500"
+            : "border-mint dark:border-gray-600 text-text-dark dark:text-[#ffffff]",
         ]
           .filter(Boolean)
           .join(" ")}

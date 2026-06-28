@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Icon } from "@iconify/react";
 import { toast } from "@/lib/toast";
 import Link from "next/link";
-import PhoneInput from "@/components/auth/PhoneInput";
+import PhoneInput from "@/components/ui/PhoneInput";
 import { posthog } from "@/lib/posthog";
 
 function CustomSelect({

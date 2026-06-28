@@ -8,7 +8,7 @@ import { Icon } from "@iconify/react";
 import type { Value as PhoneValue } from "react-phone-number-input";
 import { Navbar } from "@/components/layout/Navbar";
 import { StepIndicator } from "@/components/checkout/StepIndicator";
-import PhoneInput from "@/components/auth/PhoneInput";
+import PhoneInput from "@/components/ui/PhoneInput";
 import { KENYA_COUNTIES } from "@/lib/kenya-counties";
 import { toast } from "@/lib/toast";
 import { useCurrency } from "@/app/providers";
@@ -442,7 +442,7 @@ export function DeliveryClient({ user }: Props) {
                 <Field label="Last Name">
                   <input className={inputNormal} value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="e.g. Doe" />
                 </Field>
-                <PhoneInput label="Phone Number" value={phone} onChange={setPhone} />
+                <PhoneInput label="Phone Number" value={phone} onChange={setPhone}/>
                 <Field label="Email Address">
                   <input type="email" className={inputNormal} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" />
                 </Field>
