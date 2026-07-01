@@ -16,7 +16,7 @@ import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
-import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import CheckboxGreen from "@/components/ui/CheckboxGreen";
 import { PrelineSelect } from "@/components/admin/ui/PrelineSelect";
 

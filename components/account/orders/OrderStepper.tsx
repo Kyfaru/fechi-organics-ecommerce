@@ -1,4 +1,8 @@
+"use client"
+
 import { Icon } from "@iconify/react"
+import { motion } from "framer-motion"
+import { useEffect, useRef, useState } from "react"
 import type { OrderStatusValue } from "@/types/account"
 import { ORDER_STATUS_CLIENT_LABELS } from "@/types/account"
 
@@ -27,6 +31,31 @@ export default function OrderStepper({
   deliveryType: string
   statusEvents?: StatusEvent[]
 }) {
+  const flow = deliveryType === "PICKUP" ? PICKUP_FLOW : DELIVERY_FLOW
+
+  // Track status transitions (not just renders/refetches) so the connector "liquid fill"
+  // animation only plays when a step's done-state actually changes — never on initial mount
+  // of an already-progressed order (DeliveryCard's invalidateQueries triggers a refetch that
+  // passes a new statusEvents/currentStatus, which would otherwise look like a fresh mount).
+  // Hooks must run unconditionally on every render, so this lives above the CANCELLED
+  // early-return below (Rules of Hooks).
+  const prevStatusRef = useRef<string | null>(null)
+  const isFirstRender = useRef(true)
+  const [transitionFromIdx, setTransitionFromIdx] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      prevStatusRef.current = currentStatus
+      return
+    }
+    if (prevStatusRef.current !== currentStatus) {
+      const prevIdx = Math.max(0, flow.indexOf(prevStatusRef.current as OrderStatusValue))
+      setTransitionFromIdx(prevIdx)
+      prevStatusRef.current = currentStatus
+    }
+  }, [currentStatus, flow])
+
   if (currentStatus === "CANCELLED") {
     return (
       <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
@@ -41,17 +70,28 @@ export default function OrderStepper({
     )
   }
 
-  const flow = deliveryType === "PICKUP" ? PICKUP_FLOW : DELIVERY_FLOW
-  const currentIdx = flow.indexOf(currentStatus as OrderStatusValue)
+  // Defense-in-depth: if currentStatus isn't a member of this order's flow (e.g. a stray
+  // legacy write), indexOf returns -1 — clamp so we never treat every step as not-done.
+  const currentIdx = Math.max(0, flow.indexOf(currentStatus as OrderStatusValue))
+  // Primary source of truth: a step is done if we have a recorded status event for it, or
+  // for any status later in the flow — this doesn't depend on currentIdx at all, so a bad/
+  // out-of-flow currentStatus can no longer make earlier, already-confirmed steps regress.
+  const occurredStatuses = new Set(statusEvents.map(e => e.status))
 
   return (
     <div className="space-y-0">
       {flow.map((step, idx) => {
-        const done = idx <= currentIdx
+        const statusEventDone = flow.slice(idx).some(s => occurredStatuses.has(s))
+        const done = statusEventDone || idx <= currentIdx
         const active = idx === currentIdx
         const event = statusEvents.find(e => e.status === step)
         const icon = STEP_ICONS[step] ?? "lucide:circle"
         const isLast = idx === flow.length - 1
+        // Only animate the connectors that newly became done as part of the most recent
+        // transition — idx === transitionFromIdx was already filled before this transition,
+        // so it's excluded to avoid replaying its fill on an already-complete connector.
+        const shouldAnimate =
+          done && transitionFromIdx !== null && idx > transitionFromIdx && idx <= currentIdx
 
         return (
           <div key={step} className="flex gap-4">
@@ -69,7 +109,31 @@ export default function OrderStepper({
                 <Icon icon={icon} width={14} />
               </div>
               {!isLast && (
-                <div className={`w-0.5 flex-1 my-1 ${done ? "bg-[#15803D]" : "bg-neutral-200"}`} style={{ minHeight: 24 }} />
+                <div className="relative w-0.5 flex-1 my-1 overflow-hidden bg-neutral-200" style={{ minHeight: 24 }}>
+                  {done && (
+                    <motion.div
+                      className="absolute inset-0"
+                      style={{
+                        transformOrigin: "top",
+                        backgroundImage: "linear-gradient(180deg, #15803D 0%, #4ade80 50%, #15803D 100%)",
+                        backgroundSize: "100% 200%",
+                      }}
+                      initial={shouldAnimate ? { scaleY: 0, backgroundPosition: "0% 0%" } : false}
+                      animate={{
+                        scaleY: 1,
+                        backgroundPosition: shouldAnimate ? ["0% 0%", "0% 100%"] : "0% 0%",
+                      }}
+                      transition={
+                        shouldAnimate
+                          ? {
+                              scaleY: { duration: 0.6, ease: "easeOut" },
+                              backgroundPosition: { duration: 0.9, ease: "easeInOut" },
+                            }
+                          : { duration: 0 }
+                      }
+                    />
+                  )}
+                </div>
               )}
             </div>
 

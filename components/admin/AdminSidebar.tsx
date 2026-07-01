@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { signOut } from "@/lib/auth-client";
-import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { canAccess, type AdminPage } from "@/lib/permissions";
 
 // Each nav item optionally maps to an AdminPage key for permission filtering.

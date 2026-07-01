@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { Drawer } from "@/components/admin/ui/Drawer";
-import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import Switch from "@/components/ui/Switch";
 import CircularProgress from "@/components/ui/CircularProgress";
 

@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { StatsCard } from "@/components/ui/stats-card";
-import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { KENYA_COUNTIES } from "@/lib/kenya-counties";
 import { toast } from "@/lib/toast";
 

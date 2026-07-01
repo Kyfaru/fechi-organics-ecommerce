@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { sendSms } from "@/lib/twilio";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 const STATUS_MESSAGES: Record<string, string> = {
   CONFIRMED:  "has been confirmed",
@@ -134,17 +135,22 @@ export async function GET(
 const FulfillmentSchema = z.object({
   action: z.enum(["set_processing", "unset_processing", "confirm", "ship", "cancel", "set_packaging", "set_ready", "set_picked_up"]),
   orderNumber: z.string().optional(),
-});
+}).strict();
 
 const LegacySchema = z.object({
-  status: z.enum(["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"]).optional(),
+  status: z.enum([
+    "PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED",
+    "WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP",
+  ]).optional(),
   paymentStatus: z.enum(["PENDING", "PAID", "FAILED"]).optional(),
-});
+}).strict();
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const admin = await requireAdmin(req);

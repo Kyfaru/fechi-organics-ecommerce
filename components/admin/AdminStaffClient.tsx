@@ -22,7 +22,7 @@ import { StatsCard } from "@/components/ui/stats-card";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
-import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { toast } from "@/lib/toast";
 
 // ---------------------------------------------------------------------------

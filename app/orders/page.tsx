@@ -1,16 +1,9 @@
-import type { Metadata } from "next";
-import { AccountOrdersClient } from "@/components/account/AccountOrdersClient";
-
-export const metadata: Metadata = {
-  title: "My Orders | Fechi Organics",
-  description: "View your order history and track your deliveries.",
-};
+import { redirect } from "next/navigation";
 
 /**
- * /orders — Account orders page.
- * Server component shell — data fetching happens in AccountOrdersClient
- * via TanStack Query to enable optimistic UI and background refetching.
+ * /orders — legacy route, superseded by /account/orders.
+ * Redirects to the canonical account orders page.
  */
 export default function OrdersPage() {
-  return <AccountOrdersClient />;
+  redirect("/account/orders");
 }

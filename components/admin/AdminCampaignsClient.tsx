@@ -22,7 +22,7 @@ import { DataTable } from "@/components/admin/ui/DataTable";
 import RichTextEditor from "@/components/admin/ui/RichTextEditor";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
-import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import MultiCustomerSelect, {
   type CustomerOption,
 } from "@/components/ui/MultiCustomerSelect";

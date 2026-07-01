@@ -27,7 +27,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
-import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { toast } from "@/lib/toast";
 import Switch from "@/components/ui/Switch";

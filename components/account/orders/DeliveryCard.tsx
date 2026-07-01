@@ -1,9 +1,11 @@
 "use client"
 
+import { useState } from "react"
 import { Icon } from "@iconify/react"
 import Link from "next/link"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import confetti from "canvas-confetti"
+import { ConfirmModal } from "@/components/ui/ConfirmModal"
 
 interface DeliveryCardProps {
   deliveryType: string
@@ -36,6 +38,8 @@ export default function DeliveryCard({
 }: DeliveryCardProps) {
   const isPickup = deliveryType === "PICKUP"
   const qc = useQueryClient()
+  const [pickupConfirmOpen, setPickupConfirmOpen] = useState(false)
+  const [deliveredConfirmOpen, setDeliveredConfirmOpen] = useState(false)
 
   const markDelivered = useMutation({
     mutationFn: async () => {
@@ -112,9 +116,7 @@ export default function DeliveryCard({
           {/* Mark as Picked Up button */}
           {status === "READY_FOR_PICKUP" && orderId && (
             <button
-              onClick={() => {
-                if (window.confirm("Confirm you have collected your order?")) markPickedUp.mutate()
-              }}
+              onClick={() => setPickupConfirmOpen(true)}
               disabled={markPickedUp.isPending}
               className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#15803D] hover:bg-[#16A34A] text-white text-sm font-semibold transition-colors disabled:opacity-50"
             >
@@ -171,9 +173,7 @@ export default function DeliveryCard({
           {/* Mark as Delivered button — shown when SHIPPED */}
           {status === "SHIPPED" && orderId && (
             <button
-              onClick={() => {
-                if (window.confirm("Confirm you have received this delivery?")) markDelivered.mutate()
-              }}
+              onClick={() => setDeliveredConfirmOpen(true)}
               disabled={markDelivered.isPending}
               className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#15803D] hover:bg-[#16A34A] text-white text-sm font-semibold transition-colors disabled:opacity-50"
             >
@@ -205,6 +205,32 @@ export default function DeliveryCard({
           )}
         </div>
       )}
+
+      <ConfirmModal
+        open={pickupConfirmOpen}
+        onClose={() => setPickupConfirmOpen(false)}
+        onConfirm={() => {
+          markPickedUp.mutate()
+          setPickupConfirmOpen(false)
+        }}
+        title="Confirm Pickup"
+        description="Confirm you have collected your order?"
+        confirmLabel="Confirm"
+        loading={markPickedUp.isPending}
+      />
+
+      <ConfirmModal
+        open={deliveredConfirmOpen}
+        onClose={() => setDeliveredConfirmOpen(false)}
+        onConfirm={() => {
+          markDelivered.mutate()
+          setDeliveredConfirmOpen(false)
+        }}
+        title="Confirm Delivery"
+        description="Confirm you have received this delivery?"
+        confirmLabel="Confirm"
+        loading={markDelivered.isPending}
+      />
     </div>
   )
 }

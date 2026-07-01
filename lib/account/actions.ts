@@ -81,7 +81,7 @@ export async function updateProfile(data: {
     })
   }
 
-  revalidatePath("/account/profile")
+  revalidatePath("/account/profile", "layout")
   return { ok: true }
 }
 

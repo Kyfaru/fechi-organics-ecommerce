@@ -1,6 +1,8 @@
 "use client"
 
-import { useEffect, useState, useTransition } from "react"
+import { useEffect, useState } from "react"
+import { useMutation } from "@tanstack/react-query"
+import { useRouter } from "next/navigation"
 import { Icon } from "@iconify/react"
 import { toast } from "sonner"
 import type { AccountUser } from "@/types/account"
@@ -17,8 +19,8 @@ function inputClass(extra = "") {
 }
 
 export default function ProfileForm({ user }: { user: AccountUser }) {
+  const router = useRouter()
   const [countries, setCountries] = useState<CountryItem[]>([])
-  const [pending, startTransition] = useTransition()
 
   // Form state
   const [firstName, setFirstName] = useState(user.firstName ?? "")
@@ -62,15 +64,22 @@ export default function ProfileForm({ user }: { user: AccountUser }) {
     setUsername(original.username)
   }
 
+  const updateProfileMutation = useMutation({
+    mutationFn: () =>
+      updateProfile({ firstName, lastName, phone, phoneCode, country, city, username }),
+    onSuccess: () => {
+      toast.success("Profile updated")
+      // Server action already revalidates the /account layout; refresh the
+      // current route tree so the sidebar (@username, name) picks it up.
+      router.refresh()
+    },
+    onError: (e: any) => {
+      toast.error(e?.message ?? "Update failed")
+    },
+  })
+
   function handleSave() {
-    startTransition(async () => {
-      try {
-        await updateProfile({ firstName, lastName, phone, phoneCode, country, city, username })
-        toast.success("Profile updated")
-      } catch (e: any) {
-        toast.error(e?.message ?? "Update failed")
-      }
-    })
+    updateProfileMutation.mutate()
   }
 
   return (
@@ -171,7 +180,7 @@ export default function ProfileForm({ user }: { user: AccountUser }) {
           <button
             type="button"
             onClick={handleDiscard}
-            disabled={pending}
+            disabled={updateProfileMutation.isPending}
             className="px-6 py-3 rounded-lg border border-neutral-300 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 text-[15px] font-medium hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50"
           >
             Discard Changes
@@ -179,10 +188,12 @@ export default function ProfileForm({ user }: { user: AccountUser }) {
           <button
             type="button"
             onClick={handleSave}
-            disabled={pending}
+            disabled={updateProfileMutation.isPending}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-[#15803D] hover:bg-[#16A34A] text-white text-[15px] font-semibold transition-colors disabled:opacity-50"
           >
-            {pending && <Icon icon="lucide:loader-2" width={14} className="animate-spin" />}
+            {updateProfileMutation.isPending && (
+              <Icon icon="lucide:loader-2" width={14} className="animate-spin" />
+            )}
             Update Profile
           </button>
         </div>

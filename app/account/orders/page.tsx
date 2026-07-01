@@ -17,13 +17,15 @@ const CANCELLED: OrderStatus[] = ["CANCELLED"]
 export default async function OrdersPage({
   searchParams,
 }: {
-  searchParams: { tab?: string; page?: string }
+  searchParams: Promise<{ tab?: string; page?: string }>
 }) {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user) redirect("/login")
 
-  const tab = searchParams.tab ?? "all"
-  const page = Math.max(1, parseInt(searchParams.page ?? "1"))
+  const { tab: tabParam, page: pageParam } = await searchParams
+
+  const tab = tabParam ?? "all"
+  const page = Math.max(1, parseInt(pageParam ?? "1"))
   const take = 10
 
   const statusFilter: OrderStatus[] | undefined =
