@@ -11,6 +11,7 @@ import { ok, Err } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { connection } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 export async function GET() {
   await connection();
@@ -38,6 +39,8 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
   const session = await auth.api.getSession({ headers: await headers() });

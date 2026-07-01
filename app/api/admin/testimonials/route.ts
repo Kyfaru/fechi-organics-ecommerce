@@ -4,8 +4,10 @@ import { headers } from "next/headers";
 import { connection } from "next/server";
 import { ok, created, Err } from "@/lib/api";
 import { r2PublicUrl } from "@/lib/r2";
+import { invalidateTestimonialCache } from "@/lib/cache-tags";
 import { z } from "zod";
 import { NextRequest } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 // ---------------------------------------------------------------------------
 // Auth helper — resolves to the user row if they are an admin, else null
@@ -66,9 +68,11 @@ const CreateSchema = z.object({
   afterKey: z.string().min(1, "After image key is required"),
   source: z.enum(["facebook", "manual"]).default("manual"),
   sortOrder: z.number().int().min(0).default(0),
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const admin = await requireAdmin();
@@ -81,6 +85,7 @@ export async function POST(req: NextRequest) {
     const t = await db.testimonial.create({ data: parsed.data });
 
     console.info("[admin/testimonials] created", t.id);
+    invalidateTestimonialCache();
     return created({ testimonial: withUrls(t) });
   } catch (e) {
     console.error("[admin/testimonials] POST error", e);

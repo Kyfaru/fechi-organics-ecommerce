@@ -3,12 +3,15 @@ import { connection } from "next/server";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { requireAdminPage } from "@/lib/admin-guard";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 interface Params { params: Promise<{ id: string }> }
 
 // PATCH /api/admin/notifications/[id] — mark single notification read
 // PATCH /api/admin/notifications/all — mark all read (id = "all")
 export async function PATCH(req: NextRequest, { params }: Params) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   const denied = await requireAdminPage(req, "dashboard");
   if (denied) return denied;

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 // ---------------------------------------------------------------------------
 // PATCH /api/users/me — update the authenticated user's profile fields.
@@ -17,9 +18,11 @@ const UpdateProfileSchema = z.object({
   phone: z.string().max(30).optional(),
   city: z.string().max(100).optional(),
   country: z.string().max(2).optional(), // ISO 3166-1 alpha-2
-});
+}).strict();
 
 export async function PATCH(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const session = await auth.api.getSession({ headers: req.headers });

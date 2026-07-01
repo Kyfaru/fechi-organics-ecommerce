@@ -5,6 +5,7 @@ import { connection } from "next/server";
 import { ok, created, Err } from "@/lib/api";
 import { z } from "zod";
 import { NextRequest } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 async function requireUser() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -66,9 +67,11 @@ export async function GET() {
 const CreateSchema = z.object({
   subject: z.string().min(3).max(200),
   content: z.string().min(10).max(5000),
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const user = await requireUser();

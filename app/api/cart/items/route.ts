@@ -5,13 +5,16 @@ import { auth } from "@/lib/auth";
 import { resolveCart, getCartSummary } from "@/lib/cart";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 const AddSchema = z.object({
   productId: z.string().uuid(),
   quantity: z.number().int().min(1).max(99).default(1),
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const body = await req.json().catch(() => ({}));

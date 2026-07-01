@@ -6,6 +6,7 @@ import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import { qstash } from "@/lib/qstash";
 import { requireAdminPage } from "@/lib/admin-guard";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 /** POST /api/admin/campaigns/[id]/send
  *  Enqueues campaign to Qstash worker and sets status to SENDING.
@@ -14,6 +15,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
   const denied = await requireAdminPage(req, 'campaigns');

@@ -8,6 +8,7 @@
 
 import { db } from "@/lib/db";
 import { zohoGet, type ZohoItem } from "@/lib/zoho";
+import { invalidateProductCache } from "@/lib/cache-tags";
 
 // ---------------------------------------------------------------------------
 // Slug helpers
@@ -87,6 +88,7 @@ export async function syncItemToProduct(item: ZohoItem): Promise<void> {
         description: item.description ?? "",
       },
     });
+    invalidateProductCache(existing.slug);
   } else {
     // Create new product
     const slug = await uniqueSlug(baseSlug);
@@ -103,6 +105,7 @@ export async function syncItemToProduct(item: ZohoItem): Promise<void> {
         isActive,
       },
     });
+    invalidateProductCache(slug);
   }
 }
 
@@ -154,6 +157,12 @@ export async function syncAllItems(): Promise<{
     },
     data: { isActive: false },
   });
+
+  if (deactivateResult.count > 0) {
+    // Bulk deactivation bypasses syncItemToProduct's per-slug invalidation —
+    // invalidate the shared list tag so removed items drop off storefront listings.
+    invalidateProductCache();
+  }
 
   return {
     upserted: seenZohoIds.length,

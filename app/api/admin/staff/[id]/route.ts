@@ -6,6 +6,7 @@ import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import { requireAdminPage } from "@/lib/admin-guard";
 import { permissionsFromRole, ROLE_TEMPLATES, type AdminPage } from "@/lib/permissions";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -22,6 +23,8 @@ async function getCallerAdmin(req: NextRequest) {
 
 // PATCH — ban/unban OR change role/permissions
 export async function PATCH(req: NextRequest, { params }: Params) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   const denied = await requireAdminPage(req, "staff");
   if (denied) return denied;
@@ -72,7 +75,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           ? { adminProfile: { update: profileUpdate } }
           : {}),
       },
-      include: { adminProfile: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        banned: true,
+        banReason: true,
+        createdAt: true,
+        updatedAt: true,
+        adminProfile: {
+          select: { id: true, fullName: true, department: true, permissions: true, isSuperAdmin: true, isActive: true },
+        },
+      },
     });
     return ok({ user: updated });
   } catch (err) {
@@ -83,6 +98,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 // DELETE — hard-delete a deactivated staff member (super-admin only)
 export async function DELETE(req: NextRequest, { params }: Params) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   const denied = await requireAdminPage(req, "staff");
   if (denied) return denied;

@@ -4,9 +4,12 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getCartSummary } from "@/lib/cart";
 import { ok, Err } from "@/lib/api";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 /** Merge a guest cart into the logged-in user's cart after sign-in. */
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const session = await auth.api.getSession({ headers: req.headers });

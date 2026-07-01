@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import "./globals.css";
 import { Syne, DM_Sans } from "next/font/google";
+import { vastago, stagnan, realHead } from "@/lib/fonts";
 import { Providers } from "./providers";
 import { SessionProvider } from "@/components/providers/session-provider";
 import { Toaster } from "sonner";
@@ -22,7 +23,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`h-full antialiased ${syne.variable} ${dmSans.variable}`}>
+    <html
+      lang="en"
+      className={`h-full antialiased ${syne.variable} ${dmSans.variable} ${vastago.variable} ${stagnan.variable} ${realHead.variable}`}
+    >
       <body className="min-h-full flex flex-col">
         {/* Suspense boundary so PPR can generate a static shell for the html/body
             without blocking on the CurrencyProvider's fetch-on-mount. */}

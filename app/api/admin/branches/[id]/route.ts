@@ -1,3 +1,4 @@
+import { assertTrustedOrigin } from "@/lib/origin-check";
 import { NextRequest } from "next/server"
 import { connection } from "next/server"
 import { z } from "zod"
@@ -17,9 +18,11 @@ const PatchSchema = z.object({
   county: z.string().min(1).optional(),
   phone: z.string().optional().nullable(),
   isActive: z.boolean().optional(),
-})
+}).strict()
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection()
   try {
     const admin = await requireAdmin(req)

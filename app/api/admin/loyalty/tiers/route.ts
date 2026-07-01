@@ -3,6 +3,7 @@ import { ok, created, Err } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { connection } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 /** GET /api/admin/loyalty/tiers
  *  Returns all loyalty tiers + top-20 customers by points for leaderboard.
@@ -35,6 +36,8 @@ export async function GET() {
 
 /** POST /api/admin/loyalty/tiers — create tier */
 export async function POST(req: Request) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
   const session = await auth.api.getSession({ headers: await headers() });

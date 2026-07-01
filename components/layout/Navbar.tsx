@@ -5,6 +5,7 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import { Icon } from "@iconify/react";
+import "@/lib/iconify-offline";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -467,7 +468,7 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
               aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             >
               <Icon
-                icon={theme === "dark" ? "mdi:weather-sunny" : "mdi:weather-night"}
+                icon={theme === "dark" ? "iconamoon:mode-light" : "mdi:weather-night"}
                 width={20}
                 className="text-[#1a1c1c] dark:text-white"
               />

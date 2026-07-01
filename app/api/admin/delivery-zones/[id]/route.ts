@@ -4,6 +4,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 async function requireAdmin(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -18,12 +19,14 @@ const PatchSchema = z.object({
   branchId: z.string().optional().nullable(),
   deliveryFeeKes: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
-});
+}).strict();
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   const admin = await requireAdmin(req);
   if (!admin) return Err.forbidden();
@@ -41,6 +44,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   const admin = await requireAdmin(req);
   if (!admin) return Err.forbidden();

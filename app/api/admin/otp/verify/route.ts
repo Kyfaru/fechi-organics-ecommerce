@@ -10,6 +10,7 @@ import { connection } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { ok, Err } from "@/lib/api";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 // Import the shared in-memory store from the send route
 import { otpStore } from "@/app/api/admin/otp/send/route";
 
@@ -18,9 +19,11 @@ const MAX_ATTEMPTS = 5;
 const BodySchema = z.object({
   userId: z.string(),
   otp: z.string().length(6),
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const session = await auth.api.getSession({ headers: req.headers });

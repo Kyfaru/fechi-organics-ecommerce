@@ -1,6 +1,9 @@
+import { assertTrustedOrigin } from "@/lib/origin-check";
 import { NextRequest, NextResponse } from "next/server"
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   const { country } = await req.json().catch(() => ({}))
   if (!country) return NextResponse.json([], { status: 400 })
 

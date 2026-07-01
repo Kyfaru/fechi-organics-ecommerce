@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import { requireAdminPage } from "@/lib/admin-guard";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 /** GET /api/admin/campaigns */
 export async function GET(req: NextRequest) {
@@ -47,6 +48,8 @@ export async function GET(req: NextRequest) {
 
 /** POST /api/admin/campaigns — create campaign */
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
   const denied = await requireAdminPage(req, 'campaigns');

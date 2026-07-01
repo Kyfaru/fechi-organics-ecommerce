@@ -1,3 +1,4 @@
+import { assertTrustedOrigin } from "@/lib/origin-check";
 import { NextRequest } from "next/server"
 import { connection } from "next/server"
 import { auth } from "@/lib/auth"
@@ -10,6 +11,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection()
   try {
     const session = await auth.api.getSession({ headers: req.headers })

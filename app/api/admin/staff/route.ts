@@ -26,12 +26,23 @@ export async function GET(req: NextRequest) {
   try {
     const staff = await db.user.findMany({
       where: { role: "admin" },
-      include: {
-        adminProfile: true,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        banned: true,
+        banReason: true,
+        createdAt: true,
+        updatedAt: true,
+        adminProfile: {
+          select: { id: true, fullName: true, department: true, permissions: true, isSuperAdmin: true, isActive: true },
+        },
         sessions: {
           where: { expiresAt: { gt: new Date() } },
           orderBy: { updatedAt: "desc" },
           take: 1,
+          select: { updatedAt: true },
         },
       },
       orderBy: { createdAt: "desc" },

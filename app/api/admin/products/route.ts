@@ -4,6 +4,8 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { invalidateProductCache } from "@/lib/cache-tags";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 // ---------------------------------------------------------------------------
 // Auth helper — reuses the req.headers pattern from other admin routes
@@ -68,9 +70,11 @@ const CreateSchema = z.object({
   ingredients: z.string().nullable().optional(),
   // imageObjectKeys: ordered array; index 0 = primary.
   imageObjectKeys: z.array(z.string()).optional(),
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const admin = await requireAdmin(req);
@@ -107,6 +111,7 @@ export async function POST(req: NextRequest) {
     });
 
     console.info("[admin/products] POST — created product", product.id, product.slug);
+    invalidateProductCache(product.slug);
     // Notify admin inbox about new product
     db.notification.create({
       data: {
@@ -153,9 +158,11 @@ const UpdateSchema = z.object({
   // imageObjectKeys: ordered array; index 0 = primary.
   // Passing this replaces all existing images with the new set.
   imageObjectKeys: z.array(z.string()).optional(),
-});
+}).strict();
 
 export async function PATCH(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const admin = await requireAdmin(req);
@@ -166,6 +173,8 @@ export async function PATCH(req: NextRequest) {
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
     const { id, imageObjectKeys, ...data } = parsed.data;
+
+    const existing = await db.product.findUnique({ where: { id }, select: { slug: true } });
 
     const product = await db.product.update({
       where: { id },
@@ -188,6 +197,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     console.info("[admin/products] PATCH — updated product", id);
+    invalidateProductCache(existing?.slug, product.slug);
     return ok({ product });
   } catch (e: unknown) {
     console.error("[admin/products] PATCH error", e);

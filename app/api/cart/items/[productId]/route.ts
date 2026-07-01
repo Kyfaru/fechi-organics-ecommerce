@@ -5,13 +5,16 @@ import { auth } from "@/lib/auth";
 import { resolveCart, getCartSummary } from "@/lib/cart";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
-const UpdateSchema = z.object({ quantity: z.number().int().min(0).max(99) });
+const UpdateSchema = z.object({ quantity: z.number().int().min(0).max(99) }).strict();
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ productId: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const { productId } = await params;
@@ -45,6 +48,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ productId: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const { productId } = await params;

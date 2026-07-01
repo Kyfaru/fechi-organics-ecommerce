@@ -14,6 +14,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Err } from "@/lib/api";
 import { requireAdminPage } from "@/lib/admin-guard";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 async function requireAdmin(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -23,6 +24,8 @@ async function requireAdmin(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
   const denied = await requireAdminPage(req, 'finance');

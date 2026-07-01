@@ -1,3 +1,4 @@
+import { assertTrustedOrigin } from "@/lib/origin-check";
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
@@ -16,6 +17,8 @@ const ALLOWED_TYPES = [
 const MAX_BYTES = 15 * 1024 * 1024 // 15 MB
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

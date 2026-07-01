@@ -4,6 +4,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 async function requireAdmin(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -43,9 +44,11 @@ export async function GET(req: NextRequest) {
 const UpdateSchema = z.object({
   id: z.string().uuid(),
   status: z.enum(["new", "read", "archived"]),
-});
+}).strict();
 
 export async function PATCH(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const admin = await requireAdmin(req);

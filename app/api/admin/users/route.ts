@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
 import { headers } from "next/headers";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 // ---------------------------------------------------------------------------
 // Auth guard — confirms the caller is a signed-in admin.
@@ -130,9 +131,11 @@ const CreateUserSchema = z.object({
   phone: z.string().optional(),
   department: z.string().optional(),
   permissions: z.record(z.string(), z.unknown()).optional(),
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const admin = await requireAdmin(req);

@@ -3,12 +3,16 @@ import { ok, Err } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { connection } from "next/server";
+import { invalidateProductCache } from "@/lib/cache-tags";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 /** POST /api/admin/inventory/adjust
  *  Body: { productId, type: "ADD"|"REMOVE"|"SET", quantity, reason, notes? }
  *  Returns the updated product with new stock value.
  */
 export async function POST(req: Request) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
   const session = await auth.api.getSession({ headers: await headers() });
@@ -53,6 +57,7 @@ export async function POST(req: Request) {
     });
 
     console.info(`[inventory/adjust] Product ${product.name}: ${product.stock} → ${newStock} (${type}, reason: ${reason}, notes: ${notes ?? "none"})`);
+    invalidateProductCache(updated.slug);
 
     return ok({
       id: updated.id,

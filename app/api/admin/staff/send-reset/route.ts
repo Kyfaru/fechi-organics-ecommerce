@@ -6,10 +6,13 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { createResetToken } from "@/lib/password-reset";
 import { TimeSpan } from "oslo";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 // POST /api/admin/staff/send-reset — send a 45-min reset link to a staff member.
 // Caller must have already verified their own password via /api/admin/verify-password.
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();

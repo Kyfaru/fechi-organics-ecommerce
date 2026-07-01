@@ -6,6 +6,7 @@ import { ok, Err } from "@/lib/api";
 import { qstash } from "@/lib/qstash";
 import { z } from "zod";
 import { NextRequest } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 async function requireAdmin() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -16,7 +17,7 @@ async function requireAdmin() {
 
 const ReplySchema = z.object({
   content: z.string().min(1).max(5000),
-});
+}).strict();
 
 // 48 hours in milliseconds — each admin reply resets the expiry window
 const REPLY_EXPIRY_MS = 48 * 60 * 60 * 1000;
@@ -30,6 +31,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const admin = await requireAdmin();

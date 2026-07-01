@@ -10,13 +10,16 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 const BodySchema = z.object({
   method: z.enum(["totp", "email", "sms"]),
   phone: z.string().optional(),
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const session = await auth.api.getSession({ headers: req.headers });

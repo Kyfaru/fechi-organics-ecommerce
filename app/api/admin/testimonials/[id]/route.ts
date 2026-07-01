@@ -5,6 +5,8 @@ import { connection } from "next/server";
 import { ok, Err } from "@/lib/api";
 import { z } from "zod";
 import { NextRequest } from "next/server";
+import { invalidateTestimonialCache } from "@/lib/cache-tags";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 // ---------------------------------------------------------------------------
 // Auth helper - resolves to the user row if they are an admin, else null
@@ -25,6 +27,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const admin = await requireAdmin();
@@ -35,6 +39,7 @@ export async function DELETE(
     await db.testimonial.delete({ where: { id } });
 
     console.info("[admin/testimonials] deleted", id);
+    invalidateTestimonialCache();
     return new Response(null, { status: 204 });
   } catch (e) {
     // Prisma throws P2025 when the record does not exist
@@ -51,12 +56,14 @@ export async function DELETE(
 const UpdateSchema = z.object({
   approved: z.boolean().optional(),
   sortOrder: z.number().int().min(0).optional(),
-});
+}).strict();
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const admin = await requireAdmin();
@@ -75,6 +82,7 @@ export async function PATCH(
     }
 
     const t = await db.testimonial.update({ where: { id }, data });
+    invalidateTestimonialCache();
     return ok({ testimonial: t });
   } catch (e) {
     if ((e as { code?: string }).code === "P2025") return Err.notFound("Testimonial");

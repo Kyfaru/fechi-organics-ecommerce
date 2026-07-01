@@ -4,6 +4,8 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
+import { invalidateCategoryCache } from "@/lib/cache-tags";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 // ---------------------------------------------------------------------------
 // Auth helper
@@ -62,9 +64,11 @@ const CreateSchema = z.object({
   imageKey:  z.string().default(""),
   isActive:  z.boolean().default(true),
   sortOrder: z.number().int().min(0).default(0),
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const admin = await requireAdmin(req);
@@ -89,6 +93,7 @@ export async function POST(req: NextRequest) {
     });
 
     console.info("[admin/products/categories] POST — created", category.id, category.slug);
+    invalidateCategoryCache(category.slug);
     return created({ category });
   } catch (e: unknown) {
     console.error("[admin/products/categories] POST error", e);

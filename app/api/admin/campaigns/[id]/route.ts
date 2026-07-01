@@ -5,12 +5,15 @@ import { headers } from "next/headers";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import { requireAdminPage } from "@/lib/admin-guard";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 /** PATCH /api/admin/campaigns/[id] */
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
   const denied = await requireAdminPage(req, 'campaigns');
@@ -57,6 +60,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
   const denied = await requireAdminPage(req, 'campaigns');

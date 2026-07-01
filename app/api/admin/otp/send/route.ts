@@ -15,6 +15,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { sendOTPEmail } from "@/lib/email";
 import { sendSms } from "@/lib/twilio";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 // In-memory OTP store — fine for a single admin panel with low traffic.
 // For multi-instance deployments, replace with Redis.
@@ -41,9 +42,11 @@ function generateOtp(): string {
 const BodySchema = z.object({
   userId: z.string(),
   method: z.enum(["email", "sms"]),
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const session = await auth.api.getSession({ headers: req.headers });

@@ -3,6 +3,7 @@ import { ok, Err } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { connection } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 /** GET /api/admin/blog/[id] — single post */
 export async function GET(
@@ -37,6 +38,8 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
   const session = await auth.api.getSession({ headers: await headers() });
@@ -93,6 +96,8 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(_req);
+  if (originCheck) return originCheck;
   await connection();
 
   const session = await auth.api.getSession({ headers: await headers() });

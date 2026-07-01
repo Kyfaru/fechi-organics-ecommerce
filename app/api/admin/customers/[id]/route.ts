@@ -5,6 +5,7 @@ import { connection } from "next/server";
 import { ok, Err } from "@/lib/api";
 import { z } from "zod";
 import { NextRequest } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 async function requireAdmin() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -68,12 +69,14 @@ export async function GET(
 const PatchSchema = z.object({
   banned: z.boolean().optional(),
   banReason: z.string().max(500).optional(),
-});
+}).strict();
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const admin = await requireAdmin();

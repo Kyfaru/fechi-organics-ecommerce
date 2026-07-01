@@ -4,6 +4,7 @@ import { ok, Err } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { connection } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 /** GET /api/admin/homepage — return sections ordered by `order` */
 export async function GET() {
@@ -28,6 +29,8 @@ export async function GET() {
 
 /** PUT /api/admin/homepage — upsert all sections */
 export async function PUT(req: Request) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
   const session = await auth.api.getSession({ headers: await headers() });

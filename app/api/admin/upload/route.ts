@@ -3,11 +3,14 @@ import { auth } from "@/lib/auth";
 import { r2Client } from "@/lib/r2";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { headers } from "next/headers";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   // Auth check — admin only
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session || session.user.role !== "admin") {

@@ -5,6 +5,7 @@ import { connection } from "next/server";
 import { ok, Err } from "@/lib/api";
 import { z } from "zod";
 import { NextRequest } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 async function requireAdmin() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -103,9 +104,11 @@ export async function GET(req: NextRequest) {
 const RoleSchema = z.object({
   id: z.string().uuid(),
   role: z.enum(["client", "admin"]),
-});
+}).strict();
 
 export async function PATCH(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const admin = await requireAdmin();

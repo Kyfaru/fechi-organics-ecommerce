@@ -4,6 +4,8 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { invalidateCategoryCache } from "@/lib/cache-tags";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 // ---------------------------------------------------------------------------
 // Auth helper
@@ -29,12 +31,14 @@ const UpdateSchema = z.object({
   imageKey: z.string().optional(),
   isActive: z.boolean().optional(),
   sortOrder: z.number().int().min(0).optional(),
-});
+}).strict();
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const admin = await requireAdmin(req);
@@ -55,6 +59,7 @@ export async function PATCH(
     });
 
     console.info("[admin/products/categories/[id]] PATCH — updated", id);
+    invalidateCategoryCache(existing.slug, category.slug);
     return ok({ category });
   } catch (e: unknown) {
     console.error("[admin/products/categories/[id]] PATCH error", e);
@@ -73,6 +78,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const admin = await requireAdmin(req);
@@ -96,6 +103,7 @@ export async function DELETE(
     await db.category.delete({ where: { id } });
 
     console.info("[admin/products/categories/[id]] DELETE —", id);
+    invalidateCategoryCache(existing.slug);
     return ok({ id });
   } catch (e) {
     console.error("[admin/products/categories/[id]] DELETE error", e);

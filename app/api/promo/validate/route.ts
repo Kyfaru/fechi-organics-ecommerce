@@ -2,8 +2,11 @@ import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { ok, Err } from "@/lib/api";
 import { resolvePromo } from "@/lib/promo";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const body = await req.json().catch(() => ({}));

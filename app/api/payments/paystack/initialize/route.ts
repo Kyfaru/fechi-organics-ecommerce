@@ -19,6 +19,7 @@ import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
 import { resolvePromo } from "@/lib/promo";
 import { initializeTransaction } from "@/lib/paystack/client";
 import { getRedis } from "@/lib/redis";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 const deliveryDataSchema = z.object({
   fullName: z.string().min(1),
@@ -38,13 +39,15 @@ const deliveryDataSchema = z.object({
   deliveryType: z.enum(["PICKUP", "DELIVERY"]),
   branchId: z.string().optional().nullable(),
   branchName: z.string().optional().nullable(),
-});
+}).strict();
 
 const bodySchema = z.object({
   deliveryData: deliveryDataSchema,
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   // 1. Authenticate
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();

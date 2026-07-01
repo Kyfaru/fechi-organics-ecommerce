@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
 import { ok, Err } from "@/lib/api";
 import { syncAllItems } from "@/lib/zoho-sync";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 // ---------------------------------------------------------------------------
 // Auth helper — mirrors app/api/admin/products/route.ts
@@ -20,6 +21,8 @@ async function requireAdmin(req: NextRequest) {
 // POST /api/zoho/sync  — admin-only, rate-limited to 1 call per 60s per admin
 // ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const admin = await requireAdmin(req);

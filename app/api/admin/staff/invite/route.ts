@@ -18,6 +18,7 @@ import { headers } from "next/headers";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import { requireAdminPage } from "@/lib/admin-guard";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 const VALID_ROLES = [
   "admin", "manager", "finance", "marketing",
@@ -25,6 +26,8 @@ const VALID_ROLES = [
 ] as const;
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
   const denied = await requireAdminPage(req, "staff");

@@ -3,10 +3,13 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Argon2id } from "oslo/password";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 // POST /api/admin/change-password — used by the forced change-password screen.
 // No token needed: the session already proves identity.
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) {
     return NextResponse.json({ ok: false, error: { message: "Unauthorized" } }, { status: 401 });

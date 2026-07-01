@@ -5,10 +5,13 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { Argon2id } from "oslo/password";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 // POST /api/admin/staff/set-password — directly set a new password for a staff member.
 // Caller must have already verified their own password via /api/admin/verify-password.
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();

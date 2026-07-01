@@ -8,6 +8,7 @@ import { r2PublicUrl } from "@/lib/r2";
 import { resolvePromo as resolvePromoBase } from "@/lib/promo";
 import { createNotification } from "@/lib/notify";
 import type { ZohoSalesOrderPayload } from "@/lib/zoho";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 // ---------------------------------------------------------------------------
 // GET /api/orders — return all orders for the authenticated user
@@ -116,6 +117,8 @@ async function resolvePromo(
 // Fire-and-forgets a Zoho Sales Order after commit.
 // ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     // 1. Require session

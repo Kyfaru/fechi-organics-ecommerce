@@ -7,6 +7,7 @@ import { ok, err, Err } from "@/lib/api";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
 import { resolvePromo } from "@/lib/promo";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 const DeliverySchema = z.object({
   fullName: z.string().min(1),
@@ -28,15 +29,17 @@ const DeliverySchema = z.object({
   branchId: z.string().optional().nullable(),
   branchName: z.string().optional().nullable(),
   promoCode: z.string().optional().nullable(),
-});
+}).strict();
 
 const BodySchema = z.object({
   deliveryData: DeliverySchema,
   paymentMethod: z.enum(["mpesa", "card"]),
   outcome: z.enum(["success", "failed"]).default("success"),
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
 

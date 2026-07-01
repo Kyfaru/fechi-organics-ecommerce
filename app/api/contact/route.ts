@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
 import { ok, Err } from "@/lib/api";
 import { Resend } from "resend";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 const ContactSchema = z.object({
   name: z.string().min(2).max(100),
@@ -12,9 +13,11 @@ const ContactSchema = z.object({
   phone: z.string().optional(),
   subject: z.string().min(2).max(200),
   message: z.string().min(10).max(2000),
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const body = await req.json().catch(() => ({}));

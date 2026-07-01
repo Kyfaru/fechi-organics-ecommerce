@@ -4,6 +4,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 async function requireAdmin(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -18,7 +19,7 @@ const ZoneSchema = z.object({
   branchId: z.string().optional().nullable(),
   deliveryFeeKes: z.number().int().min(0),
   isActive: z.boolean().optional(),
-});
+}).strict();
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -35,6 +36,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   const admin = await requireAdmin(req);
   if (!admin) return Err.forbidden();

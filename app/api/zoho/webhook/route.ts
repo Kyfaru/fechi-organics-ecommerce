@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { db } from "@/lib/db";
 import { Err } from "@/lib/api";
 import { syncItemToProduct } from "@/lib/zoho-sync";
+import { invalidateProductCache } from "@/lib/cache-tags";
 
 // ---------------------------------------------------------------------------
 // POST /api/zoho/webhook  — public, no auth (token-verified)
@@ -51,10 +52,15 @@ export async function POST(req: NextRequest) {
       }
     } else if (eventType === "item_deleted") {
       if (item?.item_id) {
+        const affected = await db.product.findMany({
+          where: { zohoItemId: item.item_id },
+          select: { slug: true },
+        });
         await db.product.updateMany({
           where: { zohoItemId: item.item_id },
           data: { isActive: false },
         });
+        invalidateProductCache(...affected.map((p) => p.slug));
       }
     } else {
       // Unknown event type — log and ignore

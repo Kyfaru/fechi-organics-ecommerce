@@ -21,6 +21,7 @@ import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
 import { resolvePromo } from "@/lib/promo";
 import { getRedis } from "@/lib/redis";
 import { markPaymentFailed } from "@/lib/payments/post-payment";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 
 // ---------------------------------------------------------------------------
 // Input validation
@@ -43,14 +44,16 @@ const deliveryDataSchema = z.object({
   deliveryType: z.enum(["PICKUP", "DELIVERY"]),
   branchId: z.string().optional().nullable(),
   branchName: z.string().optional().nullable(),
-});
+}).strict();
 
 const bodySchema = z.object({
   phone: z.string().min(9),
   deliveryData: deliveryDataSchema,
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   // 1. Authenticate
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
