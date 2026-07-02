@@ -183,10 +183,13 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
 
   const { theme, toggleTheme } = useTheme();
 
-  const { data: session } = useSession();
+  const { data: session, isPending: sessionPending } = useSession();
   // Cast to NavUser: Better Auth's session.user type omits additionalFields
   // (firstName, lastName) at the type level but they are present at runtime.
-  const user = (session?.user as NavUser | undefined) ?? null;
+  // While the session is still loading, treat the user as logged out so the
+  // server render (which never has a session) matches the client's first
+  // paint — avoids a hydration mismatch once the real session resolves.
+  const user = !sessionPending ? ((session?.user as NavUser | undefined) ?? null) : null;
 
   const { data: cartData } = useQuery<{ ok: boolean; data: { itemCount: number } }>({
     queryKey: ["cart"],

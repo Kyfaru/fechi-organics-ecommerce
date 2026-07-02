@@ -7,7 +7,6 @@ import { Providers } from "./providers";
 import { SessionProvider } from "@/components/providers/session-provider";
 import { Toaster } from "sonner";
 import { WhatsAppButton } from "@/components/ui/WhatsAppButton";
-import StyledComponentsRegistry from "@/lib/registry";
 
 const syne = Syne({ subsets: ["latin"], variable: "--font-syne-var", weight: ["600", "700"] });
 const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm-var", weight: ["400", "500", "600"] });
@@ -30,17 +29,15 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         {/* Suspense boundary so PPR can generate a static shell for the html/body
             without blocking on the CurrencyProvider's fetch-on-mount. */}
-        <StyledComponentsRegistry>
-          <Suspense>
-            <Providers>
-              <SessionProvider>
-                {children}
-                <Toaster position="bottom-right" richColors />
-                <WhatsAppButton />
-              </SessionProvider>
-            </Providers>
-          </Suspense>
-        </StyledComponentsRegistry>
+        <Suspense>
+          <Providers>
+            <SessionProvider>
+              {children}
+              <Toaster position="bottom-right" richColors />
+              <WhatsAppButton />
+            </SessionProvider>
+          </Providers>
+        </Suspense>
       </body>
     </html>
   );

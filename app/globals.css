@@ -286,3 +286,65 @@ body {
   color: var(--color-text-dark, #1a1c1c);
   transition: background-color 0.2s ease, color 0.2s ease;
 }
+
+/* ── CheckboxGreen (components/ui/CheckboxGreen.tsx) ────────────────────── */
+@keyframes checkbox-green-draw {
+  from { stroke-dashoffset: 30; }
+  to   { stroke-dashoffset: 0; }
+}
+.checkbox-green-bg {
+  transition: fill 0.6s ease;
+}
+.checkbox-green-stroke {
+  stroke-dasharray: 113;
+  transition: stroke-dashoffset 0.6s ease;
+}
+.checkbox-green-check {
+  stroke-dasharray: 30;
+  transition: stroke-dashoffset 0.6s ease;
+}
+.checkbox-green-check[data-checked="true"] {
+  animation: checkbox-green-draw 0.4s ease 0.1s both;
+}
+.checkbox-green-wrapper:hover .checkbox-green-check[data-checked="false"] {
+  stroke-dashoffset: 15 !important;
+  transition: stroke-dashoffset 0.3s ease;
+}
+
+/* ── DownloadButton (components/ui/DownloadButton.tsx) ───────────────────── */
+@keyframes download-button-fill {
+  from { clip-path: inset(100% 0 0 0); }
+  to   { clip-path: inset(0% 0 0 0); }
+}
+.download-button-pill {
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.download-button-fill[data-active="true"] {
+  animation: download-button-fill 3.5s linear forwards;
+}
+.download-button-label {
+  transition: opacity 0.2s ease;
+}
+
+/* ── Switch (components/ui/Switch.tsx) ───────────────────────────────────── */
+.switch-label:focus-within .switch-slider {
+  outline: 2px solid rgb(0, 218, 80);
+  outline-offset: 2px;
+}
+.switch-slider {
+  transition: background 0.2s cubic-bezier(0.27, 0.2, 0.25, 1.51);
+}
+.switch-slider::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 5px;
+  right: 5px;
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.22);
+  transform: translateY(-50%);
+}
+.switch-thumb {
+  transition: left 0.2s cubic-bezier(0.27, 0.2, 0.25, 1.51);
+}

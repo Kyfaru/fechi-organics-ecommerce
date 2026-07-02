@@ -21,26 +21,7 @@ import { resolvePromo } from "@/lib/promo";
 import { getRedis } from "@/lib/redis";
 import { markPaymentFailed } from "@/lib/payments/post-payment";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-
-const deliveryDataSchema = z.object({
-  fullName: z.string().min(1),
-  phone: z.string().min(9),
-  email: z.string().email().optional(),
-  country: z.string().min(2).default("KE"),
-  county: z.string().optional().default(""),
-  state: z.string().optional(),
-  zoneId: z.string().optional().nullable(),
-  deliveryZone: z.string().optional().nullable(),
-  deliveryKes: z.number().int().nonnegative().optional(),
-  promoCode: z.string().optional().nullable(),
-  address: z.string().optional(),
-  city: z.string().optional(),
-  postalCode: z.string().optional(),
-  notes: z.string().optional(),
-  deliveryType: z.enum(["PICKUP", "DELIVERY"]),
-  branchId: z.string().optional().nullable(),
-  branchName: z.string().optional().nullable(),
-}).strict();
+import { deliveryDataSchema } from "@/lib/payments/delivery-schema";
 
 const bodySchema = z.object({
   phone: z.string().min(9),
