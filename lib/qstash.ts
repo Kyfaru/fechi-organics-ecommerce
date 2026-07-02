@@ -27,7 +27,7 @@ export async function verifyQstashRequest(signature: string | null, body: string
 }
 
 export async function publishQstashJSON(pathOrUrl: string, body: unknown, opts?: { delay?: number }) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.MPESA_CALLBACK_BASE_URL;
+  const baseUrl = process.env.QSTASH_URL;
   const url = pathOrUrl.startsWith("http")
     ? pathOrUrl
     : `${baseUrl?.replace(/\/$/, "")}${pathOrUrl}`;
