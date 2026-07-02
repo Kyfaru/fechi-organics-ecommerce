@@ -5,78 +5,27 @@ import Link from "next/link";
 import Image from "next/image";
 import { Icon } from "@iconify/react";
 import type { ProductCard } from "@/lib/queries/products";
+import { LeafBackground } from "@/components/ui/leaf-background";
 
 type Props = {
   products: ProductCard[];
 };
 
-// Two decorative star/burst SVGs visible in the Figma design
-function StarBurst({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 200 200"
-      className={className}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <path
-        d="M100 0 L108 85 L190 65 L120 100 L190 135 L108 115 L100 200 L92 115 L10 135 L80 100 L10 65 L92 85 Z"
-        fill="#5cbf4e"
-        opacity="0.55"
-      />
-      <path
-        d="M100 20 L106 88 L172 75 L118 100 L172 125 L106 112 L100 180 L94 112 L28 125 L82 100 L28 75 L94 88 Z"
-        fill="#4aad3d"
-        opacity="0.35"
-      />
-    </svg>
-  );
-}
-
 export function HeroSection({ products }: Props) {
   const heroRef = useRef<HTMLDivElement>(null);
-  const frontStarRef = useRef<HTMLDivElement>(null);
-  const backStarRef = useRef<HTMLDivElement>(null);
   const [slideIndex, setSlideIndex] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isPaused, setIsPaused] = useState(false);
 
   const displayProducts = products.length > 0 ? products : [];
 
-  // GSAP animations
+  // Scroll-driven border-radius expansion
   useEffect(() => {
-    let gsapInstance: typeof import("gsap")["gsap"] | null = null;
-    let scrollTriggerInstance: unknown = null;
-
     async function initGsap() {
       const { gsap } = await import("gsap");
       const { ScrollTrigger } = await import("gsap/ScrollTrigger");
       gsap.registerPlugin(ScrollTrigger);
-      gsapInstance = gsap;
-      scrollTriggerInstance = ScrollTrigger;
 
-      // Rotate front star left (counter-clockwise)
-      if (frontStarRef.current) {
-        gsap.to(frontStarRef.current, {
-          rotation: -360,
-          duration: 18,
-          ease: "none",
-          repeat: -1,
-        });
-      }
-
-      // Rotate back star right (clockwise)
-      if (backStarRef.current) {
-        gsap.to(backStarRef.current, {
-          rotation: 360,
-          duration: 24,
-          ease: "none",
-          repeat: -1,
-        });
-      }
-
-      // Scroll-driven border-radius expansion
       if (heroRef.current) {
         const heroInner = heroRef.current.querySelector<HTMLDivElement>(".hero-inner");
         if (heroInner) {
@@ -94,12 +43,6 @@ export function HeroSection({ products }: Props) {
     }
 
     initGsap();
-
-    return () => {
-      if (gsapInstance && scrollTriggerInstance) {
-        // cleanup handled by gsap
-      }
-    };
   }, []);
 
   // Auto-slide timer
@@ -134,29 +77,29 @@ export function HeroSection({ products }: Props) {
   return (
     <div ref={heroRef} className="relative px-4 md:px-8 pt-4 pb-0">
       {/* Hero inner — border-radius shrinks to 0 on scroll */}
-      <div
-        className="hero-inner relative bg-[#27731e] overflow-hidden"
-        style={{ borderRadius: "25px" }}
-      >
-        {/* "Signature" watermark text */}
-        <div
-          className="absolute inset-0 flex items-center justify-start overflow-hidden pointer-events-none select-none"
-          aria-hidden
-        >
-          <span
-            className="text-[#5cbd4e] font-stagnan font-semibold whitespace-nowrap leading-none text-center -top-24 md:-top-28 left-4 md:left-8 relative"
-            style={{
-              fontSize: "clamp(280px, 80vw, 380px)",
-              letterSpacing: "0.07em",
-              opacity: 0.70,
-              lineHeight: 1,
-            }}
-          >
-            Signature
-          </span>
-        </div>
+      <div className="rounded-[25px] hero-inner relative bg-[#27731e] overflow-hidden">
+        <LeafBackground />
 
-        <div className="relative z-10 flex flex-col lg:flex-row min-h-[480px] md:min-h-[640px] px-6 md:px-10 py-12 md:py-16 gap-8">
+        <div className="relative z-10">
+          {/* "Signature" watermark text */}
+          <div
+            className="absolute inset-0 flex items-center justify-start overflow-hidden pointer-events-none select-none"
+            aria-hidden
+          >
+            <span
+              className="text-[#5cbd4e] font-stagnan font-semibold whitespace-nowrap leading-none text-center -top-24 md:-top-28 left-4 md:left-8 relative"
+              style={{
+                fontSize: "clamp(280px, 80vw, 380px)",
+                letterSpacing: "0.07em",
+                opacity: 0.70,
+                lineHeight: 1,
+              }}
+            >
+              Signature
+            </span>
+          </div>
+
+          <div className="relative z-10 flex flex-col lg:flex-row min-h-[480px] md:min-h-[640px] px-6 md:px-10 py-12 md:py-16 gap-8">
           {/* Left content */}
           <div className="flex flex-col justify-end pb-4 max-w-[360px] relative z-10">
             <p className="text-white font-body text-[16px] leading-[1.55] tracking-[0.32px] mb-6 opacity-90">
@@ -173,28 +116,8 @@ export function HeroSection({ products }: Props) {
             </Link>
           </div>
 
-          {/* Center — skin care woman + rotating stars */}
+          {/* Center — skin care woman */}
           <div className="flex-1 flex items-end justify-center relative">
-            {/* Back star (rotates right / clockwise) */}
-            <div
-              ref={backStarRef}
-              className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[420px] h-[420px] pointer-events-none"
-              aria-hidden
-              style={{ transformOrigin: "center center" }}
-            >
-              <StarBurst className="w-full h-full" />
-            </div>
-
-            {/* Front star (rotates left / counter-clockwise) */}
-            <div
-              ref={frontStarRef}
-              className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[340px] h-[340px] pointer-events-none"
-              aria-hidden
-              style={{ transformOrigin: "center center" }}
-            >
-              <StarBurst className="w-full h-full opacity-75" />
-            </div>
-
             {/* Hero woman image */}
             <div className="relative z-10 h-[660px] md:h-[760px] w-[480px] md:w-[580px] flex-shrink-0 top-30">
               <Image
@@ -264,6 +187,7 @@ export function HeroSection({ products }: Props) {
               )}
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>

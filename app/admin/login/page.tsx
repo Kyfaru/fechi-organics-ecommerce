@@ -559,7 +559,7 @@ export default function AdminLoginPage() {
           LEFT PANEL — white form area
       ==================================================================== */}
       <motion.section
-        className="flex-1 flex items-center justify-center px-6 py-12 bg-white"
+        className="flex-1 flex items-center justify-center px-6 py-12 bg-white dark:bg-gray-950"
         initial={{ opacity: 0, x: -30 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.5 }}
@@ -567,12 +567,12 @@ export default function AdminLoginPage() {
         <div className="w-full max-w-md">
           <div className="mb-8 text-center">
             <h2
-              className="text-4xl sm:text-5xl font-bold text-[#1a1c1c] mb-2"
+              className="text-4xl sm:text-5xl font-bold text-[#1a1c1c] dark:text-white mb-2"
               style={{ fontFamily: "var(--font-vastago), sans-serif" }}
             >
               {title}
             </h2>
-            <p className="text-sm text-[#40493c]">{subtitle}</p>
+            <p className="text-sm text-[#40493c] dark:text-gray-400">{subtitle}</p>
           </div>
 
           {step === "credentials" && renderCredentialsForm()}
@@ -580,7 +580,7 @@ export default function AdminLoginPage() {
           {step === "totp-setup" && renderTotpSetup()}
           {step === "otp-verify" && renderOtpVerify()}
 
-          <p className="text-center text-xs text-[#40493c] mt-8">
+          <p className="text-center text-xs text-[#40493c] dark:text-gray-400 mt-8">
             Access restricted to authorized staff only.
           </p>
         </div>

@@ -8,10 +8,12 @@
 ============================================================================= */
 
 @theme {
-  /* Font families */
-  --font-heading: "Vastago Grotesk", system-ui, sans-serif;
-  --font-body:    "Real Head Web W03", system-ui, sans-serif;
-  --font-stagnan: "Stagnan", system-ui, sans-serif;
+  /* Font families — loaded via next/font/local (lib/fonts.ts) so the
+     fallback font's metrics are matched and swapping in the real font
+     doesn't reflow the page. */
+  --font-heading: var(--font-vastago-var), system-ui, sans-serif;
+  --font-body:    var(--font-realhead-var), system-ui, sans-serif;
+  --font-stagnan: var(--font-stagnan-var), system-ui, sans-serif;
   /* Admin panel fonts (Google Fonts, loaded via next/font) */
   --font-syne:    var(--font-syne-var, "Syne", system-ui, sans-serif);
   --font-dm:      var(--font-dm-var, "DM Sans", system-ui, sans-serif);
@@ -83,229 +85,9 @@
   100% { box-shadow: 0 0 0 0 rgba(67, 169, 53, 0); }
 }
 
-/* =============================================================================
-   VASTAGO GROTESK — full weight range (100–900)
-============================================================================= */
-
-@font-face {
-  font-family: "Vastago Grotesk";
-  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-Thin.otf") format("opentype");
-  font-weight: 100;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Vastago Grotesk";
-  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-ExtraLight.otf") format("opentype");
-  font-weight: 200;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Vastago Grotesk";
-  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-Light.otf") format("opentype");
-  font-weight: 300;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Vastago Grotesk";
-  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-Regular.otf") format("opentype");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Vastago Grotesk";
-  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-Medium.otf") format("opentype");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Vastago Grotesk";
-  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-SemiBold.otf") format("opentype");
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Vastago Grotesk";
-  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-Bold.otf") format("opentype");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Vastago Grotesk";
-  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-Heavy.otf") format("opentype");
-  font-weight: 800;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Vastago Grotesk";
-  src: url("/fonts/vastago-grotesk-fonts/VastagoGrotesk-Black.otf") format("opentype");
-  font-weight: 900;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* =============================================================================
-   STAGNAN — full weight range with italic variants
-============================================================================= */
-
-@font-face {
-  font-family: "Stagnan";
-  src: url("/fonts/stagnan-font/stagnan-thin.otf") format("opentype");
-  font-weight: 100;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Stagnan";
-  src: url("/fonts/stagnan-font/stagnan-thinitalic.otf") format("opentype");
-  font-weight: 100;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Stagnan";
-  src: url("/fonts/stagnan-font/stagnan-extralight.otf") format("opentype");
-  font-weight: 200;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Stagnan";
-  src: url("/fonts/stagnan-font/stagnan-extralightitalic.otf") format("opentype");
-  font-weight: 200;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Stagnan";
-  src: url("/fonts/stagnan-font/stagnan-light.otf") format("opentype");
-  font-weight: 300;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Stagnan";
-  src: url("/fonts/stagnan-font/stagnan-lightitalic.otf") format("opentype");
-  font-weight: 300;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Stagnan";
-  src: url("/fonts/stagnan-font/stagnan-regular.otf") format("opentype");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Stagnan";
-  src: url("/fonts/stagnan-font/stagnan-italic.otf") format("opentype");
-  font-weight: 400;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Stagnan";
-  src: url("/fonts/stagnan-font/stagnan-medium.otf") format("opentype");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Stagnan";
-  src: url("/fonts/stagnan-font/stagnan-mediumitalic.otf") format("opentype");
-  font-weight: 500;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Stagnan";
-  src: url("/fonts/stagnan-font/stagnan-semibold.otf") format("opentype");
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Stagnan";
-  src: url("/fonts/stagnan-font/stagnan-semibolditalic.otf") format("opentype");
-  font-weight: 600;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Stagnan";
-  src: url("/fonts/stagnan-font/stagnan-bold.otf") format("opentype");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Stagnan";
-  src: url("/fonts/stagnan-font/stagnan-bolditalic.otf") format("opentype");
-  font-weight: 700;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Stagnan";
-  src: url("/fonts/stagnan-font/stagnan-extrabold.otf") format("opentype");
-  font-weight: 800;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Stagnan";
-  src: url("/fonts/stagnan-font/stagnan-extrabolditalic.otf") format("opentype");
-  font-weight: 800;
-  font-style: italic;
-  font-display: swap;
-}
-
-/* =============================================================================
-   REAL HEAD WEB W03 — Regular (only weight available)
-   Serves woff2 → woff → ttf in order of preference.
-============================================================================= */
-
-@font-face {
-  font-family: "Real Head Web W03";
-  src:
-    url("/fonts/real-head-web-w03-regular/Web%20Fonts/1e5b7f8cdbcb1e579a6e53aaadaf0b67.woff2") format("woff2"),
-    url("/fonts/real-head-web-w03-regular/Web%20Fonts/1e5b7f8cdbcb1e579a6e53aaadaf0b67.woff") format("woff"),
-    url("/fonts/real-head-web-w03-regular/Web%20Fonts/real-head-web-w03.ttf") format("truetype");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
+/* Vastago Grotesk, Stagnan, and Real Head Web W03 are loaded via
+   next/font/local in lib/fonts.ts (see --font-vastago-var etc. above) —
+   that handles @font-face generation plus fallback-metric overrides. */
 
 /* =============================================================================
    Design Tokens — Fechi Organics
@@ -462,7 +244,6 @@ h1, h2, h3, h4, h5, h6 {
   outline: none;
   background: transparent;
   font-size: 0.875rem;   /* text-sm */
-  color: #1a1c1c;
   width: 100%;
   padding: 0;
 }

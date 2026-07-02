@@ -265,8 +265,7 @@ export default function SignupPage() {
           RIGHT PANEL — light gray form area
       ==================================================================== */}
       <section
-        className="flex-1 flex items-center justify-center px-6 py-12 overflow-y-auto dark:bg-gray-950"
-        style={{ backgroundColor: "#f9f9f9" }}
+        className="flex-1 flex items-center justify-center px-6 py-12 overflow-y-auto bg-[#f9f9f9] dark:bg-gray-950"
       >
         <div className="w-full max-w-lg sm:max-w-xl">
 

@@ -184,9 +184,10 @@ export default function PaymentPage() {
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_430px]">
           <section className="rounded-[12px] border border-[#e1e8de] bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-900 md:p-8">
-            <div className="mb-6 flex items-center justify-baseline gap-3 font-semibold text-[14px] text-[#27731e]">
+            <div className="mb-6">
+              <Link href="/delivery" className="inline-flex items-center gap-1.5 text-[14px] text-[#40493c] dark:text-gray-400 hover:text-[#27731e] dark:hover:text-[#27731e] transition-colors">
               <Icon icon="mdi:arrow-left-thin" width={18} className="text-[#0b6b13]" />
-              <Link href="/delivery" className="mt-4 block text-left text-[14px]  text-[#27731e]">Back to delivery details</Link>
+              Back to delivery details</Link>
             </div>
             <div className="mb-6 flex items-center gap-3">
               <Icon icon="mdi:wallet-outline" width={22} className="text-[#0b6b13]" />
@@ -200,7 +201,7 @@ export default function PaymentPage() {
               <PaymentOption active={selectedMethod === "mpesa"} onClick={() => setSelectedMethod("mpesa")} title="M-Pesa STK Push" badge="M-PESA">
                 <p className="mb-4 text-[13px] text-[#40493c] dark:text-gray-200">You will receive a prompt on your phone to complete the payment.</p>
                 <label className="mb-2 block text-[12px] font-semibold tracking-[0.08em] text-[#40493c] dark:text-gray-200">Enter Your M-Pesa Phone Number</label>
-                <input value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} className="h-12 w-full rounded-[8px] border border-[#c0cab8] dark:border-yellow-cta bg-[#fbfbfb] dark:bg-gray-700 px-4 text-[14px] text-text-dark dark:text-white/95 outline-none focus:border-[#27731e]" />
+                <input value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} className="h-12 w-full rounded-[8px] border border-[#c0cab8] dark:border-[#27731e] bg-[#fbfbfb] dark:bg-gray-800 px-4 text-[16px] text-text-dark dark:text-white/90 text-bold outline-none focus:border-yellow-cta" />
               </PaymentOption>
               <PaymentOption active={selectedMethod === "card"} onClick={() => setSelectedMethod("card")} title="Credit / Debit Card" badge="VISA  MC" />
               
