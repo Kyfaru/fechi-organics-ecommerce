@@ -70,6 +70,20 @@ export default function OrderStepper({
     )
   }
 
+  if (currentStatus === "FAILED") {
+    return (
+      <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
+        <Icon icon="lucide:alert-circle" width={18} className="text-red-500 shrink-0" />
+        <div>
+          <p className="text-sm font-semibold text-red-700">Payment Failed</p>
+          {statusEvents.find(e => e.status === "FAILED")?.note && (
+            <p className="text-xs text-red-500 mt-0.5">{statusEvents.find(e => e.status === "FAILED")?.note}</p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   // Defense-in-depth: if currentStatus isn't a member of this order's flow (e.g. a stray
   // legacy write), indexOf returns -1 — clamp so we never treat every step as not-done.
   const currentIdx = Math.max(0, flow.indexOf(currentStatus as OrderStatusValue))

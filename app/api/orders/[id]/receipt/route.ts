@@ -27,7 +27,7 @@ export async function POST(
     if (order.paymentStatus !== "PAID") return Err.validation("Receipt is only available for paid orders");
 
     if (!order.receiptSent) {
-      await publishQstashJSON("/api/admin/workers/send-order-confirmation", { orderId: order.id });
+      await publishQstashJSON("/api/admin/workers/generate-invoice", { orderId: order.id });
     }
 
     return ok({ queued: !order.receiptSent });

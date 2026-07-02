@@ -1,5 +1,6 @@
 // Called by the payment page when the SSE stream times out with no callback.
-// Deletes the still-PENDING order so it doesn't linger in the DB.
+// Flips the still-PENDING order to FAILED so it doesn't linger in the DB as PENDING
+// (failed orders are kept, not deleted, so they remain visible in order history).
 // GET (polling) has been removed — use GET /api/payments/stream for SSE-based status.
 
 import { NextRequest } from "next/server";
@@ -31,7 +32,7 @@ export async function DELETE(
 
     const tx = await db.transaction.findFirst({ where: { orderId }, select: { id: true } });
     if (tx) await markPaymentFailed({ transactionId: tx.id, orderId });
-    else await db.order.delete({ where: { id: orderId } });
+    else await db.order.update({ where: { id: orderId }, data: { status: "FAILED", paymentStatus: "FAILED" } });
 
     return ok({ deleted: true });
   } catch (e) {

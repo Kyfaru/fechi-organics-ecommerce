@@ -17,18 +17,6 @@ const STATUS_MESSAGES: Record<string, string> = {
   PICKED_UP:          "has been picked up. Thank you for your order!",
 };
 
-// Generate a unique order number (non-transaction version)
-async function generateOrderNumber(): Promise<string> {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  for (let i = 0; i < 5; i++) {
-    const suffix = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * 36)]).join("");
-    const num = `#FO-${suffix}`;
-    const exists = await db.order.findUnique({ where: { orderNumber: num } });
-    if (!exists) return num;
-  }
-  throw new Error("Could not generate unique order number after 5 retries");
-}
-
 function notifyOrderStatusChange(
   orderId: string,
   userId: string | null,
@@ -78,6 +66,8 @@ const ORDER_INCLUDE = {
       },
     },
   },
+  branch: { select: { id: true, name: true, county: true, phone: true } },
+  transactions: { orderBy: { createdAt: "desc" }, take: 1, select: { provider: true } },
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -113,6 +103,8 @@ export async function GET(
             },
           },
         },
+        branch: { select: { id: true, name: true, county: true, phone: true } },
+        transactions: { orderBy: { createdAt: "desc" }, take: 1, select: { provider: true } },
       },
     });
 
@@ -129,18 +121,18 @@ export async function GET(
 // ---------------------------------------------------------------------------
 // PATCH /api/admin/orders/[id]
 // Supports two modes:
-//   1. Fulfillment actions: { action: 'set_processing' | 'unset_processing' | 'confirm' | 'ship' | 'cancel', orderNumber?: string }
+//   1. Fulfillment actions: { action: 'set_processing' | 'unset_processing' | 'ship' | 'cancel' | 'set_packaging' | 'set_ready' | 'set_picked_up', orderNumber?: string }
 //   2. Legacy status/paymentStatus update: { status?, paymentStatus? }
 // ---------------------------------------------------------------------------
 const FulfillmentSchema = z.object({
-  action: z.enum(["set_processing", "unset_processing", "confirm", "ship", "cancel", "set_packaging", "set_ready", "set_picked_up"]),
+  action: z.enum(["set_processing", "unset_processing", "ship", "cancel", "set_packaging", "set_ready", "set_picked_up"]),
   orderNumber: z.string().optional(),
 }).strict();
 
 const LegacySchema = z.object({
   status: z.enum([
     "PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED",
-    "WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP",
+    "WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP", "FAILED",
   ]).optional(),
   paymentStatus: z.enum(["PENDING", "PAID", "FAILED"]).optional(),
 }).strict();
@@ -212,35 +204,14 @@ async function handleFulfillmentAction(
   });
   if (!order) return Err.notFound("Order");
 
-  const terminalStatuses = ["SHIPPED", "DELIVERED", "CANCELLED"];
-
   switch (action) {
-    case "confirm": {
-      // New flow: PENDING → CONFIRMED (first step)
-      // Auto-generate order number if not set; otherwise require the admin to type it
-      if (order.orderNumber) {
-        if (!orderNumber || orderNumber !== order.orderNumber) {
-          return Err.validation("Order number does not match — confirmation rejected");
-        }
-      }
-      const resolvedOrderNumber = order.orderNumber ?? (await generateOrderNumber());
-      const updated = await db.order.update({
-        where: { id: orderId },
-        data: {
-          status: "CONFIRMED",
-          confirmedBy: adminUserId,
-          confirmedAt: new Date(),
-          orderNumber: resolvedOrderNumber,
-        },
-        include: ORDER_INCLUDE,
-      });
-      await db.orderStatusEvent.create({ data: { orderId, status: "CONFIRMED", occurredAt: new Date() } });
-      console.info("[admin/orders/[id]] confirm —", orderId, "orderNumber:", resolvedOrderNumber);
-      notifyOrderStatusChange(orderId, order.userId, resolvedOrderNumber, "CONFIRMED", order.user?.phone);
-      return ok({ order: updated });
-    }
-
     case "set_processing": {
+      // Order-number gate now lives here (was on the old "confirm" action):
+      // by the time an order is CONFIRMED, orderNumber is already assigned
+      // by the payment-success webhook, so this check is unconditional.
+      if (!orderNumber || orderNumber !== order.orderNumber) {
+        return Err.validation("Order number does not match — confirmation rejected");
+      }
       // New flow: CONFIRMED → PROCESSING (packaging/preparing)
       if (order.deliveryType === "PICKUP") {
         return Err.validation("Use set_packaging for pickup orders — set_processing is for delivery orders only");
@@ -303,6 +274,13 @@ async function handleFulfillmentAction(
     }
 
     case "cancel": {
+      // Orders can only be cancelled before they've physically left the building
+      // (shipped) or been made available for pickup — after that, cancellation
+      // needs a different (refund/return) flow, not a status flip.
+      const CANCELLABLE_STATUSES = ["PENDING", "CONFIRMED", "PROCESSING", "WAITING_TO_PACKAGE"];
+      if (!CANCELLABLE_STATUSES.includes(order.status)) {
+        return Err.validation("Order cannot be cancelled once it has shipped or is ready for pickup");
+      }
       const updated = await db.order.update({
         where: { id: orderId },
         data: { status: "CANCELLED" },
@@ -315,6 +293,12 @@ async function handleFulfillmentAction(
     }
 
     case "set_packaging": {
+      // Order-number gate now lives here (was on the old "confirm" action):
+      // by the time an order is CONFIRMED, orderNumber is already assigned
+      // by the payment-success webhook, so this check is unconditional.
+      if (!orderNumber || orderNumber !== order.orderNumber) {
+        return Err.validation("Order number does not match — confirmation rejected");
+      }
       if (order.deliveryType !== "PICKUP") {
         return Err.validation("set_packaging is only for PICKUP orders");
       }
@@ -366,20 +350,33 @@ async function handleFulfillmentAction(
     }
 
     case "set_picked_up": {
+      // Dual confirmation: pickup only completes once both the staff member
+      // handing over the order AND the customer receiving it have confirmed.
+      // Mirrors the customer-side confirmation in app/api/orders/[id]/picked-up/route.ts.
       if (order.status !== "READY_FOR_PICKUP") {
         return Err.validation("Order must be in READY_FOR_PICKUP status before it can be marked as picked up");
       }
+      const customerAlreadyConfirmed = order.customerPickupConfirmedAt !== null;
       const updated = await db.order.update({
         where: { id: orderId },
-        data: {
-          status: "PICKED_UP",
-          pickedUpAt: new Date(),
-        },
+        data: customerAlreadyConfirmed
+          ? {
+              staffPickupConfirmedAt: new Date(),
+              status: "PICKED_UP",
+              pickedUpAt: new Date(),
+            }
+          : {
+              staffPickupConfirmedAt: new Date(),
+            },
         include: ORDER_INCLUDE,
       });
-      await db.orderStatusEvent.create({ data: { orderId, status: "PICKED_UP", occurredAt: new Date() } });
-      console.info("[admin/orders/[id]] set_picked_up —", orderId);
-      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "PICKED_UP", order.user?.phone);
+      if (customerAlreadyConfirmed) {
+        await db.orderStatusEvent.create({ data: { orderId, status: "PICKED_UP", occurredAt: new Date() } });
+        console.info("[admin/orders/[id]] set_picked_up — completed —", orderId);
+        notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "PICKED_UP", order.user?.phone);
+      } else {
+        console.info("[admin/orders/[id]] set_picked_up — staff confirmed, waiting on customer —", orderId);
+      }
       return ok({ order: updated });
     }
 

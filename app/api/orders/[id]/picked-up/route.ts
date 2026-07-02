@@ -30,17 +30,32 @@ export async function POST(
       return Err.validation("Order is not ready for pickup yet")
     }
 
-    const pickedUpAt = new Date()
+    const now = new Date()
+    // Dual confirmation: only transition to PICKED_UP once the staff side has
+    // also confirmed (via the admin drawer) — mirrors the symmetric check on
+    // the admin route so whichever party confirms second completes the order.
+    const completed = order.staffPickupConfirmedAt !== null
+
     await db.order.update({
       where: { id: orderId },
-      data: { status: "PICKED_UP", pickedUpAt },
+      data: {
+        customerPickupConfirmedAt: now,
+        ...(completed ? { status: "PICKED_UP", pickedUpAt: now } : {}),
+      },
     })
-    await db.orderStatusEvent.create({ data: { orderId, status: "PICKED_UP", occurredAt: pickedUpAt } })
 
-    // Schedule review reminder 4 days later
-    await publishQstashJSON("/api/workers/review-reminder", { orderId, userId: session.user.id }, { delay: FOUR_DAYS_SECONDS })
+    if (completed) {
+      await db.orderStatusEvent.create({ data: { orderId, status: "PICKED_UP", occurredAt: now } })
 
-    return ok({ pickedUpAt: pickedUpAt.toISOString() })
+      // Schedule review reminder 4 days later
+      await publishQstashJSON("/api/workers/review-reminder", { orderId, userId: session.user.id }, { delay: FOUR_DAYS_SECONDS })
+    }
+
+    return ok({
+      customerPickupConfirmedAt: now.toISOString(),
+      completed,
+      pickedUpAt: completed ? now.toISOString() : null,
+    })
   } catch (e) {
     console.error("[orders/[id]/picked-up] POST error", e)
     return Err.internal()

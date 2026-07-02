@@ -1,7 +1,14 @@
+// Runs 5 minutes after an M-Pesa STK push / Paystack checkout is initiated
+// (scheduled via Qstash delay from mpesa/initiate and paystack/initialize).
+// If the transaction is still PENDING at that point, the customer abandoned
+// the payment flow with no callback — flip the order to FAILED so it doesn't
+// linger forever, then notify admins.
+
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyQstashRequest } from "@/lib/qstash";
 import { sendAdminNotificationEmail } from "@/lib/email";
+import { markPaymentFailed } from "@/lib/payments/post-payment";
 
 function kes(cents: number) {
   return `KES ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;
@@ -12,17 +19,28 @@ export async function POST(req: NextRequest) {
   const isValid = await verifyQstashRequest(req.headers.get("upstash-signature"), rawBody);
   if (!isValid) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
 
-  const { orderId } = JSON.parse(rawBody) as { orderId: string; userId?: string | null };
+  const { orderId, transactionId } = JSON.parse(rawBody) as { orderId: string; transactionId: string };
+
+  const transaction = await db.transaction.findUnique({
+    where: { id: transactionId },
+    select: { status: true, orderId: true },
+  });
+  // Already resolved (success or otherwise) before the 5-minute window elapsed.
+  if (!transaction || transaction.status !== "PENDING") {
+    return NextResponse.json({ ok: true, skipped: true });
+  }
+
+  await markPaymentFailed({
+    transactionId,
+    orderId,
+    reason: "Payment timed out after 5 minutes with no callback",
+  });
+
   const order = await db.order.findUnique({
     where: { id: orderId },
     include: { items: true, user: true, branch: { include: { adminProfiles: { include: { user: true } } } } },
   });
-  if (!order || order.paymentStatus === "PAID") return NextResponse.json({ ok: true, skipped: true });
-
-  const paidSinceFailure = await db.transaction.findFirst({
-    where: { orderId, status: "SUCCESS", updatedAt: { gt: new Date(Date.now() - 10 * 60 * 1000) } },
-  });
-  if (paidSinceFailure) return NextResponse.json({ ok: true, skipped: true });
+  if (!order) return NextResponse.json({ ok: true });
 
   const superAdmins = await db.adminProfile.findMany({
     where: { isSuperAdmin: true, isActive: true },

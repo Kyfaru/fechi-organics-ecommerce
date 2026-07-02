@@ -9,6 +9,7 @@ import { resolvePromo as resolvePromoBase } from "@/lib/promo";
 import { createNotification } from "@/lib/notify";
 import type { ZohoSalesOrderPayload } from "@/lib/zoho";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { generateOrderNumber, type TxClient } from "@/lib/orders/generate-order-number";
 
 // ---------------------------------------------------------------------------
 // GET /api/orders — return all orders for the authenticated user
@@ -72,20 +73,6 @@ export async function GET(req: NextRequest) {
 }
 
 const DELIVERY_KES = 35000; // 350 KES × 100 cents
-
-type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
-
-// Generate a unique "#FO-XXXXXXXX" order number with collision retry inside a tx.
-async function generateOrderNumber(tx: TxClient): Promise<string> {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  for (let i = 0; i < 5; i++) {
-    const suffix = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * 36)]).join("");
-    const num = `#FO-${suffix}`;
-    const exists = await tx.order.findUnique({ where: { orderNumber: num } });
-    if (!exists) return num;
-  }
-  throw new Error("Could not generate unique order number after 5 retries");
-}
 
 // ---------------------------------------------------------------------------
 // Validate a promo code at checkout: shared validation + per-user redemption

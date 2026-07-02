@@ -10,8 +10,12 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ or
   if (!session?.user) redirect("/login")
 
   const { orderId } = await params
+  // Admin "Copy Link" builds URLs from the public orderNumber (e.g. #FO-XXXXXXXX),
+  // percent-encoding the '#' — decode explicitly so the OR lookup matches reliably
+  // regardless of how the framework normalizes the raw param.
+  const decodedOrderId = decodeURIComponent(orderId)
   const order = await db.order.findFirst({
-    where: { id: orderId, userId: session.user.id },
+    where: { userId: session.user.id, OR: [{ id: orderId }, { orderNumber: decodedOrderId }] },
     include: {
       items: {
         include: {
@@ -24,6 +28,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ or
       },
       statusEvents: { orderBy: { occurredAt: "asc" } },
       transactions: { orderBy: { createdAt: "desc" }, take: 5 },
+      branch: { select: { name: true, county: true, phone: true } },
     },
   })
 
@@ -33,6 +38,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ or
     id: order.id,
     orderNumber: order.orderNumber,
     status: order.status,
+    paymentStatus: order.paymentStatus,
+    invoiceNumber: order.invoiceNumber,
     createdAt: order.createdAt.toISOString(),
     totalKes: order.totalKes,
     subtotalKes: order.subtotalKes,
@@ -44,6 +51,9 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ or
     deliveryCounty: order.deliveryCounty,
     deliveryPhone: order.deliveryPhone,
     pickupCode: order.pickupCode,
+    branch: order.branch,
+    customerPickupConfirmedAt: order.customerPickupConfirmedAt?.toISOString() ?? null,
+    staffPickupConfirmedAt: order.staffPickupConfirmedAt?.toISOString() ?? null,
     items: order.items.map((item) => ({
       id: item.id,
       name: item.name,

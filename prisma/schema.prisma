@@ -29,6 +29,7 @@ enum OrderStatus {
   WAITING_TO_PACKAGE
   READY_FOR_PICKUP
   PICKED_UP
+  FAILED
 
   @@schema("public")
 }
@@ -430,7 +431,11 @@ model order {
   pickupCode            String?
   pickupCodeExpiresAt   DateTime?
   pickedUpAt            DateTime?
+  customerPickupConfirmedAt DateTime?
+  staffPickupConfirmedAt    DateTime?
   reviewedAt            DateTime?
+  invoiceNumber         String?       @unique
+  invoicePdfKey         String?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
   statusEvents          orderStatusEvent[]
@@ -458,6 +463,7 @@ model branch {
   id                String        @id @default(uuid())
   name              String
   county            String
+  address           String?
   phone             String?
   lat               Float?
   lng               Float?

@@ -23,7 +23,7 @@ import { PrelineSelect } from "@/components/admin/ui/PrelineSelect";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-type OrderStatus = "PENDING" | "CONFIRMED" | "PROCESSING" | "SHIPPED" | "DELIVERED" | "CANCELLED" | "WAITING_TO_PACKAGE" | "READY_FOR_PICKUP" | "PICKED_UP";
+type OrderStatus = "PENDING" | "CONFIRMED" | "PROCESSING" | "SHIPPED" | "DELIVERED" | "CANCELLED" | "WAITING_TO_PACKAGE" | "READY_FOR_PICKUP" | "PICKED_UP" | "FAILED";
 type PaymentStatus = "PENDING" | "PAID" | "FAILED";
 
 type OrderItemDetail = {
@@ -59,8 +59,11 @@ type AdminOrder = {
   guestEmail: string | null;
   createdAt: string;
   user: { name: string; email: string } | null;
-  branch: { id: string; name: string; county: string } | null;
+  branch: { id: string; name: string; county: string; phone: string | null } | null;
   items: OrderItemDetail[];
+  transactions: { provider: "MPESA" | "PAYSTACK" | "KCB" }[];
+  customerPickupConfirmedAt: string | null;
+  staffPickupConfirmedAt: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -72,7 +75,10 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   WAITING_TO_PACKAGE: "Packaging",
   READY_FOR_PICKUP: "Ready for Pickup",
   PICKED_UP: "Picked Up",
+  FAILED: "Failed",
 };
+
+const PROVIDER_LABELS: Record<string, string> = { MPESA: "M-Pesa", PAYSTACK: "Paystack", KCB: "KCB Buni" };
 
 const R2_BASE = process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "";
 
@@ -224,6 +230,7 @@ function OrderDetailDrawer({
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [confirmModal1Open, setConfirmModal1Open] = useState(false);
   const [confirmModal2Open, setConfirmModal2Open] = useState(false);
+  const [pendingGateAction, setPendingGateAction] = useState<"set_processing" | "set_packaging" | null>(null);
   const [noteText, setNoteText] = useState("");
 
   // Generic fulfillment PATCH — used by processing toggle and ship button
@@ -285,23 +292,29 @@ function OrderDetailDrawer({
             </div>
 
             {/* Fulfillment panel */}
-            <div className="bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200)">
+            <div
+              className={`bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200) ${
+                order.status === "FAILED" || order.status === "CANCELLED" ? "pointer-events-none opacity-50" : ""
+              }`}
+            >
               <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-4">Fulfillment</p>
 
               <div className="flex flex-col gap-4">
-                {/* Step 1: Confirmed (shared by both flows) */}
+                {/* Step 1: Confirmed — read-only indicator, driven by payment webhook */}
                 <div className="flex items-center gap-3">
                   <CheckboxGreen
                     checked={isConfirmed}
-                    onChange={() => { if (!isConfirmed) setConfirmModal1Open(true); }}
-                    disabled={fulfillMutation.isPending || isConfirmed || order.status === "CANCELLED"}
+                    onChange={() => {}}
+                    disabled
                   />
                   <div>
                     <p className="font-dm text-[14px] font-medium text-(--neutral-900)">Confirmed</p>
-                    {order.confirmedAt ? (
+                    {order.status === "FAILED" ? (
+                      <p className="font-dm text-[12px] text-(--danger)">Payment failed — order not confirmed</p>
+                    ) : isConfirmed ? (
                       <p className="font-dm text-[12px] text-(--neutral-500)">Confirmed at {formatDate(order.confirmedAt)}</p>
                     ) : (
-                      <p className="font-dm text-[12px] text-(--neutral-400)">Verify the order and confirm</p>
+                      <p className="font-dm text-[12px] text-(--neutral-400)">Awaiting payment confirmation</p>
                     )}
                   </div>
                 </div>
@@ -314,7 +327,8 @@ function OrderDetailDrawer({
                         checked={["WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP"].includes(order.status)}
                         onChange={() => {
                           if (!["WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP"].includes(order.status)) {
-                            handleFulfillment("set_packaging");
+                            setPendingGateAction("set_packaging");
+                            setConfirmModal1Open(true);
                           }
                         }}
                         disabled={fulfillMutation.isPending || !isConfirmed || ["WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP", "CANCELLED"].includes(order.status)}
@@ -343,21 +357,32 @@ function OrderDetailDrawer({
                       </button>
                     </div>
 
-                    {/* PICKUP: Step 4 — Picked Up button */}
-                    <div className="flex items-center gap-3 pl-[52px]">
-                      <button
-                        disabled={order.status !== "READY_FOR_PICKUP" || fulfillMutation.isPending}
-                        onClick={() => {
-                          if (window.confirm("Confirm the customer has picked up this order?")) {
-                            handleFulfillment("set_picked_up");
-                          }
-                        }}
-                        className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-[#15803D] text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#16A34A] transition-colors flex items-center gap-1.5"
-                      >
-                        {fulfillMutation.isPending ? <Spinner size={12} /> : <Check size={13} />}
-                        Mark Picked Up
-                      </button>
-                    </div>
+                    {/* PICKUP: Step 4 — dual pickup confirmation (staff + customer) */}
+                    {order.status === "READY_FOR_PICKUP" && order.staffPickupConfirmedAt ? (
+                      <div className="flex items-center gap-3 pl-[52px]">
+                        <div className="bg-(--neutral-50) border border-(--neutral-200) rounded-[8px] px-3 py-2 flex items-center gap-2">
+                          <Clock size={14} className="text-(--neutral-400) shrink-0" />
+                          <p className="font-dm text-[12px] text-(--neutral-500)">
+                            Staff confirmed handover — waiting for customer to confirm pickup
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3 pl-[52px]">
+                        <button
+                          disabled={order.status !== "READY_FOR_PICKUP" || fulfillMutation.isPending}
+                          onClick={() => {
+                            if (window.confirm("Confirm you have handed over this order to the customer?")) {
+                              handleFulfillment("set_picked_up");
+                            }
+                          }}
+                          className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-[#15803D] text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#16A34A] transition-colors flex items-center gap-1.5"
+                        >
+                          {fulfillMutation.isPending ? <Spinner size={12} /> : <Check size={13} />}
+                          Confirm Pickup (Staff)
+                        </button>
+                      </div>
+                    )}
 
                     {/* PICKUP: Final state */}
                     {order.status === "PICKED_UP" && (
@@ -373,7 +398,14 @@ function OrderDetailDrawer({
                     <div className="flex items-center gap-3">
                       <CheckboxGreen
                         checked={isProcessed}
-                        onChange={() => handleFulfillment(isProcessed ? "unset_processing" : "set_processing")}
+                        onChange={() => {
+                          if (isProcessed) {
+                            handleFulfillment("unset_processing");
+                          } else {
+                            setPendingGateAction("set_processing");
+                            setConfirmModal1Open(true);
+                          }
+                        }}
                         disabled={fulfillMutation.isPending || !isConfirmed || ["SHIPPED", "DELIVERED", "CANCELLED"].includes(order.status)}
                       />
                       <div>
@@ -494,9 +526,10 @@ function OrderDetailDrawer({
                 <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Store Pickup</p>
                 <div className="flex items-start gap-2 bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200)">
                   <MapPin size={15} className="text-(--neutral-400) shrink-0 mt-0.5" />
-                  <p className="font-dm text-[13px] text-(--neutral-700)">
-                    Customer will collect from store{order.branch?.name ? ` — ${order.branch.name}` : ""}
-                  </p>
+                  <div className="font-dm text-[13px] text-(--neutral-700)">
+                    <p>Customer will collect from store{order.branch?.name ? ` — ${order.branch.name}` : ""}</p>
+                    {order.branch?.phone && <p className="text-(--neutral-500) mt-0.5">{order.branch.phone}</p>}
+                  </div>
                 </div>
               </div>
             )}
@@ -564,9 +597,17 @@ function OrderDetailDrawer({
               <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Payment</p>
               <div className="flex items-center gap-1.5 mb-1.5">
                 <CreditCard size={13} className="text-(--neutral-400)" />
-                <span className="font-dm text-[12px] text-(--neutral-700)">M-Pesa</span>
+                <span className="font-dm text-[12px] text-(--neutral-700)">
+                  {PROVIDER_LABELS[order.transactions?.[0]?.provider ?? ""] ?? "—"}
+                </span>
               </div>
-              <StatusPill status={order.paymentStatus === "PAID" ? "paid" : order.paymentStatus.toLowerCase()} />
+              <StatusPill
+                status={
+                  order.status === "FAILED" || order.status === "CANCELLED"
+                    ? "failed"
+                    : order.paymentStatus === "PAID" ? "paid" : order.paymentStatus.toLowerCase()
+                }
+              />
               <p className="font-dm text-[13px] font-semibold text-(--neutral-900) mt-2">
                 {formatKes(order.totalKes)}
               </p>
@@ -575,22 +616,24 @@ function OrderDetailDrawer({
             {/* Action buttons */}
             <div className="flex flex-col gap-2">
               <button
-                onClick={() => { window.print(); }}
-                className="w-full h-9 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center justify-center gap-1.5 transition-colors"
+                onClick={() => { window.open(`/api/admin/orders/${order.id}/invoice`, "_blank"); }}
+                disabled={order.status === "FAILED" || order.status === "CANCELLED" || order.paymentStatus !== "PAID"}
+                className="w-full h-9 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center justify-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Printer size={13} /> Print Invoice
               </button>
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}/orders/${order.id}`);
+                  navigator.clipboard.writeText(`${window.location.origin}/account/orders/${encodeURIComponent(order.orderNumber ?? order.id)}`);
                   toast.success("Order link copied");
                 }}
-                className="w-full h-9 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center justify-center gap-1.5 transition-colors"
+                disabled={order.status === "FAILED" || order.status === "CANCELLED"}
+                className="w-full h-9 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center justify-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Link2 size={13} /> Copy Link
               </button>
 
-              {order.status !== "CANCELLED" && (
+              {["PENDING", "CONFIRMED", "PROCESSING", "WAITING_TO_PACKAGE"].includes(order.status) && (
                 <>
                   <div className="h-px bg-(--neutral-200) my-1" />
                   <button
@@ -629,28 +672,29 @@ function OrderDetailDrawer({
         loading={fulfillMutation.isPending}
       />
 
-      {/* Confirm step 1 — are you sure? */}
+      {/* Confirm step 1 — are you sure? (shared by set_processing / set_packaging gates) */}
       <ConfirmModal
         open={confirmModal1Open}
-        onClose={() => setConfirmModal1Open(false)}
+        onClose={() => { setConfirmModal1Open(false); setPendingGateAction(null); }}
         onConfirm={() => {
           setConfirmModal1Open(false);
           setConfirmModal2Open(true);
         }}
-        title="Confirm this order?"
-        description="Are you sure you want to confirm this order? You will need to enter the order number to proceed."
+        title="Proceed with this order?"
+        description="Are you sure you want to proceed? You will need to enter the order number to continue."
         confirmLabel="Yes, continue"
         loading={false}
       />
 
-      {/* Confirm step 2 — order number verification */}
+      {/* Confirm step 2 — order number verification gate */}
       <ConfirmOrderModal
         order={order}
         open={confirmModal2Open}
-        onClose={() => setConfirmModal2Open(false)}
+        onClose={() => { setConfirmModal2Open(false); setPendingGateAction(null); }}
         onConfirm={(orderNumber) => {
           setConfirmModal2Open(false);
-          handleFulfillment("confirm", orderNumber);
+          if (pendingGateAction) handleFulfillment(pendingGateAction, orderNumber);
+          setPendingGateAction(null);
         }}
         loading={fulfillMutation.isPending}
       />
@@ -687,6 +731,10 @@ export function AdminOrdersClient() {
   const orders: AdminOrder[] = data?.data?.orders ?? [];
   const scope = data?.data?.scope;
   const branches = branchesQuery.data?.data?.branches ?? [];
+
+  // Drawer must reflect live order state after mutations (invalidation refetches the list,
+  // but `selectedOrder` itself is a frozen snapshot from click-time) — always render the live lookup.
+  const liveSelectedOrder = orders.find((o) => o.id === selectedOrder?.id) ?? selectedOrder;
 
   // ── Stats ──
   const todayOrders = orders.filter((o) => isToday(o.createdAt)).length;
@@ -826,7 +874,7 @@ export function AdminOrdersClient() {
     },
   ];
 
-  const ALL_STATUSES: OrderStatus[] = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP"];
+  const ALL_STATUSES: OrderStatus[] = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP", "FAILED"];
 
   return (
     <div className="min-h-screen">
@@ -911,7 +959,7 @@ export function AdminOrdersClient() {
 
       {/* ── Order detail drawer ── */}
       <OrderDetailDrawer
-        order={selectedOrder}
+        order={liveSelectedOrder}
         open={drawerOpen}
         onClose={() => { setDrawerOpen(false); setTimeout(() => setSelectedOrder(null), 250); }}
       />

@@ -405,11 +405,22 @@ async function main() {
   // Replace consumerKeyEnc / consumerSecretEnc / passkeyEnc via the admin
   // panel or a direct DB update once real Daraja credentials are available.
   // ---------------------------------------------------------------------------
-  const branchDefs = [
+  const branchDefs: Array<{
+    id: string;
+    name: string;
+    county: string;
+    address?: string;
+    isMain: boolean;
+    mpesaGateway: "DARAJA" | "KCB_BUNI";
+    mpesaType: "PAYBILL" | "TILL";
+    shortcode: string;
+    paystackSubaccount: string;
+  }> = [
     {
       id: "branch-nairobi",
       name: "Nairobi Branch",
       county: "Nairobi",
+      address: "Spur Mall, Nairobi",
       isMain: true,
       mpesaGateway: "KCB_BUNI" as const,
       mpesaType: "PAYBILL" as const,
@@ -464,6 +475,7 @@ async function main() {
       update: {
         name: b.name,
         county: b.county,
+        address: b.address,
         isMain: b.isMain,
         mpesaGateway: b.mpesaGateway,
         mpesaType: b.mpesaType,
@@ -474,6 +486,7 @@ async function main() {
         id: b.id,
         name: b.name,
         county: b.county,
+        address: b.address,
         isMain: b.isMain,
         mpesaGateway: b.mpesaGateway,
         mpesaType: b.mpesaType,

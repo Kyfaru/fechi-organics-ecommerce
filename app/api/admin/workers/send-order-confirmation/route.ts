@@ -1,10 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { db } from "@/lib/db";
-import { r2Client, r2PublicUrl } from "@/lib/r2";
 import { verifyQstashRequest } from "@/lib/qstash";
-import { buildReceiptSummaryHtml, renderReceiptPdfBuffer } from "@/lib/pdf/OrderReceiptDocument";
 import { sendOrderConfirmationEmail } from "@/lib/email";
+
+function kes(cents: number) {
+  return `KES ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;
+}
+
+function buildConfirmationHtml(order: { id: string; createdAt: Date; totalKes: number; items: { name: string; quantity: number }[] }) {
+  return `
+    <div style="font-family:Arial,sans-serif;color:#1a1c1c;">
+      <h2 style="color:#27731e;">Thanks for your order!</h2>
+      <p>Order #${order.id.slice(0, 8).toUpperCase()} placed on ${order.createdAt.toLocaleString("en-KE")} is confirmed.</p>
+      <p>${order.items.map((i) => `${i.name} x ${i.quantity}`).join("<br/>")}</p>
+      <p>Total paid: <strong>${kes(order.totalKes)}</strong></p>
+      <p style="color:#666;font-size:13px;">Your invoice will follow shortly in a separate email.</p>
+    </div>
+  `;
+}
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
@@ -17,23 +30,11 @@ export async function POST(req: NextRequest) {
     include: { items: true, user: { select: { email: true } } },
   });
   if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
-  if (order.receiptSent) return NextResponse.json({ ok: true, skipped: true });
 
-  const pdfBuffer = renderReceiptPdfBuffer(order);
-  const objectKey = `receipts/${order.id}.pdf`;
-  await r2Client.send(new PutObjectCommand({
-    Bucket: process.env.R2_BUCKET_NAME!,
-    Key: objectKey,
-    Body: pdfBuffer,
-    ContentType: "application/pdf",
-  }));
-
-  const html = `${buildReceiptSummaryHtml(order)}<p><a href="${r2PublicUrl(objectKey)}">Download your receipt</a></p>`;
   const email = order.user?.email ?? order.guestEmail;
   if (email) {
-    await sendOrderConfirmationEmail({ email, orderId: order.id, html, pdfBuffer });
+    await sendOrderConfirmationEmail({ email, orderId: order.id, html: buildConfirmationHtml(order) });
   }
 
-  await db.order.update({ where: { id: order.id }, data: { receiptSent: true } });
   return NextResponse.json({ ok: true });
 }

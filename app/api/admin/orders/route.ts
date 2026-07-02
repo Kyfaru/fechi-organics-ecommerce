@@ -65,7 +65,8 @@ export async function GET(req: NextRequest) {
       take: pageSize,
       include: {
         user: { select: { name: true, email: true } },
-        branch: { select: { id: true, name: true, county: true } },
+        branch: { select: { id: true, name: true, county: true, phone: true } },
+        transactions: { orderBy: { createdAt: "desc" }, take: 1, select: { provider: true } },
         items: {
           include: {
             product: {

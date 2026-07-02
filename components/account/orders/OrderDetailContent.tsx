@@ -18,6 +18,7 @@ const STATUS_COLORS: Record<string, string> = {
   WAITING_TO_PACKAGE: "bg-orange-50 text-orange-700 border-orange-200",
   READY_FOR_PICKUP:   "bg-blue-50 text-blue-700 border-blue-200",
   CANCELLED:          "bg-red-50 text-red-600 border-red-200",
+  FAILED:             "bg-red-50 text-red-600 border-red-200",
 }
 
 interface OrderItem {
@@ -47,6 +48,8 @@ interface Order {
   id: string
   orderNumber: string | null
   status: string
+  paymentStatus?: string
+  invoiceNumber?: string | null
   createdAt: string
   totalKes: number
   subtotalKes: number
@@ -62,6 +65,8 @@ interface Order {
   branch?: { name: string; county: string; phone?: string | null } | null
   reviewedAt?: string | null
   pickedUpAt?: string | null
+  customerPickupConfirmedAt?: string | null
+  staffPickupConfirmedAt?: string | null
   items: OrderItem[]
   transactions: Transaction[]
   statusEvents: StatusEvent[]
@@ -98,9 +103,21 @@ export default function OrderDetailContent({ order }: { order: Order }) {
             </h1>
             <p className="text-sm text-neutral-400 mt-0.5">Placed {fmt(order.createdAt)}</p>
           </div>
-          <span className={`text-[12px] font-semibold px-3 py-1.5 rounded-full border ${colorClass}`}>
-            {label}
-          </span>
+          <div className="flex items-center gap-2">
+            {order.paymentStatus === "PAID" && (
+              <Link
+                href={`/api/orders/${order.id}/invoice`}
+                target="_blank"
+                className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-full border border-neutral-200 text-neutral-600 hover:bg-neutral-50 transition-colors"
+              >
+                <Icon icon="lucide:download" width={13} />
+                Download Invoice
+              </Link>
+            )}
+            <span className={`text-[12px] font-semibold px-3 py-1.5 rounded-full border ${colorClass}`}>
+              {label}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -172,6 +189,7 @@ export default function OrderDetailContent({ order }: { order: Order }) {
             status={order.status}
             orderId={order.id}
             pickedUpAt={order.pickedUpAt}
+            customerPickupConfirmedAt={order.customerPickupConfirmedAt}
           />
         </div>
       </div>

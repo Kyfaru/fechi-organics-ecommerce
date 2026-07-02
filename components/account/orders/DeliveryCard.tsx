@@ -20,6 +20,7 @@ interface DeliveryCardProps {
   status?: string
   hasReview?: boolean
   pickedUpAt?: string | null
+  customerPickupConfirmedAt?: string | null
 }
 
 export default function DeliveryCard({
@@ -35,6 +36,7 @@ export default function DeliveryCard({
   status,
   hasReview,
   pickedUpAt,
+  customerPickupConfirmedAt,
 }: DeliveryCardProps) {
   const isPickup = deliveryType === "PICKUP"
   const qc = useQueryClient()
@@ -59,9 +61,14 @@ export default function DeliveryCard({
       const r = await fetch(`/api/orders/${orderId}/picked-up`, { method: "POST" })
       const j = await r.json()
       if (!j.ok) throw new Error(j.error?.message ?? "Failed to mark as picked up")
+      return j.data as { customerPickupConfirmedAt: string; completed: boolean; pickedUpAt: string | null }
     },
-    onSuccess: () => {
-      confetti({ particleCount: 100, spread: 60, origin: { y: 0.6 } })
+    onSuccess: (data) => {
+      // Only celebrate once BOTH parties (customer + staff) have confirmed — a customer-only
+      // confirmation leaves the order at READY_FOR_PICKUP until staff confirms their side too.
+      if (data.completed) {
+        confetti({ particleCount: 100, spread: 60, origin: { y: 0.6 } })
+      }
       qc.invalidateQueries({ queryKey: ["order", orderId] })
       qc.invalidateQueries({ queryKey: ["account-orders"] })
     },
@@ -113,8 +120,9 @@ export default function DeliveryCard({
             </div>
           )}
 
-          {/* Mark as Picked Up button */}
-          {status === "READY_FOR_PICKUP" && orderId && (
+          {/* Mark as Picked Up button — hidden once the customer's half is already confirmed
+              (order stays READY_FOR_PICKUP until staff independently confirms their side) */}
+          {status === "READY_FOR_PICKUP" && orderId && !customerPickupConfirmedAt && (
             <button
               onClick={() => setPickupConfirmOpen(true)}
               disabled={markPickedUp.isPending}
@@ -126,6 +134,14 @@ export default function DeliveryCard({
                 <><Icon icon="lucide:package-check" width={14} />Mark as Picked Up</>
               )}
             </button>
+          )}
+
+          {/* Waiting on staff — customer has confirmed their half, staff hasn't confirmed yet */}
+          {status === "READY_FOR_PICKUP" && orderId && customerPickupConfirmedAt && (
+            <div className="mt-3 flex items-start gap-2 text-[12px] text-neutral-500 bg-neutral-50 border border-neutral-100 rounded-lg p-3">
+              <Icon icon="lucide:clock" width={13} className="mt-0.5 shrink-0 text-neutral-400" />
+              <span>You&apos;ve confirmed pickup — waiting for staff to confirm on their end.</span>
+            </div>
           )}
 
           {/* Post-pickup: review pending message */}

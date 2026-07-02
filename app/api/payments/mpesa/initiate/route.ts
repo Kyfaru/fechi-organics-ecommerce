@@ -22,6 +22,9 @@ import { resolvePromo } from "@/lib/promo";
 import { getRedis } from "@/lib/redis";
 import { markPaymentFailed } from "@/lib/payments/post-payment";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { publishQstashJSON } from "@/lib/qstash";
+
+const PAYMENT_TIMEOUT_SECONDS = 5 * 60; // abandon unpaid orders 5 minutes after STK push / checkout init
 
 // ---------------------------------------------------------------------------
 // Input validation
@@ -237,6 +240,14 @@ export async function POST(req: NextRequest) {
       where: { id: transaction.id },
       data: { checkoutRequestId },
     });
+
+    // Schedule a timeout: if the customer abandons the STK prompt and no
+    // callback arrives within 5 minutes, flip the order to FAILED.
+    await publishQstashJSON(
+      "/api/admin/workers/check-failed-payment",
+      { orderId: order.id, transactionId: transaction.id },
+      { delay: PAYMENT_TIMEOUT_SECONDS },
+    );
 
     console.info(
       `[mpesa/initiate] STK push initiated — order=${order.id} checkout=${checkoutRequestId}`,

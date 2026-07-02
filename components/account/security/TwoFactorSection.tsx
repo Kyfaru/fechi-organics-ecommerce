@@ -24,7 +24,8 @@ function OtpInput({ value, onChange }: { value: string; onChange: (v: string) =>
 // ── TOTP method (Authenticator App) ─────────────────────────────────────────
 function AuthAppMethod({ enabled }: { enabled: boolean }) {
   const [open, setOpen] = useState(false)
-  const [step, setStep] = useState<"idle" | "qr" | "verify" | "disable">("idle")
+  const [step, setStep] = useState<"idle" | "password" | "qr" | "verify" | "disable">("idle")
+  const [enablePw, setEnablePw] = useState("")
   const [qrUri, setQrUri] = useState("")
   const [totpCode, setTotpCode] = useState("")
   const [disablePw, setDisablePw] = useState("")
@@ -32,10 +33,11 @@ function AuthAppMethod({ enabled }: { enabled: boolean }) {
   const [pending, start] = useTransition()
 
   function handleEnable() {
+    if (!enablePw) { toast.error("Enter your password"); return }
     start(async () => {
-      const res = await (authClient.twoFactor as any).enable({ password: "" })
-      if (res?.data?.totpURI) { setQrUri(res.data.totpURI); setStep("qr") }
-      else toast.error("Could not initiate 2FA setup")
+      const res = await (authClient.twoFactor as any).enable({ password: enablePw })
+      if (res?.data?.totpURI) { setQrUri(res.data.totpURI); setEnablePw(""); setStep("qr") }
+      else toast.error(res?.error?.message ?? "Could not initiate 2FA setup — check your password")
     })
   }
 
@@ -71,11 +73,26 @@ function AuthAppMethod({ enabled }: { enabled: boolean }) {
       actionLabel={isEnabled ? "Manage" : "Set up"}
     >
       {!isEnabled && step === "idle" && (
-        <button onClick={handleEnable} disabled={pending}
+        <button onClick={() => setStep("password")} disabled={pending}
           className="px-4 py-2 rounded-lg bg-[#15803D] text-white text-sm font-semibold hover:bg-[#16A34A] disabled:opacity-50 flex items-center gap-2">
           {pending && <Icon icon="lucide:loader-2" width={13} className="animate-spin" />}
           Get started
         </button>
+      )}
+      {step === "password" && (
+        <div className="space-y-3 p-4 bg-neutral-100 border border-neutral-200 rounded-lg">
+          <p className="text-sm text-neutral-700 font-medium">Enter your password to set up the authenticator app</p>
+          <input type="password" value={enablePw} onChange={(e) => setEnablePw(e.target.value)}
+            placeholder="Current password" className="w-full px-3 py-2 border border-neutral-300 rounded text-sm bg-white focus:outline-none focus:border-[#15803D]" />
+          <div className="flex gap-2">
+            <button onClick={() => { setStep("idle"); setEnablePw("") }} className="px-3 py-1.5 rounded border border-neutral-200 text-sm">Cancel</button>
+            <button onClick={handleEnable} disabled={pending}
+              className="px-3 py-1.5 rounded bg-[#15803D] text-white text-sm font-semibold hover:bg-[#16A34A] disabled:opacity-50 flex items-center gap-1.5">
+              {pending && <Icon icon="lucide:loader-2" width={12} className="animate-spin" />}
+              Continue
+            </button>
+          </div>
+        </div>
       )}
       {step === "qr" && qrUri && (
         <div className="space-y-3">

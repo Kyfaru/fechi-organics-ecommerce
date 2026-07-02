@@ -20,6 +20,9 @@ import { resolvePromo } from "@/lib/promo";
 import { initializeTransaction } from "@/lib/paystack/client";
 import { getRedis } from "@/lib/redis";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { publishQstashJSON } from "@/lib/qstash";
+
+const PAYMENT_TIMEOUT_SECONDS = 5 * 60; // abandon unpaid orders 5 minutes after STK push / checkout init
 
 const deliveryDataSchema = z.object({
   fullName: z.string().min(1),
@@ -200,7 +203,7 @@ export async function POST(req: NextRequest) {
     // 7. Generate reference and create transaction record (PENDING)
     const reference = `fechi_${order.id}_${Date.now()}`;
 
-    await db.transaction.create({
+    const transaction = await db.transaction.create({
       data: {
         orderId: order.id,
         provider: "PAYSTACK",
@@ -221,6 +224,16 @@ export async function POST(req: NextRequest) {
       callback_url: `${baseUrl}/api/payments/paystack/verify?reference=${reference}`,
       metadata: { orderId: order.id, userId },
     });
+
+    // Schedule a timeout: if the customer abandons the hosted checkout and no
+    // webhook/verify call arrives within 5 minutes, flip the order to FAILED.
+    // Placed after initializeTransaction succeeds so we don't schedule a
+    // timeout for a transaction that never got a live Paystack session.
+    await publishQstashJSON(
+      "/api/admin/workers/check-failed-payment",
+      { orderId: order.id, transactionId: transaction.id },
+      { delay: PAYMENT_TIMEOUT_SECONDS },
+    );
 
     console.info(
       `[paystack/initialize] transaction initialized — order=${order.id} reference=${reference}`,

@@ -3,8 +3,7 @@ import { db } from "@/lib/db";
 import { publishQstashJSON } from "@/lib/qstash";
 import { getRedis } from "@/lib/redis";
 import { paymentChannel } from "@/lib/payment-channel";
-
-type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+import { generateOrderNumber, type TxClient } from "@/lib/orders/generate-order-number";
 
 export async function markPaymentSuccess(args: {
   transactionId: string;
@@ -18,9 +17,18 @@ export async function markPaymentSuccess(args: {
     });
     if (!transaction || transaction.status !== "PENDING") return;
 
+    // Orders created via mpesa/paystack initiate don't have an orderNumber yet
+    // (it used to be assigned only on manual admin confirmation) — assign one
+    // now, the instant payment succeeds, so it's ready as soon as the order is.
+    const existing = await tx.order.findUnique({
+      where: { id: args.orderId },
+      select: { orderNumber: true },
+    });
+    const orderNumber = existing?.orderNumber ?? (await generateOrderNumber(tx));
+
     const order = await tx.order.update({
       where: { id: args.orderId },
-      data: { paymentStatus: "PAID", status: "CONFIRMED" },
+      data: { paymentStatus: "PAID", status: "CONFIRMED", orderNumber },
       include: { items: true, user: { select: { id: true } } },
     });
 
@@ -44,6 +52,9 @@ export async function markPaymentSuccess(args: {
 
   await publishQstashJSON("/api/admin/workers/send-order-confirmation", { orderId: args.orderId });
   await publishQstashJSON("/api/admin/workers/notify-admin-new-order", { orderId: args.orderId });
+  // Invoice PDF + email follow ~1 minute later, as a separate, quieter
+  // background step after the instant confirmation email above.
+  await publishQstashJSON("/api/admin/workers/generate-invoice", { orderId: args.orderId }, { delay: 60 });
 
   // Notify waiting SSE stream — must not throw if Redis is unavailable
   try {
@@ -62,11 +73,34 @@ export async function markPaymentFailed(args: {
   orderId: string;
   reason?: string;
 }) {
-  // Delete transaction first (no cascade from order), then order (cascades to items/events)
-  await db.$transaction([
-    db.transaction.deleteMany({ where: { orderId: args.orderId } }),
-    db.order.delete({ where: { id: args.orderId } }),
-  ]);
+  await db.$transaction(async (tx: TxClient) => {
+    const transaction = await tx.transaction.findUnique({
+      where: { id: args.transactionId },
+      select: { status: true },
+    });
+    // Idempotency guard: a late timeout job can fire after the payment already
+    // succeeded (or already failed) via callback — don't clobber that outcome.
+    if (!transaction || transaction.status !== "PENDING") return;
+
+    await tx.transaction.update({
+      where: { id: args.transactionId },
+      data: { status: "FAILED" },
+    });
+
+    await tx.order.update({
+      where: { id: args.orderId },
+      data: { status: "FAILED", paymentStatus: "FAILED" },
+    });
+
+    await tx.orderStatusEvent.create({
+      data: {
+        orderId: args.orderId,
+        status: "FAILED",
+        occurredAt: new Date(),
+        note: args.reason ?? null,
+      },
+    });
+  });
 
   // Notify waiting SSE stream — must not throw if Redis is unavailable
   try {

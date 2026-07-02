@@ -66,6 +66,27 @@ export async function sendOrderConfirmationEmail(args: {
   }
 }
 
+export async function sendInvoiceEmail(args: {
+  email: string;
+  orderId: string;
+  invoiceNumber: string;
+  html: string;
+  pdfBuffer: Buffer;
+}): Promise<void> {
+  const { error } = await resend.emails.send({
+    from: sendEmail!,
+    to: args.email,
+    subject: `Your Fechi Organics invoice ${args.invoiceNumber}`,
+    html: args.html,
+    attachments: [{ filename: `fechi-invoice-${args.invoiceNumber}.pdf`, content: args.pdfBuffer }],
+  });
+
+  if (error) {
+    console.error("[Resend] Failed to send invoice email:", error);
+    throw new Error("Failed to send invoice email");
+  }
+}
+
 export async function sendAdminNotificationEmail(args: {
   to: string | string[];
   subject: string;

@@ -30,6 +30,7 @@ export type OrderStatusValue =
   | "READY_FOR_PICKUP"
   | "PICKED_UP"
   | "CANCELLED"
+  | "FAILED"
 
 // Client-facing display labels — admin panel keeps the raw enum names
 export const ORDER_STATUS_CLIENT_LABELS: Record<OrderStatusValue, string> = {
@@ -42,6 +43,7 @@ export const ORDER_STATUS_CLIENT_LABELS: Record<OrderStatusValue, string> = {
   READY_FOR_PICKUP:   "Available for Pickup",
   PICKED_UP:          "Picked Up",
   CANCELLED:          "Cancelled",
+  FAILED:             "Payment Failed",
 }
 
 export type MessageTypeValue = "ORDER_UPDATE" | "SYSTEM" | "PROMOTION" | "ALERT"

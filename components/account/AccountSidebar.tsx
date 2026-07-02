@@ -1,8 +1,11 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { Icon } from "@iconify/react"
+import { signOut } from "@/lib/auth-client"
+import { LogoutModal } from "@/components/ui/LogoutModal"
 import type { AccountUser } from "@/types/account"
 
 const NAV_ITEMS: Array<{ href: string; label: string; icon: string; badge?: boolean }> = [
@@ -29,8 +32,15 @@ export default function AccountSidebar({
   unreadCount?: number
 }) {
   const pathname = usePathname()
+  const router = useRouter()
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false)
   const displayName = user.name || "Account"
   const username = user.username || `USER_${user.id.slice(-7).toUpperCase()}`
+
+  async function handleLogoutConfirm() {
+    await signOut()
+    router.push("/")
+  }
 
   return (
     <div className="flex flex-col h-full py-7">
@@ -113,14 +123,21 @@ export default function AccountSidebar({
 
       {/* Bottom logout */}
       <div className="px-3 pt-3 mt-3 border-t border-neutral-100 dark:border-neutral-800">
-        <Link
-          href="/logout"
-          className="flex items-center gap-3 px-4 py-3 rounded-lg text-[15px] font-medium text-neutral-400 dark:text-neutral-500 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-500 transition-all duration-150"
+        <button
+          type="button"
+          onClick={() => setLogoutModalOpen(true)}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-[15px] font-medium text-neutral-400 dark:text-neutral-500 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-500 transition-all duration-150"
         >
           <Icon icon="lucide:log-out" width={18} />
           <span>Log Out</span>
-        </Link>
+        </button>
       </div>
+
+      <LogoutModal
+        open={logoutModalOpen}
+        onClose={() => setLogoutModalOpen(false)}
+        onConfirm={handleLogoutConfirm}
+      />
     </div>
   )
 }

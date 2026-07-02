@@ -187,15 +187,19 @@ export async function POST(req: NextRequest) {
 
     // 8. Initiate KCB Buni STK push
     const callbackUrl = `${process.env.KCB_CALLBACK_BASE_URL ?? process.env.MPESA_CALLBACK_BASE_URL}/api/payments/kcb/callback`;
+    const consumer_secret = branch.consumerSecretEnc || process.env.KCB_CONSUMER_SECRET;
+    const consumer_key = branch.consumerKeyEnc || process.env.KCB_CONSUMER_KEY;
+    const api_key = branch.apiKeyEnc || process.env.KCB_API_KEY;
+    const shortcode = branch.shortcode || process.env.KCB_SHORTCODE;
 
     const kcbRes = await initiateKcbStkPush({
       branch: {
         id: branch.id,
-        shortcode: branch.shortcode,
+        shortcode: branch.shortcode ?? shortcode,
         invoiceNumber: branch.invoiceNumber ?? null,
-        consumerKeyEnc: branch.consumerKeyEnc,
-        consumerSecretEnc: branch.consumerSecretEnc,
-        apiKeyEnc: branch.apiKeyEnc ?? null,
+        consumerKeyEnc:branch.consumerKeyEnc ?? consumer_key,
+        consumerSecretEnc: branch.consumerSecretEnc ?? consumer_secret,
+        apiKeyEnc: api_key ?? null,
       },
       phone,
       amountKes: totalCents, // function converts to whole KES internally
