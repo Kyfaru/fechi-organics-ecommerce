@@ -21,3 +21,54 @@ export async function generateOrderNumber(tx: TxClient): Promise<string> {
   }
   throw new Error("Could not generate unique order number after 5 retries");
 }
+
+// 31-letter Romanian alphabet, 1-indexed by day-of-month (1-31).
+const ROMANIAN_ALPHABET = [
+  "A", "Ă", "Â", "B", "C", "D", "E", "F", "G", "H", "I", "Î", "J", "K", "L", "M",
+  "N", "O", "P", "Q", "R", "S", "Ș", "T", "Ț", "U", "V", "W", "X", "Y", "Z",
+];
+
+function yearLetter(year: number): string {
+  const digit = year % 10;
+  const position = digit === 0 ? 10 : digit; // 0 -> 10th letter (clock-face style)
+  return String.fromCharCode(64 + position); // A=65
+}
+
+const LETTERS_POSITION: Record<"MPESA" | "PAYSTACK" | "KCB", "front" | "back"> = {
+  MPESA: "front",
+  KCB: "front",
+  PAYSTACK: "back",
+};
+
+// ---------------------------------------------------------------------------
+// Build a deterministic "#FO-..." order number that encodes the moment the
+// order was placed, in EAT (Africa/Nairobi, fixed UTC+3 — Kenya has no DST).
+//
+// digits = month(no leading zero) + weekday(Mon=1..Sun=7) + hour + minute + second
+// letters = yearLetter (alphabet position of the year's last digit) + dayLetter
+//           (day-of-month, 1-indexed into the Romanian alphabet)
+// Mpesa/KCB put the letters first, Paystack puts them last.
+//
+// ponytail: no uniqueness retry loop here — the value is a deterministic
+// function of time, not random, so retrying wouldn't reliably produce a
+// different value. A genuine same-second collision surfaces as a DB unique
+// constraint error from order.create(), which the caller already catches.
+// Add a resample-and-retry if that's ever observed in practice.
+// ---------------------------------------------------------------------------
+export function buildTimestampOrderNumber(
+  date: Date,
+  provider: "MPESA" | "PAYSTACK" | "KCB",
+): string {
+  const eat = new Date(date.getTime() + 3 * 60 * 60 * 1000);
+  const month = eat.getUTCMonth() + 1;
+  const weekday = eat.getUTCDay() === 0 ? 7 : eat.getUTCDay();
+  const hour = String(eat.getUTCHours()).padStart(2, "0");
+  const minute = String(eat.getUTCMinutes()).padStart(2, "0");
+  const second = String(eat.getUTCSeconds()).padStart(2, "0");
+  const digits = `${month}${weekday}${hour}${minute}${second}`;
+
+  const letters = `${yearLetter(eat.getUTCFullYear())}${ROMANIAN_ALPHABET[eat.getUTCDate() - 1]}`;
+
+  const body = LETTERS_POSITION[provider] === "front" ? `${letters}${digits}` : `${digits}${letters}`;
+  return `#FO-${body}`;
+}

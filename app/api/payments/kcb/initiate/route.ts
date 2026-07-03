@@ -22,6 +22,7 @@ import { getRedis } from "@/lib/redis";
 import { markPaymentFailed } from "@/lib/payments/post-payment";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { deliveryDataSchema } from "@/lib/payments/delivery-schema";
+import { buildTimestampOrderNumber } from "@/lib/orders/generate-order-number";
 
 const bodySchema = z.object({
   phone: z.string().min(9),
@@ -126,6 +127,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 6. Create order
+    const now = new Date();
     const order = await db.order.create({
       data: {
         userId,
@@ -136,6 +138,8 @@ export async function POST(req: NextRequest) {
         promoCode: promoCode ?? null,
         paymentStatus: "PENDING",
         status: "PENDING",
+        orderNumber: buildTimestampOrderNumber(now, "KCB"),
+        createdAt: now,
         deliveryType: deliveryData.deliveryType,
         deliveryPhone: deliveryData.phone,
         deliveryAddress: deliveryData.address ?? null,

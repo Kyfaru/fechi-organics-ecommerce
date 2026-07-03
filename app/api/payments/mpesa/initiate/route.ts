@@ -24,6 +24,7 @@ import { markPaymentFailed } from "@/lib/payments/post-payment";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { publishQstashJSON } from "@/lib/qstash";
 import { deliveryDataSchema } from "@/lib/payments/delivery-schema";
+import { buildTimestampOrderNumber } from "@/lib/orders/generate-order-number";
 
 const PAYMENT_TIMEOUT_SECONDS = 5 * 60; // abandon unpaid orders 5 minutes after STK push / checkout init
 
@@ -132,6 +133,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 6. Create order
+    const now = new Date();
     const order = await db.order.create({
       data: {
         userId,
@@ -142,6 +144,8 @@ export async function POST(req: NextRequest) {
         promoCode: promoCode ?? null,
         paymentStatus: "PENDING",
         status: "PENDING",
+        orderNumber: buildTimestampOrderNumber(now, "MPESA"),
+        createdAt: now,
         deliveryType: deliveryData.deliveryType,
         deliveryPhone: deliveryData.phone,
         deliveryAddress: deliveryData.address ?? null,

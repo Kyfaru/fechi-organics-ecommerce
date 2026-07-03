@@ -94,8 +94,37 @@ function formatDate(iso: string | null | undefined) {
   return new Date(iso).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" });
 }
 
+// 31-letter Romanian alphabet, 1-indexed by day-of-month (1-31).
+const ROMANIAN_ALPHABET = [
+  "A", "Ă", "Â", "B", "C", "D", "E", "F", "G", "H", "I", "Î", "J", "K", "L", "M",
+  "N", "O", "P", "Q", "R", "S", "Ș", "T", "Ț", "U", "V", "W", "X", "Y", "Z",
+];
+
+function yearLetter(year: number): string {
+  const digit = year % 10;
+  const position = digit === 0 ? 10 : digit; // 0 -> 10th letter (clock-face style)
+  return String.fromCharCode(64 + position); // A=65
+}
+const now = new Date();
+function shortOrderNumber(
+  date: Date,
+): string {
+  const eat = new Date(date.getTime() + 3 * 60 * 60 * 1000);
+  const month = eat.getUTCMonth() + 1;
+  const weekday = eat.getUTCDay() === 0 ? 7 : eat.getUTCDay();
+  const hour = String(eat.getUTCHours()).padStart(2, "0");
+  const minute = String(eat.getUTCMinutes()).padStart(2, "0");
+  const second = String(eat.getUTCSeconds()).padStart(2, "0");
+  const digits = `${month}${weekday}${hour}${minute}${second}`;
+
+  const letters = `${yearLetter(eat.getUTCFullYear())}${ROMANIAN_ALPHABET[eat.getUTCDate() - 1]}`;
+
+  const body =`${digits}${letters}`;
+  return `#FO-${body}`;
+}
+
 function shortId(id: string) {
-  return `#${id.slice(0, 8).toUpperCase()}`;
+  return `#FO-${id.slice(0, 8).toUpperCase()}`;
 }
 
 function getInitials(name: string | null | undefined) {
@@ -264,7 +293,7 @@ function OrderDetailDrawer({
 
   return (
     <>
-      <Drawer open={open} onClose={onClose} title={`Order ${order.orderNumber ?? shortId(order.id)}`} width={640} footer={null}>
+      <Drawer open={open} onClose={onClose} title={`Order ${order.orderNumber ?? shortOrderNumber(now) ?? shortId(order.id)}`} width={640} footer={null}>
         <div className="flex gap-6">
           {/* ── Left ── */}
           <div className="flex-1 min-w-0 flex flex-col gap-6">
@@ -762,6 +791,7 @@ export function AdminOrdersClient() {
     setSelectedOrder(order);
     setDrawerOpen(true);
   }
+  
 
   // ── Table columns ──
   const columns = [
@@ -773,7 +803,7 @@ export function AdminOrdersClient() {
         return (
           <div>
             <span className="font-dm text-[13px] font-semibold text-(--neutral-900) font-mono">
-              {o.orderNumber ?? shortId(o.id)}
+              {o.orderNumber ?? shortOrderNumber(now) ?? shortId(o.id)}
             </span>
           </div>
         );

@@ -18,6 +18,7 @@ import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
 import { resolvePromo } from "@/lib/promo";
 import { initializeTransaction } from "@/lib/paystack/client";
+import { buildTimestampOrderNumber } from "@/lib/orders/generate-order-number";
 import { getRedis } from "@/lib/redis";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { publishQstashJSON } from "@/lib/qstash";
@@ -139,6 +140,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 6. Create order
+    const now = new Date();
     const order = await db.order.create({
       data: {
         userId,
@@ -149,6 +151,8 @@ export async function POST(req: NextRequest) {
         promoCode: promoCode ?? null,
         paymentStatus: "PENDING",
         status: "PENDING",
+        orderNumber: buildTimestampOrderNumber(now, "PAYSTACK"),
+        createdAt: now,
         deliveryType: deliveryData.deliveryType,
         deliveryPhone: deliveryData.phone,
         deliveryAddress: deliveryData.address ?? null,
@@ -182,7 +186,9 @@ export async function POST(req: NextRequest) {
     }
 
     // 7. Generate reference and create transaction record (PENDING)
-    const reference = `fechi_${order.id}_${Date.now()}`;
+    // Paystack only allows alphanumeric + -.= in a reference, and a literal
+    // "#" would also truncate the callback_url query string at a URL fragment.
+    const reference = order.orderNumber!.replace(/^#/, "");
 
     const transaction = await db.transaction.create({
       data: {
