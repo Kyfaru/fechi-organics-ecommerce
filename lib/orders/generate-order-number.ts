@@ -22,10 +22,11 @@ export async function generateOrderNumber(tx: TxClient): Promise<string> {
   throw new Error("Could not generate unique order number after 5 retries");
 }
 
-// 31-letter Romanian alphabet, 1-indexed by day-of-month (1-31).
-const ROMANIAN_ALPHABET = [
-  "A", "Ă", "Â", "B", "C", "D", "E", "F", "G", "H", "I", "Î", "J", "K", "L", "M",
-  "N", "O", "P", "Q", "R", "S", "Ș", "T", "Ț", "U", "V", "W", "X", "Y", "Z",
+// 31-letter ASCII alphabet, 1-indexed by day-of-month (1-31).
+const ALPHABET = [
+  "A","B","C","D","E","F","G","H","I","J","K","L","M",
+  "N","O","P","Q","R","S","T","U","V","W","X","Y","Z",
+  "AA","AB","AC","AD","AE"
 ];
 
 function yearLetter(year: number): string {
@@ -46,7 +47,7 @@ const LETTERS_POSITION: Record<"MPESA" | "PAYSTACK" | "KCB", "front" | "back"> =
 //
 // digits = month(no leading zero) + weekday(Mon=1..Sun=7) + hour + minute + second
 // letters = yearLetter (alphabet position of the year's last digit) + dayLetter
-//           (day-of-month, 1-indexed into the Romanian alphabet)
+//           (day-of-month, 1-indexed into the ASCII alphabet)
 // Mpesa/KCB put the letters first, Paystack puts them last.
 //
 // ponytail: no uniqueness retry loop here — the value is a deterministic
@@ -67,7 +68,7 @@ export function buildTimestampOrderNumber(
   const second = String(eat.getUTCSeconds()).padStart(2, "0");
   const digits = `${month}${weekday}${hour}${minute}${second}`;
 
-  const letters = `${yearLetter(eat.getUTCFullYear())}${ROMANIAN_ALPHABET[eat.getUTCDate() - 1]}`;
+  const letters = `${yearLetter(eat.getUTCFullYear())}${ALPHABET[eat.getUTCDate() - 1]}`;
 
   const body = LETTERS_POSITION[provider] === "front" ? `${letters}${digits}` : `${digits}${letters}`;
   return `#FO-${body}`;

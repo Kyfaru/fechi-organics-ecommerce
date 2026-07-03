@@ -94,10 +94,11 @@ function formatDate(iso: string | null | undefined) {
   return new Date(iso).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" });
 }
 
-// 31-letter Romanian alphabet, 1-indexed by day-of-month (1-31).
-const ROMANIAN_ALPHABET = [
-  "A", "Ă", "Â", "B", "C", "D", "E", "F", "G", "H", "I", "Î", "J", "K", "L", "M",
-  "N", "O", "P", "Q", "R", "S", "Ș", "T", "Ț", "U", "V", "W", "X", "Y", "Z",
+// 31-letter ASCII alphabet, 1-indexed by day-of-month (1-31).
+const ALPHABET = [
+  "A","B","C","D","E","F","G","H","I","J","K","L","M",
+  "N","O","P","Q","R","S","T","U","V","W","X","Y","Z",
+  "AA","AB","AC","AD","AE"
 ];
 
 function yearLetter(year: number): string {
@@ -117,7 +118,7 @@ function shortOrderNumber(
   const second = String(eat.getUTCSeconds()).padStart(2, "0");
   const digits = `${month}${weekday}${hour}${minute}${second}`;
 
-  const letters = `${yearLetter(eat.getUTCFullYear())}${ROMANIAN_ALPHABET[eat.getUTCDate() - 1]}`;
+  const letters = `${yearLetter(eat.getUTCFullYear())}${ALPHABET[eat.getUTCDate() - 1]}`;
 
   const body =`${digits}${letters}`;
   return `#FO-${body}`;
