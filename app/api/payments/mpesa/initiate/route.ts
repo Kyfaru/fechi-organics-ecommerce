@@ -134,6 +134,7 @@ export async function POST(req: NextRequest) {
 
     // 6. Create order
     const now = new Date();
+    const orderNumber = buildTimestampOrderNumber(now, "MPESA");
     const order = await db.order.create({
       data: {
         userId,
@@ -144,7 +145,7 @@ export async function POST(req: NextRequest) {
         promoCode: promoCode ?? null,
         paymentStatus: "PENDING",
         status: "PENDING",
-        orderNumber: buildTimestampOrderNumber(now, "MPESA"),
+        orderNumber,
         createdAt: now,
         deliveryType: deliveryData.deliveryType,
         deliveryPhone: deliveryData.phone,
@@ -181,11 +182,16 @@ export async function POST(req: NextRequest) {
 
     if (branch.mpesaGateway === "KCB_BUNI") {
       const { initiateKcbStkPush } = await import("@/lib/payments/kcb/kcb-client");
+      const formatOrderNumber = order.orderNumber?.slice(4,-1);
+    const invoiceCode = `${branch.invoiceNumber}-${formatOrderNumber}`;
+    if (!branch.invoiceNumber) {
+    return err("BRANCH", `Branch ${branch.id} is undefined number`, 500);
+    }
       const kcbRes = await initiateKcbStkPush({
         branch: {
           id: branch.id,
           shortcode: branch.shortcode,
-          invoiceNumber: branch.invoiceNumber ?? null,
+          invoiceNumber: invoiceCode ?? branch.invoiceNumber,
           consumerKeyEnc: branch.consumerKeyEnc,
           consumerSecretEnc: branch.consumerSecretEnc,
           apiKeyEnc: branch.apiKeyEnc ?? null,
@@ -211,7 +217,7 @@ export async function POST(req: NextRequest) {
         branch,
         phone,
         amountKes: totalKes,
-        orderId: order.id,
+        orderId: order.orderNumber ?? order.id,
         callbackUrl,
       });
       checkoutRequestId = stkResponse.CheckoutRequestID;
@@ -232,7 +238,7 @@ export async function POST(req: NextRequest) {
     );
 
     console.info(
-      `[mpesa/initiate] STK push initiated — order=${order.id} checkout=${checkoutRequestId}`,
+      `[mpesa/initiate] STK push initiated — order=${order.orderNumber} checkout=${checkoutRequestId}`,
     );
 
     return ok({ orderId: order.id });

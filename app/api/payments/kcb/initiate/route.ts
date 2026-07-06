@@ -176,12 +176,17 @@ export async function POST(req: NextRequest) {
     const consumer_key = branch.consumerKeyEnc || process.env.KCB_CONSUMER_KEY;
     const api_key = branch.apiKeyEnc || process.env.KCB_API_KEY;
     const shortcode = branch.shortcode || process.env.KCB_SHORTCODE;
+    const formatOrderNumber = order.orderNumber?.slice(4,-1);
+    const invoiceCode = `${branch.invoiceNumber}-${formatOrderNumber}`;
+    if (!branch.invoiceNumber) {
+    return err("BRANCH", `Branch ${branch.id} is undefined number`, 500);
+    }
 
     const kcbRes = await initiateKcbStkPush({
       branch: {
         id: branch.id,
         shortcode: branch.shortcode ?? shortcode,
-        invoiceNumber: branch.invoiceNumber ?? null,
+        invoiceNumber: invoiceCode ?? branch.invoiceNumber,
         consumerKeyEnc:branch.consumerKeyEnc ?? consumer_key,
         consumerSecretEnc: branch.consumerSecretEnc ?? consumer_secret,
         apiKeyEnc: api_key ?? null,

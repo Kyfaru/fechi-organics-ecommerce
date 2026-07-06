@@ -129,7 +129,7 @@ export async function initiateSTKPush(params: {
     PartyB: branch.shortcode,
     PhoneNumber: normalised,
     CallBackURL: callbackUrl,
-    AccountReference: orderId.slice(0, 12), // Daraja max length is 12 chars
+    AccountReference: orderId.slice(4, -1), // Daraja max length is 12 chars
     TransactionDesc: "Fechi Order",  // max 13 chars per Daraja spec
   };
 
