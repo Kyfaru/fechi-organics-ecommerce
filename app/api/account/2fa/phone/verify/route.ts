@@ -2,7 +2,7 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { getRedis } from "@/lib/redis"
+import { verifyOtp } from "@/lib/otp"
 
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
@@ -17,9 +17,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: { message: "Invalid OTP format" } }, { status: 400 })
     }
 
-    const redis = getRedis()
-    const stored = await redis.get(`2fa:otp:phone:${session.user.id}`)
-    if (!stored || String(stored) !== otp) {
+    const valid = await verifyOtp(`2fa:otp:phone:${session.user.id}`, otp)
+    if (!valid) {
       return NextResponse.json({ ok: false, error: { message: "Invalid or expired code" } }, { status: 400 })
     }
 
@@ -27,8 +26,6 @@ export async function POST(req: NextRequest) {
       where: { id: session.user.id },
       data: { twoFaPhone: true },
     })
-
-    await redis.set(`2fa:otp:phone:${session.user.id}`, "", { ex: 1 })
 
     console.info("[2fa/phone/verify] Phone 2FA enabled for", session.user.id)
     return NextResponse.json({ ok: true })

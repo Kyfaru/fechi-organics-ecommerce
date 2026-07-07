@@ -776,13 +776,13 @@ export function AdminTestimonialsClient() {
     },
   });
 
-  // ── Approve toggle (PATCH /api/admin/testimonials) ──
+  // ── Approve toggle (PATCH /api/admin/testimonials/[id]) ──
   const toggleApprove = useMutation({
     mutationFn: async ({ id, approved }: { id: string; approved: boolean }) => {
-      const res = await fetch("/api/admin/testimonials", {
+      const res = await fetch(`/api/admin/testimonials/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, approved }),
+        body: JSON.stringify({ approved }),
       });
       return res.json();
     },
@@ -802,13 +802,13 @@ export function AdminTestimonialsClient() {
     onSettled: () => setPendingApproveId(null),
   });
 
-  // ── Sort order (PATCH /api/admin/testimonials) ──
+  // ── Sort order (PATCH /api/admin/testimonials/[id]) ──
   const updateSort = useMutation({
     mutationFn: async ({ id, sortOrder }: { id: string; sortOrder: number }) => {
-      const res = await fetch("/api/admin/testimonials", {
+      const res = await fetch(`/api/admin/testimonials/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, sortOrder }),
+        body: JSON.stringify({ sortOrder }),
       });
       return res.json();
     },

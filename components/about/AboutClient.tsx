@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { motion, useInView, useScroll, useTransform } from "framer-motion";
+import { Footer } from "@/components/layout/Footer";
 
 /* ─── tiny helpers ───────────────────────────────────────────── */
 function FadeUp({
@@ -54,54 +55,71 @@ function ScaleIn({
   );
 }
 
-/* ─── Kenya SVG map ──────────────────────────────────────────── */
+/* ─── Kenya SVG map ──────────────────────────────────────────────
+   Pin coordinates are the real county centroids (not hand-plotted)
+   lifted from the simplemaps.com Kenya county boundary file at
+   `f:\Web Design\Fechi Organics\resources\ke.svg` (viewBox "0 0 1000 1000"),
+   using each branch town's home county:
+     Nairobi   -> Nairobi county        (KE47)
+     Nakuru    -> Nakuru county         (KE32)
+     Eldoret   -> Uasin Gishu county    (KE27) — Eldoret is Uasin Gishu's capital
+     Mwea      -> Kirinyaga county      (KE20) — Mwea is a town in Kirinyaga
+     Kitengela -> Kajiado county        (KE34) — Kitengela is a town in Kajiado
+─────────────────────────────────────────────────────────────────*/
 const SHOPS = [
-  { name: "Nairobi",    place: "Spur Mall, 1st Floor, Shop F12",               x: 141, y: 311, color: "#fec700" },
-  { name: "Nakuru",     place: "Baraka Plaza, 1st Floor, Shop F2",              x: 103, y: 257, color: "#a4f690" },
-  { name: "Eldoret",    place: "Eldo Center, 1st Floor, Shop 6",               x: 60,  y: 220, color: "#a4f690" },
-  { name: "Mwea",       place: "MTC Building (Opp. Nice City), 1st Floor",     x: 171, y: 278, color: "#a4f690" },
-  { name: "Kitengela",  place: "Next to Eastmart, 2nd Floor, Shop 63",         x: 148, y: 322, color: "#a4f690" },
+  { name: "Nairobi",    place: "Spur Mall, 1st Floor, Shop F12",               x: 405,   y: 650.1, color: "#fec700" },
+  { name: "Nakuru",     place: "Baraka Plaza, 1st Floor, Shop F2",              x: 330,   y: 564.6, color: "#a4f690" },
+  { name: "Eldoret",    place: "Eldo Center, 1st Floor, Shop 6",               x: 266.7, y: 485.4, color: "#a4f690" },
+  { name: "Mwea",       place: "MTC Building (Opp. Nice City), 1st Floor",     x: 445.4, y: 582.4, color: "#a4f690" },
+  { name: "Kitengela",  place: "Next to Eastmart, 2nd Floor, Shop 63",         x: 396.8, y: 717.4, color: "#a4f690" },
 ];
 
 function KenyaMap() {
   return (
-    <svg
-      viewBox="0 0 400 480"
-      className="w-full max-w-[380px] drop-shadow-2xl"
-      aria-label="Map of Kenya showing FECHI Organics branch locations"
-    >
-      <path
-        d="M 2,38 L 0,295 L 35,295 L 52,334 L 185,423 L 185,472 L 265,472 L 325,338 L 395,325 L 393,161 L 363,49 L 293,22 L 188,0 Z"
-        fill="#e8fce3"
-        stroke="#27731e"
-        strokeWidth="2.5"
-        strokeLinejoin="round"
-        className="dark:fill-green-950 dark:stroke-green-500"
+    <div className="relative w-full max-w-[380px] aspect-square mx-auto drop-shadow-2xl">
+      {/*
+        Real Kenya county-boundary map (source: simplemaps.com, see comment above).
+        Pre-colored light/dark variants are static assets under /public/img — plain
+        <img> tags are used (not next/image) because Next's built-in image optimizer
+        refuses local SVG sources unless `images.dangerouslyAllowSVG` is set in
+        next.config.ts, which this ticket is explicitly not allowed to touch.
+      */}
+      <img
+        src="/img/kenya-map-light.svg"
+        alt="Map of Kenya showing FECHI Organics branch locations"
+        className="absolute inset-0 w-full h-full object-contain dark:hidden"
       />
-      <path d="M 120,150 Q 160,200 155,260" stroke="#c8e8c0" strokeWidth="1" fill="none" opacity="0.6" className="dark:stroke-green-800" />
-      <path d="M 200,180 Q 230,220 220,290" stroke="#c8e8c0" strokeWidth="1" fill="none" opacity="0.6" className="dark:stroke-green-800" />
+      <img
+        src="/img/kenya-map-dark.svg"
+        alt=""
+        aria-hidden
+        className="absolute inset-0 w-full h-full object-contain hidden dark:block"
+      />
 
-      {SHOPS.map((shop, i) => (
-        <g key={shop.name}>
-          <circle cx={shop.x} cy={shop.y} r="14" fill={shop.color} opacity="0.2">
-            <animate attributeName="r"       values="10;18;10" dur="2.5s" begin={`${i * 0.4}s`} repeatCount="indefinite" />
-            <animate attributeName="opacity" values="0.3;0;0.3" dur="2.5s" begin={`${i * 0.4}s`} repeatCount="indefinite" />
-          </circle>
-          <circle cx={shop.x} cy={shop.y} r="7" fill={shop.color} stroke="white" strokeWidth="2" />
-          <text
-            x={shop.x + (shop.name === "Mwea" ? 10 : shop.x > 160 ? 10 : -10)}
-            y={shop.y - 11}
-            fontSize="10"
-            fontWeight="700"
-            fill="#045a03"
-            textAnchor={shop.x > 160 ? "start" : "end"}
-            fontFamily="sans-serif"
-          >
-            {shop.name}
-          </text>
-        </g>
-      ))}
-    </svg>
+      {/* Pin overlay shares the map's 1000x1000 viewBox so markers align exactly */}
+      <svg viewBox="0 0 1000 1000" className="absolute inset-0 w-full h-full pointer-events-none" aria-hidden>
+        {SHOPS.map((shop, i) => (
+          <g key={shop.name}>
+            <circle cx={shop.x} cy={shop.y} r="34" fill={shop.color} opacity="0.2">
+              <animate attributeName="r"       values="24;44;24" dur="2.5s" begin={`${i * 0.4}s`} repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.3;0;0.3" dur="2.5s" begin={`${i * 0.4}s`} repeatCount="indefinite" />
+            </circle>
+            <circle cx={shop.x} cy={shop.y} r="17" fill={shop.color} stroke="white" strokeWidth="4" />
+            <text
+              x={shop.x + (shop.x > 500 ? 24 : -24)}
+              y={shop.y - 26}
+              fontSize="24"
+              fontWeight="700"
+              textAnchor={shop.x > 500 ? "start" : "end"}
+              fontFamily="sans-serif"
+              className="fill-[#045a03] dark:fill-green-300"
+            >
+              {shop.name}
+            </text>
+          </g>
+        ))}
+      </svg>
+    </div>
   );
 }
 
@@ -133,6 +151,27 @@ const TIMELINE = [
   { year: "Today",         label: "Thousands Transformed",  desc: "A trusted household brand helping people achieve radiant skin and hair through the power of nature." },
 ];
 
+/* Shape returned by GET /api/branches (no ?county param -> all active branches) */
+type BranchInfo = {
+  id: string;
+  name: string;
+  county: string;
+  mpesaType: string;
+  shortcode: string;
+  phone: string | null;
+};
+
+/**
+ * Looks up the branch phone number for a shop card by matching the SHOPS
+ * town name against the branch's `name` field (seeded as "<Town> Branch",
+ * e.g. "Eldoret Branch") since county names don't always match the town
+ * (Eldoret -> Uasin Gishu, Mwea -> Kirinyaga, Kitengela -> Kajiado).
+ */
+function findBranchPhone(branches: BranchInfo[], shopName: string): string | null {
+  const match = branches.find((b) => b.name.toLowerCase().startsWith(shopName.toLowerCase()));
+  return match?.phone ?? null;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    MAIN COMPONENT
 ═══════════════════════════════════════════════════════════════ */
@@ -141,6 +180,23 @@ export function AboutClient() {
   const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
   const heroY       = useTransform(scrollYProgress, [0, 1], ["0%", "30%"]);
   const heroOpacity = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
+
+  // Branch phone numbers for the shop cards below (fetched client-side; page
+  // renders fine without them while loading or if the request fails).
+  const [branches, setBranches] = useState<BranchInfo[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/branches");
+        const json = await res.json();
+        if (!cancelled && json.ok) setBranches(json.data.branches ?? []);
+      } catch (e) {
+        console.error("[AboutClient] failed to load branches", e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const timelineRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -242,14 +298,10 @@ export function AboutClient() {
                   Beauty begins<br /><span className="text-[#27731e] dark:text-green-400">with confidence</span>
                 </h2>
                 <p className="font-body text-[#40493c] dark:text-gray-400 text-base leading-relaxed">
-                  FECHI Organics was born from a deep belief that every person deserves to feel
-                  beautiful in their own skin. Our founder, Wangeci, built this brand from the
-                  ground up — driven by purpose, guided by nature.
+                  FECHI Organics is a premium Kenyan skincare and beauty brand dedicated to providing high-quality, nature-inspired products that promote healthy, radiant skin and hair. We believe in delivering results through carefully selected ingredients, exceptional customer care, and innovative beauty solutions. 
                 </p>
                 <p className="font-body text-[#40493c] dark:text-gray-400 text-base leading-relaxed">
-                  What started as a mission to solve common skin and hair challenges has grown
-                  into a trusted wellness brand with branches across Kenya and thousands of
-                  transformed lives.
+                  At FECHI Organics, we don&apost just sell products—we provide confidence, self-care, and lasting beauty. We proudly serve customers across Kenya and beyond with trusted, effective skincare solutions.
                 </p>
               </div>
             </FadeUp>
@@ -607,6 +659,14 @@ export function AboutClient() {
                       <div className="flex-1 min-w-0">
                         <h3 className="font-heading font-semibold text-[#1a1c1c] dark:text-white text-lg group-hover:text-[#27731e] dark:group-hover:text-green-400 transition-colors">{shop.name}</h3>
                         <p className="font-body text-[#40493c] dark:text-gray-400 text-sm mt-1 leading-relaxed">{shop.place}</p>
+                        {findBranchPhone(branches, shop.name) && (
+                          <p className="font-body text-[#27731e] dark:text-green-400 text-sm mt-2 flex items-center gap-1.5">
+                            <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                              <path d="M2 3.5A1.5 1.5 0 013.5 2h1.148a1.5 1.5 0 011.465 1.175l.716 3.223a1.5 1.5 0 01-.826 1.68l-1.293.646a11.037 11.037 0 006.105 6.105l.646-1.293a1.5 1.5 0 011.68-.826l3.223.716A1.5 1.5 0 0117 14.352V15.5a1.5 1.5 0 01-1.5 1.5H15c-1.149 0-2.263-.15-3.326-.43A13.022 13.022 0 013.43 8.326 13.019 13.019 0 013 5V3.5z" />
+                            </svg>
+                            {findBranchPhone(branches, shop.name)}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="mt-4 h-0.5 w-0 bg-[#27731e] dark:bg-green-500 group-hover:w-full transition-all duration-500 rounded-full" />
@@ -651,7 +711,8 @@ export function AboutClient() {
       {/* ════════════════════════════════════════════════════════
           8. FINAL CTA — dark section, stays the same
       ════════════════════════════════════════════════════════ */}
-      <section className="relative py-28 bg-[#1a1c1c] dark:bg-gray-900 overflow-hidden transition-colors">
+      <section className="h-fit bg-[#1a1c1c] dark:bg-gray-900 overflow-hidden transition-colors">
+        <div className="relative py-28 ">
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] rounded-full bg-[#27731e] opacity-15 blur-3xl" />
         </div>
@@ -671,6 +732,8 @@ export function AboutClient() {
             </div>
           </FadeUp>
         </div>
+        </div>
+        <Footer />
       </section>
 
     </div>

@@ -13,7 +13,7 @@ import { ok, Err } from "@/lib/api";
  *   county (required) — the Kenyan county name
  *
  * Returns:
- *   200 { data: { id, name, county, mpesaType, shortcode } }
+ *   200 { data: { id, name, county, mpesaType, shortcode, phone } }
  *   400 when county param is missing
  *   500 on unexpected errors
  */
@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
           county: true,
           mpesaType: true,
           shortcode: true,
+          phone: true,
         },
       });
       return ok({ branches });
@@ -45,6 +46,7 @@ export async function GET(req: NextRequest) {
         county: true,
         mpesaType: true,
         shortcode: true,
+        phone: true,
       },
     });
 
@@ -59,6 +61,7 @@ export async function GET(req: NextRequest) {
           county: true,
           mpesaType: true,
           shortcode: true,
+          phone: true,
         },
       }));
 

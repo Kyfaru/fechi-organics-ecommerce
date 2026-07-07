@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { MessageSquare, Send, Plus, X } from "lucide-react";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
+import { useTicketStream } from "@/hooks/use-ticket-stream";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -234,6 +235,14 @@ export function MessagesClient() {
   });
 
   const activeTicket: TicketDetail | null = detailData?.data?.ticket ?? null;
+
+  // Real-time layer on top of the 15s poll above — invalidate as soon as a
+  // reply lands (from the admin's side, most of the time) so the thread
+  // updates without waiting for the next poll tick.
+  useTicketStream(activeTicketId, () => {
+    qc.invalidateQueries({ queryKey: ["my-ticket", activeTicketId] });
+    qc.invalidateQueries({ queryKey: ["my-tickets"] });
+  });
 
   // Auto-scroll to bottom
   useEffect(() => {

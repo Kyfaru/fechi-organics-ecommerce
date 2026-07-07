@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Search, Send, X, MessageSquare, CheckCheck, Check } from "lucide-react";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { EmptyState } from "@/components/admin/ui/EmptyState";
+import { useTicketStream } from "@/hooks/use-ticket-stream";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -23,6 +24,8 @@ type LastMessage = {
   createdAt: string;
 };
 
+type AssignedAdmin = { id: string; name: string };
+
 type TicketSummary = {
   id: string;
   ticketNumber: string;
@@ -32,6 +35,7 @@ type TicketSummary = {
   expiresAt: string;
   createdAt: string;
   user: TicketUser;
+  assignedAdmin: AssignedAdmin | null;
   messages: LastMessage[];
 };
 
@@ -134,6 +138,11 @@ function TicketListItem({
       </div>
       <div className="font-dm text-[11px] text-(--neutral-400) dark:text-(--dark-muted) mb-1">
         {ticket.ticketNumber}
+        {ticket.assignedAdmin && (
+          <span className="ml-1.5 text-(--green-800) dark:text-green-400">
+            · {ticket.assignedAdmin.name}
+          </span>
+        )}
       </div>
       <div className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted) truncate">
         {preview}
@@ -197,18 +206,34 @@ export function AdminTicketsClient() {
   const qc = useQueryClient();
   const [activeTicketId, setActiveTicketId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "resolved" | "expired">("all");
+  const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [replyText, setReplyText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // -------------------------------------------------------------------------
+  // Fetch admin/customer_care staff — populates the assignee filter dropdown
+  // -------------------------------------------------------------------------
+  const { data: staffData } = useQuery({
+    queryKey: ["admin-staff-list"],
+    queryFn: () => fetch("/api/admin/staff").then((r) => r.json()),
+    staleTime: 5 * 60_000,
+  });
+  const staffList: { id: string; name: string }[] = (staffData?.data?.staff ?? []).map(
+    (s: { id: string; name: string }) => ({ id: s.id, name: s.name })
+  );
+
+  // -------------------------------------------------------------------------
   // Fetch ticket list
   // -------------------------------------------------------------------------
   const { data: listData, isLoading: listLoading } = useQuery({
-    queryKey: ["admin-tickets", statusFilter],
+    queryKey: ["admin-tickets", statusFilter, assigneeFilter],
     queryFn: () => {
-      const params = statusFilter !== "all" ? `?status=${statusFilter}` : "";
-      return fetch(`/api/admin/tickets${params}`).then((r) => r.json());
+      const params = new URLSearchParams();
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (assigneeFilter !== "all") params.set("assignedAdminId", assigneeFilter);
+      const qs = params.toString();
+      return fetch(`/api/admin/tickets${qs ? `?${qs}` : ""}`).then((r) => r.json());
     },
     refetchInterval: 30_000,
   });
@@ -237,6 +262,14 @@ export function AdminTicketsClient() {
   });
 
   const activeTicket: TicketDetail | null = detailData?.data?.ticket ?? null;
+
+  // Real-time layer on top of the 15s poll above — invalidate as soon as a
+  // reply lands on either side of the conversation, from either admin or
+  // customer, so the thread updates without waiting for the next poll tick.
+  useTicketStream(activeTicketId, () => {
+    qc.invalidateQueries({ queryKey: ["admin-ticket", activeTicketId] });
+    qc.invalidateQueries({ queryKey: ["admin-tickets"] });
+  });
 
   // Auto-scroll to bottom when messages load or new message arrives
   useEffect(() => {
@@ -396,6 +429,23 @@ export function AdminTicketsClient() {
               {f.label}
             </button>
           ))}
+        </div>
+
+        {/* Assignee filter */}
+        <div className="px-2 py-2 border-b border-(--neutral-100) dark:border-(--dark-border)">
+          <select
+            value={assigneeFilter}
+            onChange={(e) => setAssigneeFilter(e.target.value)}
+            className="w-full h-8 px-2 rounded-[8px] border border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg) font-dm text-[12px] text-(--neutral-700) dark:text-(--dark-text) focus:outline-none focus:border-(--green-800) transition-colors"
+          >
+            <option value="all">All assignees</option>
+            <option value="unassigned">Unassigned</option>
+            {staffList.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Ticket list */}
@@ -603,6 +653,7 @@ export function AdminTicketsClient() {
               {[
                 { label: "Ticket", value: activeTicket.ticketNumber },
                 { label: "Subject", value: activeTicket.subject },
+                { label: "Assigned to", value: activeTicket.assignedAdmin?.name ?? "Unassigned" },
                 { label: "Created", value: formatDate(activeTicket.createdAt) },
                 { label: "Last Activity", value: formatDate(activeTicket.lastActivityAt) },
                 { label: "Expires", value: formatDate(activeTicket.expiresAt) },

@@ -9,6 +9,8 @@ export async function sendOTPEmail(email: string, otp: string, type: string): Pr
       ? "Your Fechi Organics login code"
       : type === "email-verification"
       ? "Verify your Fechi Organics email"
+      : type === "password-reset"
+      ? "Your Fechi Organics password reset code"
       : "Your Fechi Organics verification code";
 
   const { error } = await resend.emails.send({
@@ -102,6 +104,96 @@ export async function sendAdminNotificationEmail(args: {
     console.error("[Resend] Failed to send admin notification:", error);
     throw new Error("Failed to send admin notification");
   }
+}
+
+/**
+ * Sends a branded acknowledgment email after a contact-form submission turns
+ * into a support ticket (matched-account submitters only — see
+ * app/api/contact/route.ts). Confirms receipt and sets a response-time
+ * expectation so the customer isn't left wondering whether the message went
+ * through.
+ *
+ * @param args.email        - Recipient email address.
+ * @param args.name         - Recipient display name.
+ * @param args.ticketNumber - The newly created ticket's customer-facing number.
+ * @param args.subject      - The subject the customer submitted.
+ * @throws When Resend fails to deliver the email.
+ */
+export async function sendTicketAcknowledgmentEmail(args: {
+  email: string;
+  name: string;
+  ticketNumber: string;
+  subject: string;
+}): Promise<void> {
+  const { error } = await resend.emails.send({
+    from: sendEmail!,
+    to: args.email,
+    subject: `We've received your message — Ticket ${args.ticketNumber}`,
+    html: buildTicketAcknowledgmentEmailHTML(args),
+  });
+
+  if (error) {
+    console.error("[Resend] Failed to send ticket acknowledgment email:", error);
+    throw new Error("Failed to send ticket acknowledgment email");
+  }
+}
+
+function buildTicketAcknowledgmentEmailHTML(args: {
+  name: string;
+  ticketNumber: string;
+  subject: string;
+}): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"/><title>We've received your message</title></head>
+<body style="margin:0;padding:0;background-color:#f4f6f3;font-family:'DM Sans',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f3;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.07);">
+        <tr>
+          <td style="background:#27731e;padding:40px 48px 36px;text-align:center;">
+            <p style="margin:0;font-size:13px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,0.7);">Fechi Organics</p>
+            <h1 style="margin:8px 0 0;font-family:Georgia,serif;font-size:28px;font-weight:700;color:#ffffff;">We've Got Your Message</h1>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:48px 48px 40px;">
+            <p style="margin:0 0 16px;font-size:15px;color:#40493c;line-height:1.6;">
+              Hi ${args.name.split(" ")[0] || args.name},
+            </p>
+            <p style="margin:0 0 24px;font-size:15px;color:#40493c;line-height:1.6;">
+              Thanks for reaching out about <strong>${args.subject}</strong>. We've opened a support
+              ticket so we can track it through to a resolution — your ticket number is
+              <strong>${args.ticketNumber}</strong>.
+            </p>
+            <table cellpadding="0" cellspacing="0" width="100%" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;margin-bottom:28px;">
+              <tr>
+                <td style="padding:16px 20px;">
+                  <p style="margin:0;font-size:13px;color:#166534;line-height:1.5;">
+                    Our team typically responds within <strong>24 hours</strong> on business days.
+                  </p>
+                </td>
+              </tr>
+            </table>
+            <p style="margin:0;font-size:13px;color:rgba(64,73,60,0.6);line-height:1.6;">
+              You can follow the conversation any time from your
+              <a href="${process.env.NEXT_PUBLIC_APP_URL}/messages" style="color:#045a03;text-decoration:underline;">messages inbox</a>.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f4f6f3;padding:24px 48px;border-top:1px solid #e8ede6;text-align:center;">
+            <p style="margin:0;font-size:12px;color:rgba(64,73,60,0.5);line-height:1.5;">
+              © ${new Date().getFullYear()} Fechi Organics. All rights reserved.<br/>
+              Rooted in Nature. Formulated for You.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 }
 
 function buildPasswordResetEmailHTML(resetUrl: string): string {

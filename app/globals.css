@@ -326,6 +326,20 @@ body {
   transition: opacity 0.2s ease;
 }
 
+/* ── HighlightText (components/ui/HighlightText.tsx) ─────────────────────── */
+@keyframes highlight-fade {
+  from { background-color: var(--gold-200); }
+  to   { background-color: transparent; }
+}
+.highlight-mark {
+  background-color: transparent;
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+  margin: 0 -1px;
+  animation: highlight-fade 3s ease-out forwards;
+}
+
 /* ── Switch (components/ui/Switch.tsx) ───────────────────────────────────── */
 .switch-label:focus-within .switch-slider {
   outline: 2px solid rgb(0, 218, 80);

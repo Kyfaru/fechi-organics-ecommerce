@@ -106,10 +106,10 @@ export function FaqSection() {
                         ? "border-[#27731e] bg-[#27731e] text-white rotate-90"
                         : "border-[#c0c0c0] dark:border-gray-600 text-[#1a1c1c] dark:text-gray-300",
                     ].join(" ")}
-                    style={{ transform: openIndex === idx ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}
+                    style={{ transform: openIndex === idx ? "rotate(280deg)" : "rotate(90deg)", transition: "transform 0.1s" }}
                   >
                     <Icon
-                      icon={openIndex === idx ? "mdi:chevron-right" : "mdi:chevron-right"}
+                      icon={openIndex === idx ? "iconamoon:arrow-top-right-1-light" : "mdi:chevron-right"}
                       width={18}
                     />
                   </span>

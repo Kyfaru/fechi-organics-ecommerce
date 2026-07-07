@@ -7,6 +7,8 @@ import { qstash } from "@/lib/qstash";
 import { z } from "zod";
 import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { getRedis } from "@/lib/redis";
+import { ticketChannel } from "@/lib/ticket-channel";
 
 async function requireAdmin() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -80,6 +82,15 @@ export async function POST(
       }),
     ]);
 
+    // Fetch the customer's last message so the notification email can quote
+    // it above the admin's new reply — gives the recipient context without
+    // needing to click through to the thread.
+    const lastCustomerMessage = await db.ticketMessage.findFirst({
+      where: { ticketId: id, senderType: "CUSTOMER" },
+      orderBy: { createdAt: "desc" },
+      select: { content: true },
+    });
+
     // Enqueue background email to the customer — fire-and-forget, non-blocking
     try {
       await qstash.publishJSON({
@@ -91,11 +102,23 @@ export async function POST(
           recipientName: ticket.user.name,
           subject: `Re: ${ticket.subject}`,
           content: parsed.data.content,
+          quotedContent: lastCustomerMessage?.content,
         },
       });
     } catch (qstashErr) {
       // Non-fatal — message was saved, email delivery can be retried
       console.error("[admin/tickets/reply] Qstash enqueue failed", qstashErr);
+    }
+
+    // Notify any open SSE stream on this ticket — best-effort, non-blocking
+    try {
+      await getRedis().set(
+        ticketChannel(id),
+        JSON.stringify({ type: "new_message", messageId: message.id, senderType: "ADMIN" }),
+        { ex: 30 }
+      );
+    } catch (redisErr) {
+      console.error("[admin/tickets/reply] Redis publish failed", redisErr);
     }
 
     console.info("[admin/tickets/[id]/reply] POST — message", message.id, "for ticket", id);

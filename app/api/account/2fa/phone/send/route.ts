@@ -2,12 +2,8 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { getRedis } from "@/lib/redis"
+import { generateOtp, storeOtp } from "@/lib/otp"
 import { sendSms } from "@/lib/twilio"
-
-function generateOTP(): string {
-  return String(Math.floor(100000 + Math.random() * 900000))
-}
 
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
@@ -21,9 +17,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: { message: "No phone number on your account. Add one in Profile settings." } }, { status: 400 })
     }
 
-    const otp = generateOTP()
-    const redis = getRedis()
-    await redis.set(`2fa:otp:phone:${session.user.id}`, otp, { ex: 600 })
+    const otp = generateOtp()
+    await storeOtp(`2fa:otp:phone:${session.user.id}`, otp, 600)
 
     const hasTwilio = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER)
     if (hasTwilio) {

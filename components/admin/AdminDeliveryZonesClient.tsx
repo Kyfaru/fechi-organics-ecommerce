@@ -1,16 +1,36 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Edit, MapPin, Plus, Trash2, Truck } from "lucide-react";
+import { Edit, MapPin, Plus, Search, Trash2, Truck } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { StatsCard } from "@/components/ui/stats-card";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { HighlightText } from "@/components/ui/HighlightText";
 import { KENYA_COUNTIES } from "@/lib/kenya-counties";
 import { toast } from "@/lib/toast";
+
+/**
+ * Debounces a fast-changing value (e.g. a search input) so downstream
+ * filtering only runs ~250-300ms after the user stops typing, instead of on
+ * every keystroke.
+ */
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
+/** Case-insensitive substring match against every displayed column value. */
+function includesQuery(haystack: string, query: string): boolean {
+  return haystack.toLowerCase().includes(query.trim().toLowerCase());
+}
 
 type Branch = { id: string; name: string; county: string; phone?: string | null; isActive: boolean; mpesaType?: string; shortcode?: string | null };
 type Zone = {
@@ -48,6 +68,15 @@ type BranchForm = { name: string; county: string; phone: string; isActive: boole
 export function AdminDeliveryZonesClient() {
   const qc = useQueryClient();
   const [countyFilter, setCountyFilter] = useState("");
+
+  // Client-side free-text search — filters the already-loaded zones/branches
+  // datasets, no new API calls. Debounced so filtering doesn't re-run on
+  // every single keystroke.
+  const [zoneSearch, setZoneSearch] = useState("");
+  const [branchSearch, setBranchSearch] = useState("");
+  const debouncedZoneSearch = useDebouncedValue(zoneSearch, 300);
+  const debouncedBranchSearch = useDebouncedValue(branchSearch, 300);
+
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Zone | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Zone | null>(null);
@@ -70,6 +99,26 @@ export function AdminDeliveryZonesClient() {
 
   const zones = zonesQuery.data?.data?.zones ?? [];
   const branches = branchesQuery.data?.data?.branches ?? [];
+
+  // Stringified, lowercased text of every visible column — used for both the
+  // free-text filter and to know which rows/cells matched for highlighting.
+  const zoneSearchText = (zone: Zone) =>
+    [zone.county, zone.name, zone.branch?.name ?? "Unassigned", formatKes(zone.deliveryFeeKes), zone.isActive ? "Active" : "Paused"].join(" ");
+
+  const branchSearchText = (branch: Branch) =>
+    [branch.name, branch.county, branch.phone ?? "", branch.isActive ? "Active" : "Inactive"].join(" ");
+
+  const filteredZones = useMemo(() => {
+    if (!debouncedZoneSearch.trim()) return zones;
+    return zones.filter((z) => includesQuery(zoneSearchText(z), debouncedZoneSearch));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zones, debouncedZoneSearch]);
+
+  const filteredBranches = useMemo(() => {
+    if (!debouncedBranchSearch.trim()) return branches;
+    return branches.filter((b) => includesQuery(branchSearchText(b), debouncedBranchSearch));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branches, debouncedBranchSearch]);
 
   const saveBranchMutation = useMutation({
     mutationFn: async () => {
@@ -108,17 +157,25 @@ export function AdminDeliveryZonesClient() {
   }
 
   const branchColumns = useMemo(() => [
-    { key: "name", label: "Branch", sortable: true },
-    { key: "county", label: "County", sortable: true },
+    { key: "name", label: "Branch", sortable: true, render: (value: unknown) => <HighlightText text={String(value)} query={debouncedBranchSearch} /> },
+    { key: "county", label: "County", sortable: true, render: (value: unknown) => <HighlightText text={String(value)} query={debouncedBranchSearch} /> },
     {
       key: "phone",
       label: "Phone",
-      render: (value: unknown) => <span className="text-(--neutral-500)">{(value as string | null) ?? "—"}</span>,
+      render: (value: unknown) => (
+        <span className="text-(--neutral-500)">
+          {value ? <HighlightText text={String(value)} query={debouncedBranchSearch} /> : "—"}
+        </span>
+      ),
     },
     {
       key: "isActive",
       label: "Active",
-      render: (value: unknown) => <span className={Boolean(value) ? "text-(--success)" : "text-(--neutral-400)"}>{Boolean(value) ? "Active" : "Inactive"}</span>,
+      render: (value: unknown) => (
+        <span className={Boolean(value) ? "text-(--success)" : "text-(--neutral-400)"}>
+          <HighlightText text={Boolean(value) ? "Active" : "Inactive"} query={debouncedBranchSearch} />
+        </span>
+      ),
     },
     {
       key: "actions",
@@ -133,7 +190,7 @@ export function AdminDeliveryZonesClient() {
       },
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], []);
+  ], [debouncedBranchSearch]);
   const activeZones = zones.filter((z) => z.isActive).length;
   const avgFee = zones.length ? Math.round(zones.reduce((sum, z) => sum + z.deliveryFeeKes, 0) / zones.length) : 0;
 
@@ -179,26 +236,30 @@ export function AdminDeliveryZonesClient() {
   });
 
   const columns = useMemo(() => [
-    { key: "county", label: "County", sortable: true },
-    { key: "name", label: "Zone", sortable: true },
+    { key: "county", label: "County", sortable: true, render: (value: unknown) => <HighlightText text={String(value)} query={debouncedZoneSearch} /> },
+    { key: "name", label: "Zone", sortable: true, render: (value: unknown) => <HighlightText text={String(value)} query={debouncedZoneSearch} /> },
     {
       key: "branch",
       label: "Branch",
       render: (_: unknown, row: Record<string, unknown>) => {
         const zone = row as unknown as Zone;
-        return <span>{zone.branch?.name ?? "Unassigned"}</span>;
+        return <span><HighlightText text={zone.branch?.name ?? "Unassigned"} query={debouncedZoneSearch} /></span>;
       },
     },
     {
       key: "deliveryFeeKes",
       label: "Fee",
       sortable: true,
-      render: (value: unknown) => <span className="font-semibold">{formatKes(Number(value))}</span>,
+      render: (value: unknown) => <span className="font-semibold"><HighlightText text={formatKes(Number(value))} query={debouncedZoneSearch} /></span>,
     },
     {
       key: "isActive",
       label: "Active",
-      render: (value: unknown) => <span className={Boolean(value) ? "text-(--success)" : "text-(--neutral-400)"}>{Boolean(value) ? "Active" : "Paused"}</span>,
+      render: (value: unknown) => (
+        <span className={Boolean(value) ? "text-(--success)" : "text-(--neutral-400)"}>
+          <HighlightText text={Boolean(value) ? "Active" : "Paused"} query={debouncedZoneSearch} />
+        </span>
+      ),
     },
     {
       key: "actions",
@@ -213,7 +274,8 @@ export function AdminDeliveryZonesClient() {
         );
       },
     },
-  ], []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [debouncedZoneSearch]);
 
   function openCreate() {
     setEditing(null);
@@ -273,14 +335,27 @@ export function AdminDeliveryZonesClient() {
         </button>
       </div>
 
+      <div className="px-6 mb-3">
+        <div className="relative max-w-xs">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400)" />
+          <input
+            value={zoneSearch}
+            onChange={(e) => setZoneSearch(e.target.value)}
+            placeholder="Search zones..."
+            aria-label="Search delivery zones"
+            className="w-full h-9 pl-8 pr-3 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] bg-white"
+          />
+        </div>
+      </div>
+
       <div className="px-6">
         <DataTable
           columns={columns}
-          data={zones as unknown as Record<string, unknown>[]}
+          data={filteredZones as unknown as Record<string, unknown>[]}
           loading={zonesQuery.isLoading}
           onRowClick={(row) => openEdit(row as unknown as Zone)}
-          emptyTitle="No delivery zones"
-          emptyDescription="Create zones so customers can pick accurate checkout delivery fees."
+          emptyTitle={zoneSearch.trim() ? "No matching zones" : "No delivery zones"}
+          emptyDescription={zoneSearch.trim() ? "Try a different search term." : "Create zones so customers can pick accurate checkout delivery fees."}
           pageSize={25}
         />
       </div>
@@ -332,14 +407,27 @@ export function AdminDeliveryZonesClient() {
         <h2 className="font-dm font-semibold text-[16px] text-(--neutral-900)">Branches</h2>
         <p className="font-dm text-[13px] text-(--neutral-500) mt-0.5">Click a branch to update its name, county, phone, or active status</p>
       </div>
+      <div className="px-6 mb-3">
+        <div className="relative max-w-xs">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400)" />
+          <input
+            value={branchSearch}
+            onChange={(e) => setBranchSearch(e.target.value)}
+            placeholder="Search branches..."
+            aria-label="Search branches"
+            className="w-full h-9 pl-8 pr-3 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] bg-white"
+          />
+        </div>
+      </div>
+
       <div className="px-6 pb-8">
         <DataTable
           columns={branchColumns}
-          data={branches as unknown as Record<string, unknown>[]}
+          data={filteredBranches as unknown as Record<string, unknown>[]}
           loading={branchesQuery.isLoading}
           onRowClick={(row) => openBranchEdit(row as unknown as Branch)}
-          emptyTitle="No branches"
-          emptyDescription="Add branches so pickup orders can show the correct location and phone."
+          emptyTitle={branchSearch.trim() ? "No matching branches" : "No branches"}
+          emptyDescription={branchSearch.trim() ? "Try a different search term." : "Add branches so pickup orders can show the correct location and phone."}
           pageSize={10}
         />
       </div>

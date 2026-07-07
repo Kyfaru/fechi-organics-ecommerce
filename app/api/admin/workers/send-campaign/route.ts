@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
         ? { id: { in: campaign.audienceCustomerIds } }
         : { emailVerified: true, banned: false }),
     },
-    select: { email: true, name: true, phone: true },
+    select: { id: true, email: true, name: true, phone: true },
   });
 
   await db.campaign.update({
@@ -100,6 +100,22 @@ export async function POST(req: NextRequest) {
           await sendSms(user.phone, plainContent);
           // Only increment if we haven't already counted this user from the email send
           if (campaign.type === "SMS") sentCount++;
+        }
+
+        // Write an in-app inbox message when type is PUSH or ALL, so the
+        // campaign actually shows up in the customer's /account/inbox —
+        // title/body mirror the same heading/content used for email+SMS above
+        if (campaign.type === "PUSH" || campaign.type === "ALL") {
+          await db.inboxMessage.create({
+            data: {
+              userId: user.id,
+              type: "PROMOTION",
+              title: campaign.heading ?? campaign.subject ?? campaign.name,
+              body: plainContent,
+            },
+          });
+          // Only increment if we haven't already counted this user from the email send
+          if (campaign.type === "PUSH") sentCount++;
         }
       } catch (err) {
         // Log but continue — one failed delivery must not abort the batch

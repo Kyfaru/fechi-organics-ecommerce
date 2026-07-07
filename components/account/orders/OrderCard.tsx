@@ -53,7 +53,7 @@ export default function OrderCard({ id, orderNumber, status, createdAt, totalKes
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <p className="text-[15px] font-semibold text-neutral-900">
-              #{orderNumber ?? id.slice(-8).toUpperCase()}
+              {orderNumber ?? id.slice(-8).toUpperCase()}
             </p>
             <p className="text-sm text-neutral-400 mt-0.5">
               {fmt(createdAt)} · {itemCount} item{itemCount !== 1 ? "s" : ""}

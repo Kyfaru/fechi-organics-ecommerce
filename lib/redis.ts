@@ -9,6 +9,11 @@ type RedisLike = {
   set: (key: string, value: unknown, options?: { ex?: number }) => Promise<unknown>;
   incr: (key: string) => Promise<number>;
   expire: (key: string, seconds: number) => Promise<number>;
+  del: (key: string) => Promise<number>;
+  // Atomic read-then-delete — used anywhere a value must be single-use
+  // (OTP verification, one-time reset-authorization tokens) so two concurrent
+  // requests can never both "win" against the same code/token.
+  getdel: (key: string) => Promise<unknown>;
 };
 
 function makeStub(): RedisLike {
@@ -42,6 +47,14 @@ function makeStub(): RedisLike {
       if (!entry) return 0;
       store.set(key, { ...entry, expiresAt: Date.now() + seconds * 1000 });
       return 1;
+    },
+    async del(key) {
+      return store.delete(key) ? 1 : 0;
+    },
+    async getdel(key) {
+      const value = await this.get(key);
+      store.delete(key);
+      return value;
     },
   };
 }

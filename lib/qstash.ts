@@ -26,7 +26,14 @@ export async function verifyQstashRequest(signature: string | null, body: string
   return qstashReceiver.verify({ signature, body });
 }
 
-export async function publishQstashJSON(pathOrUrl: string, body: unknown, opts?: { delay?: number }) {
+export async function publishQstashJSON(
+  pathOrUrl: string,
+  body: unknown,
+  // delay: relative, in seconds, from publish time (existing behavior).
+  // notBefore: absolute Unix timestamp in seconds — used for exact-time scheduling
+  // (e.g. a user-picked "send at" datetime) where a relative delay isn't precise enough.
+  opts?: { delay?: number; notBefore?: number }
+) {
   const baseUrl = process.env.QSTASH_URL;
   const url = pathOrUrl.startsWith("http")
     ? pathOrUrl
@@ -40,6 +47,7 @@ export async function publishQstashJSON(pathOrUrl: string, body: unknown, opts?:
   return qstash.publishJSON({
     url,
     body,
-    ...(opts?.delay ? { delay: opts.delay } : {}),
+    // notBefore overrides delay when both are set, so only send one
+    ...(opts?.notBefore ? { notBefore: opts.notBefore } : opts?.delay ? { delay: opts.delay } : {}),
   });
 }

@@ -42,6 +42,9 @@ export async function GET(
             createdAt: true,
           },
         },
+        assignedAdmin: {
+          select: { id: true, name: true },
+        },
         messages: {
           orderBy: { createdAt: "asc" },
         },

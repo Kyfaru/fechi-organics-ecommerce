@@ -5,8 +5,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Icon } from "@iconify/react";
 import { toast } from "@/lib/toast";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import PhoneInput from "@/components/ui/PhoneInput";
 import { posthog } from "@/lib/posthog";
+import { ContactSuccessModal } from "@/components/contact/ContactSuccessModal";
 
 function CustomSelect({
   value,
@@ -152,6 +154,7 @@ const ORDER_INQUIRY_OPTIONS = [
   "Order Inquiry",
   "Product Question",
   "Delivery Issue",
+  "Request a Delivery Zone",
   "Return Request",
   "Partnership",
   "Other",
@@ -205,15 +208,32 @@ const inputCls =
   "w-full border border-[#c0cab8] dark:border-gray-600 rounded-[8px] px-4 py-3 font-body text-[14px] text-[#1a1c1c] dark:text-white bg-white dark:bg-gray-800 outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] placeholder-[#a1a1a1] dark:placeholder-gray-500 transition-colors";
 
 export function ContactClient() {
-  const [form, setForm] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
-    subject: "Order Inquiry",
-    message: "",
+  // Pre-fill subject (and optionally a starter message) from the query string —
+  // used by the /shipping page's "Request a New Zone" CTA so a zone request
+  // becomes a normal contact-form ticket instead of a separate backend path.
+  // Read once via a lazy useState initializer (matches the searchParams.get()
+  // pattern already used in ShopClient) rather than setState-in-effect.
+  const searchParams = useSearchParams();
+  const [form, setForm] = useState(() => {
+    const subjectParam = searchParams.get("subject");
+    const countyParam = searchParams.get("county");
+    const subject =
+      subjectParam && ORDER_INQUIRY_OPTIONS.includes(subjectParam) ? subjectParam : "Order Inquiry";
+    return {
+      firstName: "",
+      lastName: "",
+      email: "",
+      phone: "",
+      subject,
+      message: countyParam
+        ? `Hi, I'd like to request delivery to ${countyParam} County — it's not currently listed on the Shipping page.`
+        : "",
+    };
   });
   const [sending, setSending] = useState(false);
+  const [successModal, setSuccessModal] = useState<{ open: boolean; ticketNumber?: string }>({
+    open: false,
+  });
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -229,8 +249,11 @@ export function ContactClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...form,
           name: `${form.firstName} ${form.lastName}`.trim(),
+          email: form.email,
+          phone: form.phone,
+          subject: form.subject,
+          message: form.message,
         }),
       });
       const json = await res.json();
@@ -244,7 +267,8 @@ export function ContactClient() {
           utm_medium: urlParams.get("utm_medium"),
           utm_campaign: urlParams.get("utm_campaign"),
         });
-        toast.success("Message sent! We'll get back to you within 24 hours.");
+        const ticketNumber = json.data?.ticketNumber as string | undefined;
+        setSuccessModal({ open: true, ticketNumber });
         setForm({
           firstName: "",
           lastName: "",
@@ -254,7 +278,7 @@ export function ContactClient() {
           message: "",
         });
       } else {
-        toast.error(json.error ?? "Something went wrong. Please try again.");
+        toast.error(json.error?.message ?? "Something went wrong. Please try again.");
       }
     } catch {
       toast.error("Network error. Please check your connection and try again.");
@@ -263,8 +287,22 @@ export function ContactClient() {
     }
   }
 
+  function handleCloseSuccessModal() {
+    const { ticketNumber } = successModal;
+    setSuccessModal({ open: false });
+    toast.success(
+      ticketNumber ? `Ticket ${ticketNumber} created — we'll be in touch soon.` : "We'll be in touch soon."
+    );
+  }
+
   return (
     <>
+      <ContactSuccessModal
+        open={successModal.open}
+        ticketNumber={successModal.ticketNumber}
+        onClose={handleCloseSuccessModal}
+      />
+
       {/* Hero header */}
       <section className="bg-white dark:bg-gray-950 px-4 md:px-8 pt-10 pb-16 text-center transition-colors">
         <motion.div

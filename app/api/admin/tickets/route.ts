@@ -14,7 +14,8 @@ async function requireAdmin() {
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/tickets
-// Query params: status (open|resolved|expired)
+// Query params: status (open|resolved|expired), assignedAdminId (user id, or
+// "unassigned" to find tickets with no assignee)
 // Returns all tickets with user info and last message preview.
 // Bulk-expires overdue tickets before responding.
 // ---------------------------------------------------------------------------
@@ -32,11 +33,17 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const statusParam = searchParams.get("status")?.toUpperCase();
+    const assignedAdminId = searchParams.get("assignedAdminId");
 
-    const where =
-      statusParam && ["OPEN", "RESOLVED", "EXPIRED"].includes(statusParam)
-        ? { status: statusParam as "OPEN" | "RESOLVED" | "EXPIRED" }
-        : {};
+    const where: Record<string, unknown> = {};
+    if (statusParam && ["OPEN", "RESOLVED", "EXPIRED"].includes(statusParam)) {
+      where.status = statusParam;
+    }
+    if (assignedAdminId === "unassigned") {
+      where.assignedAdminId = null;
+    } else if (assignedAdminId) {
+      where.assignedAdminId = assignedAdminId;
+    }
 
     const tickets = await db.supportTicket.findMany({
       where,
@@ -52,6 +59,9 @@ export async function GET(req: NextRequest) {
         createdAt: true,
         user: {
           select: { id: true, name: true, email: true, phone: true },
+        },
+        assignedAdmin: {
+          select: { id: true, name: true },
         },
         messages: {
           orderBy: { createdAt: "desc" },

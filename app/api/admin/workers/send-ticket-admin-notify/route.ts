@@ -18,12 +18,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  const { ticketId, messageId, customerName, subject, messagePreview } = JSON.parse(rawBody) as {
+  const { ticketId, messageId, customerName, subject, content } = JSON.parse(rawBody) as {
     ticketId: string;
     messageId: string;
     customerName: string;
     subject: string;
-    messagePreview: string;
+    content: string;
   };
 
   const adminEmail = process.env.ADMIN_EMAIL ?? "admin@fechiorganics.com";
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
               <strong>${customerName}</strong> replied to ticket: <strong>${subject}</strong>
             </p>
             <blockquote style="border-left:3px solid #43a935;margin:16px 0;padding:12px 20px;background:#ecf8e6;border-radius:0 8px 8px 0;">
-              <p style="margin:0;font-size:14px;color:#3d4235;line-height:1.6;">${messagePreview.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
+              <p style="margin:0;font-size:14px;color:#3d4235;line-height:1.6;">${content.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
             </blockquote>
             <a href="${ticketUrl}" style="display:inline-block;margin-top:24px;padding:12px 24px;background:#27731e;color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">
               View Ticket

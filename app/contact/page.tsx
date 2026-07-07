@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { ContactClient } from "@/components/contact/ContactClient";
@@ -11,7 +12,12 @@ export default function ContactPage() {
   return (
     <main className="min-h-screen bg-white overflow-x-hidden">
       <Navbar />
-      <ContactClient />
+      {/* ContactClient reads useSearchParams() to pre-fill the subject/message
+          from the /shipping page's "Request a Zone" CTA, which requires a
+          Suspense boundary (matches the pattern in app/shop/page.tsx). */}
+      <Suspense>
+        <ContactClient />
+      </Suspense>
       <Footer />
     </main>
   );

@@ -42,17 +42,38 @@ function makeLeaves(): Leaf[] {
   });
 }
 
+// ponytail: session-scoped — the reveal only plays once per tab session,
+// then holds fully visible; sessionStorage (not localStorage) so it replays
+// on a fresh tab/session, matching a "first landing" entrance effect.
+const INTRO_PLAYED_KEY = "fo_leaf_intro_played";
+
 export function LeafBackground() {
   const [leaves, setLeaves] = useState<Leaf[] | null>(null);
+  const [playIntro, setPlayIntro] = useState(false);
 
   // ponytail: random per leaf must be client-only or SSR/CSR markup mismatches
   useEffect(() => {
     setLeaves(makeLeaves());
+    if (!sessionStorage.getItem(INTRO_PLAYED_KEY)) {
+      setPlayIntro(true);
+      sessionStorage.setItem(INTRO_PLAYED_KEY, "1");
+    }
   }, []);
 
   return (
-    <div className="leaf-bg-wrap">
+    <div className={`leaf-bg-wrap${playIntro ? " leaf-bg-intro" : ""}`}>
       <style>{`
+        /* --grow must be registered so the browser can smoothly interpolate
+           it inside the mask-image gradient below — without this, an
+           unregistered custom property flips discretely mid-keyframe
+           instead of easing, which read as the leaves abruptly popping
+           in/out rather than growing in. */
+        @property --grow {
+          syntax: '<percentage>';
+          inherits: false;
+          initial-value: 100%;
+        }
+
         .leaf-bg-wrap {
           position: absolute;
           inset: 0;
@@ -79,14 +100,17 @@ export function LeafBackground() {
             black var(--grow, 100%),
             transparent var(--grow, 100%)
           );
-          animation: leafGrow 7s ease-in-out infinite;
+        }
+
+        /* Only the first landing per session plays the reveal; it grows in
+           once and holds (fill-mode forwards) — it never wipes back out. */
+        .leaf-bg-wrap.leaf-bg-intro svg {
+          animation: leafGrow 1.8s ease-out forwards;
         }
 
         @keyframes leafGrow {
           0%   { --grow: 0%; }
-          40%  { --grow: 100%; }
-          70%  { --grow: 100%; }
-          100% { --grow: 0%; }
+          100% { --grow: 100%; }
         }
 
         .leaf-bg-wrap path {
@@ -111,8 +135,8 @@ export function LeafBackground() {
         }
 
         @media (max-width: 640px) {
-          .leaf-bg-wrap svg {
-            animation-duration: 5.2s;
+          .leaf-bg-wrap.leaf-bg-intro svg {
+            animation-duration: 1.2s;
           }
           /* thin out the field on small screens */
           .leaf-bg-wrap path:nth-child(2n) {

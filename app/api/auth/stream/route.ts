@@ -3,21 +3,10 @@ import { auth } from '@/lib/auth'
 import { getRedis } from '@/lib/redis'
 import { sessionChannel } from '@/lib/session-channel'
 import { Ratelimit } from '@upstash/ratelimit'
-import { Redis } from '@upstash/redis'
-
-function makeRatelimit() {
-  const url = process.env.UPSTASH_REDIS_REST_URL
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN
-  if (!url || !token) return null
-  return new Ratelimit({
-    redis: new Redis({ url, token }),
-    limiter: Ratelimit.slidingWindow(10, '1 m'),
-    prefix: 'sse_session',
-  })
-}
+import { makeRatelimit } from '@/lib/ratelimit'
 
 // ponytail: module-level singleton avoids recreating on every request
-const ratelimit = makeRatelimit()
+const ratelimit = makeRatelimit(Ratelimit.slidingWindow(10, '1 m'), 'sse_session')
 
 export async function GET(req: NextRequest) {
   // Gate 1: Auth

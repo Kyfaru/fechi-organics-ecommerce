@@ -15,13 +15,13 @@ const FEATURE_CARDS = [
   {
     bg: "#6cdecb",
     icon: "mdi:truck-delivery-outline",
-    title: "Free home\ndelivery",
+    title: "24Hrs order\nDelivery",
     href: "/shop",
   },
   {
     bg: "#ffe37c",
     icon: "mdi:cash-multiple",
-    title: "Pay on\nDelivery",
+    title: "Quick Payment\nProcess",
     href: "/shop",
   },
 ];
@@ -48,7 +48,7 @@ export function InfoGridSection() {
                   href={card.href}
                   className="flex items-center justify-center w-10 h-10 bg-white dark:bg-gray-900 rounded-full shadow-sm hover:scale-110 transition-transform"
                 >
-                  <Icon icon="mdi:chevron-right" width={18} className="text-[#1a1c1c]" />
+                  <Icon icon="mdi:chevron-right" width={18} className="text-[#1a1c1c] dark:text-[#ffc800]" />
                 </Link>
               </div>
 
@@ -92,12 +92,14 @@ export function InfoGridSection() {
 
             {/* Text + CTA — right side */}
             <div className="relative z-10 flex flex-col justify-end p-8 ml-auto w-[54%]">
-              <h3 className="font-body text-[#7fde6c] text-[26px] md:text-[30px] tracking-[0.6px] leading-[1.2] mb-3">
+              <div className="relative -top-18 mr-10">
+              <h3 className="font-body text-[#7fde6c] text-[26px] md:text-[30px] tracking-[0.6px] leading-[1.2] mb-5">
                 Natural Tummy Tea
               </h3>
               <p className="font-body text-white text-[15px] md:text-[16px] tracking-[0.32px] leading-[1.39] mb-6 opacity-90">
                 Refreshing tasty tea that also makes you glow.
               </p>
+              </div>
               <Link
                 href="/shop"
                 className="inline-flex items-center gap-2 bg-[#ffc800] text-[#1a1c1c] rounded-full px-6 py-4 font-body font-medium text-[15px] tracking-[0.3px] hover:brightness-95 transition-all w-fit"
@@ -129,7 +131,7 @@ export function InfoGridSection() {
 
             {/* Text + CTA — right side */}
             <div className="absolute right-0 top-0 bottom-0 w-[50%] flex flex-col justify-between p-8">
-              <h3 className="font-body text-[#1a1c1c] text-[26px] md:text-[30px] tracking-[0.6px] leading-[1.2]">
+              <h3 className="font-body text-[#1a1c1c] font-semibold text-[26px] md:text-[30px] tracking-[0.6px] leading-[1.2]">
                 We Are Near
                 <br />
                 To You

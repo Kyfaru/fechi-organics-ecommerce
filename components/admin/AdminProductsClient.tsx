@@ -1410,8 +1410,8 @@ export function AdminProductsClient() {
 
   const updateMutation = useMutation({
     mutationFn: async (body: Record<string, unknown>) => {
-      const id = (body as { id: string }).id;
-      const res = await fetch(`/api/admin/products/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const { id, ...rest } = body as { id: string; [key: string]: unknown };
+      const res = await fetch(`/api/admin/products/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rest) });
       return res.json();
     },
     onSuccess: (res) => {

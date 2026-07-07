@@ -6,6 +6,8 @@ import { ok, created, Err } from "@/lib/api";
 import { z } from "zod";
 import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { generateTicketNumber } from "@/lib/tickets/generate-ticket-number";
+import { assignTicketToAdmin } from "@/lib/tickets/assign-admin";
 
 async function requireUser() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -15,12 +17,6 @@ async function requireUser() {
 
 // 48 hours — initial ticket expiry window
 const TICKET_EXPIRY_MS = 48 * 60 * 60 * 1000;
-
-// Generate zero-padded ticket number: TK-00001
-async function generateTicketNumber(): Promise<string> {
-  const count = await db.supportTicket.count();
-  return `TK-${String(count + 1).padStart(5, "0")}`;
-}
 
 // ---------------------------------------------------------------------------
 // GET /api/tickets
@@ -82,6 +78,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
     const ticketNumber = await generateTicketNumber();
+    const assignedAdminId = await assignTicketToAdmin();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + TICKET_EXPIRY_MS);
 
@@ -89,6 +86,7 @@ export async function POST(req: NextRequest) {
       data: {
         ticketNumber,
         userId: user.id,
+        assignedAdminId,
         subject: parsed.data.subject,
         expiresAt,
         messages: {

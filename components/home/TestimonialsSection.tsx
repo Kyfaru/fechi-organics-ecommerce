@@ -1,9 +1,13 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { Icon } from "@iconify/react";
 import type { TestimonialItem } from "@/lib/queries/testimonials";
+
+/** Landing page only ever shows a short scroller — the full list lives on /testimonials. */
+const MAX_LANDING_ITEMS = 5;
 
 type Props = {
   testimonials: TestimonialItem[];
@@ -25,8 +29,11 @@ function StarRating({ rating }: { rating: number }) {
 }
 
 export function TestimonialsSection({ testimonials }: Props) {
-  // Fallback if no testimonials yet
-  const items =
+  // Fallback if no testimonials yet. Real data is already ordered by
+  // sortOrder (see getTestimonials()) — cap at MAX_LANDING_ITEMS so the
+  // landing page only ever shows a short scroller; the full list lives on
+  // the dedicated /testimonials page.
+  const items = (
     testimonials.length > 0
       ? testimonials
       : [
@@ -57,7 +64,8 @@ export function TestimonialsSection({ testimonials }: Props) {
             beforeUrl: "/img/placeholder.png",
             afterUrl: "/img/placeholder.png",
           },
-        ];
+        ]
+  ).slice(0, MAX_LANDING_ITEMS);
 
   return (
     <section className="py-16 px-4 md:px-8 bg-white dark:bg-gray-950">
@@ -73,8 +81,11 @@ export function TestimonialsSection({ testimonials }: Props) {
           Testimonials
         </motion.h2>
 
-        {/* Testimonials grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {/* Testimonials scroller — short, 5-item preview; see /testimonials for the full list */}
+        <div
+          className="flex overflow-x-auto gap-8 pb-2 snap-x snap-proximity [&::-webkit-scrollbar]:hidden"
+          style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+        >
           {items.map((t, idx) => (
             <motion.div
               key={t.id}
@@ -82,7 +93,7 @@ export function TestimonialsSection({ testimonials }: Props) {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.45, delay: idx * 0.1 }}
-              className="bg-[#f9f9f9] dark:bg-gray-900 rounded-[24px] overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.07)]"
+              className="flex-shrink-0 w-[300px] md:w-[340px] snap-start bg-[#f9f9f9] dark:bg-gray-900 rounded-[24px] overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.07)]"
             >
               {/* Before / After images */}
               <div className="grid grid-cols-2 gap-0.5 h-[220px]">
@@ -131,6 +142,17 @@ export function TestimonialsSection({ testimonials }: Props) {
               </div>
             </motion.div>
           ))}
+
+          {/* View-all link — closes out the scroller */}
+          <div className="flex-shrink-0 flex items-center justify-center pl-2">
+            <Link
+              href="/testimonials"
+              aria-label="View all testimonials"
+              className="w-14 h-14 rounded-full bg-[#27731e] hover:bg-[#1f5f18] text-white flex items-center justify-center shadow-[0_4px_16px_rgba(39,115,30,0.35)] transition-colors"
+            >
+              <Icon icon="mdi:arrow-right" width={24} />
+            </Link>
+          </div>
         </div>
       </div>
     </section>

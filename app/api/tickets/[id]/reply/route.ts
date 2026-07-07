@@ -7,6 +7,8 @@ import { qstash } from "@/lib/qstash";
 import { z } from "zod";
 import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { getRedis } from "@/lib/redis";
+import { ticketChannel } from "@/lib/ticket-channel";
 
 async function requireUser() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -91,6 +93,17 @@ export async function POST(
       });
     } catch (qstashErr) {
       console.error("[tickets/reply] Qstash enqueue failed", qstashErr);
+    }
+
+    // Notify any open SSE stream on this ticket — best-effort, non-blocking
+    try {
+      await getRedis().set(
+        ticketChannel(id),
+        JSON.stringify({ type: "new_message", messageId: message.id, senderType: "CUSTOMER" }),
+        { ex: 30 }
+      );
+    } catch (redisErr) {
+      console.error("[tickets/reply] Redis publish failed", redisErr);
     }
 
     return ok({ message });

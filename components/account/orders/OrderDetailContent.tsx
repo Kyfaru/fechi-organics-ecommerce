@@ -99,7 +99,7 @@ export default function OrderDetailContent({ order }: { order: Order }) {
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-xl font-bold text-neutral-900">
-              Order #{order.orderNumber ?? order.id.slice(-8).toUpperCase()}
+              Order {order.orderNumber ?? order.id.slice(-8).toUpperCase()}
             </h1>
             <p className="text-sm text-neutral-400 mt-0.5">Placed {fmt(order.createdAt)}</p>
           </div>

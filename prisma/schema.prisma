@@ -203,7 +203,8 @@ model user {
   adminProfile     adminProfile?
   clientProfile    clientProfile?
   twoFactors       twoFactor[]
-  supportTickets   supportTicket[]
+  supportTickets   supportTicket[] @relation("TicketOwner")
+  assignedTickets  supportTicket[] @relation("TicketAssignee")
   blogPosts        blogPost[]
   loyaltyPoints    loyaltyPoints?
   inboxMessages    inboxMessage[]
@@ -631,18 +632,21 @@ model clientProfile {
 // ============================================================================
 
 model supportTicket {
-  id             String          @id @default(cuid())
-  ticketNumber   String          @unique
-  userId         String
-  user           user            @relation(fields: [userId], references: [id])
-  subject        String
-  status         TicketStatus    @default(OPEN)
-  lastActivityAt DateTime        @default(now())
-  expiresAt      DateTime
-  messages       ticketMessage[]
-  createdAt      DateTime        @default(now())
+  id              String          @id @default(cuid())
+  ticketNumber    String          @unique
+  userId          String
+  user            user            @relation("TicketOwner", fields: [userId], references: [id])
+  assignedAdminId String?
+  assignedAdmin   user?           @relation("TicketAssignee", fields: [assignedAdminId], references: [id])
+  subject         String
+  status          TicketStatus    @default(OPEN)
+  lastActivityAt  DateTime        @default(now())
+  expiresAt       DateTime
+  messages        ticketMessage[]
+  createdAt       DateTime        @default(now())
 
   @@index([status, lastActivityAt])
+  @@index([assignedAdminId, status])
   @@schema("public")
 }
 

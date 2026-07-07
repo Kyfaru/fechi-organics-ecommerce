@@ -6,6 +6,9 @@ import { getRedis } from "@/lib/redis";
 import { ok, Err } from "@/lib/api";
 import { Resend } from "resend";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { generateTicketNumber } from "@/lib/tickets/generate-ticket-number";
+import { assignTicketToAdmin } from "@/lib/tickets/assign-admin";
+import { sendTicketAcknowledgmentEmail } from "@/lib/email";
 
 const ContactSchema = z.object({
   name: z.string().min(2).max(100),
@@ -39,53 +42,66 @@ export async function POST(req: NextRequest) {
       data: { name, email, phone, subject, message },
     });
 
-    // Fire-and-forget: create admin notification + support ticket (if user account exists)
-    Promise.resolve().then(async () => {
-      try {
-        // Always notify admin inbox
-        await db.notification.create({
-          data: {
-            type: "contact",
-            title: `New contact: ${subject}`,
-            body: `${name} (${email}) — ${message.slice(0, 120)}${message.length > 120 ? "…" : ""}`,
-            link: `/admin/contacts`,
-          },
-        });
+    // Always notify admin inbox — fire-and-forget, non-blocking
+    db.notification
+      .create({
+        data: {
+          type: "contact",
+          title: `New contact: ${subject}`,
+          body: `${name} (${email}) — ${message.slice(0, 120)}${message.length > 120 ? "…" : ""}`,
+          link: `/admin/contacts`,
+        },
+      })
+      .catch((e) => console.error("[contact] admin notification failed:", e));
 
-        // Create a support ticket if the email matches a registered user
-        const user = await db.user.findFirst({ where: { email } });
-        if (user) {
-          const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-          const suffix = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * 36)]).join("");
-          const ticketNumber = `TKT-${suffix}`;
-          const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-          await db.supportTicket.create({
-            data: {
-              ticketNumber,
-              userId: user.id,
-              subject,
-              expiresAt,
-              messages: {
-                create: {
-                  senderType: "CUSTOMER",
-                  content: `${message}${phone ? `\n\nPhone: ${phone}` : ""}`,
-                },
+    // Create a support ticket if the email matches a registered user. This is
+    // awaited (not fire-and-forget) because the response needs the ticket
+    // number so the contact form can show it to the customer. True guests
+    // with no matching account get only the admin-notification path above —
+    // no ticket, no acknowledgment email.
+    let ticketNumber: string | undefined;
+    try {
+      const user = await db.user.findFirst({ where: { email } });
+      if (user) {
+        const generatedNumber = await generateTicketNumber();
+        const assignedAdminId = await assignTicketToAdmin();
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+        const ticket = await db.supportTicket.create({
+          data: {
+            ticketNumber: generatedNumber,
+            userId: user.id,
+            assignedAdminId,
+            subject,
+            expiresAt,
+            messages: {
+              create: {
+                senderType: "CUSTOMER",
+                content: `${message}${phone ? `\n\nPhone: ${phone}` : ""}`,
               },
             },
-          });
-          console.info("[contact] Support ticket created:", ticketNumber, "for user:", user.id);
-        }
-      } catch (e) {
-        console.error("[contact] post-submit actions failed:", e);
-      }
-    });
+          },
+        });
+        ticketNumber = ticket.ticketNumber;
+        console.info("[contact] Support ticket created:", ticketNumber, "for user:", user.id);
 
-    // Send notification email (async, best-effort)
+        // Acknowledgment email — best-effort, doesn't block the response
+        sendTicketAcknowledgmentEmail({
+          email: user.email,
+          name: user.name,
+          ticketNumber,
+          subject,
+        }).catch((e) => console.error("[contact] acknowledgment email failed:", e));
+      }
+    } catch (e) {
+      console.error("[contact] ticket creation failed:", e);
+    }
+
+    // Send notification email to admin (async, best-effort)
     sendNotificationEmail({ name, email, subject, message, id: record.id }).catch((e) =>
       console.error("[contact] email send error", e)
     );
 
-    return ok({ id: record.id });
+    return ok({ id: record.id, ticketNumber });
   } catch (e) {
     console.error("[contact] POST error", e);
     return Err.internal();

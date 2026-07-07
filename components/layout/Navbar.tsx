@@ -11,6 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { LogoutModal } from "@/components/ui/LogoutModal";
 import { useSession, signOut } from "@/lib/auth-client";
+import { readSessionCache, writeSessionCache, clearSessionCache } from "@/lib/session-cache";
 import { useTheme } from "@/app/providers";
 import { posthog } from "@/lib/posthog";
 import { useUnreadCount } from "@/hooks/useUnreadCount";
@@ -186,10 +187,49 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
   const { data: session, isPending: sessionPending } = useSession();
   // Cast to NavUser: Better Auth's session.user type omits additionalFields
   // (firstName, lastName) at the type level but they are present at runtime.
-  // While the session is still loading, treat the user as logged out so the
-  // server render (which never has a session) matches the client's first
-  // paint — avoids a hydration mismatch once the real session resolves.
-  const user = !sessionPending ? ((session?.user as NavUser | undefined) ?? null) : null;
+  // role comes from the admin plugin and isn't part of NavUser (display-only
+  // concern), so it's read separately below for the cache write.
+  const liveUser = (session?.user as NavUser | undefined) ?? null;
+  const liveRole = (session?.user as { role?: string } | undefined)?.role ?? null;
+
+  // Instant-paint cache: on first mount (server render and the client's
+  // hydration pass) there is no way to read localStorage without risking a
+  // hydration mismatch, so both start out rendering "logged out" — identical
+  // to the server. Once mounted, a useEffect (below) reads the cache, so a
+  // returning user's profile paints the moment that effect runs instead of
+  // waiting on the live session's DB round-trip.
+  const [hasMounted, setHasMounted] = useState(false);
+  const [cachedDisplay, setCachedDisplay] = useState<{ name: string; image: string | null } | null>(null);
+
+  useEffect(() => {
+    setHasMounted(true);
+    const cached = readSessionCache();
+    if (cached) setCachedDisplay({ name: cached.name, image: cached.image });
+  }, []);
+
+  // While the live session is still resolving, prefer the cache (if any) so
+  // returning users see their profile immediately instead of a "Log in"
+  // flash. Once sessionPending is false, the live session is always the
+  // source of truth — logged in or out — the cache never overrides it.
+  const user: NavUser | null = !hasMounted ? null : sessionPending ? cachedDisplay : liveUser;
+
+  // Keep the cache in sync with whatever the live session actually says.
+  // Runs every time useSession() finishes resolving: writes fresh display
+  // data on login, and — critically — clears the cache on logout (this tab)
+  // or once a logout/session-expiry from another tab is next noticed here,
+  // so a stale name/avatar never lingers past the real session state.
+  useEffect(() => {
+    if (sessionPending) return;
+    if (liveUser) {
+      writeSessionCache({
+        name: liveUser.name || `${liveUser.firstName ?? ""} ${liveUser.lastName ?? ""}`.trim() || "Account",
+        image: liveUser.image ?? null,
+        role: liveRole ?? "client",
+      });
+    } else {
+      clearSessionCache();
+    }
+  }, [sessionPending, liveUser, liveRole]);
 
   const { data: cartData } = useQuery<{ ok: boolean; data: { itemCount: number } }>({
     queryKey: ["cart"],

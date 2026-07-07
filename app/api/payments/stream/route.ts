@@ -4,20 +4,9 @@ import { db } from '@/lib/db'
 import { getRedis } from '@/lib/redis'
 import { paymentChannel } from '@/lib/payment-channel'
 import { Ratelimit } from '@upstash/ratelimit'
-import { Redis } from '@upstash/redis'
+import { makeRatelimit } from '@/lib/ratelimit'
 
-function makeRatelimit() {
-  const url = process.env.UPSTASH_REDIS_REST_URL
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN
-  if (!url || !token) return null
-  return new Ratelimit({
-    redis: new Redis({ url, token }),
-    limiter: Ratelimit.slidingWindow(5, '1 m'),
-    prefix: 'sse_payment',
-  })
-}
-
-const ratelimit = makeRatelimit()
+const ratelimit = makeRatelimit(Ratelimit.slidingWindow(5, '1 m'), 'sse_payment')
 
 export async function GET(req: NextRequest) {
   // Gate 1: Auth
