@@ -203,6 +203,8 @@ function FaqAccordion() {
   );
 }
 
+const MESSAGE_MAX = 50000;
+
 /* shared input classes to avoid repetition */
 const inputCls =
   "w-full border border-[#c0cab8] dark:border-gray-600 rounded-[8px] px-4 py-3 font-body text-[14px] text-[#1a1c1c] dark:text-white bg-white dark:bg-gray-800 outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] placeholder-[#a1a1a1] dark:placeholder-gray-500 transition-colors";
@@ -234,11 +236,19 @@ export function ContactClient() {
   const [successModal, setSuccessModal] = useState<{ open: boolean; ticketNumber?: string }>({
     open: false,
   });
+  const [messageOverflow, setMessageOverflow] = useState(false);
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    if (name === "message" && value.length > MESSAGE_MAX) {
+      setForm((prev) => ({ ...prev, message: value.slice(0, MESSAGE_MAX) }));
+      setMessageOverflow(true);
+      window.setTimeout(() => setMessageOverflow(false), 400);
+      return;
+    }
+    setForm((prev) => ({ ...prev, [name]: value }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -398,15 +408,41 @@ export function ContactClient() {
 
               <div>
                 <label className="font-body text-[#40493c] dark:text-gray-400 text-[12px] mb-1.5 block">Message</label>
-                <textarea
-                  name="message"
-                  value={form.message}
-                  onChange={handleChange}
-                  required
-                  rows={4}
-                  placeholder="How can we help you today?"
-                  className={`${inputCls} resize-none`}
-                />
+                <div className="relative">
+                  <textarea
+                    name="message"
+                    value={form.message}
+                    onChange={handleChange}
+                    required
+                    rows={4}
+                    maxLength={MESSAGE_MAX}
+                    placeholder="How can we help you today?"
+                    className={`${inputCls} resize-none ${messageOverflow ? "animate-shake-error border-red-500 focus:border-red-500 focus:ring-red-500" : ""}`}
+                  />
+                  {messageOverflow && (
+                    <Icon
+                      icon="mdi:alert-circle"
+                      width={18}
+                      className="absolute top-3 right-3 text-red-500"
+                    />
+                  )}
+                </div>
+                <div className="flex items-center justify-between mt-1.5">
+                  {messageOverflow ? (
+                    <span className="font-body text-[12px] text-red-500">
+                      Message can&apos;t exceed {MESSAGE_MAX.toLocaleString()} characters.
+                    </span>
+                  ) : (
+                    <span />
+                  )}
+                  <span
+                    className={`font-body text-[12px] shrink-0 ${
+                      form.message.length >= MESSAGE_MAX ? "text-red-500" : "text-[#a1a1a1] dark:text-gray-500"
+                    }`}
+                  >
+                    {form.message.length.toLocaleString()} / {MESSAGE_MAX.toLocaleString()}
+                  </span>
+                </div>
               </div>
 
               <button

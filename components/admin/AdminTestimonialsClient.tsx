@@ -11,12 +11,20 @@ import {
   AlertCircle,
   MessageSquare,
   X,
+  MoreHorizontal,
+  Eye,
+  CheckCircle2,
+  XCircle,
+  Mail,
+  Phone,
+  Send,
 } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import Switch from "@/components/ui/Switch";
 import CircularProgress from "@/components/ui/CircularProgress";
+import StarRatingInput from "@/components/ui/StarRatingInput";
+import { StatusPill } from "@/components/admin/ui/StatusPill";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,11 +44,15 @@ type Testimonial = {
   approved: boolean;
   sortOrder: number;
   createdAt: string;
+  userId: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  productIds: string[];
 };
 
 type ApiResponse = {
   ok: boolean;
-  data: { testimonials: Testimonial[] };
+  data: { testimonials: Testimonial[]; total: number; page: number; pageSize: number; approvedCount: number };
 };
 
 // Form state for the Add drawer
@@ -126,53 +138,6 @@ function StarRating({ rating }: { rating: number }) {
           className={i < rating ? "text-amber-400" : "text-(--neutral-300)"}
         />
       ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// InteractiveStarPicker — hover preview + click to set rating (drawer form)
-// ---------------------------------------------------------------------------
-function InteractiveStarPicker({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-}) {
-  const [hovered, setHovered] = useState<number | null>(null);
-  const display = hovered ?? value;
-
-  return (
-    <div
-      className="flex items-center gap-1"
-      onMouseLeave={() => setHovered(null)}
-      role="group"
-      aria-label="Star rating picker"
-    >
-      {Array.from({ length: 5 }).map((_, i) => {
-        const starValue = i + 1;
-        return (
-          <button
-            key={i}
-            type="button"
-            onClick={() => onChange(starValue)}
-            onMouseEnter={() => setHovered(starValue)}
-            aria-label={`${starValue} star${starValue > 1 ? "s" : ""}`}
-            className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--green-800) rounded"
-          >
-            <Star
-              size={26}
-              fill={i < display ? "#f59e0b" : "none"}
-              className={`transition-colors ${
-                i < display
-                  ? "text-amber-400"
-                  : "text-(--neutral-300) hover:text-amber-300"
-              }`}
-            />
-          </button>
-        );
-      })}
     </div>
   );
 }
@@ -389,19 +354,73 @@ function ImageUploadZone({
 // ---------------------------------------------------------------------------
 // TestimonialCard — full card in the responsive grid
 // ---------------------------------------------------------------------------
-function TestimonialCard({
+function ActionsMenu({
   testimonial,
-  isApprovePending,
-  isSortPending,
   onApproveToggle,
-  onSortChange,
+  onView,
   onDelete,
 }: {
   testimonial: Testimonial;
-  isApprovePending: boolean;
+  onApproveToggle: () => void;
+  onView: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        className="w-7 h-7 flex items-center justify-center rounded-[6px] text-(--neutral-500) hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) transition-colors"
+        aria-label="Testimonial actions"
+      >
+        <MoreHorizontal size={16} />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-8 z-50 w-44 bg-white dark:bg-(--dark-surface) rounded-[10px] shadow-(--e2) border border-(--neutral-200) dark:border-(--dark-border) py-1 overflow-hidden">
+            <button
+              onClick={() => { setOpen(false); onApproveToggle(); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) dark:text-(--dark-text) hover:bg-(--neutral-50) dark:hover:bg-(--dark-border)"
+            >
+              {testimonial.approved ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
+              {testimonial.approved ? "Unapprove" : "Approve"}
+            </button>
+            <button
+              onClick={() => { setOpen(false); onView(); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) dark:text-(--dark-text) hover:bg-(--neutral-50) dark:hover:bg-(--dark-border)"
+            >
+              <Eye size={14} /> View
+            </button>
+            <div className="border-t border-(--neutral-200) dark:border-(--dark-border) my-1" />
+            <button
+              onClick={() => { setOpen(false); onDelete(); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--danger) hover:bg-(--danger-bg)"
+            >
+              <Trash2 size={14} /> Delete
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function TestimonialCard({
+  testimonial,
+  isSortPending,
+  onApproveToggle,
+  onSortChange,
+  onView,
+  onDelete,
+}: {
+  testimonial: Testimonial;
   isSortPending: boolean;
   onApproveToggle: (t: Testimonial) => void;
   onSortChange: (id: string, newOrder: number) => void;
+  onView: (t: Testimonial) => void;
   onDelete: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -417,7 +436,7 @@ function TestimonialCard({
 
   return (
     <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) p-5 flex flex-col gap-3 shadow-[0_2px_8px_rgba(0,0,0,0.05)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow">
-      {/* ── Top: author + source ── */}
+      {/* ── Top: author + source + actions ── */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-syne font-semibold text-(--neutral-900) dark:text-(--dark-text) text-[14px] leading-snug truncate">
@@ -429,7 +448,20 @@ function TestimonialCard({
             </p>
           )}
         </div>
-        <SourceBadge source={testimonial.source} />
+        <div className="flex items-center gap-1.5 shrink-0">
+          <SourceBadge source={testimonial.source} />
+          {testimonial.approved && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full font-dm text-[11px] font-medium bg-(--green-50) text-(--green-800)">
+              Approved
+            </span>
+          )}
+          <ActionsMenu
+            testimonial={testimonial}
+            onApproveToggle={() => onApproveToggle(testimonial)}
+            onView={() => onView(testimonial)}
+            onDelete={() => onDelete(testimonial.id)}
+          />
+        </div>
       </div>
 
       {/* ── Stars ── */}
@@ -461,20 +493,8 @@ function TestimonialCard({
         afterUrl={testimonial.afterUrl}
       />
 
-      {/* ── Footer: approve switch + sort + delete ── */}
-      <div className="flex items-center justify-between gap-3 mt-auto pt-3 border-t border-(--neutral-100) dark:border-(--dark-border)">
-        {/* Approve toggle */}
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <Switch
-            checked={testimonial.approved}
-            onChange={() => onApproveToggle(testimonial)}
-            disabled={isApprovePending}
-          />
-          <span className="font-dm text-[12px] text-(--neutral-600) dark:text-(--dark-muted)">
-            {testimonial.approved ? "Approved" : "Approve"}
-          </span>
-        </label>
-
+      {/* ── Footer: sort order ── */}
+      <div className="flex items-center justify-end gap-3 mt-auto pt-3 border-t border-(--neutral-100) dark:border-(--dark-border)">
         <div className="flex items-center gap-2">
           {/* Sort order */}
           <div className="flex items-center gap-1.5">
@@ -512,16 +532,6 @@ function TestimonialCard({
               )}
             </div>
           </div>
-
-          {/* Delete */}
-          <button
-            type="button"
-            onClick={() => onDelete(testimonial.id)}
-            className="w-7 h-7 flex items-center justify-center rounded-[6px] text-(--neutral-400) hover:text-(--danger) hover:bg-(--danger-bg) transition-colors"
-            aria-label="Delete testimonial"
-          >
-            <Trash2 size={14} />
-          </button>
         </div>
       </div>
     </div>
@@ -651,7 +661,7 @@ function TestimonialDrawer({
         {/* ── Star rating ── */}
         <section>
           <label className={labelCls}>Star Rating</label>
-          <InteractiveStarPicker
+          <StarRatingInput
             value={form.rating}
             onChange={(v) => patch({ rating: v })}
           />
@@ -717,23 +727,175 @@ function TestimonialDrawer({
 }
 
 // ---------------------------------------------------------------------------
+// CHANNEL_OPTIONS — outreach channel chips (min 1 required, enforced below)
+// ---------------------------------------------------------------------------
+const CHANNEL_OPTIONS: { key: "EMAIL" | "SMS" | "INBOX"; label: string; icon: React.ElementType }[] = [
+  { key: "EMAIL", label: "Email", icon: Mail },
+  { key: "SMS", label: "SMS", icon: Phone },
+  { key: "INBOX", label: "In-app inbox", icon: MessageSquare },
+];
+
+function formatKes(amountCents: number) {
+  return `KES ${(amountCents / 100).toLocaleString("en-KE")}`;
+}
+
+// ---------------------------------------------------------------------------
+// ViewTestimonialDrawer — contact info, linked orders, personalized outreach
+// ---------------------------------------------------------------------------
+type CustomerOrder = {
+  id: string;
+  status: string;
+  paymentStatus: string;
+  totalKes: number;
+  createdAt: string;
+  _count: { items: number };
+};
+
+function ViewTestimonialDrawer({
+  testimonial,
+  onClose,
+}: {
+  testimonial: Testimonial | null;
+  onClose: () => void;
+}) {
+  const [channels, setChannels] = useState<("EMAIL" | "SMS" | "INBOX")[]>([]);
+  const [message, setMessage] = useState("");
+
+  const { data: ordersData, isLoading: ordersLoading } = useQuery({
+    queryKey: ["admin-testimonial-orders", testimonial?.userId],
+    queryFn: () => fetch(`/api/admin/customers/${testimonial!.userId}/orders`).then((r) => r.json()),
+    enabled: !!testimonial?.userId,
+  });
+  const orders: CustomerOrder[] = ordersData?.data?.orders ?? [];
+
+  const sendMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/admin/testimonials/${testimonial!.id}/message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, channels }),
+      });
+      return res.json();
+    },
+    onSuccess: (result) => {
+      if (result.ok) {
+        toast.success("Message sent");
+        setMessage("");
+        setChannels([]);
+      } else {
+        toast.error(result.error?.message ?? "Failed to send message");
+      }
+    },
+    onError: () => toast.error("Failed to send message"),
+  });
+
+  function toggleChannel(key: "EMAIL" | "SMS" | "INBOX") {
+    setChannels((prev) => (prev.includes(key) ? prev.filter((c) => c !== key) : [...prev, key]));
+  }
+
+  if (!testimonial) return null;
+
+  return (
+    <Drawer open={!!testimonial} onClose={onClose} title={testimonial.authorName}>
+      <div className="p-6 flex flex-col gap-6">
+        {/* Contact info */}
+        <section>
+          <h3 className={labelCls}>Contact</h3>
+          <div className="flex flex-col gap-1.5 font-dm text-[14px] text-(--neutral-800) dark:text-(--dark-text)">
+            <p className="flex items-center gap-2"><Mail size={14} className="text-(--neutral-400)" /> {testimonial.contactEmail ?? "—"}</p>
+            <p className="flex items-center gap-2"><Phone size={14} className="text-(--neutral-400)" /> {testimonial.contactPhone ?? "—"}</p>
+            <p className="font-dm text-[13px] text-(--neutral-500)">{testimonial.location ?? "No location given"}</p>
+          </div>
+          {!testimonial.userId && (
+            <p className="mt-2 font-dm text-[12px] text-(--neutral-400) italic">No linked account — anonymous submission.</p>
+          )}
+        </section>
+
+        {/* Orders */}
+        {testimonial.userId && (
+          <section>
+            <h3 className={labelCls}>Orders</h3>
+            {ordersLoading ? (
+              <p className="font-dm text-[13px] text-(--neutral-500)">Loading…</p>
+            ) : orders.length === 0 ? (
+              <p className="font-dm text-[13px] text-(--neutral-500)">No orders yet.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {orders.slice(0, 10).map((o) => (
+                  <div key={o.id} className="flex items-center justify-between gap-2 rounded-[8px] border border-(--neutral-200) dark:border-(--dark-border) px-3 py-2">
+                    <div>
+                      <p className="font-dm text-[13px] text-(--neutral-800) dark:text-(--dark-text)">{formatKes(o.totalKes)}</p>
+                      <p className="font-dm text-[11px] text-(--neutral-400)">{new Date(o.createdAt).toLocaleDateString()} · {o._count.items} item{o._count.items !== 1 ? "s" : ""}</p>
+                    </div>
+                    <StatusPill status={o.status.toLowerCase()} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Personalized outreach */}
+        <section>
+          <h3 className={labelCls}>Send a personalized message</h3>
+          <div className="flex gap-2 mb-3">
+            {CHANNEL_OPTIONS.map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => toggleChannel(key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full font-dm text-[12px] font-medium border transition-colors ${
+                  channels.includes(key)
+                    ? "bg-(--green-800) text-white border-(--green-800)"
+                    : "bg-white dark:bg-(--dark-surface) text-(--neutral-600) dark:text-(--dark-muted) border-(--neutral-200) dark:border-(--dark-border)"
+                }`}
+              >
+                <Icon size={13} /> {label}
+              </button>
+            ))}
+          </div>
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            rows={4}
+            placeholder="Write a message to this customer…"
+            className={`${inputCls} resize-none`}
+          />
+          <button
+            type="button"
+            disabled={channels.length === 0 || !message.trim() || sendMutation.isPending}
+            onClick={() => sendMutation.mutate()}
+            className="mt-3 w-full h-10 rounded-[8px] bg-(--green-800) text-white font-dm text-[13px] font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            <Send size={14} />
+            {sendMutation.isPending ? "Sending…" : "Send"}
+          </button>
+        </section>
+      </div>
+    </Drawer>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // AdminTestimonialsClient — main exported component
 // ---------------------------------------------------------------------------
 export function AdminTestimonialsClient() {
   const qc = useQueryClient();
 
-  // In-flight ID tracking — one per mutation type to avoid global spinner
-  const [pendingApproveId, setPendingApproveId] = useState<string | null>(null);
+  // In-flight ID tracking for the sort-order input's inline spinner
   const [pendingSortId, setPendingSortId] = useState<string | null>(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [viewTarget, setViewTarget] = useState<Testimonial | null>(null);
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
 
-  // ── Data fetch ──
+  // ── Data fetch (paginated — see route comment for why) ──
   const { data, isLoading, isError } = useQuery<ApiResponse>({
-    queryKey: ["admin-testimonials"],
+    queryKey: ["admin-testimonials", page],
     queryFn: async () => {
-      const res = await fetch("/api/admin/testimonials");
+      const res = await fetch(`/api/admin/testimonials?page=${page}&pageSize=${pageSize}`);
       if (!res.ok) throw new Error("Failed to fetch testimonials");
       return res.json();
     },
@@ -741,7 +903,9 @@ export function AdminTestimonialsClient() {
   });
 
   const testimonials = data?.data?.testimonials ?? [];
-  const approvedCount = testimonials.filter((t) => t.approved).length;
+  const total = data?.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const approvedCount = data?.data?.approvedCount ?? 0;
 
   // ── Create (POST /api/admin/testimonials) ──
   const createMutation = useMutation({
@@ -786,7 +950,6 @@ export function AdminTestimonialsClient() {
       });
       return res.json();
     },
-    onMutate: ({ id }) => setPendingApproveId(id),
     onSuccess: (result, { approved }) => {
       if (result.ok) {
         toast.success(approved ? "Testimonial approved" : "Approval removed");
@@ -799,7 +962,6 @@ export function AdminTestimonialsClient() {
       console.error("[AdminTestimonialsClient] approve error", err);
       toast.error("Failed to update approval");
     },
-    onSettled: () => setPendingApproveId(null),
   });
 
   // ── Sort order (PATCH /api/admin/testimonials/[id]) ──
@@ -874,12 +1036,12 @@ export function AdminTestimonialsClient() {
           </h1>
           {!isLoading && (
             <span className="bg-(--green-50) text-(--success) font-dm font-semibold text-[12px] px-2.5 py-0.5 rounded-full">
-              {testimonials.length}
+              {total}
             </span>
           )}
         </div>
 
-        {!isLoading && testimonials.length > 0 && (
+        {!isLoading && total > 0 && (
           <span className="font-dm text-(--neutral-500) dark:text-(--dark-muted) text-[13px]">
             Approved:{" "}
             <span className="font-semibold text-(--success)">{approvedCount}</span>
@@ -942,20 +1104,38 @@ export function AdminTestimonialsClient() {
                 <TestimonialCard
                   key={t.id}
                   testimonial={t}
-                  isApprovePending={pendingApproveId === t.id}
                   isSortPending={pendingSortId === t.id}
                   onApproveToggle={handleApproveToggle}
                   onSortChange={handleSortChange}
+                  onView={(t) => setViewTarget(t)}
                   onDelete={(id) => setDeleteTarget(id)}
                 />
               ))}
           </div>
         )}
 
-        {!isLoading && !isError && testimonials.length > 0 && (
-          <p className="font-dm text-(--neutral-400) dark:text-(--dark-muted) text-[13px] mt-6 text-right">
-            {testimonials.length} testimonial{testimonials.length !== 1 ? "s" : ""} total
-          </p>
+        {!isLoading && !isError && total > 0 && (
+          <div className="flex items-center justify-between mt-6">
+            <p className="font-dm text-(--neutral-400) dark:text-(--dark-muted) text-[13px]">
+              {total} testimonial{total !== 1 ? "s" : ""} total — page {page} of {totalPages}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="h-8 px-3 rounded-[6px] border border-(--neutral-200) dark:border-(--dark-border) font-dm text-[13px] text-(--neutral-700) dark:text-(--dark-text) hover:bg-(--neutral-50) dark:hover:bg-(--dark-border) disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="h-8 px-3 rounded-[6px] border border-(--neutral-200) dark:border-(--dark-border) font-dm text-[13px] text-(--neutral-700) dark:text-(--dark-text) hover:bg-(--neutral-50) dark:hover:bg-(--dark-border) disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -966,6 +1146,9 @@ export function AdminTestimonialsClient() {
         isPending={createMutation.isPending}
         onSubmit={(form) => createMutation.mutate(form)}
       />
+
+      {/* ── View drawer ── */}
+      <ViewTestimonialDrawer testimonial={viewTarget} onClose={() => setViewTarget(null)} />
 
       {/* ── Delete confirm modal ── */}
       <ConfirmModal

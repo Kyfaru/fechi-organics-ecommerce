@@ -13,7 +13,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Users, ShieldCheck, UserCog, Activity,
   MoreHorizontal, UserPlus, Mail, ChevronDown,
-  Eye, EyeOff, ChevronUp,
+  ChevronUp,
 } from "lucide-react";
 import CheckboxGreen from "@/components/ui/CheckboxGreen";
 import { ALL_PAGES, permissionsFromRole, type AdminPage } from "@/lib/permissions";
@@ -23,6 +23,7 @@ import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import StrongPasswordInput from "@/components/auth/StrongPasswordInput";
 import { toast } from "@/lib/toast";
 
 // ---------------------------------------------------------------------------
@@ -51,7 +52,7 @@ type StaffRole = (typeof ROLES)[number];
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function getInitials(name: string): string {
+export function getInitials(name: string): string {
   return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
 }
 
@@ -70,7 +71,9 @@ function formatLastActive(dateStr: string | null): string {
 }
 
 // Role pill colors matching the design spec
-function RolePill({ role }: { role: string }) {
+// Exported so other admin surfaces (e.g. AuthorPicker) that display an
+// adminProfile.role can reuse this instead of re-implementing the pill.
+export function RolePill({ role }: { role: string }) {
   const isOwner   = role === "owner";
   const isAdmin   = role === "admin" || role === "Admin";
   const base = "inline-flex items-center h-6 px-[10px] rounded-full font-dm text-[12px] font-medium";
@@ -80,7 +83,10 @@ function RolePill({ role }: { role: string }) {
 }
 
 // Avatar circle with initials
-function Avatar({ name }: { name: string }) {
+// Exported for reuse — staff `user.image` isn't consistently populated, so
+// every staff-listing surface (this table, AuthorPicker) falls back to
+// initials rather than rendering a possibly-missing photo.
+export function Avatar({ name }: { name: string }) {
   return (
     <div className="w-9 h-9 rounded-full bg-(--green-200) text-(--green-800) flex items-center justify-center font-dm text-[13px] font-semibold shrink-0">
       {getInitials(name)}
@@ -214,6 +220,7 @@ function InviteDrawer({
     email: "",
     phone: "",
     password: "",
+    confirmPassword: "",
     role: "viewer" as InviteRole,
     permissions: permissionsFromRole("viewer"),
     branchId: "",
@@ -225,7 +232,6 @@ function InviteDrawer({
   });
   const [errors, setErrors]     = useState<Record<string, string>>({});
   const [loading, setLoading]   = useState(false);
-  const [showPw, setShowPw]     = useState(false);
   const [permsOpen, setPermsOpen] = useState(false);
 
   // Fetch branches for the branch select
@@ -281,6 +287,8 @@ function InviteDrawer({
       e.email = "Valid email required.";
     if (!form.password)
       e.password = "Password is required.";
+    else if (form.password !== form.confirmPassword)
+      e.password = "Passwords do not match.";
     return e;
   }
 
@@ -314,7 +322,7 @@ function InviteDrawer({
       toast.success("Staff member invited", { message: `${form.name} has been added.` });
       // Reset form
       setForm({
-        name: "", username: "", email: "", phone: "", password: "",
+        name: "", username: "", email: "", phone: "", password: "", confirmPassword: "",
         role: "viewer", permissions: permissionsFromRole("viewer"),
         branchId: "", expiry: "lifetime", customFrom: "", customTo: "",
         note: "", inviteChannels: [],
@@ -421,37 +429,28 @@ function InviteDrawer({
           />
         </div>
 
-        {/* Password + generate */}
+        {/* Password + confirm */}
         <div className="flex flex-col gap-1.5">
-          <label className="font-dm text-[13px] font-medium text-(--neutral-700)">Password</label>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <input
-                type={showPw ? "text" : "password"}
-                className={`${inputCls("password")} pr-10`}
-                placeholder="Set an initial password"
-                value={form.password}
-                onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
-                autoComplete="new-password"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPw((s) => !s)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-(--neutral-500) hover:text-(--neutral-800)"
-                tabIndex={-1}
-                aria-label={showPw ? "Hide password" : "Show password"}
-              >
-                {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
-              </button>
-            </div>
+          <div className="flex items-center justify-between">
+            <label className="font-dm text-[13px] font-medium text-(--neutral-700)">Password</label>
             <button
               type="button"
-              onClick={() => setForm((p) => ({ ...p, password: generatePassword() }))}
-              className="h-10 px-3 rounded-[8px] border border-(--neutral-300) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) whitespace-nowrap transition-colors"
+              onClick={() => {
+                const generated = generatePassword();
+                setForm((p) => ({ ...p, password: generated, confirmPassword: generated }));
+              }}
+              className="h-8 px-3 rounded-[8px] border border-(--neutral-300) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) whitespace-nowrap transition-colors"
             >
               Generate
             </button>
           </div>
+          <StrongPasswordInput
+            password={form.password}
+            confirmPassword={form.confirmPassword}
+            onPasswordChange={(v) => setForm((p) => ({ ...p, password: v }))}
+            onConfirmPasswordChange={(v) => setForm((p) => ({ ...p, confirmPassword: v }))}
+            submitted={Object.keys(errors).length > 0}
+          />
           {errors.password && <p className="font-dm text-[12px] text-(--danger)">{errors.password}</p>}
         </div>
 
@@ -620,6 +619,7 @@ export function AdminStaffClient() {
   const [resetVerified, setResetVerified] = useState(false);
   const [resetMode, setResetMode] = useState<"idle" | "link" | "set">("idle");
   const [newPwForUser, setNewPwForUser] = useState("");
+  const [confirmPwForUser, setConfirmPwForUser] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
 
   // Change role modal
@@ -725,7 +725,7 @@ export function AdminStaffClient() {
 
   function closeResetModal() {
     setResetTarget(null); setResetAdminPw(""); setResetVerified(false);
-    setResetMode("idle"); setNewPwForUser(""); setResetLoading(false);
+    setResetMode("idle"); setNewPwForUser(""); setConfirmPwForUser(""); setResetLoading(false);
   }
 
   // Change role handlers
@@ -977,27 +977,33 @@ export function AdminStaffClient() {
             ) : (
               <>
                 <p className="font-dm text-[13px] text-(--neutral-500)">Set a new password for {resetTarget.name}. They will be able to log in immediately.</p>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newPwForUser}
-                    onChange={(e) => setNewPwForUser(e.target.value)}
-                    placeholder="New password"
-                    className="flex-1 h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
-                  />
+                <div className="flex justify-end">
                   <button
-                    onClick={() => setNewPwForUser(Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6).toUpperCase())}
-                    className="px-3 rounded-xl border border-(--neutral-200) font-dm text-[12px] text-(--neutral-600) hover:bg-(--neutral-50)"
+                    onClick={() => {
+                      const generated = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6).toUpperCase();
+                      setNewPwForUser(generated);
+                      setConfirmPwForUser(generated);
+                    }}
+                    className="h-8 px-3 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-600) hover:bg-(--neutral-50)"
                   >
                     Generate
                   </button>
-                  <button onClick={() => { navigator.clipboard.writeText(newPwForUser); toast.success("Copied"); }} className="px-3 rounded-xl border border-(--neutral-200) font-dm text-[12px] text-(--neutral-600) hover:bg-(--neutral-50)">
-                    Copy
-                  </button>
                 </div>
+                <StrongPasswordInput
+                  password={newPwForUser}
+                  confirmPassword={confirmPwForUser}
+                  onPasswordChange={setNewPwForUser}
+                  onConfirmPasswordChange={setConfirmPwForUser}
+                />
                 <div className="flex gap-2 justify-end">
                   <button onClick={() => setResetMode("idle")} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Back</button>
-                  <button onClick={handleSetNewPassword} disabled={resetLoading || newPwForUser.length < 8} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Set Password</button>
+                  <button
+                    onClick={handleSetNewPassword}
+                    disabled={resetLoading || newPwForUser.length < 8 || newPwForUser !== confirmPwForUser}
+                    className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60"
+                  >
+                    Set Password
+                  </button>
                 </div>
               </>
             )}

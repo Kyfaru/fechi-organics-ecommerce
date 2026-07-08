@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import {
   ShoppingBag, Clock, Truck, CheckCircle, Search, Download,
   ChevronDown, MoreHorizontal, X, Tag, User, CreditCard, Printer, Link2,
-  MapPin, Check, Copy,
+  MapPin, Check, Copy, Receipt,
 } from "lucide-react";
 import { StatsCard } from "@/components/ui/stats-card";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -860,7 +860,30 @@ export function AdminOrdersClient() {
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => {
         const o = row as unknown as AdminOrder;
-        return <span className="font-dm text-[13px] font-semibold text-(--neutral-900)">{formatKes(o.totalKes)}</span>;
+        const canDownload = o.status !== "FAILED" && o.status !== "CANCELLED" && o.paymentStatus === "PAID";
+        return (
+          <div className="flex items-center gap-2">
+            <span className="font-dm text-[13px] font-semibold text-(--neutral-900)">{formatKes(o.totalKes)}</span>
+            <button
+              onClick={(e) => { e.stopPropagation(); window.open(`/api/admin/orders/${o.id}/invoice`, "_blank"); }}
+              disabled={!canDownload}
+              title="Download invoice"
+              aria-label="Download invoice"
+              className="w-6 h-6 flex items-center justify-center rounded-[6px] text-(--neutral-400) hover:bg-(--neutral-100) hover:text-(--neutral-700) transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Printer size={13} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); window.open(`/api/admin/orders/${o.id}/invoice`, "_blank"); }}
+              disabled={!canDownload}
+              title="Download receipt"
+              aria-label="Download receipt"
+              className="w-6 h-6 flex items-center justify-center rounded-[6px] text-(--neutral-400) hover:bg-(--neutral-100) hover:text-(--neutral-700) transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Receipt size={13} />
+            </button>
+          </div>
+        );
       },
     },
     {

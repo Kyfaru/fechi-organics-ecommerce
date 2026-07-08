@@ -34,7 +34,8 @@ const THEME_CLASSES = {
  * DOM once, at 'load', and would never see a container added later.
  * (preline/plugins/pin-input-non-auto ships with no .d.ts, so we import the
  * regular plugin subpath — its own autoInit listener is harmless here since
- * it never finds this element at page-load time.)
+ * it never finds this element at page-load time. The bundle has no real ES
+ * export though — see the constructor lookup via `window.HSPinInput` below.)
  */
 export default function OtpPinInput({
   length = 6,
@@ -56,10 +57,19 @@ export default function OtpPinInput({
 
   useEffect(() => {
     let cancelled = false;
-    import("preline/plugins/pin-input").then(({ default: HSPinInput }) => {
-      if (cancelled || !containerRef.current) return;
-      instanceRef.current = new HSPinInput(containerRef.current) as unknown as { destroy: () => void };
-    });
+    // preline/plugins/pin-input is a side-effect-only bundle with no real ES
+    // export — it just assigns `window.HSPinInput` (both its .js and .mjs
+    // builds do this, meant to be loaded like a <script> tag). Destructuring
+    // `default` off the import always yields undefined, so the constructor
+    // must be read off `window` after the import's side effect has run.
+    import("preline/plugins/pin-input")
+      .then(() => {
+        if (cancelled || !containerRef.current) return;
+        const HSPinInput = (window as unknown as { HSPinInput?: new (el: HTMLElement) => { destroy: () => void } }).HSPinInput;
+        if (!HSPinInput) return;
+        instanceRef.current = new HSPinInput(containerRef.current);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
       instanceRef.current?.destroy();

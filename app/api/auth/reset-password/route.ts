@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
 import { Argon2id } from "oslo/password";
+import { checkPasswordChangeAllowed } from "@/lib/password-policy";
 
 /**
  * POST /api/auth/reset-password
@@ -29,12 +30,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: { passwordChanges: true, lastPasswordChange: true, createdAt: true },
+    });
+    if (!user) {
+      return NextResponse.json({ error: "Account not found." }, { status: 404 });
+    }
+
+    const check = checkPasswordChangeAllowed(user);
+    if (!check.allowed) {
+      return NextResponse.json({ error: { code: check.reason, ...check } }, { status: 429 });
+    }
+
     const hashedPassword = await new Argon2id().hash(newPassword);
 
     // Better Auth stores credentials in the account table with providerId = "credential".
     await db.account.updateMany({
       where: { userId, providerId: "credential" },
       data: { password: hashedPassword },
+    });
+    await db.user.update({
+      where: { id: userId },
+      data: { passwordChanges: { increment: 1 }, lastPasswordChange: new Date() },
     });
 
     return NextResponse.json({ ok: true });

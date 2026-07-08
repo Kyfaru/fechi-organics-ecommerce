@@ -1,4 +1,5 @@
 import Link from "next/link"
+import type { MouseEvent } from "react"
 import { Icon } from "@iconify/react"
 import { ORDER_STATUS_CLIENT_LABELS, type OrderStatusValue } from "@/types/account"
 
@@ -6,6 +7,7 @@ interface OrderCardProps {
   id: string
   orderNumber: string | null
   status: string
+  paymentStatus: string
   createdAt: string | Date
   totalKes: number
   thumbnail: string | null
@@ -29,9 +31,16 @@ function fmt(date: string | Date) {
   return new Date(date).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" })
 }
 
-export default function OrderCard({ id, orderNumber, status, createdAt, totalKes, thumbnail, itemCount, deliveryType }: OrderCardProps) {
+export default function OrderCard({ id, orderNumber, status, paymentStatus, createdAt, totalKes, thumbnail, itemCount, deliveryType }: OrderCardProps) {
   const label = ORDER_STATUS_CLIENT_LABELS[status as OrderStatusValue] ?? status
   const colorClass = STATUS_COLORS[status] ?? "bg-neutral-100 text-neutral-600 border-neutral-200"
+  const canDownload = status !== "CANCELLED" && status !== "FAILED" && paymentStatus === "PAID"
+
+  function openDocument(e: MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    window.open(`/api/orders/${id}/invoice`, "_blank")
+  }
 
   return (
     <Link
@@ -66,11 +75,29 @@ export default function OrderCard({ id, orderNumber, status, createdAt, totalKes
         </div>
       </div>
 
-      {/* Amount + chevron */}
+      {/* Amount + invoice/receipt + chevron */}
       <div className="text-right shrink-0 flex items-center gap-2">
         <p className="text-base font-bold text-neutral-900">
           KES {(totalKes / 100).toLocaleString("en-KE", { minimumFractionDigits: 2 })}
         </p>
+        <button
+          onClick={openDocument}
+          disabled={!canDownload}
+          title="Download invoice"
+          aria-label="Download invoice"
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <Icon icon="lucide:printer" width={14} />
+        </button>
+        <button
+          onClick={openDocument}
+          disabled={!canDownload}
+          title="Download receipt"
+          aria-label="Download receipt"
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <Icon icon="lucide:receipt" width={14} />
+        </button>
         <Icon icon="lucide:chevron-right" width={16} className="text-neutral-300 group-hover:text-[#15803D] transition-colors" />
       </div>
     </Link>

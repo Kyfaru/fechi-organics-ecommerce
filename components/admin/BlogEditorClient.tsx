@@ -4,8 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, ChevronDown, Upload } from "lucide-react";
+import { ArrowLeft, Calendar, ChevronDown, ImageIcon, Upload, X } from "lucide-react";
 import RichTextEditor from "@/components/admin/ui/RichTextEditor";
+import ScheduleModal from "@/components/admin/blog/ScheduleModal";
+import AuthorPicker, { type AuthorOption } from "@/components/admin/blog/AuthorPicker";
+import { useSession } from "@/lib/auth-client";
+import { canAccess } from "@/lib/permissions";
 
 const R2_BASE = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "").replace(/\/$/, "");
 
@@ -23,8 +27,26 @@ interface BlogPost {
   content: string | null;
   featuredImage: string | null;
   category: string | null;
+  tags: string[];
   status: "DRAFT" | "PUBLISHED" | "SCHEDULED" | "ARCHIVED";
   publishedAt: string | null;
+  author?: { name: string | null; email: string | null } | null;
+  authorIds: string[];
+}
+
+// Raw shape returned by GET /api/admin/staff — trimmed to the fields
+// AuthorPicker needs (see components/admin/blog/AuthorPicker.tsx).
+interface StaffListItem {
+  id: string;
+  name: string;
+  email: string;
+  banned: boolean;
+  adminProfile: {
+    role: string;
+    permissions: Record<string, unknown>;
+    isSuperAdmin: boolean;
+    isActive: boolean;
+  } | null;
 }
 
 function slugify(s: string): string {
@@ -44,15 +66,30 @@ export function BlogEditorClient() {
   const params = useParams<{ id?: string }>();
   const postId = params?.id;
   const isEdit = Boolean(postId);
+  const { data: session } = useSession();
 
   const [postRef, setPostRef] = useState<string | null>(postId ?? null);
-  const [slugTouched, setSlugTouched] = useState(false);
+  // Create mode defaults the picker to "you" (matching the old read-only
+  // card's behavior) exactly once, as soon as the session loads — a ref
+  // (rather than re-running on every session change) so it doesn't clobber
+  // a selection the admin has since edited.
+  const defaultAuthorSet = useRef(false);
+  // Edit mode starts "touched" so the loaded slug is never silently
+  // clobbered by the title-derived slugify() once data arrives — avoids
+  // calling setSlugTouched(true) synchronously inside the load effect below.
+  const [slugTouched, setSlugTouched] = useState(isEdit);
   const imageRef = useRef<HTMLInputElement>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [isDraggingCover, setIsDraggingCover] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  // Bumped every time the Schedule button is clicked, so ScheduleModal is
+  // rendered with a fresh `key` each time it opens — see the note in
+  // ScheduleModal.tsx for why this replaces an open-triggered reset effect.
+  const [scheduleKey, setScheduleKey] = useState(0);
 
-  async function handleFeaturedImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Uploads a cover image file to R2 via the shared admin upload endpoint.
+  // Shared by both the file-picker input and the dropzone's drag/drop handler.
+  async function uploadCoverImage(file: File) {
     setUploadingImage(true);
     try {
       const fd = new FormData();
@@ -70,6 +107,20 @@ export function BlogEditorClient() {
       if (imageRef.current) imageRef.current.value = "";
     }
   }
+
+  function handleFeaturedImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    uploadCoverImage(file);
+  }
+
+  function handleCoverDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setIsDraggingCover(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) uploadCoverImage(file);
+  }
+
   const [form, setForm] = useState({
     title: "",
     slug: "",
@@ -77,6 +128,8 @@ export function BlogEditorClient() {
     content: "",
     featuredImage: "",
     category: "",
+    tags: [] as string[],
+    authorIds: [] as string[],
     status: "DRAFT" as BlogPost["status"],
     publishedAt: "",
   });
@@ -97,17 +150,48 @@ export function BlogEditorClient() {
       content: p.content ?? "",
       featuredImage: p.featuredImage ?? "",
       category: p.category ?? "",
+      tags: p.tags ?? [],
+      authorIds: p.authorIds ?? [],
       status: p.status ?? "DRAFT",
       publishedAt: toDateTimeLocal(p.publishedAt),
     });
-    setSlugTouched(true);
   }, [data]);
+
+  // Create mode only: seed the picker with the logged-in admin once their
+  // session resolves, so a brand-new post still defaults to "authored by you"
+  // the way the old read-only card did.
+  useEffect(() => {
+    if (isEdit || defaultAuthorSet.current || !session?.user?.id) return;
+    defaultAuthorSet.current = true;
+    setForm((f) => ({ ...f, authorIds: [session.user.id] }));
+  }, [isEdit, session?.user?.id]);
+
+  // Staff eligible to be picked as a blog author: active, non-banned admins
+  // with access to the Content page (blog lives under "content" in
+  // lib/permissions.ts) — super-admins always qualify.
+  const { data: staffData } = useQuery({
+    queryKey: ["admin-staff-authors"],
+    queryFn: () => fetch("/api/admin/staff").then((r) => r.json()),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const authorOptions: AuthorOption[] = ((staffData?.data?.staff ?? []) as StaffListItem[])
+    .filter((s) => !s.banned && (s.adminProfile?.isSuperAdmin || canAccess(s.adminProfile?.permissions ?? {}, "content")))
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      email: s.email,
+      adminProfile: s.adminProfile ? { role: s.adminProfile.role } : null,
+    }));
 
   function setTitle(title: string) {
     setForm((f) => ({ ...f, title, slug: slugTouched ? f.slug : slugify(title) }));
   }
 
-  function buildBody(overrideStatus?: BlogPost["status"]) {
+  // overridePublishedAt lets a caller (the Schedule modal) supply a datetime
+  // that hasn't been typed into the sidebar "Date" field — it wins over
+  // form.publishedAt when present.
+  function buildBody(overrideStatus?: BlogPost["status"], overridePublishedAt?: string) {
     return {
       title: form.title.trim(),
       slug: form.slug.trim() || slugify(form.title),
@@ -115,14 +199,16 @@ export function BlogEditorClient() {
       content: form.content || null,
       featuredImage: form.featuredImage || null,
       category: form.category || null,
+      tags: form.tags,
+      authorIds: form.authorIds,
       status: overrideStatus ?? form.status,
-      publishedAt: form.publishedAt ? new Date(form.publishedAt).toISOString() : null,
+      publishedAt: overridePublishedAt ?? (form.publishedAt ? new Date(form.publishedAt).toISOString() : null),
     };
   }
 
   const saveMutation = useMutation({
-    mutationFn: async (overrideStatus?: BlogPost["status"]) => {
-      const body = buildBody(overrideStatus);
+    mutationFn: async (overrides?: { status?: BlogPost["status"]; publishedAt?: string }) => {
+      const body = buildBody(overrides?.status, overrides?.publishedAt);
       const ref = postRef;
       if (ref) {
         const res = await fetch(`/api/admin/blog/${ref}`, {
@@ -154,6 +240,41 @@ export function BlogEditorClient() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Schedule flow: persist status: SCHEDULED + the chosen datetime through the
+  // normal save mutation first (so the post row and its ID exist/are current),
+  // then hand that exact datetime to the publish route, which enqueues the
+  // Qstash job that flips the post live at that time.
+  const scheduleMutation = useMutation({
+    mutationFn: async (scheduledAt: Date) => {
+      const { post } = await saveMutation.mutateAsync({
+        status: "SCHEDULED",
+        publishedAt: scheduledAt.toISOString(),
+      });
+      const res = await fetch(`/api/admin/blog/${post.id}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "schedule", scheduledAt: scheduledAt.toISOString() }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error?.message ?? "Failed to schedule post");
+      return json.data;
+    },
+    onSuccess: () => {
+      toast.success("Post scheduled");
+      setScheduleOpen(false);
+      qc.invalidateQueries({ queryKey: ["admin-blog"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Primary action button adapts to the selected Status field: while a post
+  // is a draft it reads/behaves as "Save Draft"; once Status is switched to
+  // Published it reads/behaves as "Publish". This keeps a single button in
+  // the top bar (matching the mockup's Cancel / Publish pair) while
+  // preserving the original draft-vs-publish save paths untouched.
+  const isDraftStatus = form.status === "DRAFT";
+  const canSave = !saveMutation.isPending && Boolean(form.title.trim());
+
   if (isEdit && isLoading) {
     return (
       <div className="min-h-screen bg-(--neutral-50) p-6">
@@ -165,43 +286,75 @@ export function BlogEditorClient() {
 
   return (
     <div className="min-h-screen bg-(--neutral-50)">
+      {/* Top bar — back link on the left; Cancel / Schedule / Publish on the right. */}
       <div className="sticky top-0 z-10 bg-white dark:bg-(--dark-surface) border-b border-(--neutral-200) dark:border-(--dark-border) px-6 py-4 flex items-center justify-between">
         <a
           href="/admin/content/blog"
           className="flex items-center gap-2 font-dm text-[14px] text-(--neutral-700) hover:text-(--neutral-900) transition-colors"
         >
           <ArrowLeft size={16} />
-          Back to Blog
+          {isEdit ? "Edit Post" : "New Post"}
         </a>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => saveMutation.mutate("DRAFT")}
-            disabled={saveMutation.isPending || !form.title.trim()}
-            className="h-10 px-5 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] font-medium text-(--neutral-700) hover:bg-(--neutral-50) transition-colors disabled:opacity-50"
+            onClick={() => router.push("/admin/content/blog")}
+            className="h-10 px-5 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] font-medium text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
           >
-            Save Draft
+            Cancel
           </button>
           <button
-            onClick={() => saveMutation.mutate("PUBLISHED")}
-            disabled={saveMutation.isPending || !form.title.trim()}
+            onClick={() => { setScheduleKey((k) => k + 1); setScheduleOpen(true); }}
+            disabled={!canSave}
+            className="h-10 px-5 rounded-[8px] border border-(--gold-700) text-(--gold-700) font-dm text-[14px] font-medium hover:bg-(--gold-50) transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            <Calendar size={14} />
+            Schedule
+          </button>
+          <button
+            onClick={() => saveMutation.mutate(undefined)}
+            disabled={!canSave}
             className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors disabled:opacity-50"
           >
-            {saveMutation.isPending ? "Saving..." : "Publish"}
+            {saveMutation.isPending ? "Saving…" : isDraftStatus ? "Save Draft" : "Publish"}
           </button>
         </div>
       </div>
 
-      <div className="px-6 py-6 grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-6 max-w-[1200px]">
-        <div className="space-y-4">
+      <ScheduleModal
+        key={scheduleKey}
+        open={scheduleOpen}
+        onClose={() => setScheduleOpen(false)}
+        onConfirm={(scheduledAt) => scheduleMutation.mutate(scheduledAt)}
+        loading={scheduleMutation.isPending}
+      />
+
+      <div className="px-6 py-6 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 max-w-[1280px]">
+        {/* Left column — Title + rich content */}
+        <div className="space-y-4 min-w-0">
           <FormField label="Title" required>
             <input
               value={form.title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Post title"
-              className={inputCls}
+              placeholder="Name your blog post"
+              className={`${inputCls} h-12 text-[16px] font-medium`}
             />
           </FormField>
 
+          <div>
+            <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-1.5">
+              Content <span className="text-(--neutral-400) font-normal">(write your blog post)</span>
+            </label>
+            <RichTextEditor
+              value={form.content}
+              onChange={(content) => setForm((f) => ({ ...f, content }))}
+              placeholder="Write your post content here..."
+              heightClassName="h-[560px]"
+            />
+          </div>
+        </div>
+
+        {/* Right column — metadata */}
+        <div className="space-y-4">
           <FormField label="Slug" hint="auto-generated">
             <input
               value={form.slug}
@@ -211,7 +364,7 @@ export function BlogEditorClient() {
             />
           </FormField>
 
-          <FormField label="Excerpt">
+          <FormField label="Excerpt" hint="short summary">
             <textarea
               value={form.excerpt}
               onChange={(e) => setForm((f) => ({ ...f, excerpt: e.target.value }))}
@@ -221,38 +374,7 @@ export function BlogEditorClient() {
             />
           </FormField>
 
-          <FormField label="Cover Image">
-            <input
-              ref={imageRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-              onChange={handleFeaturedImageUpload}
-            />
-            <button
-              type="button"
-              onClick={() => imageRef.current?.click()}
-              disabled={uploadingImage}
-              className="flex items-center justify-center gap-2 w-full h-10 px-3 rounded-[8px] border-2 border-dashed border-(--neutral-200) hover:border-(--green-800) font-dm text-[13px] text-(--neutral-600) transition-colors disabled:opacity-50"
-            >
-              <Upload size={14} />
-              {uploadingImage ? "Uploading…" : form.featuredImage ? "Replace image" : "Upload image"}
-            </button>
-            {form.featuredImage && (
-              <div className="mt-2 rounded-[8px] border border-(--neutral-200) overflow-hidden">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={blogImageUrl(form.featuredImage)} alt="Cover preview" className="w-full h-28 object-cover" />
-              </div>
-            )}
-            <input
-              value={form.featuredImage}
-              onChange={(e) => setForm((f) => ({ ...f, featuredImage: e.target.value }))}
-              placeholder="or paste a key / URL"
-              className={`${inputCls} mt-2`}
-            />
-          </FormField>
-
-          <FormField label="Category">
+          <FormField label="Category" hint="used to filter posts on the public blog">
             <input
               value={form.category}
               onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
@@ -261,39 +383,103 @@ export function BlogEditorClient() {
             />
           </FormField>
 
-          <FormField label="Status">
-            <div className="relative">
-              <select
-                value={form.status}
-                onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as BlogPost["status"] }))}
-                className={`${inputCls} appearance-none pr-8`}
-              >
-                <option value="DRAFT">Draft</option>
-                <option value="PUBLISHED">Published</option>
-                <option value="SCHEDULED">Scheduled</option>
-                <option value="ARCHIVED">Archived</option>
-              </select>
-              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
-            </div>
-          </FormField>
-
-          <FormField label="Publish Date">
-            <input
-              type="datetime-local"
-              value={form.publishedAt}
-              onChange={(e) => setForm((f) => ({ ...f, publishedAt: e.target.value }))}
-              className={inputCls}
+          <FormField label="Tags">
+            <ChipInput
+              values={form.tags}
+              onChange={(tags) => setForm((f) => ({ ...f, tags }))}
+              placeholder="Add a tag and press Enter"
             />
           </FormField>
-        </div>
 
-        <div>
-          <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-1.5">Content</label>
-          <RichTextEditor
-            value={form.content}
-            onChange={(content) => setForm((f) => ({ ...f, content }))}
-            placeholder="Write your post content here..."
-          />
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Status">
+              <div className="relative">
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as BlogPost["status"] }))}
+                  className={`${inputCls} appearance-none pr-8`}
+                >
+                  <option value="DRAFT">Draft</option>
+                  <option value="PUBLISHED">Published</option>
+                  <option value="SCHEDULED">Scheduled</option>
+                  <option value="ARCHIVED">Archived</option>
+                </select>
+                <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
+              </div>
+            </FormField>
+
+            <FormField label="Date" hint="shown on the post">
+              <input
+                type="datetime-local"
+                value={form.publishedAt}
+                onChange={(e) => setForm((f) => ({ ...f, publishedAt: e.target.value }))}
+                className={inputCls}
+              />
+            </FormField>
+          </div>
+
+          <FormField label="Cover Image">
+            <input
+              ref={imageRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={handleFeaturedImageUpload}
+            />
+            {form.featuredImage ? (
+              <div className="relative rounded-[10px] border border-(--neutral-200) overflow-hidden group">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={blogImageUrl(form.featuredImage)} alt="Cover preview" className="w-full h-32 object-cover" />
+                <button
+                  type="button"
+                  onClick={() => imageRef.current?.click()}
+                  disabled={uploadingImage}
+                  className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 opacity-0 group-hover:opacity-100 transition-all font-dm text-[13px] font-medium text-white"
+                >
+                  {uploadingImage ? "Uploading…" : "Replace image"}
+                </button>
+              </div>
+            ) : (
+              <div
+                onDragOver={(e) => { e.preventDefault(); setIsDraggingCover(true); }}
+                onDragLeave={() => setIsDraggingCover(false)}
+                onDrop={handleCoverDrop}
+                onClick={() => imageRef.current?.click()}
+                className={`flex flex-col items-center justify-center gap-2 w-full h-32 rounded-[10px] border-2 border-dashed cursor-pointer transition-colors ${
+                  isDraggingCover ? "border-(--green-600) bg-(--green-50)" : "border-(--neutral-200) hover:border-(--green-600)"
+                }`}
+              >
+                <ImageIcon size={20} className="text-(--neutral-400)" />
+                <p className="font-dm text-[12px] text-(--neutral-500) text-center px-4">
+                  {uploadingImage ? (
+                    "Uploading…"
+                  ) : (
+                    <>
+                      Drag and drop, or{" "}
+                      <span className="text-(--green-700) font-medium inline-flex items-center gap-1">
+                        <Upload size={12} /> Upload Image
+                      </span>
+                    </>
+                  )}
+                </p>
+              </div>
+            )}
+            <input
+              value={form.featuredImage}
+              onChange={(e) => setForm((f) => ({ ...f, featuredImage: e.target.value }))}
+              placeholder="or paste a key / URL"
+              className={`${inputCls} mt-2 h-9 text-[13px]`}
+            />
+          </FormField>
+
+          <FormField label="Authors" hint="who gets credit on the post">
+            <AuthorPicker
+              authors={authorOptions}
+              value={form.authorIds}
+              onChange={(authorIds) => setForm((f) => ({ ...f, authorIds }))}
+              placeholder="Select authors…"
+            />
+          </FormField>
         </div>
       </div>
     </div>
@@ -313,6 +499,64 @@ function FormField({ label, required, hint, children }: {
         {hint && <span className="text-(--neutral-400) font-normal ml-1">({hint})</span>}
       </label>
       {children}
+    </div>
+  );
+}
+
+// Free-text chip input bound to a string[] value. Enter (or comma) commits
+// the current draft as a chip; Backspace on an empty draft pops the last
+// chip; the × button removes a specific chip.
+function ChipInput({ values, onChange, placeholder }: {
+  values: string[];
+  onChange: (values: string[]) => void;
+  placeholder?: string;
+}) {
+  const [draft, setDraft] = useState("");
+
+  function commitDraft() {
+    const v = draft.trim();
+    if (!v) return;
+    if (!values.includes(v)) onChange([...values, v]);
+    setDraft("");
+  }
+
+  function removeChip(v: string) {
+    onChange(values.filter((x) => x !== v));
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5 items-center w-full min-h-10 px-2.5 py-1.5 rounded-[8px] border border-(--neutral-200) bg-white focus-within:ring-2 focus-within:ring-(--green-500) focus-within:border-transparent transition-shadow">
+      {values.map((v) => (
+        <span
+          key={v}
+          className="inline-flex items-center gap-1 h-6 pl-2.5 pr-1.5 rounded-full bg-(--green-50) text-(--green-800) font-dm text-[12px] font-medium"
+        >
+          {v}
+          <button
+            type="button"
+            onClick={() => removeChip(v)}
+            className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-(--green-200) transition-colors"
+            aria-label={`Remove ${v}`}
+          >
+            <X size={11} />
+          </button>
+        </span>
+      ))}
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault();
+            commitDraft();
+          } else if (e.key === "Backspace" && !draft && values.length) {
+            removeChip(values[values.length - 1]);
+          }
+        }}
+        onBlur={commitDraft}
+        placeholder={values.length ? "" : placeholder}
+        className="flex-1 min-w-[100px] h-6 font-dm text-[13px] text-(--neutral-900) placeholder:text-(--neutral-400) outline-none bg-transparent"
+      />
     </div>
   );
 }

@@ -92,6 +92,9 @@ export function AdminCampaignsClient() {
   const [sendTarget, setSendTarget] = useState<Campaign | null>(null);
   const [scheduleAt, setScheduleAt] = useState("");
 
+  // Recipient delivery-status drawer — opened by clicking a campaign row
+  const [viewTarget, setViewTarget] = useState<Campaign | null>(null);
+
   const [form, setForm] = useState({
     name: "",
     heading: "",
@@ -108,9 +111,29 @@ export function AdminCampaignsClient() {
     queryKey: ["admin-campaigns"],
     queryFn: () =>
       fetch("/api/admin/campaigns").then((r) => r.json()),
+    // Poll while anything is actively sending, so a status flip to SENT/FAILED
+    // shows up without the admin having to manually reload the page.
+    refetchInterval: (query) => {
+      const list: Campaign[] = query.state.data?.data?.campaigns ?? [];
+      return list.some((c) => c.status === "SENDING") ? 5000 : false;
+    },
   });
 
   const campaigns: Campaign[] = data?.data?.campaigns ?? [];
+
+  // ── Fetch recipient delivery status for the viewed campaign ────────────────
+  const { data: recipientsData, isLoading: recipientsLoading } = useQuery({
+    queryKey: ["admin-campaign-recipients", viewTarget?.id],
+    queryFn: () =>
+      fetch(`/api/admin/campaigns/${viewTarget!.id}/recipients`).then((r) => r.json()),
+    enabled: !!viewTarget,
+  });
+  const recipientCounts: Record<string, number> = recipientsData?.data?.counts ?? {};
+  const recipientList: {
+    id: string; name: string; email: string; channel: string; status: string;
+    errorMessage: string | null; sentAt: string | null; deliveredAt: string | null;
+    openedAt: string | null; clickedAt: string | null; failedAt: string | null;
+  }[] = recipientsData?.data?.recipients ?? [];
   const stats = data?.data?.stats ?? {
     total: 0,
     sentThisMonth: 0,
@@ -405,6 +428,10 @@ export function AdminCampaignsClient() {
           emptyTitle="No campaigns yet"
           emptyDescription="Create your first email, SMS, WhatsApp, or push campaign."
           pageSize={20}
+          onRowClick={(row) => {
+            const c = row as unknown as Campaign;
+            if (c.status !== "DRAFT") setViewTarget(c);
+          }}
         />
       </div>
 
@@ -837,9 +864,83 @@ export function AdminCampaignsClient() {
         confirmLabel="Delete"
         danger
       />
+
+      {/* Recipient delivery-status drawer */}
+      <Drawer
+        open={!!viewTarget}
+        onClose={() => setViewTarget(null)}
+        title={viewTarget ? `Delivery — ${viewTarget.name}` : ""}
+      >
+        {viewTarget && (
+          <div className="space-y-5">
+            {viewTarget.status === "FAILED" && (
+              <div className="rounded-[8px] bg-(--danger-bg) p-3 font-dm text-[13px] text-(--danger)">
+                This campaign failed to send. Retrying it will skip recipients already
+                marked delivered.
+              </div>
+            )}
+            <div className="grid grid-cols-4 gap-2">
+              {RECIPIENT_STATUS_LABELS.map(({ key, label, color }) => (
+                <div key={key} className="rounded-[8px] border border-(--neutral-200) p-2.5 text-center">
+                  <div className={`font-dm text-[18px] font-bold ${color}`}>
+                    {recipientCounts[key] ?? 0}
+                  </div>
+                  <div className="font-dm text-[11px] text-(--neutral-500)">{label}</div>
+                </div>
+              ))}
+            </div>
+
+            {recipientsLoading ? (
+              <p className="font-dm text-[13px] text-(--neutral-500)">Loading…</p>
+            ) : recipientList.length === 0 ? (
+              <p className="font-dm text-[13px] text-(--neutral-500)">No recipients recorded yet.</p>
+            ) : (
+              <div className="border border-(--neutral-200) rounded-[8px] overflow-hidden">
+                <table className="w-full text-left">
+                  <thead className="bg-(--neutral-50)">
+                    <tr>
+                      <th className="font-dm text-[12px] font-medium text-(--neutral-500) px-3 py-2">Recipient</th>
+                      <th className="font-dm text-[12px] font-medium text-(--neutral-500) px-3 py-2">Channel</th>
+                      <th className="font-dm text-[12px] font-medium text-(--neutral-500) px-3 py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recipientList.map((r) => (
+                      <tr key={r.id} className="border-t border-(--neutral-100)">
+                        <td className="px-3 py-2">
+                          <div className="font-dm text-[13px] text-(--neutral-900)">{r.name}</div>
+                          <div className="font-dm text-[12px] text-(--neutral-500)">{r.email}</div>
+                        </td>
+                        <td className="px-3 py-2 font-dm text-[12px] text-(--neutral-700)">{r.channel}</td>
+                        <td className="px-3 py-2">
+                          <StatusPill status={r.status.toLowerCase()} />
+                          {r.errorMessage && (
+                            <div className="font-dm text-[11px] text-(--danger) mt-0.5">{r.errorMessage}</div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 }
+
+const RECIPIENT_STATUS_LABELS: { key: string; label: string; color: string }[] = [
+  { key: "SENT", label: "Sent", color: "text-(--neutral-700)" },
+  { key: "DELIVERED", label: "Delivered", color: "text-(--green-800)" },
+  { key: "OPENED", label: "Opened", color: "text-(--info)" },
+  { key: "CLICKED", label: "Clicked", color: "text-purple-700" },
+  { key: "BOUNCED", label: "Bounced", color: "text-(--gold-700)" },
+  { key: "SPAM", label: "Marked spam", color: "text-(--danger)" },
+  { key: "FAILED", label: "Failed", color: "text-(--danger)" },
+  { key: "QUEUED", label: "Queued", color: "text-(--neutral-400)" },
+];
 
 function Field({
   label,

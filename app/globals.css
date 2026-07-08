@@ -85,6 +85,16 @@
   100% { box-shadow: 0 0 0 0 rgba(67, 169, 53, 0); }
 }
 
+@keyframes shake-error {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
+.animate-shake-error {
+  animation: shake-error 0.4s ease-in-out;
+}
+
 /* Vastago Grotesk, Stagnan, and Real Head Web W03 are loaded via
    next/font/local in lib/fonts.ts (see --font-vastago-var etc. above) —
    that handles @font-face generation plus fallback-metric overrides. */

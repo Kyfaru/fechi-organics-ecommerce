@@ -47,6 +47,7 @@ export async function POST(req: Request) {
     featuredImage?: string;
     category?: string;
     tags?: string[];
+    authorIds?: string[];
     status?: "DRAFT" | "PUBLISHED" | "SCHEDULED" | "ARCHIVED";
     seoTitle?: string;
     metaDesc?: string;
@@ -68,6 +69,12 @@ export async function POST(req: Request) {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
 
+  // authorId stays populated for existing single-author reads (list views,
+  // the `author` relation) even now that authorIds carries the full set —
+  // first entry wins; an empty/missing selection falls back to the creator.
+  const authorIds = Array.isArray(body.authorIds) ? body.authorIds : [];
+  const authorId = authorIds.length > 0 ? authorIds[0] : session.user.id;
+
   try {
     const post = await db.blogPost.create({
       data: {
@@ -79,7 +86,8 @@ export async function POST(req: Request) {
         category: body.category ?? null,
         tags: body.tags ?? [],
         status: body.status ?? "DRAFT",
-        authorId: session.user.id,
+        authorId,
+        authorIds,
         seoTitle: body.seoTitle ?? null,
         metaDesc: body.metaDesc ?? null,
         publishedAt: body.publishedAt ? new Date(body.publishedAt) : null,

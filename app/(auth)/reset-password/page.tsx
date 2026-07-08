@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent, Suspense } from "react";
+import { useState, useEffect, FormEvent, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@iconify/react";
@@ -8,6 +8,7 @@ import PasswordInput from "@/components/auth/PasswordInput";
 import PasswordChecklist, { checkRequirements } from "@/components/auth/PasswordChecklist";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
+import { PWRESET_COMPLETION_FLAG_KEY } from "@/lib/pwreset-flag";
 
 /**
  * Reset Password page — user-facing.
@@ -40,6 +41,13 @@ function ResetPasswordForm() {
   const [isLoading, setIsLoading] = useState(false);
   // Track whether the form has been submitted to show red X on unmet requirements
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+
+  // Block this stale-link page too once a reset has already completed
+  // elsewhere in this browser (same flag /forgot-password sets on success).
+  useEffect(() => {
+    const until = Number(sessionStorage.getItem(PWRESET_COMPLETION_FLAG_KEY) ?? 0);
+    if (until && Date.now() < until) window.location.href = "/login";
+  }, []);
 
   // ---------------------------------------------------------------------------
   // No-token guard — show error state instead of form

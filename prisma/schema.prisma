@@ -187,6 +187,8 @@ model user {
   mustChangePassword  Boolean   @default(false)
   usernameChanges      Int       @default(0)
   lastUsernameChange   DateTime?
+  passwordChanges      Int       @default(0)
+  lastPasswordChange   DateTime?
   phoneCode            String?
   langPreference       String    @default("en-GB")
   currencyDisplay      String    @default("KES")
@@ -378,21 +380,24 @@ model favorite {
 }
 
 model testimonial {
-  id         String            @id @default(uuid())
-  authorName String
-  location   String?
-  quote      String
-  rating     Int               @default(5)
-  title      String?
-  orderId    String?
-  userId     String?
-  beforeKey  String?
-  afterKey   String?
-  source     TestimonialSource @default(manual)
-  approved   Boolean           @default(false)
-  sortOrder  Int               @default(0)
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
+  id            String            @id @default(uuid())
+  authorName    String
+  location      String?
+  quote         String
+  rating        Int               @default(5)
+  title         String?
+  orderId       String?
+  userId        String?
+  beforeKey     String?
+  afterKey      String?
+  source        TestimonialSource @default(manual)
+  approved      Boolean           @default(false)
+  sortOrder     Int               @default(0)
+  productIds    String[]          @default([])
+  contactEmail  String?
+  contactPhone  String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
 
   @@index([approved, sortOrder])
   @@schema("public")
@@ -709,8 +714,50 @@ model campaign {
   scheduledAt          DateTime?
   sentAt               DateTime?
   sentCount            Int            @default(0)
+  lastError            String?        @db.Text
   createdAt            DateTime       @default(now())
 
+  @@schema("admin")
+}
+
+enum CampaignChannel {
+  EMAIL
+  SMS
+  PUSH
+
+  @@schema("admin")
+}
+
+enum RecipientStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  BOUNCED
+  SPAM
+  FAILED
+  OPENED
+  CLICKED
+
+  @@schema("admin")
+}
+
+model campaignRecipient {
+  id                String          @id @default(cuid())
+  campaignId        String
+  userId            String
+  channel           CampaignChannel
+  status            RecipientStatus @default(QUEUED)
+  providerMessageId String?
+  errorMessage      String?
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  openedAt          DateTime?
+  clickedAt         DateTime?
+  failedAt          DateTime?
+  createdAt         DateTime        @default(now())
+
+  @@unique([campaignId, userId, channel])
+  @@index([providerMessageId])
   @@schema("admin")
 }
 
@@ -747,6 +794,7 @@ model blogPost {
   status        PostStatus @default(DRAFT)
   authorId      String
   author        user       @relation(fields: [authorId], references: [id])
+  authorIds     String[]   @default([])
   publishedAt   DateTime?
   seoTitle      String?
   metaDesc      String?

@@ -35,13 +35,24 @@ export default async function TestimonialsPage({
       <Navbar flat />
 
       <main className="flex-1 max-w-[1440px] w-full mx-auto px-4 md:px-8 pt-16 pb-24">
-        <div className="text-center mb-12">
+        <div className="text-center mb-12 max-w-2xl mx-auto">
+          <span className="inline-block text-[11px] font-bold uppercase tracking-widest text-[#15803D] bg-[#f0fdf4] border border-[#dcfce7] px-3 py-1.5 rounded-full mb-4">
+            Real Stories
+          </span>
           <h1 className="font-heading font-semibold text-[#27731e] text-[40px] md:text-[58px] tracking-[-1.16px]">
             Testimonials
           </h1>
-          <p className="font-body text-[15px] text-[#40493c] dark:text-gray-400 mt-3 max-w-xl mx-auto">
-            {total} {total === 1 ? "story" : "stories"} from real Fechi Organics customers.
+          <p className="font-body text-[15px] text-[#40493c] dark:text-gray-400 mt-3">
+            {total} {total === 1 ? "story" : "stories"} from real Fechi Organics customers, in
+            their own words — before &amp; after results, and how our products fit into their
+            routines.
           </p>
+          <Link
+            href="/testimonials/new"
+            className="inline-flex items-center gap-2 mt-6 bg-[#27731e] text-white font-body font-semibold px-7 py-3.5 rounded-full hover:bg-[#045a03] transition-colors text-[15px]"
+          >
+            Share Your Story
+          </Link>
         </div>
 
         <TestimonialsGrid testimonials={items} />

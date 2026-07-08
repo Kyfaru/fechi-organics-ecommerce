@@ -53,6 +53,9 @@ const PUBLIC_PATHS = [
   "/about",
   "/terms",
   "/privacy-policy",
+  "/faq",
+  "/testimonials",
+  "/shipping",
   // Public API namespaces
   "/api/storefront",
   "/api/cart",
@@ -61,6 +64,11 @@ const PUBLIC_PATHS = [
   "/api/contact",
   "/api/qstash",
   "/api/zoho/webhook",
+  "/api/countries",
+  "/api/testimonials",
+  "/api/products/options",
+  "/api/track",
+  "/api/webhooks",
 ];
 
 /** Auth API prefix — always pass through. */

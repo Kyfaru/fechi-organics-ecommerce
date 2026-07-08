@@ -9,6 +9,8 @@ import { z } from "zod";
 import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 
+const PAGE_SIZE_DEFAULT = 20;
+
 // ---------------------------------------------------------------------------
 // Auth helper — resolves to the user row if they are an admin, else null
 // ---------------------------------------------------------------------------
@@ -32,21 +34,32 @@ function withUrls(t: { beforeKey: string | null; afterKey: string | null; [key: 
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/admin/testimonials
-// Returns all testimonials ordered by sortOrder ascending.
-// Each record includes beforeUrl and afterUrl resolved via r2PublicUrl().
+// GET /api/admin/testimonials?page=&pageSize=
+// Paginated (default 20/page) — the list was previously unbounded, which
+// meant every testimonial (each rendering 2 next/image before/after photos)
+// loaded and rendered at once, freezing the admin page as submissions grew.
 // ---------------------------------------------------------------------------
-export async function GET() {
+export async function GET(req: NextRequest) {
   await connection();
   try {
     const admin = await requireAdmin();
     if (!admin) return Err.forbidden();
 
-    const rows = await db.testimonial.findMany({
-      orderBy: { sortOrder: "asc" },
-    });
+    const { searchParams } = new URL(req.url);
+    const page = Math.max(1, Number(searchParams.get("page")) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize")) || PAGE_SIZE_DEFAULT));
 
-    return ok({ testimonials: rows.map(withUrls) });
+    const [rows, total, approvedCount] = await Promise.all([
+      db.testimonial.findMany({
+        orderBy: { sortOrder: "asc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      db.testimonial.count(),
+      db.testimonial.count({ where: { approved: true } }),
+    ]);
+
+    return ok({ testimonials: rows.map(withUrls), total, page, pageSize, approvedCount });
   } catch (e) {
     console.error("[admin/testimonials] GET error", e);
     return Err.internal();

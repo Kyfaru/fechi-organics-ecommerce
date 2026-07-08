@@ -36,7 +36,11 @@ export async function GET(req: NextRequest) {
         createdAt: true,
         updatedAt: true,
         adminProfile: {
-          select: { id: true, fullName: true, department: true, permissions: true, isSuperAdmin: true, isActive: true },
+          // `role` (the app-level role template, distinct from user.role) is
+          // read by AdminStaffClient's RolePill/change-role modal and by
+          // AuthorPicker — it was missing from this select, so those screens
+          // were silently rendering `undefined`.
+          select: { id: true, fullName: true, department: true, permissions: true, isSuperAdmin: true, isActive: true, role: true },
         },
         sessions: {
           where: { expiresAt: { gt: new Date() } },

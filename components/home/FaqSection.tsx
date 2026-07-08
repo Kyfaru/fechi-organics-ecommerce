@@ -19,6 +19,18 @@ const FAQS = [
     q: "What are the benefits of Fechi Organic products?",
     a: "Fechi Organics products are 100% natural, cruelty-free, and crafted from African botanical ingredients that have been used for generations to promote healthy, glowing skin.",
   },
+  {
+    q: "How long does delivery take within Kenya?",
+    a: "Nairobi orders typically arrive within 1–2 business days, and other counties within 2–5 business days. You can also pick up from one of our store locations.",
+  },
+  {
+    q: "What payment methods do you accept?",
+    a: "We accept M-Pesa (STK push), Paystack, and KCB, so you can check out securely with the method that works best for you.",
+  },
+  {
+    q: "Can I return or exchange a product?",
+    a: "Yes — unopened products can be returned within 7 days of delivery. Reach out to our support team with your order number and we'll sort it out.",
+  },
 ];
 
 export function FaqSection() {
@@ -144,7 +156,7 @@ export function FaqSection() {
               className="flex justify-end mt-8"
             >
               <Link
-                href="/contact#faq"
+                href="/faq"
                 className="inline-flex items-center gap-2 border border-black dark:border-gray-600 rounded-full px-7 py-4 font-body font-medium text-[#27731e] text-[15px] tracking-[0.3px] hover:bg-[#27731e] hover:text-white hover:border-[#27731e] transition-all"
               >
                 See more FAQs

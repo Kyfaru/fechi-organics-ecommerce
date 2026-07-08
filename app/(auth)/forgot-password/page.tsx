@@ -1,21 +1,23 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
+import confetti from "canvas-confetti";
 import type { Value as PhoneValue } from "react-phone-number-input";
 import FormInput from "@/components/auth/FormInput";
 import PhoneInput from "@/components/auth/PhoneInput";
-import PasswordInput from "@/components/auth/PasswordInput";
-import PasswordChecklist, { checkRequirements } from "@/components/auth/PasswordChecklist";
+import StrongPasswordInput from "@/components/auth/StrongPasswordInput";
+import { checkRequirements } from "@/components/auth/PasswordChecklist";
 import OtpPinInput from "@/components/auth/OtpPinInput";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
 import { useOtpResend } from "@/hooks/use-otp-resend";
+import { PWRESET_COMPLETION_FLAG_KEY, PWRESET_PAGE_WINDOW_MS } from "@/lib/pwreset-flag";
 
 type Channel = "email" | "phone";
-type Step = "request" | "otp" | "set-password";
+type Step = "request" | "otp" | "set-password" | "success";
 
 /**
  * Forgot Password page — user-facing, in-page 3-step OTP wizard.
@@ -28,11 +30,14 @@ type Step = "request" | "otp" | "set-password";
  *   not an emailed link the user clicks later.
  * Step 3 "set-password": new password -> POST /api/auth/reset-password
  *   { resetAuth, newPassword }.
+ * Step 4 "success": confetti + auto-redirect to /login, with a 15-minute
+ *   sessionStorage flag that blocks revisiting this page afterward.
  *
- * app/(auth)/reset-password/page.tsx is intentionally left untouched — it
- * still handles the old `?token=` JWT shape as a graceful "link expired"
- * fallback for anyone with a stale emailed link, but nothing generates that
- * link anymore, so in practice it will only ever show its no-token state.
+ * app/(auth)/reset-password/page.tsx still handles the old `?token=` JWT
+ * shape as a graceful "link expired" fallback for anyone with a stale
+ * emailed link (nothing generates that link anymore, so in practice it will
+ * only ever show its no-token state) — it shares the same completion flag
+ * this page sets, from lib/pwreset-flag.ts.
  */
 export default function ForgotPasswordPage() {
   const router = useRouter();
@@ -55,13 +60,30 @@ export default function ForgotPasswordPage() {
   // ---- Step 3 state ----
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordFocused, setPasswordFocused] = useState(false);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  const [newPasswordError, setNewPasswordError] = useState<string | undefined>(undefined);
-  const [confirmPasswordError, setConfirmPasswordError] = useState<string | undefined>(undefined);
   const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
+  const [policyError, setPolicyError] = useState<
+    { code: "PASSWORD_CHANGE_LIMIT" } | { code: "PASSWORD_CHANGE_TOO_SOON"; nextAllowedAt: string; cooldownDays: number } | null
+  >(null);
+
+  // ---- Step 4 state ----
+  const [redirectIn, setRedirectIn] = useState(5);
 
   const identifier = channel === "email" ? email.trim() : phone ?? "";
+
+  // Enforce the page's 15-minute total window and block revisiting after a
+  // completed reset — both read/write the same sessionStorage flag.
+  useEffect(() => {
+    const until = Number(sessionStorage.getItem(PWRESET_COMPLETION_FLAG_KEY) ?? 0);
+    if (until && Date.now() < until) {
+      window.location.href = "/login";
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      window.location.href = "/login";
+    }, PWRESET_PAGE_WINDOW_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   async function sendCode(): Promise<void> {
     await fetch("/api/auth/forgot-password", {
@@ -153,27 +175,10 @@ export default function ForgotPasswordPage() {
   // Step 3 — set new password
   // -------------------------------------------------------------------------
   function validatePassword(): boolean {
-    let valid = true;
-
     const requirements = checkRequirements(newPassword);
-    if (requirements.some((r) => !r.met)) {
-      setNewPasswordError("Password does not meet all requirements.");
-      valid = false;
-    } else {
-      setNewPasswordError(undefined);
-    }
-
-    if (!confirmPassword) {
-      setConfirmPasswordError("Please confirm your password.");
-      valid = false;
-    } else if (newPassword !== confirmPassword) {
-      setConfirmPasswordError("Passwords do not match.");
-      valid = false;
-    } else {
-      setConfirmPasswordError(undefined);
-    }
-
-    return valid;
+    if (requirements.some((r) => !r.met)) return false;
+    if (!confirmPassword || newPassword !== confirmPassword) return false;
+    return true;
   }
 
   async function handlePasswordSubmit(e: FormEvent<HTMLFormElement>) {
@@ -191,18 +196,42 @@ export default function ForgotPasswordPage() {
       const data = await res.json();
 
       if (!res.ok || !data.ok) {
-        toast.error(data?.error || "Failed to update password. Please try again.");
+        const code = data?.error?.code;
+        if (code === "PASSWORD_CHANGE_LIMIT" || code === "PASSWORD_CHANGE_TOO_SOON") {
+          setPolicyError(data.error);
+          toast.error(
+            code === "PASSWORD_CHANGE_LIMIT"
+              ? "Password change limit reached"
+              : "Too soon to change your password again"
+          );
+        } else {
+          toast.error(typeof data?.error === "string" ? data.error : "Failed to update password. Please try again.");
+        }
         return;
       }
 
-      toast.success("Password updated. Please log in.");
-      router.push("/login");
+      const until = Date.now() + 15 * 60 * 1000;
+      sessionStorage.setItem(PWRESET_COMPLETION_FLAG_KEY, String(until));
+      window.history.replaceState(null, "", window.location.href);
+      confetti({ particleCount: 120, spread: 80, colors: ["#27731e", "#fec700", "#a4f690"], origin: { y: 0.42 } });
+      setStep("success");
     } catch {
       toast.error("Failed to update password. Please try again.");
     } finally {
       setIsSubmittingPassword(false);
     }
   }
+
+  // ---- Step 4 — success: countdown to auto-redirect ----
+  useEffect(() => {
+    if (step !== "success") return;
+    if (redirectIn <= 0) {
+      window.location.href = "/login";
+      return;
+    }
+    const timer = window.setTimeout(() => setRedirectIn((n) => n - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [step, redirectIn]);
 
   function formatTime(s: number): string {
     const m = Math.floor(s / 60);
@@ -222,6 +251,10 @@ export default function ForgotPasswordPage() {
     "set-password": {
       title: "New Password",
       subtitle: "Choose a new password for your account.",
+    },
+    success: {
+      title: "Password Updated",
+      subtitle: "Your password has been changed successfully.",
     },
   };
 
@@ -439,39 +472,13 @@ export default function ForgotPasswordPage() {
           ---------------------------------------------------------------- */}
           {step === "set-password" && (
             <form onSubmit={handlePasswordSubmit} noValidate className="flex flex-col gap-5">
-              <div className="flex flex-col gap-1">
-                <PasswordInput
-                  label="New Password"
-                  placeholder="Enter a new password"
-                  value={newPassword}
-                  onChange={(e) => {
-                    setNewPassword(e.target.value);
-                    if (newPasswordError) setNewPasswordError(undefined);
-                  }}
-                  onFocus={() => setPasswordFocused(true)}
-                  onBlur={() => setPasswordFocused(false)}
-                  error={newPasswordError}
-                  autoComplete="new-password"
-                  disabled={isSubmittingPassword}
-                />
-                <PasswordChecklist
-                  password={newPassword}
-                  visible={passwordFocused || hasAttemptedSubmit}
-                  submitted={hasAttemptedSubmit}
-                />
-              </div>
-
-              <PasswordInput
-                label="Confirm Password"
-                placeholder="Re-enter your new password"
-                value={confirmPassword}
-                onChange={(e) => {
-                  setConfirmPassword(e.target.value);
-                  if (confirmPasswordError) setConfirmPasswordError(undefined);
-                }}
-                error={confirmPasswordError}
-                autoComplete="new-password"
+              <StrongPasswordInput
+                password={newPassword}
+                confirmPassword={confirmPassword}
+                onPasswordChange={setNewPassword}
+                onConfirmPasswordChange={setConfirmPassword}
                 disabled={isSubmittingPassword}
+                submitted={hasAttemptedSubmit}
               />
 
               <button
@@ -484,8 +491,74 @@ export default function ForgotPasswordPage() {
               </button>
             </form>
           )}
+
+          {/* ----------------------------------------------------------------
+              Step 4 — success
+          ---------------------------------------------------------------- */}
+          {step === "success" && (
+            <div className="flex flex-col items-center text-center gap-5">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#eafbe7]">
+                <Icon icon="mdi:check-bold" width={32} className="text-[#27731e]" />
+              </div>
+              <p className="text-sm text-[#40493c] dark:text-gray-400">
+                Keep your new password somewhere safe and don&apos;t share it. You&apos;ll need to log
+                in again with it. Redirecting to login in{" "}
+                <span className="font-mono font-semibold tabular-nums">{redirectIn}s</span>…
+              </p>
+              <button
+                type="button"
+                onClick={() => (window.location.href = "/login")}
+                className="w-full py-3.5 rounded-full font-bold text-sm tracking-wide text-[#1a1c1c] transition-all duration-150 hover:brightness-95 active:scale-[0.98]"
+                style={{ backgroundColor: "#fec700" }}
+              >
+                Go to login now
+              </button>
+            </div>
+          )}
         </div>
       </section>
+
+      {/* ----------------------------------------------------------------
+          Password-policy error modal (limit reached / too soon)
+      ---------------------------------------------------------------- */}
+      {policyError && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-xl">
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-red-50 dark:bg-red-950/40">
+              <Icon icon="solar:danger-triangle-bold" width={20} className="text-red-500" />
+            </div>
+            {policyError.code === "PASSWORD_CHANGE_LIMIT" ? (
+              <>
+                <h3 className="mb-1 text-base font-bold text-[#1a1c1c] dark:text-white">
+                  Password change limit reached
+                </h3>
+                <p className="text-sm text-[#40493c] dark:text-gray-400">
+                  You&apos;ve reached the maximum number of password changes allowed on this
+                  account. Please contact Fechi Organics support for help.
+                </p>
+              </>
+            ) : (
+              <>
+                <h3 className="mb-1 text-base font-bold text-[#1a1c1c] dark:text-white">
+                  Too soon to change your password
+                </h3>
+                <p className="text-sm text-[#40493c] dark:text-gray-400">
+                  Your password can only be changed once every {policyError.cooldownDays} day
+                  {policyError.cooldownDays === 1 ? "" : "s"}. You can try again on{" "}
+                  {new Date(policyError.nextAllowedAt).toLocaleString()}.
+                </p>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => setPolicyError(null)}
+              className="mt-5 w-full rounded-full bg-[#f0f0ef] dark:bg-gray-800 py-2.5 text-sm font-semibold text-[#1a1c1c] dark:text-white hover:brightness-95"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

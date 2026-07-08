@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { CurrencyCode, FxRates } from "@/lib/currency";
 import { CURRENCIES, formatPrice } from "@/lib/currency";
 import { PostHogProvider } from "@/components/PostHogProvider";
+import { PrelineInit } from "@/components/admin/PrelineInit";
 
 // ── TanStack Query ─────────────────────────────────────────────────────────
 
@@ -146,6 +147,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const qc = getQueryClient();
   return (
     <PostHogProvider>
+      <PrelineInit />
       <QueryClientProvider client={qc}>
         <ThemeProvider>
           <CurrencyProvider>{children}</CurrencyProvider>

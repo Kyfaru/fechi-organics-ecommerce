@@ -15,6 +15,7 @@ import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { EmptyState } from "@/components/admin/ui/EmptyState";
+import { DonutChart } from "@/components/ui/donut-chart";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -79,6 +80,12 @@ function formatDate(iso: string) {
 function formatKes(amountCents: number) {
   return `KES ${(amountCents / 100).toLocaleString("en-KE")}`;
 }
+
+const CHANNEL_COLORS: Record<string, string> = {
+  EMAIL: "#3b82f6",
+  SMS: "#22c55e",
+  PUSH: "#f59e0b",
+};
 
 function initials(name: string) {
   return name
@@ -213,8 +220,17 @@ function CustomerDrawer({
     enabled: !!customerId && tab === "orders",
   });
 
+  const { data: statsData } = useQuery({
+    queryKey: ["admin-customer-stats", customerId],
+    queryFn: () =>
+      fetch(`/api/admin/customers/${customerId}/stats`).then((r) => r.json()),
+    enabled: !!customerId && tab === "info",
+  });
+
   const customer: CustomerDetail | null = detailData?.data?.user ?? null;
   const orders: CustomerOrder[] = ordersData?.data?.orders ?? [];
+  const stats: { testimonialsCount: number; totalSpendKes: number; channelUsage: { channel: string; count: number }[] } | null =
+    statsData?.data ?? null;
 
   const TABS = [
     { key: "orders" as const, label: "Orders" },
@@ -341,6 +357,39 @@ function CustomerDrawer({
                 <div className="mt-4 p-3 rounded-[10px] bg-(--danger-bg) border border-(--danger)">
                   <div className="font-dm text-[12px] font-semibold text-(--danger) mb-1">Ban Reason</div>
                   <div className="font-dm text-[13px] text-(--danger)">{customer.banReason}</div>
+                </div>
+              )}
+
+              {stats && (
+                <div className="mt-6 pt-6 border-t border-(--neutral-200) dark:border-(--dark-border)">
+                  <div className="font-dm text-[12px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-3">
+                    Engagement
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) p-3">
+                      <div className="font-dm text-[11px] text-(--neutral-500) dark:text-(--dark-muted)">Testimonials given</div>
+                      <div className="font-syne text-[20px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">{stats.testimonialsCount}</div>
+                    </div>
+                    <div className="rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) p-3">
+                      <div className="font-dm text-[11px] text-(--neutral-500) dark:text-(--dark-muted)">Total spent</div>
+                      <div className="font-syne text-[20px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">{formatKes(stats.totalSpendKes)}</div>
+                    </div>
+                  </div>
+
+                  {stats.channelUsage.length > 0 && (
+                    <div>
+                      <div className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted) mb-2">Channel usage</div>
+                      <DonutChart
+                        size={140}
+                        strokeWidth={20}
+                        data={stats.channelUsage.map((c) => ({
+                          label: c.channel,
+                          value: c.count,
+                          color: CHANNEL_COLORS[c.channel] ?? "#9ca3af",
+                        }))}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>

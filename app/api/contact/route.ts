@@ -15,7 +15,7 @@ const ContactSchema = z.object({
   email: z.string().email(),
   phone: z.string().optional(),
   subject: z.string().min(2).max(200),
-  message: z.string().min(10).max(2000),
+  message: z.string().min(10).max(50000),
 }).strict();
 
 export async function POST(req: NextRequest) {

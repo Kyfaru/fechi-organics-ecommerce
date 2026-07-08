@@ -3,6 +3,10 @@ import { Resend } from "resend";
 import { qstashReceiver } from "@/lib/qstash";
 import { db } from "@/lib/db";
 import { sendSms } from "@/lib/twilio";
+import { wrapLinksForTracking } from "@/lib/campaign-tracking";
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+const TWILIO_STATUS_CALLBACK = `${APP_URL}/api/webhooks/twilio/status`;
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -26,6 +30,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
   }
 
+  try {
+    return await sendCampaign(campaignId, campaign);
+  } catch (err) {
+    console.error(`[send-campaign] Campaign ${campaignId} failed:`, err);
+    await db.campaign.update({
+      where: { id: campaignId },
+      data: {
+        status: "FAILED",
+        lastError: err instanceof Error ? err.message : String(err),
+      },
+    });
+    return NextResponse.json({ error: "Campaign send failed" }, { status: 500 });
+  }
+}
+
+async function sendCampaign(
+  campaignId: string,
+  campaign: NonNullable<Awaited<ReturnType<typeof db.campaign.findUnique>>>
+) {
   // Determine audience: custom list or all verified non-banned users
   const isCustomAudience =
     campaign.audienceCustomerIds && campaign.audienceCustomerIds.length > 0;
@@ -39,18 +62,32 @@ export async function POST(req: NextRequest) {
     select: { id: true, email: true, name: true, phone: true },
   });
 
+  // Recipient rows already marked SENT/DELIVERED on a prior (failed/retried) run
+  // are skipped below, so a QStash retry after a partial failure never re-sends.
+  const alreadySent = await db.campaignRecipient.findMany({
+    where: { campaignId, status: { in: ["SENT", "DELIVERED", "OPENED", "CLICKED"] } },
+    select: { userId: true, channel: true },
+  });
+  const sentKey = (userId: string, channel: string) => `${userId}:${channel}`;
+  const alreadySentSet = new Set(alreadySent.map((r) => sentKey(r.userId, r.channel)));
+
   await db.campaign.update({
     where: { id: campaignId },
     data: { status: "SENDING" },
   });
 
-  let sentCount = 0;
   const batchSize = 50;
 
   // Strip HTML tags for SMS/WhatsApp plain-text body
   const plainContent = (campaign.content ?? "").replace(/<[^>]+>/g, "");
 
-  const emailHtml = `<!DOCTYPE html>
+  function buildEmailHtml(userId: string): string {
+    const content = wrapLinksForTracking(
+      (campaign.content ?? "").replace(/\n/g, "<br>"),
+      campaignId,
+      userId
+    );
+    return `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"/><title>${campaign.subject ?? campaign.name}</title></head>
 <body style="margin:0;padding:0;background:#f4f6f3;font-family:'DM Sans',Helvetica,Arial,sans-serif;">
@@ -65,7 +102,7 @@ export async function POST(req: NextRequest) {
         </tr>
         <tr>
           <td style="padding:40px 48px;">
-            <div style="font-size:15px;color:#40493c;line-height:1.7;">${(campaign.content ?? "").replace(/\n/g, "<br>")}</div>
+            <div style="font-size:15px;color:#40493c;line-height:1.7;">${content}</div>
           </td>
         </tr>
         <tr>
@@ -78,48 +115,91 @@ export async function POST(req: NextRequest) {
   </table>
 </body>
 </html>`;
+  }
+
+  const channelsForType: Record<string, ("EMAIL" | "SMS" | "PUSH")[]> = {
+    EMAIL: ["EMAIL"],
+    SMS: ["SMS"],
+    PUSH: ["PUSH"],
+    ALL: ["EMAIL", "SMS", "PUSH"],
+  };
+  const channels = channelsForType[campaign.type] ?? [];
+  const countedUserIds = new Set(alreadySent.map((r) => r.userId));
+  let sentCount = countedUserIds.size;
+
+  async function recordResult(
+    userId: string,
+    channel: "EMAIL" | "SMS" | "PUSH",
+    result: { ok: true; providerMessageId?: string } | { ok: false; error: string }
+  ) {
+    await db.campaignRecipient.upsert({
+      where: { campaignId_userId_channel: { campaignId, userId, channel } },
+      create: {
+        campaignId,
+        userId,
+        channel,
+        status: result.ok ? "SENT" : "FAILED",
+        providerMessageId: result.ok ? result.providerMessageId : undefined,
+        errorMessage: result.ok ? undefined : result.error,
+        sentAt: result.ok ? new Date() : undefined,
+        failedAt: result.ok ? undefined : new Date(),
+      },
+      update: {
+        status: result.ok ? "SENT" : "FAILED",
+        providerMessageId: result.ok ? result.providerMessageId : undefined,
+        errorMessage: result.ok ? undefined : result.error,
+        sentAt: result.ok ? new Date() : undefined,
+        failedAt: result.ok ? undefined : new Date(),
+      },
+    });
+    if (result.ok && !countedUserIds.has(userId)) {
+      countedUserIds.add(userId);
+      sentCount++;
+    }
+  }
 
   for (let i = 0; i < users.length; i += batchSize) {
     const batch = users.slice(i, i + batchSize);
 
     for (const user of batch) {
-      try {
-        // Send email when type is EMAIL or ALL
-        if (campaign.type === "EMAIL" || campaign.type === "ALL") {
-          const { error } = await resend.emails.send({
-            from: process.env.EMAIL_FROM!,
-            to: user.email,
-            subject: campaign.subject ?? campaign.name,
-            html: emailHtml,
-          });
-          if (!error) sentCount++;
-        }
+      for (const channel of channels) {
+        if (channel === "SMS" && !user.phone) continue;
+        if (alreadySentSet.has(sentKey(user.id, channel))) continue;
 
-        // Send SMS when type is SMS or ALL — skip users without a phone number
-        if ((campaign.type === "SMS" || campaign.type === "ALL") && user.phone) {
-          await sendSms(user.phone, plainContent);
-          // Only increment if we haven't already counted this user from the email send
-          if (campaign.type === "SMS") sentCount++;
-        }
-
-        // Write an in-app inbox message when type is PUSH or ALL, so the
-        // campaign actually shows up in the customer's /account/inbox —
-        // title/body mirror the same heading/content used for email+SMS above
-        if (campaign.type === "PUSH" || campaign.type === "ALL") {
-          await db.inboxMessage.create({
-            data: {
-              userId: user.id,
-              type: "PROMOTION",
-              title: campaign.heading ?? campaign.subject ?? campaign.name,
-              body: plainContent,
-            },
+        try {
+          if (channel === "EMAIL") {
+            const { data, error } = await resend.emails.send({
+              from: process.env.EMAIL_FROM!,
+              to: user.email,
+              subject: campaign.subject ?? campaign.name,
+              html: buildEmailHtml(user.id),
+            });
+            if (error) throw new Error(error.message);
+            await recordResult(user.id, "EMAIL", { ok: true, providerMessageId: data?.id });
+          } else if (channel === "SMS") {
+            const sid = await sendSms(user.phone!, plainContent, TWILIO_STATUS_CALLBACK);
+            await recordResult(user.id, "SMS", { ok: true, providerMessageId: sid });
+          } else if (channel === "PUSH") {
+            // Write an in-app inbox message, so the campaign actually shows up
+            // in the customer's /account/inbox (no real push provider exists).
+            await db.inboxMessage.create({
+              data: {
+                userId: user.id,
+                type: "PROMOTION",
+                title: campaign.heading ?? campaign.subject ?? campaign.name,
+                body: plainContent,
+              },
+            });
+            await recordResult(user.id, "PUSH", { ok: true });
+          }
+        } catch (err) {
+          // Log but continue — one failed delivery must not abort the batch
+          console.error(`[send-campaign] Failed ${channel} delivery for ${user.email}:`, err);
+          await recordResult(user.id, channel, {
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
           });
-          // Only increment if we haven't already counted this user from the email send
-          if (campaign.type === "PUSH") sentCount++;
         }
-      } catch (err) {
-        // Log but continue — one failed delivery must not abort the batch
-        console.error(`[send-campaign] Failed delivery for ${user.email}:`, err);
       }
     }
 

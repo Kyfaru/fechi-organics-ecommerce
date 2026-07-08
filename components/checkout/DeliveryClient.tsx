@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Icon } from "@iconify/react";
+import { AnimatePresence, motion } from "framer-motion";
 import type { Value as PhoneValue } from "react-phone-number-input";
 import { Navbar } from "@/components/layout/Navbar";
 import { StepIndicator } from "@/components/checkout/StepIndicator";
@@ -23,6 +24,19 @@ type SelectOption = { value: string; label: string; icon?: string };
 
 type Props = {
   user: { fullName: string; email: string; phone: string; country: string };
+};
+
+const MODE_COPY: Record<DeliveryMode, { heading: string; description: string; icon: string }> = {
+  DELIVERY: {
+    heading: "Home Delivery Details",
+    description: "We'll bring your order straight to your door.",
+    icon: "mdi:truck-delivery-outline",
+  },
+  PICKUP: {
+    heading: "Store Pickup Details",
+    description: "Collect your order from one of our store locations.",
+    icon: "mdi:store-outline",
+  },
 };
 
 const PICKUP_STORES = [
@@ -432,6 +446,25 @@ export function DeliveryClient({ user }: Props) {
                 </button>
               ))}
             </div>
+
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={mode}
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 4 }}
+                transition={{ duration: 0.18 }}
+                className="mb-4 flex items-center gap-2.5"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e8f3e6] text-[#0b6b13] dark:bg-[#0b6b13]/20">
+                  <Icon icon={MODE_COPY[mode].icon} width={18} />
+                </span>
+                <div>
+                  <p className="text-[14px] font-bold text-[#1a1c1c] dark:text-white">{MODE_COPY[mode].heading}</p>
+                  <p className="text-[12px] text-[#6b7568] dark:text-gray-400">{MODE_COPY[mode].description}</p>
+                </div>
+              </motion.div>
+            </AnimatePresence>
 
             <form id="delivery-details-form" onSubmit={handleSubmit} className="rounded-[12px] border border-[#dce4d8] bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-900 md:p-8">
               {/* Contact fields */}

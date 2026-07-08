@@ -49,6 +49,7 @@ export default async function OrdersPage({
         id: true,
         orderNumber: true,
         status: true,
+        paymentStatus: true,
         createdAt: true,
         totalKes: true,
         deliveryType: true,
@@ -107,6 +108,7 @@ export default async function OrdersPage({
               id={o.id}
               orderNumber={o.orderNumber}
               status={o.status}
+              paymentStatus={o.paymentStatus}
               createdAt={o.createdAt}
               totalKes={o.totalKes}
               thumbnail={

@@ -67,6 +67,15 @@ export async function PATCH(
         ? new Date(body.publishedAt as string)
         : undefined;
 
+    // authorIds drives authorId when present: a non-empty selection makes its
+    // first entry the primary author (kept in sync for the single-author
+    // `author` relation still read elsewhere); an explicitly emptied
+    // selection falls back to whoever is making the edit. When the field is
+    // absent from the payload entirely, neither column is touched — existing
+    // callers that only PATCH other fields must not have authorId reset out
+    // from under them.
+    const authorIdsUpdate = Array.isArray(body.authorIds) ? (body.authorIds as string[]) : undefined;
+
     const post = await db.blogPost.update({
       where: { id },
       data: {
@@ -77,6 +86,10 @@ export async function PATCH(
         ...(body.featuredImage !== undefined && { featuredImage: body.featuredImage ? String(body.featuredImage) : null }),
         ...(body.category !== undefined && { category: body.category ? String(body.category) : null }),
         ...(body.tags !== undefined && { tags: body.tags as string[] }),
+        ...(authorIdsUpdate !== undefined && { authorIds: authorIdsUpdate }),
+        ...(authorIdsUpdate !== undefined && {
+          authorId: authorIdsUpdate.length > 0 ? authorIdsUpdate[0] : session.user.id,
+        }),
         ...(statusUpdate !== undefined && { status: statusUpdate as "DRAFT" | "PUBLISHED" | "SCHEDULED" | "ARCHIVED" }),
         ...(publishedAt !== undefined && { publishedAt }),
         ...(body.seoTitle !== undefined && { seoTitle: body.seoTitle ? String(body.seoTitle) : null }),
