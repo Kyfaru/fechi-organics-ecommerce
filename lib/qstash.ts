@@ -1,7 +1,9 @@
 import { Client, Receiver } from "@upstash/qstash";
 
 export const qstash: Client = process.env.QSTASH_TOKEN
-  ? new Client({ token: process.env.QSTASH_TOKEN })
+  ? new Client({ 
+    baseUrl: process.env.QSTASH_URL,
+    token: process.env.QSTASH_TOKEN, })
   : ({
       async publishJSON(request: Parameters<Client["publishJSON"]>[0]) {
         console.warn("[qstash] Skipping publish; Qstash token is not configured", request.url);
