@@ -22,6 +22,8 @@ export async function GET(req: NextRequest) {
       fullName:        true,
       accessExpiresAt: true,
       twoFaMethod:     true,
+      branchId:        true,
+      branch:          { select: { id: true, name: true } },
     },
   })
 
@@ -38,5 +40,7 @@ export async function GET(req: NextRequest) {
     phone: user?.phone,
     twoFactorEnabled: user?.twoFactorEnabled ?? false,
     twoFaMethod: profile?.twoFaMethod ?? 'totp',
+    branchId: profile?.branchId ?? null,
+    branchName: profile?.branch?.name ?? null,
   })
 }

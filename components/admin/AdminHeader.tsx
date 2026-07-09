@@ -19,7 +19,7 @@ function formatDate() {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
   });
 }
-
+const url = process.env.NEXT_PUBLIC_R2_PUBLIC_URL;
 export function AdminHeader() {
   const [dark, setDark] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -27,6 +27,7 @@ export function AdminHeader() {
   const userName = session?.user?.name ?? "Admin";
   const userInitial = userName.charAt(0).toUpperCase();
   const userImage = session?.user?.image ?? null;
+  const imgUrl = url + "/" + userImage;
 
   const { data: unreadData } = useQuery({
     queryKey: ["admin-notifications-unread"],
@@ -105,7 +106,7 @@ export function AdminHeader() {
         <Link href="/admin/settings">
           <div className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-transparent hover:ring-(--green-500) dark:hover:ring-(--dark-accent) transition cursor-pointer">
             {userImage ? (
-              <Image src={userImage} alt={userName} width={36} height={36} className="object-cover w-full h-full" />
+              <Image src={imgUrl} alt={userName} width={36} height={36} className="object-cover w-full h-full" />
             ) : (
               <div className="w-full h-full bg-(--green-800) text-white font-dm text-[14px] font-semibold flex items-center justify-center select-none">
                 {userInitial}

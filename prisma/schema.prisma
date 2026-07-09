@@ -159,6 +159,21 @@ enum POStatus {
   @@schema("admin")
 }
 
+enum InStoreFulfillmentStatus {
+  CONFIRMED
+  PICKED_UP
+
+  @@schema("admin")
+}
+
+enum InStoreProvider {
+  MPESA_STK
+  MPESA_C2B
+  PAYSTACK
+
+  @@schema("admin")
+}
+
 // ============================================================================
 // Auth models — Better Auth managed (public schema)
 // ============================================================================
@@ -488,6 +503,8 @@ model branch {
   deliveryZones     DeliveryZone[]
   adminProfiles     adminProfile[]
   transactions      transaction[]
+  inStoreOrders          inStoreOrder[]
+  mpesaC2bTransactions   mpesaC2bTransaction[]
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
@@ -626,6 +643,7 @@ model clientProfile {
   companyId   String?  @unique
   companyName String?
   loginCount  Int      @default(0)
+  source      String?  // null for normal signups, "IN_STORE" for walk-ins created via admin in-store order flow
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -935,4 +953,104 @@ model wishlistItem {
   @@unique([userId, productId])
   @@index([userId])
   @@schema("public")
+}
+
+// ============================================================================
+// In-Store Orders (admin schema) — walk-in orders created by an admin at a
+// branch till. Deliberately separate from order/orderItem/transaction, which
+// power the customer-facing storefront checkout flow and must not be touched.
+// ============================================================================
+
+model inStoreOrder {
+  id                 String                    @id @default(cuid())
+  orderNumber        String?                   @unique
+  branchId           String
+  branch             branch                    @relation(fields: [branchId], references: [id])
+  createdByAdminId   String
+  createdByAdminName String
+  customerUserId     String?
+  customerName       String?
+  customerPhone      String?
+  customerEmail      String?
+  items              inStoreOrderItem[]
+  subtotalKes        Int
+  discountKes        Int                       @default(0)
+  promoCode          String?
+  totalKes           Int
+  fulfillmentStatus  InStoreFulfillmentStatus  @default(CONFIRMED)
+  paymentStatus      PaymentStatus             @default(PENDING)
+  transactions       inStoreTransaction[]
+  invoiceNumber      String?                   @unique
+  invoicePdfKey      String?
+  receiptSentEmail   Boolean                   @default(false)
+  receiptSentSms     Boolean                   @default(false)
+  pickedUpAt         DateTime?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  @@index([branchId, createdAt])
+  @@index([branchId, fulfillmentStatus])
+  @@index([customerUserId])
+  @@schema("admin")
+}
+
+model inStoreOrderItem {
+  id             String       @id @default(cuid())
+  inStoreOrderId String
+  inStoreOrder   inStoreOrder @relation(fields: [inStoreOrderId], references: [id], onDelete: Cascade)
+  productId      String
+  name           String
+  priceKes       Int
+  quantity       Int
+
+  @@index([inStoreOrderId])
+  @@schema("admin")
+}
+
+model inStoreTransaction {
+  id                      String               @id @default(cuid())
+  inStoreOrderId          String
+  inStoreOrder            inStoreOrder         @relation(fields: [inStoreOrderId], references: [id])
+  provider                InStoreProvider
+  amount                  Int
+  status                  TxStatus             @default(PENDING)
+  checkoutRequestId       String?              @unique
+  paystackReference       String?              @unique
+  mpesaReceiptNumber      String?
+  matchedC2bTransactionId String?              @unique
+  matchedC2bTransaction   mpesaC2bTransaction? @relation(fields: [matchedC2bTransactionId], references: [id])
+  rawCallbackPayload      Json?
+  failureReason           String?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  @@index([inStoreOrderId])
+  @@index([status, createdAt])
+  @@schema("admin")
+}
+
+// Raw, append-only log of every Safaricom C2B confirmation received on a
+// branch till/paybill (whether or not an admin was actively "listening" for
+// a match at the time). matchedInStoreTransactionId is a denormalized,
+// unenforced pointer maintained by application code when a row is claimed —
+// see schema notes in the migration report for why this side has no FK.
+model mpesaC2bTransaction {
+  id                           String               @id @default(cuid())
+  branchId                     String
+  branch                       branch               @relation(fields: [branchId], references: [id])
+  transId                      String               @unique
+  transAmount                  Int
+  msisdn                       String
+  firstName                    String?
+  middleName                   String?
+  lastName                     String?
+  transactionTime              DateTime
+  billRefNumber                String?
+  matchedInStoreTransactionId  String?
+  inStoreTransaction           inStoreTransaction?
+  rawPayload                   Json
+  createdAt                    DateTime             @default(now())
+
+  @@index([branchId, transAmount, createdAt])
+  @@schema("admin")
 }

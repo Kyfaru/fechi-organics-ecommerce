@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import {
   ShoppingBag, Clock, Truck, CheckCircle, Search, Download,
   ChevronDown, MoreHorizontal, X, Tag, User, CreditCard, Printer, Link2,
-  MapPin, Check, Copy, Receipt,
+  MapPin, Check, Copy, Receipt, Plus,
 } from "lucide-react";
 import { StatsCard } from "@/components/ui/stats-card";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -38,6 +39,7 @@ type OrderItemDetail = {
 };
 
 type AdminOrder = {
+  kind: "order";
   id: string;
   status: OrderStatus;
   orderNumber: string | null;
@@ -66,6 +68,35 @@ type AdminOrder = {
   staffPickupConfirmedAt: string | null;
 };
 
+// In-store orders — admin-created walk-in sales, surfaced in the same list
+// per the drawer's restricted 2-step view (Confirmed -> Picked Up only).
+type InStoreFulfillmentStatus = "CONFIRMED" | "PICKED_UP";
+type InStoreItemDetail = { id: string; name: string; quantity: number; priceKes: number };
+
+type AdminInStoreOrder = {
+  kind: "instore";
+  id: string;
+  orderNumber: string | null;
+  fulfillmentStatus: InStoreFulfillmentStatus;
+  paymentStatus: PaymentStatus;
+  subtotalKes: number;
+  discountKes: number;
+  totalKes: number;
+  createdByAdminId: string;
+  createdByAdminName: string;
+  customerUserId: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  customerEmail: string | null;
+  branch: { id: string; name: string; county: string; phone: string | null } | null;
+  items: InStoreItemDetail[];
+  transactions: { provider: "MPESA_STK" | "MPESA_C2B" | "PAYSTACK" }[];
+  pickedUpAt: string | null;
+  createdAt: string;
+};
+
+type AdminOrderRow = AdminOrder | AdminInStoreOrder;
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -78,7 +109,10 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   FAILED: "Failed",
 };
 
-const PROVIDER_LABELS: Record<string, string> = { MPESA: "M-Pesa", PAYSTACK: "Paystack", KCB: "KCB Buni" };
+const PROVIDER_LABELS: Record<string, string> = {
+  MPESA: "M-Pesa", PAYSTACK: "Paystack", KCB: "KCB Buni",
+  MPESA_STK: "M-Pesa", MPESA_C2B: "M-Pesa",
+};
 
 const R2_BASE = process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "";
 
@@ -143,6 +177,18 @@ function itemImageUrl(item: OrderItemDetail): string | null {
   if (key.startsWith("img/")) return `/${key}`;
   if (!R2_BASE) return `/${key}`;
   return `${R2_BASE.replace(/\/$/, "")}/${key}`;
+}
+
+// Cream badge distinguishing in-store (walk-in) orders from the two
+// delivery-type badges (purple Store Pickup / dark Home Delivery) shown
+// elsewhere for regular customer orders — reuses the existing gold design
+// token rather than inventing a new color.
+function InStoreBadge() {
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-(--gold-50) text-(--gold-700)">
+      In-Store Order
+    </span>
+  );
 }
 
 function isToday(iso: string) {
@@ -245,6 +291,223 @@ function ConfirmOrderModal({
 }
 
 // ---------------------------------------------------------------------------
+// In-Store Order Detail Drawer — restricted 2-step view (Confirmed -> Picked
+// Up only), no cancel button, non-clickable customer card, no "Copy Link"
+// (no customer account page exists to link to for a walk-in sale).
+// ---------------------------------------------------------------------------
+function InStoreOrderDrawerContent({
+  order,
+  open,
+  onClose,
+}: {
+  order: AdminInStoreOrder;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+
+  const pickupMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/admin/orders/instore/${id}/pickup`, { method: "POST" });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error?.message ?? "Update failed");
+      return json;
+    },
+    onSuccess: () => {
+      toast.success("Order marked picked up");
+      qc.invalidateQueries({ queryKey: ["admin-orders"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const totalQty = order.items.reduce((s, i) => s + i.quantity, 0);
+  const isPaid = order.paymentStatus === "PAID";
+  const isPickedUp = order.fulfillmentStatus === "PICKED_UP";
+  const canDownload = isPaid;
+
+  return (
+    <Drawer open={open} onClose={onClose} title={`Order ${order.orderNumber ?? shortId(order.id)}`} width={640} footer={null}>
+      <div className="flex gap-6">
+        {/* ── Left ── */}
+        <div className="flex-1 min-w-0 flex flex-col gap-6">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px]">Order Number</span>
+            {order.orderNumber ? (
+              <div className="flex items-center gap-1.5 bg-(--neutral-100) px-3 py-1 rounded-full">
+                <span className="font-mono text-[13px] font-semibold text-(--neutral-900)">{order.orderNumber}</span>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(order.orderNumber!); toast.success("Copied"); }}
+                  className="text-(--neutral-400) hover:text-(--neutral-700) transition-colors"
+                  title="Copy"
+                >
+                  <Copy size={12} />
+                </button>
+              </div>
+            ) : (
+              <span className="font-dm text-[13px] text-(--neutral-400) italic">—</span>
+            )}
+            <InStoreBadge />
+          </div>
+
+          <p className="font-dm text-[12px] text-(--neutral-500)">
+            Created by <span className="font-medium text-(--neutral-700)">{order.createdByAdminName}</span>
+          </p>
+
+          {/* Fulfillment panel — 2 steps only */}
+          <div className="bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200)">
+            <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-4">Fulfillment</p>
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <CheckboxGreen checked={isPaid} onChange={() => {}} disabled />
+                <div>
+                  <p className="font-dm text-[14px] font-medium text-(--neutral-900)">Confirmed</p>
+                  <p className="font-dm text-[12px] text-(--neutral-500)">
+                    {isPaid ? "Paid — ready for pickup" : "Awaiting payment confirmation"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pl-[52px]">
+                {isPickedUp ? (
+                  <div className="flex items-center gap-2 text-[#15803D]">
+                    <CheckCircle size={16} />
+                    <p className="font-dm text-[13px] font-semibold">
+                      Picked up{order.pickedUpAt ? ` — ${formatDate(order.pickedUpAt)}` : ""}
+                    </p>
+                  </div>
+                ) : (
+                  <button
+                    disabled={!isPaid || pickupMutation.isPending}
+                    onClick={() => {
+                      if (window.confirm("Confirm you have handed over this order to the customer?")) {
+                        pickupMutation.mutate(order.id);
+                      }
+                    }}
+                    className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-[#15803D] text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#16A34A] transition-colors flex items-center gap-1.5"
+                  >
+                    {pickupMutation.isPending ? <Spinner size={12} /> : <Check size={13} />}
+                    Confirm Pickup
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Order items — in-store items have no product/image relation, so
+              they always show the placeholder icon rather than a photo. */}
+          <div>
+            <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-3">
+              Items ({totalQty})
+            </p>
+            <div className="flex flex-col gap-2">
+              {order.items.map((item) => {
+                const subtotal = (item.priceKes / 100) * item.quantity;
+                return (
+                  <div key={item.id} className="flex items-center gap-3 py-2 border-b border-(--neutral-100) last:border-0">
+                    <div className="w-10 h-10 rounded-[6px] bg-(--neutral-100) overflow-hidden shrink-0 flex items-center justify-center">
+                      <Tag size={14} className="text-(--neutral-300)" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-dm text-[13px] font-medium text-(--neutral-900) line-clamp-1">{item.name}</p>
+                      <p className="font-dm text-[12px] text-(--neutral-400)">
+                        {formatKes(item.priceKes)} × {item.quantity}
+                      </p>
+                    </div>
+                    <p className="font-dm text-[13px] font-semibold text-(--neutral-900) whitespace-nowrap">
+                      KES {subtotal.toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Price summary — no delivery line, in-store orders never have one */}
+            <div className="mt-4 bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200) flex flex-col gap-2">
+              <div className="flex justify-between font-dm text-[13px] text-(--neutral-500)">
+                <span>Subtotal</span>
+                <span>{formatKes(order.subtotalKes)}</span>
+              </div>
+              {order.discountKes > 0 && (
+                <div className="flex justify-between font-dm text-[13px] text-(--success)">
+                  <span>Discount</span>
+                  <span>-{formatKes(order.discountKes)}</span>
+                </div>
+              )}
+              <div className="h-px bg-(--neutral-200) my-1" />
+              <div className="flex justify-between font-syne text-[16px] font-semibold text-(--neutral-900)">
+                <span>Total</span>
+                <span>{formatKes(order.totalKes)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Right ── */}
+        <div className="w-[180px] shrink-0 flex flex-col gap-4">
+          {/* Customer card — not clickable, no account page exists for a walk-in */}
+          <div className="bg-(--neutral-50) rounded-[10px] p-3 border border-(--neutral-200)">
+            <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Customer</p>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-(--green-50) flex items-center justify-center shrink-0">
+                <span className="font-syne text-[11px] font-bold text-(--green-800)">
+                  {getInitials(order.customerName)}
+                </span>
+              </div>
+              <div className="min-w-0">
+                <p className="font-dm text-[12px] font-medium text-(--neutral-900) truncate">
+                  {order.customerName ?? "Walk-in customer"}
+                </p>
+                <p className="font-dm text-[11px] text-(--neutral-400) truncate">
+                  {order.customerPhone ?? order.customerEmail ?? "—"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Branch */}
+          <div className="bg-(--neutral-50) rounded-[10px] p-3 border border-(--neutral-200)">
+            <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Branch</p>
+            <p className="font-dm text-[12px] text-(--neutral-700)">{order.branch?.name ?? "—"}</p>
+            {order.branch?.phone && <p className="font-dm text-[11px] text-(--neutral-400) mt-0.5">{order.branch.phone}</p>}
+          </div>
+
+          {/* Payment card */}
+          <div className="bg-(--neutral-50) rounded-[10px] p-3 border border-(--neutral-200)">
+            <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Payment</p>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <CreditCard size={13} className="text-(--neutral-400)" />
+              <span className="font-dm text-[12px] text-(--neutral-700)">
+                {PROVIDER_LABELS[order.transactions?.[0]?.provider ?? ""] ?? "—"}
+              </span>
+            </div>
+            <StatusPill status={order.paymentStatus === "PAID" ? "paid" : order.paymentStatus.toLowerCase()} />
+            <p className="font-dm text-[13px] font-semibold text-(--neutral-900) mt-2">{formatKes(order.totalKes)}</p>
+          </div>
+
+          {/* Action buttons — Print Invoice only, no Copy Link, no Cancel
+              (in-store orders are final once paid) */}
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => { window.open(`/api/admin/orders/instore/${order.id}/invoice`, "_blank"); }}
+              disabled={!canDownload}
+              className="w-full h-9 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center justify-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Printer size={13} /> Print Invoice
+            </button>
+          </div>
+
+          {/* Date info */}
+          <div className="font-dm text-[11px] text-(--neutral-400)">
+            <p>Placed {formatDate(order.createdAt)}</p>
+            <p className="mt-0.5">In-store order</p>
+          </div>
+        </div>
+      </div>
+    </Drawer>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Order Detail Drawer
 // ---------------------------------------------------------------------------
 function OrderDetailDrawer({
@@ -252,7 +515,7 @@ function OrderDetailDrawer({
   open,
   onClose,
 }: {
-  order: AdminOrder | null;
+  order: AdminOrderRow | null;
   open: boolean;
   onClose: () => void;
 }) {
@@ -283,6 +546,9 @@ function OrderDetailDrawer({
   });
 
   if (!order) return null;
+  if (order.kind === "instore") {
+    return <InStoreOrderDrawerContent order={order} open={open} onClose={onClose} />;
+  }
 
   const totalQty = order.items.reduce((s, i) => s + i.quantity, 0);
   const isConfirmed = ["CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"].includes(order.status);
@@ -736,20 +1002,21 @@ function OrderDetailDrawer({
 // Main component
 // ---------------------------------------------------------------------------
 export function AdminOrdersClient() {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"" | OrderStatus>("");
   const [branchFilter, setBranchFilter] = useState("");
-  const [selectedOrder, setSelectedOrder] = useState<AdminOrder | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<AdminOrderRow | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // ── Data query ──
-  const { data, isLoading } = useQuery<{ ok: boolean; data: { orders: AdminOrder[]; scope: { isSuperAdmin: boolean; branchId: string | null } } }>({
+  const { data, isLoading } = useQuery<{ ok: boolean; data: { orders: AdminOrderRow[]; scope: { isSuperAdmin: boolean; branchId: string | null } } }>({
     queryKey: ["admin-orders", branchFilter],
     queryFn: () => fetch(`/api/admin/orders${branchFilter ? `?branchId=${encodeURIComponent(branchFilter)}` : ""}`).then((r) => r.json()),
     staleTime: 30_000,
     refetchInterval: (query) => {
       const liveOrders = query.state.data?.data?.orders ?? [];
-      return liveOrders.some((order) => order.paymentStatus === "PENDING" || order.status === "PENDING") ? 15_000 : false;
+      return liveOrders.some((order) => order.paymentStatus === "PENDING" || (order.kind === "order" && order.status === "PENDING")) ? 15_000 : false;
     },
   });
 
@@ -758,7 +1025,7 @@ export function AdminOrdersClient() {
     queryFn: () => fetch("/api/branches").then((r) => r.json()),
   });
 
-  const orders: AdminOrder[] = data?.data?.orders ?? [];
+  const orders: AdminOrderRow[] = data?.data?.orders ?? [];
   const scope = data?.data?.scope;
   const branches = branchesQuery.data?.data?.branches ?? [];
 
@@ -766,29 +1033,38 @@ export function AdminOrdersClient() {
   // but `selectedOrder` itself is a frozen snapshot from click-time) — always render the live lookup.
   const liveSelectedOrder = orders.find((o) => o.id === selectedOrder?.id) ?? selectedOrder;
 
-  // ── Stats ──
+  // ── Stats ── "Today's Orders" is a volume metric spanning both kinds;
+  // Processing/Shipped/Delivered are customer-fulfillment-specific and have
+  // no in-store equivalent, so those stay scoped to kind === "order".
   const todayOrders = orders.filter((o) => isToday(o.createdAt)).length;
-  const processingOrders = orders.filter((o) => o.status === "PROCESSING").length;
-  const shippedOrders = orders.filter((o) => o.status === "SHIPPED").length;
-  const deliveredThisMonth = orders.filter((o) => o.status === "DELIVERED" && isThisMonth(o.createdAt)).length;
+  const processingOrders = orders.filter((o) => o.kind === "order" && o.status === "PROCESSING").length;
+  const shippedOrders = orders.filter((o) => o.kind === "order" && o.status === "SHIPPED").length;
+  const deliveredThisMonth = orders.filter((o) => o.kind === "order" && o.status === "DELIVERED" && isThisMonth(o.createdAt)).length;
 
-  // ── Filtered list ──
+  // ── Filtered list ── filterStatus only has meaning for in-store rows when
+  // it's CONFIRMED/PICKED_UP (the only two InStoreFulfillmentStatus values);
+  // any other status filter naturally excludes them, matching the API's
+  // own server-side filtering behavior.
   const filtered = orders.filter((o) => {
-    if (filterStatus && o.status !== filterStatus) return false;
+    if (filterStatus) {
+      if (o.kind === "order" && o.status !== filterStatus) return false;
+      if (o.kind === "instore" && o.fulfillmentStatus !== filterStatus) return false;
+    }
     if (search) {
       const q = search.toLowerCase();
-      const customer = o.user?.name ?? o.guestEmail ?? "";
+      const customer = o.kind === "order" ? (o.user?.name ?? o.guestEmail ?? "") : (o.customerName ?? "");
+      const email = o.kind === "order" ? (o.user?.email ?? "") : (o.customerEmail ?? "");
       if (
         !o.id.toLowerCase().includes(q) &&
         !customer.toLowerCase().includes(q) &&
-        !(o.user?.email ?? "").toLowerCase().includes(q) &&
+        !email.toLowerCase().includes(q) &&
         !(o.orderNumber ?? "").toLowerCase().includes(q)
       ) return false;
     }
     return true;
   });
 
-  function openOrderDetail(order: AdminOrder) {
+  function openOrderDetail(order: AdminOrderRow) {
     setSelectedOrder(order);
     setDrawerOpen(true);
   }
@@ -800,7 +1076,7 @@ export function AdminOrdersClient() {
       key: "id",
       label: "Order",
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
+        const o = row as unknown as AdminOrderRow;
         return (
           <div>
             <span className="font-dm text-[13px] font-semibold text-(--neutral-900) font-mono">
@@ -815,7 +1091,15 @@ export function AdminOrdersClient() {
       label: "Customer",
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
+        const o = row as unknown as AdminOrderRow;
+        if (o.kind === "instore") {
+          return (
+            <div>
+              <p className="font-dm text-[13px] font-medium text-(--neutral-900)">{o.customerName ?? "Walk-in customer"}</p>
+              <p className="font-dm text-[11px] text-(--neutral-400)">{o.customerPhone ?? o.customerEmail ?? "—"}</p>
+            </div>
+          );
+        }
         return o.user ? (
           <div>
             <p className="font-dm text-[13px] font-medium text-(--neutral-900)">{o.user.name}</p>
@@ -830,7 +1114,8 @@ export function AdminOrdersClient() {
       key: "deliveryType",
       label: "Delivery",
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
+        const o = row as unknown as AdminOrderRow;
+        if (o.kind === "instore") return <InStoreBadge />;
         if (o.deliveryType === "PICKUP") {
           return (
             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
@@ -849,7 +1134,7 @@ export function AdminOrdersClient() {
       key: "items",
       label: "Items",
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
+        const o = row as unknown as AdminOrderRow;
         const qty = o.items.reduce((s, i) => s + i.quantity, 0);
         return <span className="font-dm text-[13px] text-(--neutral-700)">{qty} item{qty !== 1 ? "s" : ""}</span>;
       },
@@ -859,13 +1144,18 @@ export function AdminOrdersClient() {
       label: "Total",
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
-        const canDownload = o.status !== "FAILED" && o.status !== "CANCELLED" && o.paymentStatus === "PAID";
+        const o = row as unknown as AdminOrderRow;
+        const canDownload = o.kind === "instore"
+          ? o.paymentStatus === "PAID"
+          : o.status !== "FAILED" && o.status !== "CANCELLED" && o.paymentStatus === "PAID";
+        const invoiceUrl = o.kind === "instore"
+          ? `/api/admin/orders/instore/${o.id}/invoice`
+          : `/api/admin/orders/${o.id}/invoice`;
         return (
           <div className="flex items-center gap-2">
             <span className="font-dm text-[13px] font-semibold text-(--neutral-900)">{formatKes(o.totalKes)}</span>
             <button
-              onClick={(e) => { e.stopPropagation(); window.open(`/api/admin/orders/${o.id}/invoice`, "_blank"); }}
+              onClick={(e) => { e.stopPropagation(); window.open(invoiceUrl, "_blank"); }}
               disabled={!canDownload}
               title="Download invoice"
               aria-label="Download invoice"
@@ -873,15 +1163,17 @@ export function AdminOrdersClient() {
             >
               <Printer size={13} />
             </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); window.open(`/api/admin/orders/${o.id}/invoice`, "_blank"); }}
-              disabled={!canDownload}
-              title="Download receipt"
-              aria-label="Download receipt"
-              className="w-6 h-6 flex items-center justify-center rounded-[6px] text-(--neutral-400) hover:bg-(--neutral-100) hover:text-(--neutral-700) transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              <Receipt size={13} />
-            </button>
+            {o.kind === "order" && (
+              <button
+                onClick={(e) => { e.stopPropagation(); window.open(invoiceUrl, "_blank"); }}
+                disabled={!canDownload}
+                title="Download receipt"
+                aria-label="Download receipt"
+                className="w-6 h-6 flex items-center justify-center rounded-[6px] text-(--neutral-400) hover:bg-(--neutral-100) hover:text-(--neutral-700) transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <Receipt size={13} />
+              </button>
+            )}
           </div>
         );
       },
@@ -890,7 +1182,10 @@ export function AdminOrdersClient() {
       key: "status",
       label: "Status",
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
+        const o = row as unknown as AdminOrderRow;
+        if (o.kind === "instore") {
+          return <StatusPill status={o.fulfillmentStatus.toLowerCase()} />;
+        }
         return <StatusPill status={o.status.toLowerCase()} />;
       },
     },
@@ -898,7 +1193,7 @@ export function AdminOrdersClient() {
       key: "paymentStatus",
       label: "Payment",
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
+        const o = row as unknown as AdminOrderRow;
         return <StatusPill status={o.paymentStatus === "PAID" ? "paid" : o.paymentStatus.toLowerCase()} />;
       },
     },
@@ -907,7 +1202,7 @@ export function AdminOrdersClient() {
       label: "Date",
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
+        const o = row as unknown as AdminOrderRow;
         return <span className="font-dm text-[12px] text-(--neutral-400)">{formatDate(o.createdAt)}</span>;
       },
     },
@@ -915,7 +1210,7 @@ export function AdminOrdersClient() {
       key: "actions",
       label: "",
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
+        const o = row as unknown as AdminOrderRow;
         return (
           <button
             onClick={(e) => { e.stopPropagation(); openOrderDetail(o); }}
@@ -932,7 +1227,19 @@ export function AdminOrdersClient() {
 
   return (
     <div className="min-h-screen">
-      <PageHeader title="Orders" description="Manage customer orders and fulfillment" />
+      <PageHeader
+        title="Orders"
+        description="Manage customer orders and fulfillment"
+        action={
+          <button
+            onClick={() => router.push("/admin/orders/new")}
+            className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+          >
+            <Plus size={16} />
+            Create Order
+          </button>
+        }
+      />
 
       {/* ── Stat cards ── */}
       <div className="px-6 mb-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1004,7 +1311,7 @@ export function AdminOrdersClient() {
           columns={columns}
           data={filtered as unknown as Record<string, unknown>[]}
           loading={isLoading}
-          onRowClick={(row) => openOrderDetail(row as unknown as AdminOrder)}
+          onRowClick={(row) => openOrderDetail(row as unknown as AdminOrderRow)}
           emptyTitle="No orders found"
           emptyDescription="Orders placed through the storefront will appear here."
           pageSize={25}
