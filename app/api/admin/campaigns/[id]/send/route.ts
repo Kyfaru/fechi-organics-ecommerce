@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import { publishQstashJSON } from "@/lib/qstash";
+import { runCampaignSend, markCampaignFailed } from "@/lib/campaigns/send-campaign";
 import { requireAdminPage } from "@/lib/admin-guard";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import type { CampaignStatus } from "@prisma/client";
@@ -68,7 +69,7 @@ export async function POST(
 
   try {
     // Enqueue to Qstash worker for async processing
-    await publishQstashJSON(
+    const published = await publishQstashJSON(
       "/api/admin/workers/send-campaign",
       { campaignId: id },
       notBefore ? { notBefore } : undefined
@@ -76,7 +77,23 @@ export async function POST(
 
     const updated = await db.campaign.update({ where: { id }, data });
 
-    console.info(`[campaigns/send] Campaign ${id} (${campaign.name}) enqueued to Qstash (mode=${mode})`);
+    if (published) {
+      console.info(`[campaigns/send] Campaign ${id} (${campaign.name}) enqueued to Qstash (mode=${mode})`);
+    } else if (mode === "now") {
+      // Qstash couldn't be reached (no token, or destination not publicly
+      // reachable — e.g. local dev without a tunnel, since Qstash is a
+      // hosted service and can never call back to localhost). Send directly
+      // in-process instead of leaving the campaign stuck at SENDING forever.
+      // Not awaited so the request still returns immediately, same as the
+      // Qstash path — a batch of thousands would otherwise risk a timeout.
+      console.warn(`[campaigns/send] Qstash unavailable — sending campaign ${id} directly in-process.`);
+      runCampaignSend(id, updated).catch((err) => markCampaignFailed(id, err));
+    } else {
+      // "schedule"/"later" genuinely need a queue to fire at a future time —
+      // there's no in-process fallback for those without Qstash configured.
+      console.error(`[campaigns/send] Qstash unavailable — campaign ${id} (mode=${mode}) will not send until Qstash is reachable.`);
+    }
+
     return ok({ queued: true, campaign: updated });
   } catch (e) {
     console.error("[campaigns/send/POST]", e);
