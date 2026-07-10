@@ -77,7 +77,7 @@ export async function getOrCreateInStoreInvoice(
     })),
   });
 
-  const objectKey = `invoices/instore-${order.id}.pdf`;
+  const objectKey = `invoices/Fechi-Invoice-${order.id.slice(0,10).split('').reverse().join('')}.pdf`;
   await r2Client.send(new PutObjectCommand({
     Bucket: process.env.R2_BUCKET_NAME!,
     Key: objectKey,
