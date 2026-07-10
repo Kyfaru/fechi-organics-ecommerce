@@ -23,7 +23,7 @@ import { buildInStoreOrderNumber } from "@/lib/orders/generate-instore-order-num
 
 const bodySchema = z
   .object({
-    customerUserId: z.string().uuid().nullable().optional(),
+    customerUserId: z.string().min(1).nullable().optional(),
     customerName: z.string().optional(),
     // Unlike the M-Pesa STK route, card payments don't push anything to a
     // phone — phone is optional here, matching inStoreOrder.customerPhone's
@@ -34,7 +34,7 @@ const bodySchema = z
       .array(z.object({ productId: z.string(), quantity: z.number().int().positive() }))
       .min(1),
     promoCode: z.string().optional(),
-    branchId: z.string().uuid().optional(),
+    branchId: z.string().min(1).optional(),
     // Present when the admin is retrying a payment attempt on an order whose
     // previous attempt already failed — reuses that order instead of
     // creating a new one.
@@ -62,7 +62,10 @@ export async function POST(req: NextRequest) {
   let parsed: z.infer<typeof bodySchema>;
   try {
     parsed = bodySchema.parse(await req.json());
-  } catch {
+  } catch (e) {
+  if (e instanceof z.ZodError) {
+    console.error("[instore/paystack/initiate] validation failed:", e.issues);
+  }
     return Err.validation("Invalid request body");
   }
 

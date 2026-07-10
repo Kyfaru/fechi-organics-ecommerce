@@ -15,11 +15,11 @@
  * exact moment of creation, in EAT (Africa/Nairobi, fixed UTC+3 — Kenya has
  * no DST).
  *
- * Format: #IS-<last 3 chars of branch shortcode><YYMMDDHHmmssSSS>
+ * Format: #STORE-<last 7 chars of branch id branchid><YYMMDDHHmmssSSS>
  *
  * @param date - The moment the order was created
- * @param branchShortcode - The till/paybill shortcode of the branch that created the order
- * @returns A "#IS-..." order number
+ * @param branchid - The branch id branchid of the branch that created the order
+ * @returns A "#STORE-..." order number
  *
  * @remarks No uniqueness retry loop — millisecond resolution scoped to a
  * single branch's admin flow makes a same-millisecond collision practically
@@ -27,19 +27,19 @@
  * error from inStoreOrder.create(), which the caller already runs inside a
  * try/catch.
  */
-export function buildInStoreOrderNumber(date: Date, branchShortcode: string): string {
+export function buildInStoreOrderNumber(date: Date, branchid: string): string {
   const eat = new Date(date.getTime() + 3 * 60 * 60 * 1000);
   const pad = (n: number, width = 2) => String(n).padStart(width, "0");
 
-  const yy = pad(eat.getUTCFullYear() % 100);
+  const yy = pad(eat.getUTCFullYear() % 100).slice(-2); // last 2 digits of year
   const mm = pad(eat.getUTCMonth() + 1);
   const dd = pad(eat.getUTCDate());
   const hh = pad(eat.getUTCHours());
   const min = pad(eat.getUTCMinutes());
-  const ss = pad(eat.getUTCSeconds());
-  const ms = pad(eat.getUTCMilliseconds(), 3);
+  //const ss = pad(eat.getUTCSeconds());
+  //const ms = pad(eat.getUTCMilliseconds(), 3);
 
-  const branchSuffix = branchShortcode.slice(-3).toUpperCase();
+  const branchSuffix = branchid.slice(7).toUpperCase();
 
-  return `#IS-${branchSuffix}${yy}${mm}${dd}${hh}${min}${ss}${ms}`;
+  return `#STORE-${dd}${hh}${min}${mm}${yy}`;
 }

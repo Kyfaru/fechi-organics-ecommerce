@@ -486,6 +486,7 @@ model branch {
   county            String
   address           String?
   phone             String?
+  slug              String?
   lat               Float?
   lng               Float?
   mpesaType         MpesaType

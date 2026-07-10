@@ -25,7 +25,7 @@ import { buildInStoreOrderNumber } from "@/lib/orders/generate-instore-order-num
 
 const bodySchema = z
   .object({
-    customerUserId: z.string().uuid().nullable().optional(),
+    customerUserId: z.string().min(1).nullable().optional(),
     customerName: z.string().optional(),
     customerPhone: z.string().min(9),
     customerEmail: z.string().email().optional(),
@@ -33,7 +33,7 @@ const bodySchema = z
       .array(z.object({ productId: z.string(), quantity: z.number().int().positive() }))
       .min(1),
     promoCode: z.string().optional(),
-    branchId: z.string().uuid().optional(),
+    branchId: z.string().min(1).optional(),
     // Present when the admin is retrying a payment attempt on an order whose
     // previous attempt already failed — reuses that order instead of
     // creating a new one.
@@ -65,8 +65,12 @@ export async function POST(req: NextRequest) {
   let parsed: z.infer<typeof bodySchema>;
   try {
     const raw = await req.json();
+    console.log("Incoming Body:", raw);
     parsed = bodySchema.parse(raw);
-  } catch {
+  } catch (e) {
+  if (e instanceof z.ZodError) {
+    console.error("[instore/mpesa/initiate] validation failed:", e.issues);
+  }
     return Err.validation("Invalid request body");
   }
 
@@ -210,7 +214,7 @@ export async function POST(req: NextRequest) {
 
     if (branch.mpesaGateway === "KCB_BUNI") {
       const { initiateKcbStkPush } = await import("@/lib/payments/kcb/kcb-client");
-      const formatOrderNumber = order.orderNumber?.slice(4, -1);
+      const formatOrderNumber = order.orderNumber?.slice(7, -1);
       const invoiceCode = `${branch.invoiceNumber}-${formatOrderNumber}`;
       if (!branch.invoiceNumber) {
         return err("BRANCH", `Branch ${branch.id} is undefined number`, 500);
@@ -245,7 +249,7 @@ export async function POST(req: NextRequest) {
           branch,
           phone: customerPhone,
           amountKes: totalKes / 100,
-          orderId: order.orderNumber ?? order.id,
+          orderId: order.orderNumber?.slice(7, -1) ?? order.id,
           callbackUrl,
         });
         checkoutRequestId = stkResponse.CheckoutRequestID;

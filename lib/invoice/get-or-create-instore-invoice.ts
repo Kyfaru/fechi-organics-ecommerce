@@ -46,8 +46,8 @@ export async function getOrCreateInStoreInvoice(
   }
 
   const invoiceNumber = order.invoiceNumber ?? (order.orderNumber
-    ? order.orderNumber.replace("#IS-", "INV-IS-")
-    : `INV-IS-${order.id.slice(0, 8).toUpperCase()}`);
+    ? order.orderNumber.replace("#STORE-", "INV-STORE-")
+    : `INV-STORE-${order.id.slice(-1, 11).toUpperCase()}`);
 
   const transactions = await db.inStoreTransaction.findMany({
     where: { inStoreOrderId, status: "SUCCESS" },
