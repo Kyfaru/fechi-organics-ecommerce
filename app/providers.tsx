@@ -41,12 +41,9 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
 
   useEffect(() => {
-    // Prefer stored preference; fall back to OS preference
+    // Light by default; only dark if the user explicitly toggled it before.
     const stored = localStorage.getItem("fechi-theme") as "light" | "dark" | null;
-    const preferred = window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-    const initial = stored ?? preferred;
+    const initial = stored ?? "light";
     setTheme(initial);
     document.documentElement.classList.toggle("dark", initial === "dark");
   }, []);
