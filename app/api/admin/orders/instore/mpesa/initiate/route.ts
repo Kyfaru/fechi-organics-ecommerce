@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
     // the fresh-attempt one, so a burst of legitimate retries on one failing
     // order doesn't also chew through the 3/60s fresh-order budget.
     if (retryOrderId) {
-      const retryLimiter = makeRatelimit(Ratelimit.slidingWindow(8, "60 s"), "instore_payment_retry");
+      const retryLimiter = makeRatelimit(Ratelimit.slidingWindow(4, "30 s"), "instore_payment_retry");
       if (retryLimiter) {
         const { success } = await retryLimiter.limit(`${admin.id}:${retryOrderId}`);
         if (!success) return Err.rateLimited();
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
       const redis = getRedis();
       const rateKey = `instore_payment_attempt:${admin.id}:mpesa`;
       const attempts = await redis.incr(rateKey);
-      if (attempts === 1) await redis.expire(rateKey, 60);
+      if (attempts === 1) await redis.expire(rateKey, 30);
       if (attempts > 3) return Err.rateLimited();
     }
 
