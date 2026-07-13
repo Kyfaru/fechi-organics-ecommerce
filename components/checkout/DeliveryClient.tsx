@@ -295,6 +295,11 @@ export function DeliveryClient({ user }: Props) {
   // ---------------------------------------------------------------------------
   const errors = useMemo(() => {
     const e: Record<string, string> = {};
+    if (!firstName.trim()) e.firstName = "Please enter your first name";
+    if (!lastName.trim()) e.lastName = "Please enter your last name";
+    if (!email.trim()) e.email = "Please enter your email address";
+    else if (!/^\S+@\S+\.\S+$/.test(email.trim())) e.email = "Please enter a valid email address";
+    if (!phone) e.phone = "Please enter your phone number";
     if (mode === "DELIVERY") {
       if (isKenya) {
         if (!county) e.county = "Please select your county";
@@ -308,7 +313,7 @@ export function DeliveryClient({ user }: Props) {
       }
     }
     return e;
-  }, [mode, isKenya, county, noZones, zoneId, address, state, stateText, postalCode]);
+  }, [firstName, lastName, email, phone, mode, isKenya, county, noZones, zoneId, address, state, stateText, postalCode]);
 
   // ---------------------------------------------------------------------------
   // Promo handlers
@@ -373,8 +378,14 @@ export function DeliveryClient({ user }: Props) {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setSubmitted(true);
-    if (!firstName.trim() || !lastName.trim() || !email.trim() || !phone) return;
-    if (mode === "DELIVERY" && Object.keys(errors).length > 0) return;
+    if (!firstName.trim() || !lastName.trim() || !email.trim() || !phone) {
+      toast.error("Please fill in your first name, last name, email, and phone number.");
+      return;
+    }
+    if (Object.keys(errors).length > 0) {
+      toast.error("Please fix the highlighted fields before continuing.");
+      return;
+    }
     if (pricingQuery.isFetching) return;
 
     setSubmitting(true);
@@ -469,15 +480,15 @@ export function DeliveryClient({ user }: Props) {
             <form id="delivery-details-form" onSubmit={handleSubmit} className="rounded-[12px] border border-[#dce4d8] bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-900 md:p-8">
               {/* Contact fields */}
               <div className="grid gap-5 sm:grid-cols-2">
-                <Field label="First Name">
-                  <input className={inputNormal} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Jane" />
+                <Field label="First Name" error={showErr("firstName")}>
+                  <input className={inputCls(!!showErr("firstName"))} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Jane" />
                 </Field>
-                <Field label="Last Name">
-                  <input className={inputNormal} value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="e.g. Doe" />
+                <Field label="Last Name" error={showErr("lastName")}>
+                  <input className={inputCls(!!showErr("lastName"))} value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="e.g. Doe" />
                 </Field>
-                <PhoneInput label="Phone Number" value={phone} onChange={setPhone}/>
-                <Field label="Email Address">
-                  <input type="email" className={inputNormal} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" />
+                <PhoneInput label="Phone Number" value={phone} onChange={setPhone} error={showErr("phone")} />
+                <Field label="Email Address" error={showErr("email")}>
+                  <input type="email" className={inputCls(!!showErr("email"))} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" />
                 </Field>
               </div>
 

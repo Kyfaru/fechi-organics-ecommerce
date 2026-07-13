@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AlertCircle, Loader2, Radio, RotateCcw, X } from "lucide-react";
 import type { PaymentOrderContext } from "@/components/admin/orders/PaymentStep";
 import PaymentSuccessModal from "@/components/admin/orders/PaymentSuccessModal";
@@ -41,6 +42,7 @@ function formatKes(cents: number) {
 }
 
 export default function MpesaLivePanel({ orderContext, branchReady }: MpesaLivePanelProps) {
+  const router = useRouter();
   const [state, setState] = useState<ListenState>("idle");
   const [matches, setMatches] = useState<C2bMatch[]>([]);
   const [startError, setStartError] = useState<string | null>(null);
@@ -129,7 +131,7 @@ export default function MpesaLivePanel({ orderContext, branchReady }: MpesaLiveP
           customerUserId: orderContext.customerUserId,
           customerName: orderContext.customerName,
           customerPhone: orderContext.customerPhone,
-          customerEmail: orderContext.customerEmail,
+          customerEmail: orderContext.customerEmail.trim() || undefined,
           items: orderContext.items,
           promoCode: orderContext.promoCode,
           branchId: orderContext.branchId,
@@ -168,7 +170,10 @@ export default function MpesaLivePanel({ orderContext, branchReady }: MpesaLiveP
         totalKes={orderContext.totalKes}
         hasEmail={hasEmail}
         hasPhone={hasPhone}
-        onClose={() => setClaimed(null)}
+        onClose={() => {
+          setClaimed(null);
+          router.push("/admin/orders");
+        }}
       />
     );
   }
