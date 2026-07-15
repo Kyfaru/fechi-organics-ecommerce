@@ -314,7 +314,15 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
             alt="Fechi Organics"
             width={120}
             height={42}
-            className="object-contain h-[33px] w-auto"
+            className="object-contain h-[33px] w-auto dark:hidden"
+            priority
+          />
+          <Image
+            src="/logo/text-only-white.webp"
+            alt="Fechi Organics"
+            width={120}
+            height={42}
+            className="object-contain h-[33px] w-auto hidden dark:block"
             priority
           />
         </Link>
@@ -482,6 +490,32 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
             )}
           </Link>
           <button
+            onClick={toggleTheme}
+            className="p-2"
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            <Icon
+              icon={theme === "dark" ? "iconamoon:mode-light" : "mdi:weather-night"}
+              width={20}
+              className="text-[#1a1c1c] dark:text-white"
+            />
+          </button>
+          {user && (
+            <Link
+              href="/account"
+              className="relative w-8 h-8 rounded-full border-2 border-[#27731e] overflow-hidden flex items-center justify-center flex-shrink-0"
+              aria-label="Account settings"
+            >
+              {user.image ? (
+                <Image src={user.image} alt={user.name ?? "Account"} fill sizes="32px" className="object-cover" />
+              ) : (
+                <span className="w-full h-full bg-[#27731e] text-white text-xs font-bold flex items-center justify-center">
+                  {((user.name ?? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()) || "A")[0].toUpperCase()}
+                </span>
+              )}
+            </Link>
+          )}
+          <button
             onClick={() => setMobileOpen(!mobileOpen)}
             className="p-2"
             aria-label="Menu"
@@ -531,16 +565,26 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
                     )}
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setMobileOpen(false);
-                    setLogoutModalOpen(true);
-                  }}
-                  className="flex items-center gap-2 text-[#ef4444] text-sm font-body hover:underline"
-                >
-                  <Icon icon="mdi:logout" width={16} />
-                  Log Out
-                </button>
+                <div className="flex items-center gap-4">
+                  <Link
+                    href="/account"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center gap-2 text-[#1a1c1c] dark:text-white text-sm font-body hover:text-[#27731e]"
+                  >
+                    <Icon icon="mdi:cog-outline" width={16} />
+                    Settings
+                  </Link>
+                  <button
+                    onClick={() => {
+                      setMobileOpen(false);
+                      setLogoutModalOpen(true);
+                    }}
+                    className="flex items-center gap-2 text-[#ef4444] text-sm font-body hover:underline"
+                  >
+                    <Icon icon="mdi:logout" width={16} />
+                    Log Out
+                  </button>
+                </div>
               </div>
             )}
 

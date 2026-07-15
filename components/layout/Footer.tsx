@@ -89,7 +89,7 @@ export function Footer() {
       {/* Large watermark logo */}
       <div className="absolute -left-16 -top-8 w-[500px] h-[400px] opacity-[0.09] pointer-events-none select-none">
         <Image
-          src="/logo/white version@5x.webp"
+          src="logo/symbol-white.webp"
           alt=""
           fill
           className="object-contain object-left"
@@ -102,7 +102,7 @@ export function Footer() {
           {/* Brand column */}
           <div className="md:col-span-1">
             <Image
-              src="/logo/white version@5x.webp"
+              src="logo/symbol-white.webp"
               alt="Fechi Organics"
               width={140}
               height={50}
@@ -144,7 +144,7 @@ export function Footer() {
         <div className="border-t border-white/20 pt-5">
           <div className="flex flex-col md:flex-row items-center justify-between gap-3 text-white/70 text-[13px] tracking-[0.3px]">
             <p>© 2026 Fechi Organics. All rights reserved.</p>
-            <p className="text-white/50 text-[12px]">Powered by Kyfaru</p>
+            <p className="text-white/50 text-[12px]">Powered by <span><Link href="https://kyfaru.com" target="_blank" rel="noopener noreferrer"><Image src="logo/kyfaru-darkLogos.webp" alt="Kyfaru" width={80} height={24} className="object-contain" />Kyfaru</Link></span></p>
             <div className="flex items-center gap-4">
               <p>
                 <Link href="/privacy-policy" className="hover:text-white transition-colors">Privacy</Link>
