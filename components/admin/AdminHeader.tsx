@@ -1,11 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { Icon } from "@iconify/react";
 import { Search, Bell, Settings, Sun, Moon } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import { useQuery } from "@tanstack/react-query";
+import { useTheme } from "@/app/providers";
+
+const WHATSAPP_URL = "https://wa.me/254768151505";
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -21,7 +25,8 @@ function formatDate() {
 }
 const url = process.env.NEXT_PUBLIC_R2_PUBLIC_URL;
 export function AdminHeader() {
-  const [dark, setDark] = useState(false);
+  const { theme, toggleTheme } = useTheme();
+  const dark = theme === "dark";
   const [searchFocused, setSearchFocused] = useState(false);
   const { data: session } = useSession();
   const userName = session?.user?.name ?? "Admin";
@@ -36,21 +41,6 @@ export function AdminHeader() {
     refetchInterval: 60 * 1000,
   });
   const hasUnread = (unreadData?.data?.notifications?.length ?? 0) > 0;
-
-  useEffect(() => {
-    const stored = localStorage.getItem("adminTheme");
-    if (stored === "dark") {
-      setDark(true);
-      document.documentElement.classList.add("dark");
-    }
-  }, []);
-
-  function toggleTheme() {
-    const next = !dark;
-    setDark(next);
-    document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("adminTheme", next ? "dark" : "light");
-  }
 
   return (
     <header className="h-[72px] bg-white dark:bg-(--dark-surface) border-b border-(--green-200) dark:border-(--dark-border) shadow-(--e1) flex items-center px-6 gap-6 sticky top-0 z-20">
@@ -84,6 +74,16 @@ export function AdminHeader() {
 
       {/* Right controls */}
       <div className="flex items-center gap-2 ml-auto">
+        <a
+          href={WHATSAPP_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Chat with us on WhatsApp"
+          className="w-9 h-9 flex items-center justify-center rounded-full text-[#25d366] hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) transition-colors"
+        >
+          <Icon icon="mdi:whatsapp" width={20} />
+        </a>
+
         <button
           onClick={toggleTheme}
           className="w-9 h-9 flex items-center justify-center rounded-full text-(--neutral-500) hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) transition-colors"

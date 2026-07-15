@@ -6,6 +6,7 @@ import { Icon } from "@iconify/react";
 import { useState } from "react";
 import { useCurrency } from "@/app/providers";
 import type { CurrencyCode } from "@/lib/currency";
+import { motion } from "framer-motion";
 
 const COMPANY_LINKS = [
   { label: "Home", href: "/" },
@@ -144,7 +145,39 @@ export function Footer() {
         <div className="border-t border-white/20 pt-5">
           <div className="flex flex-col md:flex-row items-center justify-between gap-3 text-white/70 text-[13px] tracking-[0.3px]">
             <p>© 2026 Fechi Organics. All rights reserved.</p>
-            <p className="text-white/50 text-[12px] flex">Powered by <span ><Link href="https://kyfaru.com" target="_blank" rel="noopener noreferrer" className="flex gap-1"><Image src="logo/Kyfaru-Logo-Filled-07.png" alt="Kyfaru" width={100} height={100} className="object-contain w-8 h-8" /> Kyfaru</Link></span></p>
+            <p className="text-white/50 text-xs flex items-center gap-1">
+  Powered by
+
+  <Link
+    href="https://kyfaru.com"
+    target="_blank"
+    rel="noopener noreferrer"
+    className="flex items-center gap-1 text-white"
+  >
+    <motion.div
+      animate={{
+        y: [0, -8, -8, -8, 0],
+        rotate: [0, -3, 3, -3, 3, -2, 2, 0],
+      }}
+      transition={{
+        duration: 2,
+        repeat: Infinity,
+        ease: "easeInOut",
+        times: [0, 0.2, 0.35, 0.5, 1],
+      }}
+    >
+      <Image
+        src="/logo/Kyfaru-Logo-Filled-07.png"
+        alt="Kyfaru"
+        width={32}
+        height={32}
+        className="object-contain"
+      />
+    </motion.div>
+
+    <span>Kyfaru</span>
+  </Link>
+</p>
             <div className="flex items-center gap-4">
               <p>
                 <Link href="/privacy-policy" className="hover:text-white transition-colors">Privacy</Link>
