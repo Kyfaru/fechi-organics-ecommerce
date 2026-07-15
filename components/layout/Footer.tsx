@@ -32,7 +32,7 @@ const SUPPORT_LINKS = [
 const SOCIALS = [
   { icon: "mdi:facebook", href: "https://www.facebook.com/p/Fechi-organics-100063505811443/", label: "Facebook" },
   { icon: "mdi:instagram", href: "https://instagram.com", label: "Instagram" },
-  { icon: "mdi:titok", href: "https://www.tiktok.com/@fechi.organics", label: "Tiktok" },
+  { icon: "proicons:tiktok", href: "https://www.tiktok.com/@fechi.organics", label: "Tiktok" },
 ];
 
 function InlineCurrencySwitcher() {
@@ -144,7 +144,7 @@ export function Footer() {
         <div className="border-t border-white/20 pt-5">
           <div className="flex flex-col md:flex-row items-center justify-between gap-3 text-white/70 text-[13px] tracking-[0.3px]">
             <p>© 2026 Fechi Organics. All rights reserved.</p>
-            <p className="text-white/50 text-[12px] flex">Powered by <span className="flex gap-1"><Link href="https://kyfaru.com" target="_blank" rel="noopener noreferrer"><Image src="public/logo/Kyfaru-Logo-Filled-07.png" alt="Kyfaru" width={100} height={100} className="object-contain w-14 h-14" /> Kyfaru</Link></span></p>
+            <p className="text-white/50 text-[12px] flex">Powered by <span className="flex gap-1"><Link href="https://kyfaru.com" target="_blank" rel="noopener noreferrer"><Image src="logo/Kyfaru-Logo-Filled-07.png" alt="Kyfaru" width={100} height={100} className="object-contain w-14 h-14" /> Kyfaru</Link></span></p>
             <div className="flex items-center gap-4">
               <p>
                 <Link href="/privacy-policy" className="hover:text-white transition-colors">Privacy</Link>
