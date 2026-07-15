@@ -144,7 +144,7 @@ export function Footer() {
         <div className="border-t border-white/20 pt-5">
           <div className="flex flex-col md:flex-row items-center justify-between gap-3 text-white/70 text-[13px] tracking-[0.3px]">
             <p>© 2026 Fechi Organics. All rights reserved.</p>
-            <p className="text-white/50 text-[12px] flex">Powered by <span><Link href="https://kyfaru.com" target="_blank" rel="noopener noreferrer"><Image src="https://media.kyfaru.com/kyfarulab-cloud/media/logos/Kyfaru/Kyfaru-Logo-Filled-07.png" alt="Kyfaru" width={100} height={100} className="object-contain w-14 h-14" /> Kyfaru</Link></span></p>
+            <p className="text-white/50 text-[12px] flex">Powered by <span className="flex gap-1"><Link href="https://kyfaru.com" target="_blank" rel="noopener noreferrer"><Image src="public/logo/Kyfaru-Logo-Filled-07.png" alt="Kyfaru" width={100} height={100} className="object-contain w-14 h-14" /> Kyfaru</Link></span></p>
             <div className="flex items-center gap-4">
               <p>
                 <Link href="/privacy-policy" className="hover:text-white transition-colors">Privacy</Link>

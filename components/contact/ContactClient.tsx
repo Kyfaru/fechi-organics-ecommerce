@@ -330,7 +330,7 @@ export function ContactClient() {
       </section>
 
       {/* Main content — Form + Contact cards */}
-      <section className="px-4 md:px-8 pb-16 bg-[#f9f9f9] dark:bg-gray-900 transition-colors">
+      <section className="px-4 md:px-8 pb-16 pt-10 bg-[#f9f9f9] dark:bg-gray-900 transition-colors">
         <div className="max-w-[1200px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
 
           {/* Send a Message form */}
