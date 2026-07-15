@@ -54,8 +54,8 @@ export function DataTable({
   const to = Math.min((page + 1) * pageSize, sorted.length);
 
   return (
-    <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) overflow-hidden">
-      <div className="overflow-x-auto">
+    <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1)">
+      <div className="overflow-x-auto overflow-y-visible">
         <table className="w-full">
           <thead>
             <tr className="bg-(--green-50) dark:bg-(--dark-bg) border-b border-(--neutral-200) dark:border-(--dark-border)">

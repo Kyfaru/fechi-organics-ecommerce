@@ -163,7 +163,7 @@ function ActionsMenu({
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-9 z-[9999] w-44 bg-white dark:bg-(--dark-surface) rounded-[10px] shadow-(--e2) border border-(--neutral-200) dark:border-(--dark-border) py-1 overflow-visible">
+          <div className="absolute right-0 top-9 z-50 w-44 bg-white dark:bg-(--dark-surface) rounded-[10px] shadow-(--e2) border border-(--neutral-200) dark:border-(--dark-border) py-1 overflow-hidden">
             <button
               onClick={() => { setOpen(false); onView(); }}
               className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) dark:text-(--dark-text) hover:bg-(--neutral-50) dark:hover:bg-(--dark-border)"
