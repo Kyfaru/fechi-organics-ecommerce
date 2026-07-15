@@ -44,7 +44,7 @@ const NAV_GROUPS: NavGroup[] = [
   ]},
   { label: "MARKETING", items: [
     { href: "/admin/marketing",             icon: Mail,  label: "Campaigns",   page: "campaigns" },
-    { href: "/admin/marketing/promotions",  icon: Tag,   label: "Promotions",  page: "promotions" },
+    { href: "/admin/promotions",  icon: Tag,   label: "Promotions",  page: "promotions" },
     { href: "/admin/loyalty",               icon: Heart, label: "Loyalty",     page: "marketing" },
   ]},
   { label: "CONTENT", items: [
