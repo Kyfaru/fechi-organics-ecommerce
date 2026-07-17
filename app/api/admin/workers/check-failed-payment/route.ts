@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { verifyQstashRequest } from "@/lib/qstash";
 import { sendAdminNotificationEmail } from "@/lib/email";
 import { markPaymentFailed } from "@/lib/payments/post-payment";
+import { createNotification } from "@/lib/notify";
 
 function kes(cents: number) {
   return `KES ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;
@@ -58,6 +59,14 @@ export async function POST(req: NextRequest) {
       html: `<p>A customer payment failed and has not been retried successfully.</p><p>${order.user?.name ?? "Customer"} - ${order.user?.email ?? order.guestEmail ?? ""} - ${order.deliveryPhone ?? order.user?.phone ?? ""}</p><p>${order.items.map((i) => `${i.name} x ${i.quantity}`).join("<br/>")}</p><p><strong>${kes(order.totalKes)}</strong></p>`,
     });
   }
+
+  await createNotification({
+    type: "PAYMENT_ERROR",
+    title: `Payment failed — order #${order.id.slice(0, 8).toUpperCase()}`,
+    body: `${order.user?.name ?? order.guestEmail ?? "A customer"}'s payment of ${kes(order.totalKes)} timed out with no callback.`,
+    link: `/admin/orders/${order.id}`,
+    branchId: order.branchId,
+  });
 
   return NextResponse.json({ ok: true });
 }

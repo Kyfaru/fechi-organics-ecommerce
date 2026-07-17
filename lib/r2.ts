@@ -23,6 +23,7 @@ export const r2Client = new S3Client({
  * fallback.
  */
 export function r2PublicUrl(objectKey: string): string {
+  if (objectKey.startsWith("http")) return objectKey;
   const base = process.env.NEXT_PUBLIC_R2_PUBLIC_URL;
   if (base) {
     return `${base.replace(/\/$/, "")}/${objectKey}`;

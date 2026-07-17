@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { invalidateProductCache } from "@/lib/cache-tags";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { createNotification } from "@/lib/notify";
 
 // ---------------------------------------------------------------------------
 // Auth helper
@@ -175,6 +176,12 @@ export async function DELETE(
 
     console.info("[admin/products/[id]] DELETE (soft) —", id);
     invalidateProductCache(existing.slug);
+    createNotification({
+      type: "PRODUCT_DELETED",
+      title: `Product removed: ${existing.name}`,
+      body: `"${existing.name}" has been unpublished from the store.`,
+      link: "/admin/products",
+    }).catch(() => {});
     return ok({ id });
   } catch (e) {
     console.error("[admin/products/[id]] DELETE error", e);

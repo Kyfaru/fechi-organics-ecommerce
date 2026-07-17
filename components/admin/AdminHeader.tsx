@@ -5,12 +5,13 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
-import { Search, Bell, Settings, Sun, Moon } from "lucide-react";
+import { Search, Settings, Sun, Moon } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/app/providers";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { GlobalSearchModal, type SearchResult } from "@/components/ui/GlobalSearchModal";
+import { NotificationBell } from "@/components/admin/NotificationBell";
 
 const WHATSAPP_URL = "https://wa.me/254768151505";
 
@@ -53,14 +54,6 @@ export function AdminHeader() {
   const userInitial = userName.charAt(0).toUpperCase();
   const userImage = session?.user?.image ?? null;
   const imgUrl = url + "/" + userImage;
-
-  const { data: unreadData } = useQuery({
-    queryKey: ["admin-notifications-unread"],
-    queryFn: () => fetch("/api/admin/notifications?unread=true").then((r) => r.json()),
-    staleTime: 30 * 1000,
-    refetchInterval: 60 * 1000,
-  });
-  const hasUnread = (unreadData?.data?.notifications?.length ?? 0) > 0;
 
   return (
     <header className="h-[72px] bg-white dark:bg-(--dark-surface) border-b border-(--green-200) dark:border-(--dark-border) shadow-(--e1) flex items-center px-6 gap-6 sticky top-0 z-20">
@@ -121,10 +114,7 @@ export function AdminHeader() {
           {dark ? <Sun size={18} /> : <Moon size={18} />}
         </button>
 
-        <Link href="/admin/notifications" className="relative w-9 h-9 flex items-center justify-center rounded-full text-(--neutral-500) hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) transition-colors">
-          <Bell size={18} />
-          {hasUnread && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-(--danger) rounded-full" />}
-        </Link>
+        <NotificationBell />
 
         <Link
           href="/admin/settings"

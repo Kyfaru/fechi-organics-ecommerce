@@ -90,7 +90,7 @@ export function Footer() {
       {/* Large watermark logo */}
       <div className="absolute -left-16 -top-8 w-[500px] h-[400px] opacity-[0.09] pointer-events-none select-none">
         <Image
-          src="logo/symbol-white.webp"
+          src="/logo/symbol-white.webp"
           alt=""
           fill
           className="object-contain object-left"
@@ -103,7 +103,7 @@ export function Footer() {
           {/* Brand column */}
           <div className="md:col-span-1">
             <Image
-              src="logo/symbol-white.webp"
+              src="/logo/symbol-white.webp"
               alt="Fechi Organics"
               width={140}
               height={50}

@@ -242,12 +242,13 @@ export async function POST(req: NextRequest) {
 
     console.info("[orders] Created order", order.id, "orderNumber", order.orderNumber, "for user", userId);
 
-    createNotification(
-      "order",
-      "New Order",
-      `Order ${order.orderNumber ?? order.id.slice(0, 8)} was placed`,
-      "/admin/orders",
-    ).catch(() => {});
+    createNotification({
+      type: "ORDER_NEW",
+      title: "New Order",
+      body: `Order ${order.orderNumber ?? order.id.slice(0, 8)} was placed`,
+      link: "/admin/orders",
+      branchId: order.branchId,
+    }).catch(() => {});
 
     return ok({ orderId: order.id });
   } catch (e) {

@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { invalidateProductCache } from "@/lib/cache-tags";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { createNotification } from "@/lib/notify";
 
 // ---------------------------------------------------------------------------
 // Auth helper — reuses the req.headers pattern from other admin routes
@@ -113,13 +114,11 @@ export async function POST(req: NextRequest) {
     console.info("[admin/products] POST — created product", product.id, product.slug);
     invalidateProductCache(product.slug);
     // Notify admin inbox about new product
-    db.notification.create({
-      data: {
-        type: "admin",
-        title: `New product added: ${product.name}`,
-        body: `"${product.name}" has been published to the store.`,
-        link: `/admin/products`,
-      },
+    createNotification({
+      type: "PRODUCT_ADDED",
+      title: `New product added: ${product.name}`,
+      body: `"${product.name}" has been published to the store.`,
+      link: `/admin/products`,
     }).catch((e) => console.error("[admin/products] notification create failed:", e));
     return ok({ product });
   } catch (e: unknown) {

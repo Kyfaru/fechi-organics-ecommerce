@@ -1,14 +1,18 @@
-import { NextRequest } from "next/server";
-import { connection } from "next/server";
+import { NextRequest, connection } from "next/server";
 import { db } from "@/lib/db";
-import { ok, Err } from "@/lib/api";
+import { ok } from "@/lib/api";
 import { requireAdminPage } from "@/lib/admin-guard";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { resolveNotificationScope } from "@/lib/notifications/scope";
+import { bumpNotificationVersion } from "@/lib/notification-channel";
 
-interface Params { params: Promise<{ id: string }> }
+interface Params {
+  params: Promise<{ id: string }>;
+}
 
-// PATCH /api/admin/notifications/[id] — mark single notification read
-// PATCH /api/admin/notifications/all — mark all read (id = "all")
+// PATCH /api/admin/notifications/[id] — marks read FOR THE CALLING USER ONLY.
+// Per-user upsert on the (notificationId, userId) unique constraint, so two
+// admins (or one admin double-clicking) never race or error.
 export async function PATCH(req: NextRequest, { params }: Params) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
@@ -16,16 +20,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const denied = await requireAdminPage(req, "dashboard");
   if (denied) return denied;
 
+  const resolved = await resolveNotificationScope(req);
+  if (resolved instanceof Response) return resolved;
+  const { userId } = resolved;
+
   const { id } = await params;
 
-  if (id === "all") {
-    await db.notification.updateMany({ where: { read: false }, data: { read: true } });
-    return ok({ marked: "all" });
-  }
-
-  const notification = await db.notification.update({
-    where: { id },
-    data: { read: true },
+  const state = await db.notificationRecipientState.upsert({
+    where: { notificationId_userId: { notificationId: id, userId } },
+    update: { readAt: new Date() },
+    create: { notificationId: id, userId, readAt: new Date() },
   });
-  return ok({ notification });
+
+  await bumpNotificationVersion();
+  return ok({ state });
 }
