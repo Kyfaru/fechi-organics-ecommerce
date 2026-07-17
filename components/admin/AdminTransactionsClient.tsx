@@ -28,6 +28,7 @@ type AdminTransaction = {
   status: TxStatus;
   mpesaReceiptNumber: string | null;
   failureReason: string | null;
+  mpesaGatewayUsed: "DARAJA" | "KCB_BUNI" | null;
   createdAt: string;
   order: {
     id: string;
@@ -251,6 +252,20 @@ export function AdminTransactionsClient() {
           : "bg-(--gold-50) text-(--gold-700)";
         return (
           <span className={`inline-flex items-center rounded-full px-[10px] h-6 font-dm text-[12px] font-medium ${cls}`}>
+            {label}
+          </span>
+        );
+      },
+    },
+    {
+      key: "mpesaGatewayUsed",
+      label: "Route",
+      render: (_v: unknown, row: Record<string, unknown>) => {
+        const gateway = row.mpesaGatewayUsed as "DARAJA" | "KCB_BUNI" | null;
+        if (!gateway) return <span className="text-(--neutral-400)">—</span>;
+        const label = gateway === "KCB_BUNI" ? "KCB Buni" : "Daraja";
+        return (
+          <span className="inline-flex items-center rounded-full px-[10px] h-6 bg-(--info)/10 text-(--info) font-dm text-[12px] font-medium">
             {label}
           </span>
         );

@@ -12,9 +12,11 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { LogoutModal } from "@/components/ui/LogoutModal";
 import { useSession, signOut } from "@/lib/auth-client";
 import { readSessionCache, writeSessionCache, clearSessionCache } from "@/lib/session-cache";
-import { useTheme } from "@/app/providers";
+import { useTheme, clearPersistedQueryCache } from "@/app/providers";
 import { posthog } from "@/lib/posthog";
 import { useUnreadCount } from "@/hooks/useUnreadCount";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { GlobalSearchModal, type SearchResult } from "@/components/ui/GlobalSearchModal";
 
 const NAV_LINKS = [
   { href: "/", label: "Home" },
@@ -272,8 +274,26 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
     return () => document.removeEventListener("mousedown", handle);
   }, [searchOpen]);
 
+  const debouncedSearch = useDebouncedValue(searchQuery, 300);
+  const { data: searchData, isFetching: searchLoading } = useQuery<{ ok: boolean; data: { results: SearchResult[] } }>({
+    queryKey: ["global-search", debouncedSearch],
+    queryFn: () => fetch(`/api/search?q=${encodeURIComponent(debouncedSearch)}`).then((r) => r.json()),
+    enabled: debouncedSearch.trim().length >= 2,
+  });
+  const searchResults = searchData?.data?.results ?? [];
+
+  function handleSelectSearchResult(result: SearchResult) {
+    setSearchOpen(false);
+    setSearchQuery("");
+    router.push(result.url);
+  }
+
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (searchResults[0]) {
+      handleSelectSearchResult(searchResults[0]);
+      return;
+    }
     setSearchOpen(false);
     setSearchQuery("");
   }
@@ -282,6 +302,7 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
     posthog.capture("logout_clicked");
     posthog.reset();
     await signOut();
+    clearPersistedQueryCache();
     router.push("/");
   }
 
@@ -360,7 +381,7 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
                 exit={{ opacity: 0, width: 40 }}
                 transition={{ type: "spring", stiffness: 300, damping: 28 }}
                 onSubmit={handleSearchSubmit}
-                className="absolute top-1/2 -translate-y-1/2 z-40 overflow-hidden"
+                className="absolute top-1/2 -translate-y-1/2 z-40"
               >
                 <div className="relative flex items-center">
                   <input
@@ -377,6 +398,12 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
                   >
                     <Icon icon="mdi:magnify" width={16} />
                   </button>
+                  <GlobalSearchModal
+                    query={searchQuery}
+                    results={searchResults}
+                    loading={searchLoading}
+                    onSelect={handleSelectSearchResult}
+                  />
                 </div>
               </motion.form>
             )}

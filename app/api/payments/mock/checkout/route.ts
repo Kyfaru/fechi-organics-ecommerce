@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
-import { resolvePromo } from "@/lib/promo";
+import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 
 const DeliverySchema = z.object({
@@ -84,11 +84,13 @@ export async function POST(req: NextRequest) {
     const promoCode = deliveryData.promoCode?.trim().toUpperCase() || null;
     let discountKes = 0;
     let deliveryFeeKes = pricing.feeKes;
+    let resolvedPromoId: string | null = null;
     if (promoCode) {
       try {
-        const r = await resolvePromo(promoCode, subtotalKes);
+        const r = await resolvePromo(promoCode, subtotalKes, session.user.id);
         discountKes = r.discountKes;
         if (r.deliveryFree) deliveryFeeKes = 0;
+        resolvedPromoId = r.promo.id;
       } catch { /* invalid/expired — discount stays 0 */ }
     }
     const totalKes = Math.max(0, subtotalKes + deliveryFeeKes - discountKes);
@@ -147,6 +149,10 @@ export async function POST(req: NextRequest) {
           });
         }
         await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
+
+        if (resolvedPromoId && promoCode) {
+          await recordCouponRedemption(resolvedPromoId, session.user.id, created.id, tx);
+        }
       }
 
       return created;

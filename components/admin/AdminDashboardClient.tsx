@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import type { PeriodChange } from "@/lib/stats";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -63,6 +64,7 @@ type LowStockProduct = {
 
 type DashboardData = {
   stats: { revenue: number; orders: number; newCustomers: number; lowStock: number };
+  statsChange: Record<"revenue" | "orders" | "newCustomers", PeriodChange>;
   recentOrders: RecentOrder[];
   lowStockProducts: LowStockProduct[];
 };
@@ -348,6 +350,7 @@ export function AdminDashboardClient() {
 
   const dashboard = data?.data;
   const stats = dashboard?.stats;
+  const statsChange = dashboard?.statsChange;
 
   // Build a monthlyRevenue-shaped array from analytics buckets for chart helpers
   const monthlyRevenue: { month: string; amount: number }[] = analytics
@@ -472,7 +475,7 @@ export function AdminDashboardClient() {
               <ProgressMetricCard
                 title="Total Revenue"
                 value={stats?.revenue ?? 0}
-                change={2.4}
+                change={statsChange?.revenue.pct ?? 0}
                 changeLabel="vs last month"
                 accent="emerald"
                 valueFormatter={(v) => `KES ${(v / 100).toLocaleString()}`}
@@ -481,7 +484,7 @@ export function AdminDashboardClient() {
               <ProgressMetricCard
                 title="Total Orders"
                 value={stats?.orders ?? 0}
-                change={1.8}
+                change={statsChange?.orders.pct ?? 0}
                 changeLabel="vs last month"
                 accent="blue"
                 series={[]}
@@ -489,15 +492,13 @@ export function AdminDashboardClient() {
               <StatsWidget
                 title="New Customers"
                 metric={String(stats?.newCustomers ?? 0)}
-                change={3.2}
+                change={statsChange?.newCustomers.pct ?? 0}
                 changeLabel="vs last month"
                 color="green"
               />
               <StatsWidget
                 title="Low Stock Alerts"
                 metric={String(stats?.lowStock ?? 0)}
-                change={-5.1}
-                changeLabel="vs last month"
                 color="danger"
               />
             </>

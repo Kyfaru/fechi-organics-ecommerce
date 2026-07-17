@@ -39,6 +39,7 @@ export async function PATCH(
         ...(body.code !== undefined && { code: body.code ? String(body.code) : null }),
         ...(body.minOrder !== undefined && { minOrder: body.minOrder ? Number(body.minOrder) : null }),
         ...(body.maxUses !== undefined && { maxUses: body.maxUses ? Number(body.maxUses) : null }),
+        ...(body.maxUsesPerUser !== undefined && { maxUsesPerUser: Number(body.maxUsesPerUser) }),
         ...(body.startDate !== undefined && { startDate: body.startDate ? new Date(body.startDate as string) : null }),
         ...(body.endDate !== undefined && { endDate: body.endDate ? new Date(body.endDate as string) : null }),
         ...(body.status !== undefined && { status: String(body.status) }),

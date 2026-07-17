@@ -1,6 +1,8 @@
 "use client";
 
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClient, useQuery } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { createContext, useContext, useEffect, useState } from "react";
 import type { CurrencyCode, FxRates } from "@/lib/currency";
 import { CURRENCIES, formatPrice } from "@/lib/currency";
@@ -14,7 +16,9 @@ function makeQueryClient() {
     defaultOptions: {
       queries: {
         staleTime: 60_000,
+        gcTime: 24 * 60 * 60_000,
         refetchOnWindowFocus: false,
+        refetchOnMount: false,
       },
     },
   });
@@ -26,6 +30,14 @@ function getQueryClient() {
   if (typeof window === "undefined") return makeQueryClient();
   if (!browserQueryClient) browserQueryClient = makeQueryClient();
   return browserQueryClient;
+}
+
+const CACHE_STORAGE_KEY = "fechi-cache";
+
+/** Wipes the persisted query cache — call this from every logout handler. */
+export function clearPersistedQueryCache() {
+  browserQueryClient?.clear();
+  if (typeof window !== "undefined") localStorage.removeItem(CACHE_STORAGE_KEY);
 }
 
 // ── Theme context ───────────────────────────────────────────────────────────
@@ -142,14 +154,24 @@ export function useCurrency() {
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const qc = getQueryClient();
+  const [persister] = useState(() =>
+    createSyncStoragePersister({
+      storage: typeof window !== "undefined" ? window.localStorage : undefined,
+      key: CACHE_STORAGE_KEY,
+      throttleTime: 2000,
+    }),
+  );
   return (
     <PostHogProvider>
       <PrelineInit />
-      <QueryClientProvider client={qc}>
+      <PersistQueryClientProvider
+        client={qc}
+        persistOptions={{ persister, maxAge: 24 * 60 * 60_000 }}
+      >
         <ThemeProvider>
           <CurrencyProvider>{children}</CurrencyProvider>
         </ThemeProvider>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </PostHogProvider>
   );
 }

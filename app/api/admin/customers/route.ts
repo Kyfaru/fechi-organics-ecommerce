@@ -6,6 +6,7 @@ import { ok, Err } from "@/lib/api";
 import { z } from "zod";
 import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { getPeriodChange } from "@/lib/stats";
 
 async function requireAdmin() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -78,6 +79,7 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
     // Active = not banned and joined within last 90 days (simplest proxy)
     const stats = {
@@ -89,8 +91,18 @@ export async function GET(req: NextRequest) {
       banned: allUsers.filter((u) => u.banned).length,
     };
 
+    // Only "total" (growth vs start of this month) and "newThisMonth" (vs
+    // last calendar month) have a clean historical basis to compare against —
+    // active/banned are live snapshots with no reliable "as of last month" state.
+    const totalAsOfMonthStart = allUsers.filter((u) => u.createdAt < monthStart).length;
+    const newLastMonth = allUsers.filter((u) => u.createdAt >= prevMonthStart && u.createdAt < monthStart).length;
+    const statsChange = {
+      total: getPeriodChange(stats.total, totalAsOfMonthStart),
+      newThisMonth: getPeriodChange(stats.newThisMonth, newLastMonth),
+    };
+
     console.info("[admin/customers] GET — returned", users.length, "users");
-    return ok({ users, stats });
+    return ok({ users, stats, statsChange });
   } catch (e) {
     console.error("[admin/customers] GET error", e);
     return Err.internal();

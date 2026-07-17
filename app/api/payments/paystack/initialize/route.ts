@@ -15,8 +15,9 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
+import { isCardEligible } from "@/lib/payments/card-eligibility";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
-import { resolvePromo } from "@/lib/promo";
+import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
 import { initializeTransaction } from "@/lib/paystack/client";
 import { buildTimestampOrderNumber } from "@/lib/orders/generate-order-number";
 import { getRedis } from "@/lib/redis";
@@ -98,7 +99,7 @@ export async function POST(req: NextRequest) {
     let resolvedPromoId: string | null = null;
     if (promoCode) {
       try {
-        const r = await resolvePromo(promoCode, subtotalCents);
+        const r = await resolvePromo(promoCode, subtotalCents, userId);
         discountCents = r.discountKes;
         if (r.deliveryFree) deliveryCents = 0;
         resolvedPromoId = r.promo.id;
@@ -135,8 +136,12 @@ export async function POST(req: NextRequest) {
       return err("NO_BRANCH", "No active branch available", 503);
     }
 
-    if (!branch.paystackSubaccount) {
-      return Err.internal("Branch not configured for card payments");
+    if (!isCardEligible(isInternational, branch.cardEligible)) {
+      return err(
+        "CARD_NOT_AVAILABLE",
+        "Card payment is not available for this delivery location. Please use M-Pesa.",
+        400,
+      );
     }
 
     // 6. Create order
@@ -174,15 +179,7 @@ export async function POST(req: NextRequest) {
 
     // Record coupon redemption
     if (resolvedPromoId && promoCode) {
-      await db.couponRedemption.upsert({
-        where: { couponId_userId: { couponId: resolvedPromoId, userId } },
-        create: { couponId: resolvedPromoId, userId, orderId: order.id },
-        update: {},
-      });
-      await db.promotion.update({
-        where: { id: resolvedPromoId },
-        data: { usedCount: { increment: 1 } },
-      });
+      await recordCouponRedemption(resolvedPromoId, userId, order.id);
     }
 
     // 7. Generate reference and create transaction record (PENDING)
@@ -207,7 +204,7 @@ export async function POST(req: NextRequest) {
       email: userEmail,
       amount: totalCents,
       reference,
-      subaccount: branch.paystackSubaccount,
+      subaccount: branch.paystackSubaccount ?? undefined,
       callback_url: `${baseUrl}/api/payments/paystack/verify?reference=${reference}`,
       metadata: { orderId: order.id, userId },
     });

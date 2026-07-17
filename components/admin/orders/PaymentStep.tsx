@@ -56,6 +56,7 @@ interface BranchOption {
   mpesaType: string;
   shortcode: string;
   phone: string;
+  cardEligible: boolean;
 }
 
 type PaymentMethod = "mpesa-prompt" | "mpesa-live" | "card";
@@ -120,11 +121,10 @@ export default function PaymentStep({
 
   const isSuperAdmin = me?.isSuperAdmin ?? false;
 
-  // Only super-admins need the full branch list — everyone else is pinned
-  // to their assigned branch already returned by /api/admin/me.
+  // Fetched for every admin, not just super-admins — non-super-admins need
+  // it too, to look up their own assigned branch's cardEligible flag below.
   const { data: branchOptions = [], isLoading: branchesLoading } = useQuery<BranchOption[]>({
     queryKey: ["admin-branches-payment-step"],
-    enabled: isSuperAdmin,
     queryFn: async () => {
       try {
         const res = await fetch("/api/branches");
@@ -139,6 +139,8 @@ export default function PaymentStep({
 
   const effectiveBranchId = isSuperAdmin ? (selectedBranchId || undefined) : (me?.branchId ?? undefined);
   const branchReady = isSuperAdmin ? Boolean(selectedBranchId) : Boolean(me?.branchId);
+  // Card payment is only offered at branches marked cardEligible (Nairobi/Nakuru at launch).
+  const cardEligible = Boolean(branchOptions.find((b) => b.id === effectiveBranchId)?.cardEligible);
 
   const orderContext: PaymentOrderContext = useMemo(
     () => ({
@@ -200,7 +202,7 @@ export default function PaymentStep({
         {/* Method tabs */}
         <div className="rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) bg-white dark:bg-(--dark-surface) overflow-hidden">
           <div className="flex border-b border-(--neutral-100) dark:border-(--dark-border)" role="tablist">
-            {METHOD_TABS.map((tab) => {
+            {METHOD_TABS.filter((tab) => tab.key !== "card" || cardEligible).map((tab) => {
               const TabIcon = tab.icon;
               const active = method === tab.key;
               return (
@@ -234,7 +236,7 @@ export default function PaymentStep({
             {method === "mpesa-live" && (
               <MpesaLivePanel orderContext={orderContext} branchReady={branchReady} />
             )}
-            {method === "card" && (
+            {method === "card" && cardEligible && (
               <PaystackPanel orderContext={orderContext} branchReady={branchReady} />
             )}
           </div>

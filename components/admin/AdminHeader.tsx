@@ -3,11 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { Search, Bell, Settings, Sun, Moon } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/app/providers";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { GlobalSearchModal, type SearchResult } from "@/components/ui/GlobalSearchModal";
 
 const WHATSAPP_URL = "https://wa.me/254768151505";
 
@@ -27,7 +30,24 @@ const url = process.env.NEXT_PUBLIC_R2_PUBLIC_URL;
 export function AdminHeader() {
   const { theme, toggleTheme } = useTheme();
   const dark = theme === "dark";
+  const router = useRouter();
   const [searchFocused, setSearchFocused] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebouncedValue(searchQuery, 300);
+
+  const { data: searchData, isFetching: searchLoading } = useQuery<{ ok: boolean; data: { results: SearchResult[] } }>({
+    queryKey: ["admin-global-search", debouncedSearch],
+    queryFn: () => fetch(`/api/admin/search?q=${encodeURIComponent(debouncedSearch)}`).then((r) => r.json()),
+    enabled: debouncedSearch.trim().length >= 2,
+  });
+  const searchResults = searchData?.data?.results ?? [];
+
+  function handleSelectResult(result: SearchResult) {
+    setSearchQuery("");
+    setSearchFocused(false);
+    router.push(result.url);
+  }
+
   const { data: session } = useSession();
   const userName = session?.user?.name ?? "Admin";
   const userInitial = userName.charAt(0).toUpperCase();
@@ -55,7 +75,7 @@ export function AdminHeader() {
       </div>
 
       {/* Search */}
-      <div className="flex-1 max-w-[480px] mx-auto">
+      <div className="relative flex-1 max-w-[480px] mx-auto">
         <div className={`flex items-center gap-2 h-10 px-4 rounded-full transition-all ${
           searchFocused
             ? "bg-white dark:bg-(--dark-bg) border border-(--green-500) shadow-(--e2)"
@@ -65,11 +85,21 @@ export function AdminHeader() {
           <input
             type="text"
             placeholder="Search products, orders, customers…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
+            onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)}
             className="flex-1 bg-transparent font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) placeholder:text-(--neutral-400) outline-none"
           />
         </div>
+        {searchFocused && (
+          <GlobalSearchModal
+            query={searchQuery}
+            results={searchResults}
+            loading={searchLoading}
+            onSelect={handleSelectResult}
+          />
+        )}
       </div>
 
       {/* Right controls */}

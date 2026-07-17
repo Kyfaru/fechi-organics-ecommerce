@@ -17,7 +17,7 @@ import { ok, err, Err } from "@/lib/api";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
 import { initiateKcbStkPush } from "@/lib/payments/kcb/kcb-client";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
-import { resolvePromo } from "@/lib/promo";
+import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
 import { getRedis } from "@/lib/redis";
 import { markPaymentFailed } from "@/lib/payments/post-payment";
 import { assertTrustedOrigin } from "@/lib/origin-check";
@@ -93,11 +93,13 @@ export async function POST(req: NextRequest) {
     const promoCode = deliveryData.promoCode?.trim().toUpperCase();
     let discountCents = 0;
     let deliveryCents = pricing.feeKes;
+    let resolvedPromoId: string | null = null;
     if (promoCode) {
       try {
-        const r = await resolvePromo(promoCode, subtotalCents);
+        const r = await resolvePromo(promoCode, subtotalCents, userId);
         discountCents = r.discountKes;
         if (r.deliveryFree) deliveryCents = 0;
+        resolvedPromoId = r.promo.id;
       } catch {
         /* invalid/expired — discount stays 0 */
       }
@@ -158,6 +160,11 @@ export async function POST(req: NextRequest) {
         },
       },
     });
+
+    // Record coupon redemption
+    if (resolvedPromoId && promoCode) {
+      await recordCouponRedemption(resolvedPromoId, userId, order.id);
+    }
 
     // 7. Create transaction record (PENDING until callback arrives)
     const transaction = await db.transaction.create({

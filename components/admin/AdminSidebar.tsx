@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { signOut } from "@/lib/auth-client";
+import { clearPersistedQueryCache } from "@/app/providers";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { canAccess, type AdminPage } from "@/lib/permissions";
 
@@ -115,6 +116,7 @@ export function AdminSidebar() {
 
   async function handleLogout() {
     await signOut();
+    clearPersistedQueryCache();
     router.push("/admin/login");
   }
 

@@ -497,6 +497,7 @@ model branch {
   passkeyEnc        String?
   mpesaGateway      MpesaGateway  @default(DARAJA)
   paystackSubaccount String?
+  cardEligible      Boolean       @default(false)
   apiKeyEnc         String?
   isMain            Boolean       @default(false)
   isActive          Boolean       @default(true)
@@ -540,6 +541,11 @@ model transaction {
   paystackReference    String?         @unique
   amount               Int
   status               TxStatus        @default(PENDING)
+  // Which gateway actually handled this M-Pesa payment — null for non-M-Pesa
+  // providers. Recorded from the dispatch result, not inferred from
+  // branch.mpesaGateway, since a fallback can route a payment through the
+  // other gateway than the branch's configured default.
+  mpesaGatewayUsed     MpesaGateway?
   rawRequestPayload    Json?
   rawCallbackPayload   Json?
   mpesaReceiptNumber   String?
@@ -709,7 +715,10 @@ model couponRedemption {
   orderId    String   @unique
   redeemedAt DateTime @default(now())
 
-  @@unique([couponId, userId])
+  // Not unique on [couponId, userId] anymore — promotion.maxUsesPerUser lets a
+  // user redeem the same coupon more than once; resolvePromo() in lib/promo.ts
+  // enforces the configured limit by counting rows here instead.
+  @@index([couponId, userId])
   @@index([couponId])
   @@index([userId])
   @@schema("public")
@@ -781,18 +790,20 @@ model campaignRecipient {
 }
 
 model promotion {
-  id        String    @id @default(cuid())
-  name      String
-  type      String
-  value     Float
-  code      String?   @unique
-  minOrder  Int?
-  maxUses   Int?
-  usedCount Int       @default(0)
-  startDate DateTime?
-  endDate   DateTime?
-  status    String    @default("active")
-  createdAt DateTime  @default(now())
+  id             String    @id @default(cuid())
+  name           String
+  type           String
+  value          Float
+  code           String?   @unique
+  minOrder       Int?
+  maxUses        Int?
+  // How many times a single user may reuse this coupon. 0 = unlimited, 1 = default (one use per user).
+  maxUsesPerUser Int       @default(1)
+  usedCount      Int       @default(0)
+  startDate      DateTime?
+  endDate        DateTime?
+  status         String    @default("active")
+  createdAt      DateTime  @default(now())
 
   @@schema("admin")
 }
@@ -1018,6 +1029,7 @@ model inStoreTransaction {
   checkoutRequestId       String?              @unique
   paystackReference       String?              @unique
   mpesaReceiptNumber      String?
+  mpesaGatewayUsed        MpesaGateway?
   matchedC2bTransactionId String?              @unique
   matchedC2bTransaction   mpesaC2bTransaction? @relation(fields: [matchedC2bTransactionId], references: [id])
   rawCallbackPayload      Json?

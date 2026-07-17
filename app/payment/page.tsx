@@ -35,6 +35,7 @@ interface DeliveryData {
   deliveryType: "PICKUP" | "DELIVERY";
   branchName: string | null;
   promoCode?: string | null;
+  isCardEligible?: boolean;
 }
 
 type PaymentMethod = "mpesa" | "card";
@@ -213,8 +214,10 @@ export default function PaymentPage() {
                 <label className="mb-2 block text-[12px] font-semibold tracking-[0.08em] text-[#40493c] dark:text-gray-200">Enter Your M-Pesa Phone Number</label>
                 <input value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} className="h-12 w-full rounded-[8px] border border-[#c0cab8] dark:border-[#27731e] bg-[#fbfbfb] dark:bg-gray-800 px-4 text-[16px] text-text-dark dark:text-white/90 text-bold outline-none focus:border-yellow-cta" />
               </PaymentOption>
-              <PaymentOption active={selectedMethod === "card"} onClick={() => setSelectedMethod("card")} title="Credit / Debit Card" badge="VISA  MC" />
-              
+              {deliveryData?.isCardEligible && (
+                <PaymentOption active={selectedMethod === "card"} onClick={() => setSelectedMethod("card")} title="Credit / Debit Card" badge="VISA  MC" />
+              )}
+
             </div>
 
             <div className="mt-10 flex flex-wrap justify-center gap-8 text-[12px] font-bold uppercase tracking-[0.12em] text-[#707a6b]">

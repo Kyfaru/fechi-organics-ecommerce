@@ -20,6 +20,7 @@ interface Promotion {
   code: string | null;
   minOrder: number | null;
   maxUses: number | null;
+  maxUsesPerUser: number;
   usedCount: number;
   startDate: string | null;
   endDate: string | null;
@@ -69,6 +70,7 @@ export function AdminPromotionsClient() {
     code: "",
     minOrder: "",
     maxUses: "",
+    maxUsesPerUser: "1",
     startDate: "",
     endDate: "",
     status: "active",
@@ -98,6 +100,7 @@ export function AdminPromotionsClient() {
         code: form.code || null,
         minOrder: form.minOrder ? Number(form.minOrder) : null,
         maxUses: form.maxUses ? Number(form.maxUses) : null,
+        maxUsesPerUser: form.maxUsesPerUser === "" ? 1 : Number(form.maxUsesPerUser),
         startDate: form.startDate || null,
         endDate: form.endDate || null,
         status: form.status,
@@ -153,6 +156,7 @@ export function AdminPromotionsClient() {
       code: p.code ?? "",
       minOrder: p.minOrder ? String(p.minOrder) : "",
       maxUses: p.maxUses ? String(p.maxUses) : "",
+      maxUsesPerUser: String(p.maxUsesPerUser ?? 1),
       startDate: p.startDate ? p.startDate.slice(0, 10) : "",
       endDate: p.endDate ? p.endDate.slice(0, 10) : "",
       status: p.status,
@@ -418,7 +422,7 @@ export function AdminPromotionsClient() {
             </div>
           </FieldWrap>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <FieldWrap label="Min Order (KES)">
               <input
                 type="number"
@@ -436,6 +440,16 @@ export function AdminPromotionsClient() {
                 value={form.maxUses}
                 onChange={(e) => setForm((f) => ({ ...f, maxUses: e.target.value }))}
                 placeholder="Unlimited"
+                className={inputCls}
+              />
+            </FieldWrap>
+            <FieldWrap label="Max Uses Per User">
+              <input
+                type="number"
+                min={0}
+                value={form.maxUsesPerUser}
+                onChange={(e) => setForm((f) => ({ ...f, maxUsesPerUser: e.target.value }))}
+                placeholder="1 (0 = unlimited)"
                 className={inputCls}
               />
             </FieldWrap>

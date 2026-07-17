@@ -14,8 +14,9 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
-import { resolvePromo } from "@/lib/promo";
+import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
 import { initializeTransaction } from "@/lib/paystack/client";
+import { isCardEligible } from "@/lib/payments/card-eligibility";
 import { getRedis } from "@/lib/redis";
 import { makeRatelimit } from "@/lib/ratelimit";
 import { assertTrustedOrigin } from "@/lib/origin-check";
@@ -106,8 +107,10 @@ export async function POST(req: NextRequest) {
       if (!branch) return err("NO_BRANCH", "Assigned branch not found or inactive", 400);
     }
 
-    if (!branch.paystackSubaccount) {
-      return Err.internal("Branch not configured for card payments");
+    // In-store card payments are walk-in (never international), so
+    // eligibility is purely the branch's cardEligible flag.
+    if (!isCardEligible(false, branch.cardEligible)) {
+      return err("CARD_NOT_AVAILABLE", "Card payment is not available at this branch", 400);
     }
 
     // Never trust client-submitted prices — recompute from the DB.
@@ -130,10 +133,12 @@ export async function POST(req: NextRequest) {
 
     const normalizedPromoCode = promoCode?.trim().toUpperCase();
     let discountKes = 0;
+    let resolvedPromoId: string | null = null;
     if (normalizedPromoCode) {
       try {
-        const r = await resolvePromo(normalizedPromoCode, subtotalKes);
+        const r = await resolvePromo(normalizedPromoCode, subtotalKes, customerUserId ?? undefined);
         discountKes = r.discountKes;
+        resolvedPromoId = r.promo.id;
       } catch {
         /* invalid/expired — discount stays 0 */
       }
@@ -156,8 +161,8 @@ export async function POST(req: NextRequest) {
       });
       if (!orderBranch) return err("NO_BRANCH", "Order's branch not found or inactive", 400);
       branch = orderBranch;
-      if (!branch.paystackSubaccount) {
-        return Err.internal("Branch not configured for card payments");
+      if (!isCardEligible(false, branch.cardEligible)) {
+        return err("CARD_NOT_AVAILABLE", "Card payment is not available at this branch", 400);
       }
 
       order = await db.inStoreOrder.update({
@@ -194,6 +199,12 @@ export async function POST(req: NextRequest) {
           },
         },
       });
+
+      // Only on the initial creation path — retries reuse the same order and
+      // must not record a second redemption for one order.
+      if (resolvedPromoId && normalizedPromoCode && customerUserId) {
+        await recordCouponRedemption(resolvedPromoId, customerUserId, order.id);
+      }
     }
 
     // Paystack only allows alphanumeric + -.= in a reference — same
@@ -219,7 +230,7 @@ export async function POST(req: NextRequest) {
       email: customerEmail || "walkin@fechiorganics.com",
       amount: totalKes,
       reference,
-      subaccount: branch.paystackSubaccount,
+      subaccount: branch.paystackSubaccount ?? undefined,
       metadata: { inStoreOrderId: order.id, adminId: admin.id },
     });
 

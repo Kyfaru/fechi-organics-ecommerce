@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { resolvePromo } from "@/lib/promo";
 
 // ---------------------------------------------------------------------------
 // GET /api/coupons/validate?code=PROMO10&subtotal=250000
@@ -30,52 +31,25 @@ export async function GET(req: NextRequest) {
     }
 
     const userId = session.user.id;
-    const now = new Date();
 
-    // Look up active, in-window promotion with this code
-    const promo = await db.promotion.findFirst({
-      where: {
-        code,
-        status: "active",
-        OR: [{ startDate: null }, { startDate: { lte: now } }],
-        AND: [
-          { OR: [{ endDate: null }, { endDate: { gte: now } }] },
-        ],
-      },
-    });
-
-    if (!promo) {
-      return ok({ valid: false, error: "Invalid or expired coupon code" });
+    let result;
+    try {
+      result = await resolvePromo(code, subtotalKes, userId);
+    } catch (e) {
+      if (e instanceof Response) {
+        const body = await e.json().catch(() => null);
+        return ok({ valid: false, error: body?.error?.message ?? "Invalid or expired coupon code" });
+      }
+      throw e;
     }
 
-    if (promo.maxUses !== null && promo.usedCount >= promo.maxUses) {
-      return ok({ valid: false, error: "Coupon usage limit reached" });
-    }
-
-    const alreadyUsed = await db.couponRedemption.findUnique({
-      where: { couponId_userId: { couponId: promo.id, userId } },
-    });
-    if (alreadyUsed) {
-      return ok({ valid: false, error: "You have already used this coupon" });
-    }
-
-    if (promo.minOrder !== null && subtotalKes < promo.minOrder) {
-      const minKes = (promo.minOrder / 100).toLocaleString("en-KE");
-      return ok({ valid: false, error: `Minimum order of KES ${minKes} required` });
-    }
-
-    // Calculate the discount amount for display purposes
-    let amountKes = 0;
+    const { promo, discountKes: amountKes, deliveryFree } = result;
     let message = "";
-
     if (promo.type === "PERCENTAGE") {
-      amountKes = Math.round(subtotalKes * promo.value / 100);
       message = `${promo.value}% off — you save KES ${(amountKes / 100).toLocaleString("en-KE")}`;
     } else if (promo.type === "FIXED") {
-      amountKes = Math.min(Math.round(promo.value * 100), subtotalKes);
       message = `KES ${(amountKes / 100).toLocaleString("en-KE")} off`;
-    } else if (promo.type === "FREE_SHIPPING") {
-      amountKes = 0; // shipping discount — exact saving depends on delivery zone
+    } else if (deliveryFree) {
       message = "Free shipping applied";
     }
 

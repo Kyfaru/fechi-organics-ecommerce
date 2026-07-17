@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { headers } from "next/headers";
 import { connection } from "next/server";
 import { ok, Err } from "@/lib/api";
+import { getPeriodChange } from "@/lib/stats";
 
 export async function GET() {
   await connection();
@@ -17,6 +18,8 @@ export async function GET() {
     const thirtyDaysAgo = new Date(now);
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     thirtyDaysAgo.setHours(0, 0, 0, 0);
+    const sixtyDaysAgo = new Date(thirtyDaysAgo);
+    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 30);
 
     const [
       revenueAgg,
@@ -27,6 +30,9 @@ export async function GET() {
       lowStockProducts,
       allOrders30d,
       ordersByStatusRaw,
+      prevRevenueAgg,
+      prevOrdersCount,
+      prevNewCustomers,
     ] = await Promise.all([
       // Sum of totalKes for PAID orders in last 30 days
       db.order.aggregate({
@@ -92,6 +98,20 @@ export async function GET() {
         by: ["status"],
         _count: { _all: true },
       }),
+      // Previous 30-day period, for real "vs last month" stats-card deltas
+      db.order.aggregate({
+        _sum: { totalKes: true },
+        where: {
+          paymentStatus: "PAID",
+          createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo },
+        },
+      }),
+      db.order.count({
+        where: { createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } },
+      }),
+      db.user.count({
+        where: { role: "client", createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } },
+      }),
     ]);
 
     // Build daily revenue chart for last 30 days
@@ -121,6 +141,11 @@ export async function GET() {
         orders: ordersCount,
         newCustomers,
         lowStock: lowStockCount,
+      },
+      statsChange: {
+        revenue: getPeriodChange(revenueAgg._sum.totalKes ?? 0, prevRevenueAgg._sum.totalKes ?? 0),
+        orders: getPeriodChange(ordersCount, prevOrdersCount),
+        newCustomers: getPeriodChange(newCustomers, prevNewCustomers),
       },
       recentOrders,
       lowStockProducts,

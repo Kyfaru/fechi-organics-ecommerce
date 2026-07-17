@@ -28,4 +28,8 @@ export const deliveryDataSchema = z.object({
   deliveryType: z.enum(["PICKUP", "DELIVERY"]),
   branchId: z.string().optional().nullable(),
   branchName: z.string().optional().nullable(),
+  // Client-computed hint only, used to hide/show the card option in the UI.
+  // The server always recomputes eligibility itself (lib/payments/card-eligibility.ts)
+  // rather than trusting this value.
+  isCardEligible: z.boolean().optional(),
 }).strict();

@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth";
 import { ok, Err } from "@/lib/api";
 import { resolvePromo } from "@/lib/promo";
 import { assertTrustedOrigin } from "@/lib/origin-check";
@@ -15,7 +17,10 @@ export async function POST(req: NextRequest) {
 
     if (!code) return Err.validation("Coupon code is required");
 
-    const { discountKes, deliveryFree } = await resolvePromo(code, subtotalKes);
+    // Optional — admin-side previews (in-store order builder) may not have a
+    // customer session at all, so the per-user reuse limit is skipped there.
+    const session = await auth.api.getSession({ headers: await headers() });
+    const { discountKes, deliveryFree } = await resolvePromo(code, subtotalKes, session?.user?.id);
     return ok({ valid: true, discountKes, freeShipping: deliveryFree, message: "Coupon applied!" });
   } catch (e) {
     if (e instanceof Response) return e;

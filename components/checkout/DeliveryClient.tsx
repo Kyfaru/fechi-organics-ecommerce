@@ -17,6 +17,7 @@ import { useCurrency } from "@/app/providers";
 type DeliveryMode = "DELIVERY" | "PICKUP";
 type Country = { code: string; name: string; flag: string };
 type Zone = { id: string; name: string; deliveryFeeKes: number; branchId: string | null };
+type Branch = { id: string; cardEligible: boolean };
 type StateOption = { code: string; name: string };
 type CartItem = { productId: string; name: string; quantity: number; lineTotalKes: number; primaryImageUrl?: string };
 type CartResponse = { ok: boolean; data: { items: CartItem[]; subtotalKes: number; itemCount: number } };
@@ -277,6 +278,12 @@ export function DeliveryClient({ user }: Props) {
     staleTime: 0,
   });
 
+  const branchesQuery = useQuery<{ ok: boolean; data: { branches: Branch[] } }>({
+    queryKey: ["branches"],
+    queryFn: () => fetch("/api/branches").then((r) => r.json()),
+    staleTime: 24 * 60 * 60 * 1000,
+  });
+
   // ---------------------------------------------------------------------------
   // Derived values
   // ---------------------------------------------------------------------------
@@ -289,6 +296,12 @@ export function DeliveryClient({ user }: Props) {
   const subtotalKes = cartQuery.data?.data?.subtotalKes ?? 0;
   const discountKes = promoStatus === "valid" ? discountAmountKes : 0;
   const totalKes = subtotalKes + feeKes - discountKes;
+  const branches = branchesQuery.data?.data?.branches ?? [];
+  const selectedBranchId = mode === "PICKUP" ? selectedStore.branchId : (selectedZone?.branchId ?? null);
+  const selectedBranchCardEligible = branches.find((b) => b.id === selectedBranchId)?.cardEligible ?? false;
+  // Card is only offered for international orders or Nairobi/Nakuru branch locations —
+  // mirrors lib/payments/card-eligibility.ts, which is the authoritative server-side check.
+  const isCardEligible = !isKenya || selectedBranchCardEligible;
 
   // ---------------------------------------------------------------------------
   // Validation errors (computed, only surfaced when submitted)
@@ -409,6 +422,7 @@ export function DeliveryClient({ user }: Props) {
         deliveryKes: feeKes,
         deliveryFeeLabel: feeLabel,
         promoCode: promoCode.trim().toUpperCase() || null,
+        isCardEligible,
       };
       sessionStorage.setItem("fechi_delivery", JSON.stringify(deliveryData));
       capture("delivery_form_completed", { country, mode, feeKes });
