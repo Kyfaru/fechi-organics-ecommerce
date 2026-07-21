@@ -24,6 +24,6 @@ export async function POST(req: NextRequest) {
     return ok(await calculateDeliveryPricing(parsed.data));
   } catch (e) {
     console.error("[delivery-pricing] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

@@ -64,6 +64,6 @@ export async function POST(req: NextRequest) {
     return ok({ verified: true });
   } catch (e) {
     console.error("[admin/otp/verify] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

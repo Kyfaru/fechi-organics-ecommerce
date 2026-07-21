@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { Argon2id } from "oslo/password";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requireStaffSession } from "@/lib/require-permission";
 
 // POST /api/admin/verify-password — verify the calling admin's own password.
 // Used as a gate before sensitive actions (reset another user's password, change role).
@@ -13,11 +14,11 @@ export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
+  const denied = await requireStaffSession(req);
+  if (denied) return denied;
+
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
 
   const { password } = await req.json().catch(() => ({}));
   if (!password) return Err.validation("Password required");

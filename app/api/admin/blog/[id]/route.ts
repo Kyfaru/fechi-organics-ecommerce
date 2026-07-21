@@ -3,20 +3,19 @@ import { ok, Err } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { connection } from "next/server";
+import { NextRequest } from "next/server";
+import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 
 /** GET /api/admin/blog/[id] — single post */
 export async function GET(
-  _req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { content: ["view"] });
+  if (denied) return denied;
 
   const { id } = await params;
 
@@ -29,24 +28,24 @@ export async function GET(
     return ok(post);
   } catch (e) {
     console.error("[blog/GET/id]", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
 /** PATCH /api/admin/blog/[id] — update post (title, content, status, etc.) */
 export async function PATCH(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
 
+  const denied = await requirePermission(req, { content: ["update"] });
+  if (denied) return denied;
+
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
 
   const { id } = await params;
 
@@ -100,24 +99,21 @@ export async function PATCH(
     return ok(post);
   } catch (e) {
     console.error("[blog/PATCH]", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
 /** DELETE /api/admin/blog/[id] — archive post */
 export async function DELETE(
-  _req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const originCheck = assertTrustedOrigin(_req);
+  const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { content: ["delete"] });
+  if (denied) return denied;
 
   const { id } = await params;
 
@@ -130,6 +126,6 @@ export async function DELETE(
     return ok({ id: post.id, status: "ARCHIVED" });
   } catch (e) {
     console.error("[blog/DELETE]", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

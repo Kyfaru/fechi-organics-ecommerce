@@ -4,8 +4,8 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
-import { requireAdminPage } from "@/lib/admin-guard";
-import { permissionsFromRole, ROLE_TEMPLATES, type AdminPage } from "@/lib/permissions";
+import { requirePermission } from "@/lib/require-permission";
+import { roles, type RoleName } from "@/lib/permissions";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 
 interface Params { params: Promise<{ id: string }> }
@@ -21,22 +21,35 @@ async function getCallerAdmin(req: NextRequest) {
   return { user, session };
 }
 
-// PATCH — ban/unban OR change role/permissions
+// PATCH — ban/unban (staff:update) OR change role (staff:assign_roles)
 export async function PATCH(req: NextRequest, { params }: Params) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
-  const denied = await requireAdminPage(req, "staff");
-  if (denied) return denied;
-
-  const caller = await getCallerAdmin(req);
-  if (!caller) return Err.forbidden();
 
   const { id } = await params;
-  if (id === caller.session.user.id) return Err.validation("You cannot modify your own account here.");
 
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return Err.validation("Invalid JSON body."); }
+
+  const isBanChange = typeof body.banned === "boolean" || typeof body.banReason === "string";
+  const isRoleChange = typeof body.role === "string" && body.role in roles;
+
+  if (!isBanChange && !isRoleChange) {
+    return Err.validation("No valid fields to update.");
+  }
+  if (isBanChange) {
+    const denied = await requirePermission(req, { staff: ["update"] });
+    if (denied) return denied;
+  }
+  if (isRoleChange) {
+    const denied = await requirePermission(req, { staff: ["assign_roles"] });
+    if (denied) return denied;
+  }
+
+  const caller = await getCallerAdmin(req);
+  if (!caller) return Err.forbidden();
+  if (id === caller.session.user.id) return Err.validation("You cannot modify your own account here.");
 
   const userUpdate: Record<string, unknown> = {};
   const profileUpdate: Record<string, unknown> = {};
@@ -50,20 +63,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     userUpdate.banReason = body.banReason || null;
   }
 
-  // Role / permissions change — caller must be super-admin or pass verify-password separately
-  if (typeof body.role === "string" && body.role in ROLE_TEMPLATES) {
-    const role = body.role as string;
+  // Role change — promoting a target to super_admin requires the caller to
+  // already be a super_admin, not just hold staff:assign_roles.
+  if (isRoleChange) {
+    const role = body.role as RoleName;
+    if (role === "super_admin" && !caller.user.adminProfile?.isSuperAdmin) {
+      return Err.forbidden();
+    }
     profileUpdate.role = role;
-    // If custom pages provided, use them; otherwise use template
-    const pages: AdminPage[] = Array.isArray(body.pages)
-      ? (body.pages as AdminPage[])
-      : permissionsFromRole(role).pages;
-    profileUpdate.permissions = { pages };
     if (role === "super_admin" || role === "admin") profileUpdate.isSuperAdmin = role === "super_admin";
-  }
-
-  if (Object.keys(userUpdate).length === 0 && Object.keys(profileUpdate).length === 0) {
-    return Err.validation("No valid fields to update.");
   }
 
   try {
@@ -92,7 +100,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return ok({ user: updated });
   } catch (err) {
     console.error("[PATCH /api/admin/staff/[id]]", err);
-    return Err.internal();
+    return Err.internal(err);
   }
 }
 
@@ -101,7 +109,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
-  const denied = await requireAdminPage(req, "staff");
+  const denied = await requirePermission(req, { staff: ["delete"] });
   if (denied) return denied;
 
   const caller = await getCallerAdmin(req);

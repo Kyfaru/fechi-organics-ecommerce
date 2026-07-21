@@ -1,6 +1,4 @@
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { headers } from "next/headers";
 import { connection } from "next/server";
 import { ok, Err } from "@/lib/api";
 import { qstash } from "@/lib/qstash";
@@ -9,13 +7,7 @@ import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { getRedis } from "@/lib/redis";
 import { ticketChannel } from "@/lib/ticket-channel";
-
-async function requireAdmin() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return null;
-  const u = await db.user.findUnique({ where: { id: session.user.id } });
-  return u?.role === "admin" ? u : null;
-}
+import { requirePermission } from "@/lib/require-permission";
 
 const ReplySchema = z.object({
   content: z.string().min(1).max(5000),
@@ -36,10 +28,11 @@ export async function POST(
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
-  try {
-    const admin = await requireAdmin();
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { tickets: ["reply"] });
+  if (denied) return denied;
+
+  try {
     const { id } = await params;
 
     const body = await req.json().catch(() => ({}));
@@ -125,6 +118,6 @@ export async function POST(
     return ok({ message });
   } catch (e) {
     console.error("[admin/tickets/[id]/reply] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

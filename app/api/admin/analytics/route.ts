@@ -8,17 +8,9 @@
 
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { requireAdminPage } from "@/lib/admin-guard";
-
-async function requireAdmin(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user) return null;
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  return user?.role === "admin" ? user : null;
-}
+import { requirePermission } from "@/lib/require-permission";
 
 // ---------------------------------------------------------------------------
 // Helper: bucket a list of orders by day into ordersChart shape
@@ -74,11 +66,8 @@ function buildOrdersChart(
 export async function GET(req: NextRequest) {
   await connection();
 
-  const denied = await requireAdminPage(req, 'analytics');
+  const denied = await requirePermission(req, { analytics: ["view"] });
   if (denied) return denied;
-
-  const admin = await requireAdmin(req);
-  if (!admin) return Err.forbidden();
 
   try {
     const { searchParams } = new URL(req.url);
@@ -436,6 +425,6 @@ export async function GET(req: NextRequest) {
     return Err.validation(`Unknown tab: ${tab}`);
   } catch (e) {
     console.error("[admin/analytics] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

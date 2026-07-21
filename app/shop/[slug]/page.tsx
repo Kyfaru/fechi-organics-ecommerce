@@ -5,9 +5,10 @@ import { Footer } from "@/components/layout/Footer";
 import { getProductBySlug } from "@/lib/queries/products";
 import { SkeletonProductPage } from "@/components/ui/skeleton";
 import { ProductDetailClient } from "@/components/storefront/ProductDetailClient";
+import { SITE_URL } from "@/lib/site";
 
 // ---------------------------------------------------------------------------
-// Metadata — used by Next.js for <title> and <meta description>
+// Metadata — used by Next.js for <title>, <meta description>, OG/Twitter cards
 // ---------------------------------------------------------------------------
 export async function generateMetadata({
   params,
@@ -16,11 +17,27 @@ export async function generateMetadata({
 }) {
   const { slug } = await params;
   const product = await getProductBySlug(slug);
+  if (!product) return { title: "Product Not Found" };
+
+  const title = product.name;
+  const description = product.shortDescription || product.description.slice(0, 160);
+
   return {
-    title: product
-      ? `${product.name} | Fechi Organics`
-      : "Product Not Found | Fechi Organics",
-    description: product?.shortDescription ?? "",
+    title,
+    description,
+    alternates: { canonical: `/shop/${slug}` },
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      images: [{ url: product.primaryImageUrl }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [product.primaryImageUrl],
+    },
   };
 }
 
@@ -38,8 +55,36 @@ export default async function ProductPage({
   // Triggers Next.js 404 page if slug doesn't match any active product
   if (!product) notFound();
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    description: product.shortDescription || product.description,
+    image: product.images.map((i) => i.url),
+    brand: { "@type": "Brand", name: "Fechi Organics" },
+    ...(product.ratingCount > 0 && {
+      aggregateRating: {
+        "@type": "AggregateRating",
+        ratingValue: product.ratingAvg,
+        reviewCount: product.ratingCount,
+      },
+    }),
+    offers: {
+      "@type": "Offer",
+      url: `${SITE_URL}/shop/${slug}`,
+      priceCurrency: "KES",
+      price: product.priceKes,
+      availability:
+        product.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+    },
+  };
+
   return (
     <main className="min-h-screen bg-white dark:bg-gray-950 overflow-x-hidden">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <Navbar />
 
       {/*

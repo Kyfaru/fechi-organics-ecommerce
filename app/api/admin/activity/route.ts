@@ -13,19 +13,16 @@
 
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { connection } from "next/server";
+import { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
+import { requireStaffSession } from "@/lib/require-permission";
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const caller = await db.user.findUnique({ where: { id: session.user.id } });
-  if (caller?.role !== "admin") return Err.forbidden();
+  const denied = await requireStaffSession(req);
+  if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
   const staffId  = searchParams.get("staffId") ?? undefined;
@@ -74,6 +71,6 @@ export async function GET(req: Request) {
     return ok({ logs: shaped });
   } catch (err) {
     console.error("[GET /api/admin/activity]", err);
-    return Err.internal();
+    return Err.internal(err);
   }
 }

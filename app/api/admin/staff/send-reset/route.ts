@@ -1,24 +1,22 @@
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
-import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { createResetToken } from "@/lib/password-reset";
 import { TimeSpan } from "oslo";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
 
 // POST /api/admin/staff/send-reset — send a 45-min reset link to a staff member.
-// Caller must have already verified their own password via /api/admin/verify-password.
+// Caller must have already verified their own password via /api/admin/verify-password
+// (convention-only today — not enforced server-side here; a separate,
+// already-scoped follow-up, not part of this RBAC pass).
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const caller = await db.user.findUnique({ where: { id: session.user.id } });
-  if (caller?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { staff: ["update"] });
+  if (denied) return denied;
 
   const { userId } = await req.json().catch(() => ({}));
   if (!userId) return Err.validation("userId required");

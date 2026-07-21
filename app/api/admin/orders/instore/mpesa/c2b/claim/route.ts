@@ -18,6 +18,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
 import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
+import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { getRedis } from "@/lib/redis";
 import { paymentChannel } from "@/lib/payment-channel";
@@ -58,6 +59,9 @@ class AlreadyClaimedError extends Error {}
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
+
+  const denied = await requirePermission(req, { orders: ["update_status"] });
+  if (denied) return denied;
 
   const admin = await requireAdmin(req);
   if (!admin) return Err.forbidden();
@@ -246,6 +250,6 @@ export async function POST(req: NextRequest) {
     return ok({ inStoreOrderId: result.orderId, orderNumber: result.orderNumber });
   } catch (e) {
     console.error("[instore/mpesa/c2b/claim] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

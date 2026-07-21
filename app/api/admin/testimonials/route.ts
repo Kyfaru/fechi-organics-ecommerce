@@ -1,6 +1,4 @@
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { headers } from "next/headers";
 import { connection } from "next/server";
 import { ok, created, Err } from "@/lib/api";
 import { r2PublicUrl } from "@/lib/r2";
@@ -8,18 +6,9 @@ import { invalidateTestimonialCache } from "@/lib/cache-tags";
 import { z } from "zod";
 import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
 
 const PAGE_SIZE_DEFAULT = 20;
-
-// ---------------------------------------------------------------------------
-// Auth helper — resolves to the user row if they are an admin, else null
-// ---------------------------------------------------------------------------
-async function requireAdmin() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return null;
-  const u = await db.user.findUnique({ where: { id: session.user.id } });
-  return u?.role === "admin" ? u : null;
-}
 
 // ---------------------------------------------------------------------------
 // Attach resolved public URLs to a testimonial row before returning to client.
@@ -42,8 +31,8 @@ function withUrls(t: { beforeKey: string | null; afterKey: string | null; [key: 
 export async function GET(req: NextRequest) {
   await connection();
   try {
-    const admin = await requireAdmin();
-    if (!admin) return Err.forbidden();
+    const denied = await requirePermission(req, { content: ["view"] });
+    if (denied) return denied;
 
     const { searchParams } = new URL(req.url);
     const page = Math.max(1, Number(searchParams.get("page")) || 1);
@@ -62,7 +51,7 @@ export async function GET(req: NextRequest) {
     return ok({ testimonials: rows.map(withUrls), total, page, pageSize, approvedCount });
   } catch (e) {
     console.error("[admin/testimonials] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -88,8 +77,8 @@ export async function POST(req: NextRequest) {
   if (originCheck) return originCheck;
   await connection();
   try {
-    const admin = await requireAdmin();
-    if (!admin) return Err.forbidden();
+    const denied = await requirePermission(req, { content: ["create"] });
+    if (denied) return denied;
 
     const body = await req.json().catch(() => ({}));
     const parsed = CreateSchema.safeParse(body);
@@ -102,6 +91,6 @@ export async function POST(req: NextRequest) {
     return created({ testimonial: withUrls(t) });
   } catch (e) {
     console.error("[admin/testimonials] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

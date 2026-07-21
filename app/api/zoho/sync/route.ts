@@ -46,6 +46,6 @@ export async function POST(req: NextRequest) {
     return ok(result);
   } catch (e) {
     console.error("[zoho/sync] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

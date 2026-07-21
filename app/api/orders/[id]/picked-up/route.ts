@@ -58,6 +58,6 @@ export async function POST(
     })
   } catch (e) {
     console.error("[orders/[id]/picked-up] POST error", e)
-    return Err.internal()
+    return Err.internal(e)
   }
 }

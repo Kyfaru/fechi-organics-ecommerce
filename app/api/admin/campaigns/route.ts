@@ -1,24 +1,16 @@
 import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
-import { requireAdminPage } from "@/lib/admin-guard";
+import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 
 /** GET /api/admin/campaigns */
 export async function GET(req: NextRequest) {
   await connection();
 
-  const denied = await requireAdminPage(req, 'campaigns');
+  const denied = await requirePermission(req, { campaigns: ["view"] });
   if (denied) return denied;
-
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
 
   try {
     const campaigns = await db.campaign.findMany({
@@ -42,7 +34,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (e) {
     console.error("[campaigns/GET]", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -52,14 +44,8 @@ export async function POST(req: NextRequest) {
   if (originCheck) return originCheck;
   await connection();
 
-  const denied = await requireAdminPage(req, 'campaigns');
+  const denied = await requirePermission(req, { campaigns: ["create"] });
   if (denied) return denied;
-
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
 
   let body: {
     name: string;
@@ -101,6 +87,6 @@ export async function POST(req: NextRequest) {
     return created(campaign);
   } catch (e) {
     console.error("[campaigns/POST]", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

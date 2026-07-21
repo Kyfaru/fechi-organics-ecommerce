@@ -67,6 +67,6 @@ export async function POST(req: NextRequest) {
     return created({ id: testimonial.id });
   } catch (e) {
     console.error("[testimonials] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

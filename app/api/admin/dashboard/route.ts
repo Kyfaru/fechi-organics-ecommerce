@@ -1,19 +1,17 @@
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { headers } from "next/headers";
 import { connection } from "next/server";
+import { NextRequest } from "next/server";
 import { ok, Err } from "@/lib/api";
 import { getPeriodChange } from "@/lib/stats";
+import { requirePermission } from "@/lib/require-permission";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   await connection();
+
+  const denied = await requirePermission(req, { dashboard: ["view"] });
+  if (denied) return denied;
+
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) return Err.authRequired();
-
-    const user = await db.user.findUnique({ where: { id: session.user.id } });
-    if (user?.role !== "admin") return Err.forbidden();
-
     const now = new Date();
     const thirtyDaysAgo = new Date(now);
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -154,6 +152,6 @@ export async function GET() {
     });
   } catch (e) {
     console.error("[admin/dashboard] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

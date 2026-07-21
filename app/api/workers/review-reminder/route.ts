@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { verifyQstashRequest } from "@/lib/qstash"
-import { sendSms } from "@/lib/twilio"
+import { sendSms, hasSmsConfig } from "@/lib/sms"
+import { combineLegacyPhone } from "@/lib/phone"
 import { Resend } from "resend"
 
 const resend = new Resend(process.env.RESEND_API_KEY)
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
 
     const order = await db.order.findFirst({
       where: { id: orderId, userId },
-      include: { user: { select: { name: true, email: true, phone: true } } },
+      include: { user: { select: { name: true, email: true, phone: true, phoneCode: true } } },
     })
     if (!order || order.reviewedAt) return NextResponse.json({ ok: true })
 
@@ -37,9 +38,9 @@ export async function POST(req: NextRequest) {
     })
 
     // SMS
-    const hasTwilio = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER)
-    if (hasTwilio && user?.phone) {
-      await sendSms(user.phone, `${msg} Visit ${process.env.NEXT_PUBLIC_APP_URL}/account/reviews/${orderId}`).catch((e) =>
+    const phone = user?.phone ? combineLegacyPhone(user.phone, user.phoneCode) : null
+    if (hasSmsConfig() && phone) {
+      await sendSms(phone, `${msg} Visit ${process.env.NEXT_PUBLIC_APP_URL}/account/reviews/${orderId}`).catch((e) =>
         console.error("[review-reminder] SMS failed:", e)
       )
     }

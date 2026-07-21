@@ -33,6 +33,6 @@ export async function POST(
     return ok({ queued: !order.receiptSent });
   } catch (e) {
     console.error("[orders/:id/receipt] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

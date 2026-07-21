@@ -1,22 +1,11 @@
-﻿import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { headers } from "next/headers";
+﻿import { db } from "@/lib/db";
 import { connection } from "next/server";
 import { ok, Err } from "@/lib/api";
 import { z } from "zod";
 import { NextRequest } from "next/server";
 import { invalidateTestimonialCache } from "@/lib/cache-tags";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-
-// ---------------------------------------------------------------------------
-// Auth helper - resolves to the user row if they are an admin, else null
-// ---------------------------------------------------------------------------
-async function requireAdmin() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return null;
-  const u = await db.user.findUnique({ where: { id: session.user.id } });
-  return u?.role === "admin" ? u : null;
-}
+import { requirePermission } from "@/lib/require-permission";
 
 // ---------------------------------------------------------------------------
 // DELETE /api/admin/testimonials/[id]
@@ -31,8 +20,8 @@ export async function DELETE(
   if (originCheck) return originCheck;
   await connection();
   try {
-    const admin = await requireAdmin();
-    if (!admin) return Err.forbidden();
+    const denied = await requirePermission(req, { content: ["delete"] });
+    if (denied) return denied;
 
     const { id } = await params;
 
@@ -45,7 +34,7 @@ export async function DELETE(
     // Prisma throws P2025 when the record does not exist
     if ((e as { code?: string }).code === "P2025") return Err.notFound("Testimonial");
     console.error("[admin/testimonials] DELETE error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -66,8 +55,8 @@ export async function PATCH(
   if (originCheck) return originCheck;
   await connection();
   try {
-    const admin = await requireAdmin();
-    if (!admin) return Err.forbidden();
+    const denied = await requirePermission(req, { content: ["update"] });
+    if (denied) return denied;
 
     const { id } = await params;
 
@@ -87,6 +76,6 @@ export async function PATCH(
   } catch (e) {
     if ((e as { code?: string }).code === "P2025") return Err.notFound("Testimonial");
     console.error("[admin/testimonials] PATCH error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

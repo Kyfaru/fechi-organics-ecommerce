@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { ok } from "@/lib/api";
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
-import { requireAdminPage } from "@/lib/admin-guard";
+import { requirePermission } from "@/lib/require-permission";
 
 /** GET /api/admin/campaigns/[id]/recipients — per-recipient delivery status + aggregate counts. */
 export async function GET(
@@ -10,7 +10,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   await connection();
-  const denied = await requireAdminPage(req, "campaigns");
+  const denied = await requirePermission(req, { campaigns: ["view"] });
   if (denied) return denied;
 
   const { id } = await params;

@@ -62,6 +62,6 @@ export async function POST(req: NextRequest) {
     return ok({ success: true })
   } catch (e) {
     console.error("[account/reviews] POST error", e)
-    return Err.internal()
+    return Err.internal(e)
   }
 }

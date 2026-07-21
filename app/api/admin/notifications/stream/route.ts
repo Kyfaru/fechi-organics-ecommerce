@@ -10,22 +10,19 @@
  */
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
 import { getNotificationVersion } from "@/lib/notification-channel";
 import { makeRatelimit } from "@/lib/ratelimit";
 import { Ratelimit } from "@upstash/ratelimit";
+import { requirePermission } from "@/lib/require-permission";
 
 const ratelimit = makeRatelimit(Ratelimit.slidingWindow(10, "1 m"), "sse_notifications");
 
 export async function GET(req: NextRequest) {
+  const denied = await requirePermission(req, { notifications: ["view"] });
+  if (denied) return denied;
+
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user) return new Response("Unauthorized", { status: 401 });
-
-  const profile = await db.adminProfile.findUnique({
-    where: { userId: session.user.id },
-    select: { isActive: true },
-  });
-  if (!profile?.isActive) return new Response("Forbidden", { status: 403 });
 
   if (ratelimit) {
     const { success } = await ratelimit.limit(session.user.id);

@@ -1,9 +1,8 @@
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
-import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { requirePermission } from "@/lib/require-permission";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -139,11 +138,8 @@ function generateBuckets(gte: Date | null, lte: Date, granularity: Granularity):
 export async function GET(req: NextRequest) {
   await connection();
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) return Err.authRequired();
-
-    const user = await db.user.findUnique({ where: { id: session.user.id } });
-    if (user?.role !== "admin") return Err.forbidden();
+    const denied = await requirePermission(req, { dashboard: ["view"] });
+    if (denied) return denied;
 
     const { searchParams } = new URL(req.url);
     const range = (searchParams.get("range") ?? "30d") as Range;
@@ -219,6 +215,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (e) {
     console.error("[admin/dashboard/analytics] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

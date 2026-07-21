@@ -3,19 +3,7 @@ import { connection } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-
-// ---------------------------------------------------------------------------
-// Auth helper
-// ---------------------------------------------------------------------------
-async function requireAdmin(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user) return null;
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    include: { adminProfile: true },
-  });
-  return user?.role === "admin" ? user : null;
-}
+import { requirePermission } from "@/lib/require-permission";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/orders
@@ -24,10 +12,19 @@ async function requireAdmin(req: NextRequest) {
 // ---------------------------------------------------------------------------
 export async function GET(req: NextRequest) {
   await connection();
-  try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { orders: ["view"] });
+  if (denied) return denied;
+
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session?.user) return Err.authRequired();
+  const admin = await db.user.findUnique({
+    where: { id: session.user.id },
+    include: { adminProfile: true },
+  });
+  if (!admin) return Err.forbidden();
+
+  try {
     const url = new URL(req.url);
     const status = url.searchParams.get("status");
     const search = url.searchParams.get("search");
@@ -165,6 +162,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (e) {
     console.error("[admin/orders] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

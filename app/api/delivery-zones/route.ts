@@ -34,6 +34,6 @@ export async function GET(req: NextRequest) {
     }
 
     console.error("[delivery-zones] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

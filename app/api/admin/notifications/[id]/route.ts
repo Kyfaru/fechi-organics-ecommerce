@@ -1,7 +1,7 @@
 import { NextRequest, connection } from "next/server";
 import { db } from "@/lib/db";
 import { ok } from "@/lib/api";
-import { requireAdminPage } from "@/lib/admin-guard";
+import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { resolveNotificationScope } from "@/lib/notifications/scope";
 import { bumpNotificationVersion } from "@/lib/notification-channel";
@@ -17,7 +17,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
-  const denied = await requireAdminPage(req, "dashboard");
+  const denied = await requirePermission(req, { notifications: ["manage"] });
   if (denied) return denied;
 
   const resolved = await resolveNotificationScope(req);

@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
     return ok({ orders: shaped });
   } catch (e) {
     console.error("[orders] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -253,6 +253,6 @@ export async function POST(req: NextRequest) {
     return ok({ orderId: order.id });
   } catch (e) {
     console.error("[orders] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

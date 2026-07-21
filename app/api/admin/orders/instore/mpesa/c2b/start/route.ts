@@ -14,6 +14,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
 
 const bodySchema = z
   .object({
@@ -35,6 +36,9 @@ async function requireAdmin(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
+
+  const denied = await requirePermission(req, { orders: ["update_status"] });
+  if (denied) return denied;
 
   const admin = await requireAdmin(req);
   if (!admin) return Err.forbidden();
@@ -64,6 +68,6 @@ export async function POST(req: NextRequest) {
     return ok({ windowSeconds: 600 });
   } catch (e) {
     console.error("[instore/mpesa/c2b/start] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

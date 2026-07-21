@@ -23,6 +23,7 @@ import { getRedis } from "@/lib/redis";
 import { paymentChannel } from "@/lib/payment-channel";
 import { Ratelimit } from "@upstash/ratelimit";
 import { makeRatelimit } from "@/lib/ratelimit";
+import { requirePermission } from "@/lib/require-permission";
 
 const ratelimit = makeRatelimit(Ratelimit.slidingWindow(5, "1 m"), "sse_instore_payment");
 
@@ -45,6 +46,9 @@ function translateType(type: unknown): unknown {
 }
 
 export async function GET(req: NextRequest) {
+  const denied = await requirePermission(req, { orders: ["view"] });
+  if (denied) return denied;
+
   const admin = await requireAdmin(req);
   if (!admin) return new Response("Unauthorized", { status: 401 });
 

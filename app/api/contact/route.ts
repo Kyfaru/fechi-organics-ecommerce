@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
     return ok({ id: record.id, ticketNumber });
   } catch (e) {
     console.error("[contact] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 

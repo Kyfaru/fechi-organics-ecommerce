@@ -1,24 +1,20 @@
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
-import { connection } from "next/server";
+import { connection, NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
 
 /** PATCH /api/admin/suppliers/[id] — update supplier */
 export async function PATCH(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { suppliers: ["update"] });
+  if (denied) return denied;
 
   const { id } = await params;
 
@@ -48,24 +44,21 @@ export async function PATCH(
     return ok(supplier);
   } catch (e) {
     console.error("[suppliers/PATCH]", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
 /** DELETE /api/admin/suppliers/[id] — soft delete (set status to inactive) */
 export async function DELETE(
-  _req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const originCheck = assertTrustedOrigin(_req);
+  const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { suppliers: ["delete"] });
+  if (denied) return denied;
 
   const { id } = await params;
 
@@ -78,6 +71,6 @@ export async function DELETE(
     return ok({ id: supplier.id, status: "inactive" });
   } catch (e) {
     console.error("[suppliers/DELETE]", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

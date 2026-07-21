@@ -161,6 +161,6 @@ export async function POST(req: NextRequest) {
     return ok({ orderId: order.id, paymentStatus: order.paymentStatus });
   } catch (e) {
     console.error("[mock-checkout] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

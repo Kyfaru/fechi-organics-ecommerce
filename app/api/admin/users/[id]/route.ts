@@ -4,18 +4,12 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { headers } from "next/headers";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
 
-// ---------------------------------------------------------------------------
-// Auth guard
-// ---------------------------------------------------------------------------
-async function requireAdmin(req?: NextRequest) {
-  const h = req ? req.headers : await headers();
-  const session = await auth.api.getSession({ headers: h });
-  if (!session?.user) return null;
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  return user?.role === "admin" ? user : null;
+async function callerId(req: NextRequest): Promise<string | null> {
+  const session = await auth.api.getSession({ headers: req.headers });
+  return session?.user?.id ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,8 +61,8 @@ export async function GET(
 ) {
   await connection();
   try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
+    const denied = await requirePermission(req, { customers: ["view"] });
+    if (denied) return denied;
 
     const { id } = await params;
 
@@ -78,7 +72,7 @@ export async function GET(
     return ok({ user });
   } catch (e) {
     console.error("[admin/users/:id] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -116,8 +110,8 @@ export async function PATCH(
   if (originCheck) return originCheck;
   await connection();
   try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
+    const denied = await requirePermission(req, { customers: ["update"] });
+    if (denied) return denied;
 
     const { id } = await params;
 
@@ -137,10 +131,18 @@ export async function PATCH(
     // --- Role change via Better Auth admin plugin ---
     if (role && role !== target.role) {
       // Prevent an admin from demoting themselves
-      if (id === admin.id && role !== "admin") {
+      const callerUserId = await callerId(req);
+      if (id === callerUserId && role !== "admin") {
         return Err.validation("You cannot change your own role");
       }
-      await auth.api.setRole({ headers: req.headers, body: { userId: id, role: role as "user" | "admin" } });
+      // See the matching comment in app/api/admin/users/route.ts — this
+      // toggles the coarse Prisma UserRole, not the fine-grained
+      // admin-panel roles that admin()'s `roles` config actually types this
+      // param against.
+      await auth.api.setRole({
+        headers: req.headers,
+        body: { userId: id, role: role as unknown as NonNullable<Parameters<typeof auth.api.setRole>[0]>["body"]["role"] },
+      });
     }
 
     // --- Ban / unban via Better Auth admin plugin ---
@@ -203,7 +205,7 @@ export async function PATCH(
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("Email already in use by another account");
     }
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -220,13 +222,14 @@ export async function DELETE(
   if (originCheck) return originCheck;
   await connection();
   try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
+    const denied = await requirePermission(req, { customers: ["update"] });
+    if (denied) return denied;
 
     const { id } = await params;
 
     // Prevent self-deletion
-    if (id === admin.id) {
+    const callerUserId = await callerId(req);
+    if (id === callerUserId) {
       return Err.validation("You cannot deactivate your own account");
     }
 
@@ -253,6 +256,6 @@ export async function DELETE(
     return ok({ id, deactivated: true });
   } catch (e) {
     console.error("[admin/users/:id] DELETE error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

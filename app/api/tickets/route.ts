@@ -52,7 +52,7 @@ export async function GET() {
     return ok({ tickets });
   } catch (e) {
     console.error("[tickets] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -113,6 +113,6 @@ export async function POST(req: NextRequest) {
     return created({ ticket });
   } catch (e) {
     console.error("[tickets] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

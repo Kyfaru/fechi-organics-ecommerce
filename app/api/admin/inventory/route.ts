@@ -1,21 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { connection } from "next/server";
+import { requirePermission } from "@/lib/require-permission";
 
 /** GET /api/admin/inventory
  *  Returns all active products with category + first image, plus summary stats.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { inventory: ["view"] });
+  if (denied) return denied;
 
   try {
     const products = await db.product.findMany({
@@ -53,6 +49,6 @@ export async function GET() {
     return ok({ items, stats });
   } catch (e) {
     console.error("[inventory/GET]", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

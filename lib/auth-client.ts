@@ -12,13 +12,17 @@
 
 import { createAuthClient } from "better-auth/react";
 import { emailOTPClient, adminClient, twoFactorClient } from "better-auth/client/plugins";
+import { ac, roles } from "@/lib/permissions";
 
 export const authClient = createAuthClient({
   baseURL: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
   plugins: [
     emailOTPClient(),
     // Adds authClient.admin.* methods (user management, role assignment).
-    adminClient(),
+    // ac/roles must match lib/auth.ts's admin() plugin config, otherwise
+    // client-side checkRolePermission() silently checks against Better
+    // Auth's built-in default roles instead of the app's real ones.
+    adminClient({ ac, roles }),
     // Adds authClient.twoFactor.* methods (enable, verifyTotp, disable).
     twoFactorClient(),
   ],

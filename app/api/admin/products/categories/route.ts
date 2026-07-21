@@ -1,21 +1,11 @@
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
 import { invalidateCategoryCache } from "@/lib/cache-tags";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-
-// ---------------------------------------------------------------------------
-// Auth helper
-// ---------------------------------------------------------------------------
-async function requireAdmin(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user) return null;
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  return user?.role === "admin" ? user : null;
-}
+import { requirePermission } from "@/lib/require-permission";
 
 // ---------------------------------------------------------------------------
 // Derive a URL-safe slug/key from a human-readable category name.
@@ -35,10 +25,11 @@ function slugifyName(name: string): string {
 // ---------------------------------------------------------------------------
 export async function GET(req: NextRequest) {
   await connection();
-  try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { products: ["view"] });
+  if (denied) return denied;
+
+  try {
     const categories = await db.category.findMany({
       orderBy: { sortOrder: "asc" },
       include: {
@@ -50,7 +41,7 @@ export async function GET(req: NextRequest) {
     return ok({ categories });
   } catch (e) {
     console.error("[admin/products/categories] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -70,10 +61,11 @@ export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
-  try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { products: ["create"] });
+  if (denied) return denied;
+
+  try {
     const body = await req.json().catch(() => ({}));
     const parsed = CreateSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
@@ -100,6 +92,6 @@ export async function POST(req: NextRequest) {
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("A category with this name already exists");
     }
-    return Err.internal();
+    return Err.internal(e);
   }
 }

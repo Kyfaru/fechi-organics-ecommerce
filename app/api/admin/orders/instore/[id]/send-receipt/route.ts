@@ -19,7 +19,7 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-invoice";
 import { createInstoreInvoiceToken } from "@/lib/invoice-token";
 import { sendInvoiceEmail } from "@/lib/email";
-import { sendSms } from "@/lib/twilio";
+import { sendSms } from "@/lib/sms";
 import { publishQstashJSON } from "@/lib/qstash";
 
 // Fire-and-forget "both" path shouldn't block the request on Twilio — same
@@ -138,6 +138,6 @@ export async function POST(
     return ok({ sent, smsScheduled });
   } catch (e) {
     console.error("[instore/send-receipt] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

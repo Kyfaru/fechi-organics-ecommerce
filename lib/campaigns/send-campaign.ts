@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import { db } from "@/lib/db";
-import { sendSms } from "@/lib/twilio";
+import { sendSms } from "@/lib/sms";
+import { combineLegacyPhone } from "@/lib/phone";
 import { wrapLinksForTracking } from "@/lib/campaign-tracking";
 import type { campaign as Campaign } from "@prisma/client";
 
@@ -26,7 +27,7 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
         ? { id: { in: campaign.audienceCustomerIds } }
         : { emailVerified: true, banned: false }),
     },
-    select: { id: true, email: true, name: true, phone: true },
+    select: { id: true, email: true, name: true, phone: true, phoneCode: true },
   });
 
   // Recipient rows already marked SENT/DELIVERED on a prior (failed/retried) run
@@ -144,7 +145,9 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
             if (error) throw new Error(error.message);
             await recordResult(user.id, "EMAIL", { ok: true, providerMessageId: data?.id });
           } else if (channel === "SMS") {
-            const sid = await sendSms(user.phone!, plainContent, TWILIO_STATUS_CALLBACK);
+            const phone = combineLegacyPhone(user.phone!, user.phoneCode);
+            if (!phone) throw new Error("Invalid phone number");
+            const sid = await sendSms(phone, plainContent, TWILIO_STATUS_CALLBACK);
             await recordResult(user.id, "SMS", { ok: true, providerMessageId: sid });
           } else if (channel === "PUSH") {
             // Write an in-app inbox message, so the campaign actually shows up

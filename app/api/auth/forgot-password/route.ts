@@ -3,7 +3,8 @@ import { db } from "@/lib/db";
 import { generateOtp, storeOtp } from "@/lib/otp";
 import { getRedis } from "@/lib/redis";
 import { sendOTPEmail } from "@/lib/email";
-import { sendSms } from "@/lib/twilio";
+import { sendSms, hasSmsConfig } from "@/lib/sms";
+import { combineLegacyPhone } from "@/lib/phone";
 import { Ratelimit } from "@upstash/ratelimit";
 import { makeRatelimit } from "@/lib/ratelimit";
 
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
     const user =
       channel === "email"
         ? await db.user.findUnique({ where: { email: normalized }, select: { id: true, email: true, role: true } })
-        : await db.user.findFirst({ where: { phone: normalized }, select: { id: true, phone: true, role: true } });
+        : await db.user.findFirst({ where: { phone: normalized }, select: { id: true, phone: true, phoneCode: true, role: true } });
 
     // Only non-admin users get a code here — admins have their own flow
     // under /admin/forgot-password (app/api/admin/forgot-password).
@@ -62,16 +63,13 @@ export async function POST(req: NextRequest) {
       if (channel === "email") {
         await sendOTPEmail((user as { email: string }).email, otp, "password-reset");
       } else {
-        const phone = (user as { phone: string | null }).phone;
-        const hasTwilio = !!(
-          process.env.TWILIO_ACCOUNT_SID &&
-          process.env.TWILIO_AUTH_TOKEN &&
-          process.env.TWILIO_PHONE_NUMBER
-        );
-        if (phone && hasTwilio) {
+        const rawPhone = (user as { phone: string | null; phoneCode: string | null }).phone;
+        const phoneCode = (user as { phoneCode: string | null }).phoneCode;
+        const phone = rawPhone ? combineLegacyPhone(rawPhone, phoneCode) : null;
+        if (phone && hasSmsConfig()) {
           await sendSms(phone, `Your Fechi Organics password reset code: ${otp}. Expires in 5 minutes.`);
         } else if (phone) {
-          console.warn("[forgot-password] Twilio not configured — OTP:", otp);
+          console.warn("[forgot-password] SMS not configured — OTP:", otp);
         }
       }
     }

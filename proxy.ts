@@ -56,6 +56,10 @@ const PUBLIC_PATHS = [
   "/faq",
   "/testimonials",
   "/shipping",
+  "/403",
+  "/408",
+  "/network-issue",
+  "/coming-soon",
   // Public API namespaces
   "/api/storefront",
   "/api/cart",
@@ -75,6 +79,13 @@ const PUBLIC_PATHS = [
   // 307-redirect before the handler's own auth check ever runs.
   "/api/admin/workers",
 ];
+
+/**
+ * Paths that should be rewritten to the "/coming-soon" page.
+ * Empty by default — a dev-facing extension point for gating routes
+ * that aren't ready for public traffic yet.
+ */
+const COMING_SOON_PATHS: string[] = [];
 
 /** Auth API prefix — always pass through. */
 const AUTH_API_PREFIX = "/api/auth";
@@ -125,6 +136,14 @@ export function proxy(request: NextRequest): NextResponse {
     pathname.includes(".")
   ) {
     return withSecurityHeaders(NextResponse.next());
+  }
+
+  if (
+    COMING_SOON_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"))
+  ) {
+    const url = new URL("/coming-soon", request.url);
+    url.searchParams.set("from", pathname);
+    return NextResponse.rewrite(url);
   }
 
   const isPublicPath = PUBLIC_PATHS.some(

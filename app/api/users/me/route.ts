@@ -59,6 +59,6 @@ export async function PATCH(req: NextRequest) {
     return ok({ updated: true });
   } catch (e) {
     console.error("[users/me] PATCH error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

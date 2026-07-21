@@ -109,6 +109,6 @@ export async function POST(
     return ok({ message });
   } catch (e) {
     console.error("[tickets/[id]/reply] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

@@ -12,10 +12,12 @@
 
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
 import { getDarajaToken } from "@/lib/payments/mpesa/daraja-client";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
 import { z } from "zod";
 
 const DARAJA_BASE =
@@ -25,23 +27,24 @@ const DARAJA_BASE =
 
 const bodySchema = z.object({ branchId: z.string().uuid() }).strict();
 
-async function requireAdmin(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user) return null;
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    include: { adminProfile: true },
-  });
-  return user?.role === "admin" ? user : null;
-}
-
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
 
-  const admin = await requireAdmin(req);
-  if (!admin) return Err.forbidden();
-  if (!admin.adminProfile?.isSuperAdmin) return Err.forbidden();
+  const denied = await requirePermission(req, { branches: ["update"] });
+  if (denied) return denied;
+
+  // This is a per-branch infra action (registers Daraja C2B URLs, affects
+  // every future till payment for the branch) — hard-require super-admin on
+  // top of branches:update, not just the ac grant. Matches the same
+  // isSuperAdmin hard-rule pattern used for staff role promotion / deletion.
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) return Err.authRequired();
+  const admin = await db.user.findUnique({
+    where: { id: session.user.id },
+    include: { adminProfile: true },
+  });
+  if (!admin?.adminProfile?.isSuperAdmin) return Err.forbidden();
 
   let parsed: z.infer<typeof bodySchema>;
   try {
@@ -84,6 +87,6 @@ export async function POST(req: NextRequest) {
     return ok({ safaricom });
   } catch (e) {
     console.error("[instore/mpesa/c2b/register] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

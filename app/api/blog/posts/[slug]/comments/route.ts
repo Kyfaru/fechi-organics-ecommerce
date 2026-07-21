@@ -36,7 +36,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     return ok({ comments });
   } catch (e) {
     console.error("[blog comments] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -81,6 +81,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     return created({ comment });
   } catch (e) {
     console.error("[blog comments] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

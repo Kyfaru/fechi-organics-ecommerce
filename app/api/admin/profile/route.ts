@@ -11,10 +11,15 @@ import { ok, Err } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { connection } from "next/server";
+import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requireStaffSession } from "@/lib/require-permission";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   await connection();
+
+  const denied = await requireStaffSession(req);
+  if (denied) return denied;
 
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
@@ -24,24 +29,25 @@ export async function GET() {
     include: { adminProfile: true },
   });
   if (!user) return Err.authRequired();
-  if (user.role !== "admin") return Err.forbidden();
 
   // Strip sensitive fields before returning
   const { ...safeUser } = user;
   return ok({ user: safeUser });
 }
 
-export async function PATCH(req: Request) {
+export async function PATCH(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
+
+  const denied = await requireStaffSession(req);
+  if (denied) return denied;
 
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
 
   const user = await db.user.findUnique({ where: { id: session.user.id } });
   if (!user) return Err.authRequired();
-  if (user.role !== "admin") return Err.forbidden();
 
   let body: Record<string, unknown>;
   try {
@@ -94,6 +100,6 @@ export async function PATCH(req: Request) {
     return ok({ user: updated });
   } catch (err) {
     console.error("[PATCH /api/admin/profile]", err);
-    return Err.internal();
+    return Err.internal(err);
   }
 }

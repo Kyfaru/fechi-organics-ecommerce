@@ -11,25 +11,15 @@
 
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-
-// ---------------------------------------------------------------------------
-// Auth helper — same pattern as app/api/admin/orders/route.ts
-// ---------------------------------------------------------------------------
-async function requireAdmin(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user) return null;
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  return user?.role === "admin" ? user : null;
-}
+import { requirePermission } from "@/lib/require-permission";
 
 export async function GET(req: NextRequest) {
   await connection();
 
-  const admin = await requireAdmin(req);
-  if (!admin) return Err.forbidden();
+  const denied = await requirePermission(req, { transactions: ["view"] });
+  if (denied) return denied;
 
   try {
     const { searchParams } = new URL(req.url);
@@ -76,6 +66,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (e) {
     console.error("[admin/transactions] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

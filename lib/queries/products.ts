@@ -122,6 +122,18 @@ export async function getProducts(opts: {
   return { items, nextCursor: hasMore ? items[items.length - 1].id : null };
 }
 
+/** Slugs + last-modified timestamps for every active product, for the sitemap. */
+export async function getAllProductSlugs(): Promise<{ slug: string; updatedAt: Date }[]> {
+  "use cache";
+  cacheTag("products");
+  cacheLife("minutes");
+
+  return db.product.findMany({
+    where: { isActive: true },
+    select: { slug: true, updatedAt: true },
+  });
+}
+
 /** Single product detail. */
 export async function getProductBySlug(slug: string): Promise<ProductDetail | null> {
   "use cache";

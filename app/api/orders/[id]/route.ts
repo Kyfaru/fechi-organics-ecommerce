@@ -38,6 +38,6 @@ export async function GET(
     return ok({ order });
   } catch (e) {
     console.error("[orders/[id]] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

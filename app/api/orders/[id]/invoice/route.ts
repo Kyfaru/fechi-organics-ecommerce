@@ -30,6 +30,6 @@ export async function GET(
     return NextResponse.redirect(invoice.url);
   } catch (e) {
     console.error("[orders/[id]/invoice] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

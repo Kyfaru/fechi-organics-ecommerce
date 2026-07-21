@@ -17,12 +17,12 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
-import { requireAdminPage } from "@/lib/admin-guard";
+import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 
 const VALID_ROLES = [
   "admin", "manager", "finance", "marketing",
-  "inventory", "customer_care", "viewer", "custom",
+  "inventory", "customer_care", "viewer",
 ] as const;
 
 export async function POST(req: NextRequest) {
@@ -30,16 +30,13 @@ export async function POST(req: NextRequest) {
   if (originCheck) return originCheck;
   await connection();
 
-  const denied = await requireAdminPage(req, "staff");
+  const denied = await requirePermission(req, { staff: ["invite"] });
   if (denied) return denied;
 
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
 
-  // Only admins can create staff accounts
   const { db } = await import("@/lib/db");
-  const caller = await db.user.findUnique({ where: { id: session.user.id } });
-  if (caller?.role !== "admin") return Err.forbidden();
 
   let body: Record<string, unknown>;
   try {
@@ -55,7 +52,6 @@ export async function POST(req: NextRequest) {
     phone,
     password,
     role,
-    permissions,
     branchId,
     accessExpiresAt,
     inviteChannels,
@@ -67,7 +63,6 @@ export async function POST(req: NextRequest) {
     phone?: string;
     password?: string;
     role?: string;
-    permissions?: { pages: string[] };
     branchId?: string;
     accessExpiresAt?: string | null;
     inviteChannels?: string[];
@@ -127,17 +122,15 @@ export async function POST(req: NextRequest) {
       data: { mustChangePassword: true, ...(username ? { username } : {}) },
     });
 
-    // Build or resolve permissions object
-    const resolvedPermissions = permissions ?? { pages: [] };
-
-    // Upsert adminProfile with all staff fields
+    // Upsert adminProfile with all staff fields. Access control is entirely
+    // determined by `role` (looked up against lib/permissions.ts's code-defined
+    // roles) — adminProfile.permissions is a legacy field no longer read anywhere.
     await db.adminProfile.upsert({
       where: { userId },
       create: {
         userId,
         fullName:        name.trim(),
         role:            role,
-        permissions:     resolvedPermissions,
         branchId:        branchId || null,
         accessExpiresAt: accessExpiresAt ? new Date(accessExpiresAt) : null,
         isActive:        true,
@@ -146,7 +139,6 @@ export async function POST(req: NextRequest) {
       update: {
         fullName:        name.trim(),
         role:            role,
-        permissions:     resolvedPermissions,
         branchId:        branchId || null,
         accessExpiresAt: accessExpiresAt ? new Date(accessExpiresAt) : null,
       },
@@ -172,7 +164,7 @@ export async function POST(req: NextRequest) {
     // Send SMS invite if requested and phone is provided
     if (channels.includes("sms") && phone) {
       try {
-        const { sendSms } = await import("@/lib/twilio");
+        const { sendSms } = await import("@/lib/sms");
         await sendSms(
           phone,
           `Hi ${name.trim()}, you've been invited to the Fechi Organics admin panel. Log in at ${process.env.NEXT_PUBLIC_APP_URL}/admin/login`
@@ -204,7 +196,7 @@ export async function POST(req: NextRequest) {
     return ok({ message: "Staff member invited successfully.", userId });
   } catch (err) {
     console.error("[staff/invite] POST error:", err);
-    return Err.internal();
+    return Err.internal(err);
   }
 }
 

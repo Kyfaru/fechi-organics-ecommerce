@@ -13,10 +13,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Users, ShieldCheck, UserCog, Activity,
   MoreHorizontal, UserPlus, Mail, ChevronDown,
-  ChevronUp,
 } from "lucide-react";
-import CheckboxGreen from "@/components/ui/CheckboxGreen";
-import { ALL_PAGES, permissionsFromRole, type AdminPage } from "@/lib/permissions";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { StatsCard } from "@/components/ui/stats-card";
 import { DataTable } from "@/components/admin/ui/DataTable";
@@ -165,7 +162,7 @@ function RowActions({
 // ---------------------------------------------------------------------------
 const INVITE_ROLES = [
   "admin", "manager", "finance", "marketing",
-  "inventory", "customer_care", "viewer", "custom",
+  "inventory", "customer_care", "viewer",
 ] as const;
 type InviteRole = (typeof INVITE_ROLES)[number];
 
@@ -222,7 +219,6 @@ function InviteDrawer({
     password: "",
     confirmPassword: "",
     role: "viewer" as InviteRole,
-    permissions: permissionsFromRole("viewer"),
     branchId: "",
     expiry: "lifetime" as string,
     customFrom: "",
@@ -232,7 +228,6 @@ function InviteDrawer({
   });
   const [errors, setErrors]     = useState<Record<string, string>>({});
   const [loading, setLoading]   = useState(false);
-  const [permsOpen, setPermsOpen] = useState(false);
 
   // Fetch branches for the branch select
   const { data: branchData } = useQuery({
@@ -241,23 +236,6 @@ function InviteDrawer({
     staleTime: 10 * 60 * 1000,
   });
   const branches: { id: string; name: string }[] = branchData?.branches ?? [];
-
-  // When role changes, auto-populate permissions from template (unless custom)
-  function handleRoleChange(role: InviteRole) {
-    const perms = role === "custom" ? form.permissions : permissionsFromRole(role);
-    setForm((p) => ({ ...p, role, permissions: perms }));
-    // Show the permissions grid automatically for custom role
-    if (role === "custom") setPermsOpen(true);
-  }
-
-  function togglePage(page: AdminPage) {
-    setForm((p) => {
-      const pages = p.permissions.pages.includes(page)
-        ? p.permissions.pages.filter((pg) => pg !== page)
-        : [...p.permissions.pages, page];
-      return { ...p, permissions: { pages } };
-    });
-  }
 
   function toggleChannel(channel: string) {
     setForm((p) => ({
@@ -310,7 +288,6 @@ function InviteDrawer({
           phone:            form.phone.trim() || undefined,
           password:         form.password,
           role:             form.role,
-          permissions:      form.permissions,
           branchId:         form.branchId || undefined,
           accessExpiresAt:  resolveExpiry(),
           note:             form.note.trim() || undefined,
@@ -323,11 +300,10 @@ function InviteDrawer({
       // Reset form
       setForm({
         name: "", username: "", email: "", phone: "", password: "", confirmPassword: "",
-        role: "viewer", permissions: permissionsFromRole("viewer"),
+        role: "viewer",
         branchId: "", expiry: "lifetime", customFrom: "", customTo: "",
         note: "", inviteChannels: [],
       });
-      setPermsOpen(false);
       onSuccess();
       onClose();
     } catch (err) {
@@ -478,7 +454,7 @@ function InviteDrawer({
           <div className="relative">
             <select
               value={form.role}
-              onChange={(e) => handleRoleChange(e.target.value as InviteRole)}
+              onChange={(e) => setForm((p) => ({ ...p, role: e.target.value as InviteRole }))}
               className={selectCls}
             >
               {INVITE_ROLES.map((r) => (
@@ -489,33 +465,6 @@ function InviteDrawer({
             </select>
             <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-(--neutral-500) pointer-events-none" />
           </div>
-        </div>
-
-        {/* Page permissions accordion */}
-        <div className="border border-(--neutral-200) dark:border-(--dark-border) rounded-[10px] overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setPermsOpen((o) => !o)}
-            className="w-full flex items-center justify-between px-4 py-3 font-dm text-[13px] font-medium text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
-          >
-            <span>Page permissions</span>
-            {permsOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-          </button>
-          {permsOpen && (
-            <div className="px-4 pb-4 grid grid-cols-4 gap-x-3 gap-y-3 border-t border-(--neutral-200) dark:border-(--dark-border) pt-4">
-              {ALL_PAGES.map((page) => (
-                <label key={page} className="flex flex-col items-center gap-1 cursor-pointer">
-                  <CheckboxGreen
-                    checked={form.permissions.pages.includes(page)}
-                    onChange={() => togglePage(page)}
-                  />
-                  <span className="font-dm text-[11px] text-(--neutral-600) text-center capitalize leading-tight">
-                    {page.replace("_", " ")}
-                  </span>
-                </label>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* Access timeframe */}
@@ -627,7 +576,6 @@ export function AdminStaffClient() {
   const [roleAdminPw, setRoleAdminPw] = useState("");
   const [roleVerified, setRoleVerified] = useState(false);
   const [selectedRole, setSelectedRole] = useState("viewer");
-  const [customPages, setCustomPages] = useState<AdminPage[]>([]);
   const [roleLoading, setRoleLoading] = useState(false);
 
   // Fetch staff list
@@ -735,7 +683,6 @@ export function AdminStaffClient() {
       const ok = await verifyAdminPassword(roleAdminPw);
       if (!ok) { toast.error("Incorrect password"); return; }
       setRoleVerified(true);
-      setCustomPages(permissionsFromRole(selectedRole).pages);
     } finally { setRoleLoading(false); }
   }
 
@@ -746,7 +693,7 @@ export function AdminStaffClient() {
       const res = await fetch(`/api/admin/staff/${roleTarget.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: selectedRole, pages: customPages }),
+        body: JSON.stringify({ role: selectedRole }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error?.message ?? "Failed");
@@ -760,7 +707,7 @@ export function AdminStaffClient() {
 
   function closeRoleModal() {
     setRoleTarget(null); setRoleAdminPw(""); setRoleVerified(false);
-    setSelectedRole("viewer"); setCustomPages([]); setRoleLoading(false);
+    setSelectedRole("viewer"); setRoleLoading(false);
   }
 
   // Deactivate / reactivate mutation
@@ -1037,35 +984,19 @@ export function AdminStaffClient() {
             ) : (
               <>
                 <div>
-                  <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Role template</label>
+                  <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Role</label>
                   <select
                     value={selectedRole}
-                    onChange={(e) => { setSelectedRole(e.target.value); setCustomPages(permissionsFromRole(e.target.value).pages); }}
+                    onChange={(e) => setSelectedRole(e.target.value)}
                     className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
                   >
                     {(["super_admin","admin","manager","finance","marketing","inventory","customer_care","viewer"] as const).map((r) => (
                       <option key={r} value={r}>{r.replace("_", " ")}</option>
                     ))}
                   </select>
-                </div>
-
-                <div>
-                  <p className="font-dm text-[13px] font-medium text-(--neutral-700) mb-2">Page access</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {ALL_PAGES.map((page) => (
-                      <label key={page} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={customPages.includes(page)}
-                          onChange={(e) => setCustomPages(
-                            e.target.checked ? [...customPages, page] : customPages.filter((p) => p !== page)
-                          )}
-                          className="rounded"
-                        />
-                        <span className="font-dm text-[13px] text-(--neutral-700)">{page}</span>
-                      </label>
-                    ))}
-                  </div>
+                  <p className="font-dm text-[12px] text-(--neutral-400) mt-1.5">
+                    Permissions for each role are fixed and defined in code — see Staff → Roles.
+                  </p>
                 </div>
 
                 <div className="flex gap-2 justify-end">

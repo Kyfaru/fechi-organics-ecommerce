@@ -11,8 +11,22 @@ export default async function FaqPage() {
     orderBy: { order: "asc" },
   })
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs.map((f) => ({
+      "@type": "Question",
+      name: f.question,
+      acceptedAnswer: { "@type": "Answer", text: f.answer },
+    })),
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-white dark:bg-neutral-950">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <Navbar flat />
       <main className="flex-1">
         <FaqPageClient faqs={faqs} />

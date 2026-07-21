@@ -1,18 +1,15 @@
-import { headers } from "next/headers";
 import { connection } from "next/server";
-import { auth } from "@/lib/auth";
+import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { requirePermission } from "@/lib/require-permission";
 
 /** GET /api/admin/blog/[id]/comments — all comments for a post, any status */
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { content: ["view"] });
+  if (denied) return denied;
 
   const { id } = await params;
 
@@ -31,6 +28,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return ok({ comments });
   } catch (e) {
     console.error("[admin blog/id/comments] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

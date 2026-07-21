@@ -8,19 +8,15 @@
 
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
-import { connection } from "next/server";
+import { connection, NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const caller = await db.user.findUnique({ where: { id: session.user.id } });
-  if (caller?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { settings: ["view"] });
+  if (denied) return denied;
 
   try {
     const rows = await db.systemConfig.findMany({ orderBy: { key: "asc" } });
@@ -34,20 +30,17 @@ export async function GET() {
     return ok({ settings });
   } catch (err) {
     console.error("[GET /api/admin/settings]", err);
-    return Err.internal();
+    return Err.internal(err);
   }
 }
 
-export async function PATCH(req: Request) {
+export async function PATCH(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const caller = await db.user.findUnique({ where: { id: session.user.id } });
-  if (caller?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { settings: ["update"] });
+  if (denied) return denied;
 
   let body: Record<string, unknown>;
   try {
@@ -75,6 +68,6 @@ export async function PATCH(req: Request) {
     return ok({ setting: updated });
   } catch (err) {
     console.error("[PATCH /api/admin/settings]", err);
-    return Err.internal();
+    return Err.internal(err);
   }
 }

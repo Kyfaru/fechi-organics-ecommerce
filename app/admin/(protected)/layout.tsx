@@ -37,7 +37,7 @@ async function AdminGuard({ children }: { children: React.ReactNode }) {
   if (!session?.user) redirect("/admin/login");
 
   const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") redirect("/");
+  if (user?.role !== "admin") redirect("/403");
 
   // Force password change on first login
   if (user.mustChangePassword) redirect("/admin/change-password");

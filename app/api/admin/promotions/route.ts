@@ -1,19 +1,15 @@
 import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
-import { connection } from "next/server";
+import { connection, NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
 
 /** GET /api/admin/promotions */
-export async function GET() {
+export async function GET(req: NextRequest) {
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { promotions: ["view"] });
+  if (denied) return denied;
 
   try {
     const promotions = await db.promotion.findMany({
@@ -22,21 +18,18 @@ export async function GET() {
     return ok(promotions);
   } catch (e) {
     console.error("[promotions/GET]", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
 /** POST /api/admin/promotions — create promotion */
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { promotions: ["create"] });
+  if (denied) return denied;
 
   let body: {
     name: string;
@@ -79,6 +72,6 @@ export async function POST(req: Request) {
     return created(promotion);
   } catch (e) {
     console.error("[promotions/POST]", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

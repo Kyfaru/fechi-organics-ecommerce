@@ -61,6 +61,6 @@ export async function POST(
     return ok({ order: updated })
   } catch (e) {
     console.error("[orders/[id]/delivered] POST error", e)
-    return Err.internal()
+    return Err.internal(e)
   }
 }

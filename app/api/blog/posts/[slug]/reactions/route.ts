@@ -79,6 +79,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     return ok(result);
   } catch (e) {
     console.error("[blog reactions] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

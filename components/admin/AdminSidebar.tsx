@@ -11,20 +11,23 @@ import {
   BarChart2, CreditCard, Shield, Settings, LogOut, ArrowLeft,
   ChevronLeft, ChevronRight, Menu, X, User, Bell,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { signOut } from "@/lib/auth-client";
+import { signOut, authClient } from "@/lib/auth-client";
 import { clearPersistedQueryCache } from "@/app/providers";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import { canAccess, type AdminPage } from "@/lib/permissions";
+import { useAdminMe } from "@/hooks/use-can";
+import type { statements } from "@/lib/permissions";
+import type { PermissionCheck } from "@/lib/require-permission";
 
-// Each nav item optionally maps to an AdminPage key for permission filtering.
-// Items without a page key (e.g. Dashboard) are always shown.
+// Each nav item optionally maps to a `statements` resource key for
+// permission-based filtering, defaulting to the "view" action. Items with no
+// resource (e.g. Dashboard, My Profile, Security) are always shown.
 type NavItem = {
   href: string;
   icon: React.ElementType;
   label: string;
   exact?: boolean;
-  page?: AdminPage;
+  resource?: keyof typeof statements;
+  action?: string;
 };
 
 type NavGroup = {
@@ -35,36 +38,36 @@ type NavGroup = {
 const NAV_GROUPS: NavGroup[] = [
   { label: "STORE", items: [
     { href: "/admin",          icon: LayoutDashboard, label: "Dashboard", exact: true },
-    { href: "/admin/products", icon: Package,         label: "Products",  page: "products" },
-    { href: "/admin/orders",   icon: ShoppingBag,     label: "Orders",    page: "orders" },
-    { href: "/admin/customers",icon: Users,           label: "Customers", page: "customers" },
+    { href: "/admin/products", icon: Package,         label: "Products",  resource: "products" },
+    { href: "/admin/orders",   icon: ShoppingBag,     label: "Orders",    resource: "orders" },
+    { href: "/admin/customers",icon: Users,           label: "Customers", resource: "customers" },
   ]},
   { label: "OPERATIONS", items: [
-    { href: "/admin/inventory", icon: Warehouse, label: "Inventory", page: "inventory" },
-    { href: "/admin/suppliers", icon: Truck,     label: "Suppliers", page: "suppliers" },
+    { href: "/admin/inventory", icon: Warehouse, label: "Inventory", resource: "inventory" },
+    { href: "/admin/suppliers", icon: Truck,     label: "Suppliers", resource: "suppliers" },
   ]},
   { label: "MARKETING", items: [
-    { href: "/admin/marketing",             icon: Mail,  label: "Campaigns",   page: "campaigns" },
-    { href: "/admin/promotions",  icon: Tag,   label: "Promotions",  page: "promotions" },
-    { href: "/admin/loyalty",               icon: Heart, label: "Loyalty",     page: "marketing" },
+    { href: "/admin/marketing",             icon: Mail,  label: "Campaigns",   resource: "campaigns" },
+    { href: "/admin/promotions",  icon: Tag,   label: "Promotions",  resource: "promotions" },
+    { href: "/admin/loyalty",               icon: Heart, label: "Loyalty",     resource: "loyalty" },
   ]},
   { label: "CONTENT", items: [
-    { href: "/admin/content/blog",         icon: FileText,  label: "Blog",         page: "content" },
-    { href: "/admin/content/homepage",     icon: Layout,    label: "Homepage",     page: "content" },
-    { href: "/admin/content/testimonials", icon: Star,      label: "Testimonials", page: "content" },
-    { href: "/admin/content/faqs",         icon: HelpCircle,label: "FAQs",         page: "content" },
-    { href: "/admin/content/banners",      icon: ImageIcon, label: "Banners",      page: "content" },
+    { href: "/admin/content/blog",         icon: FileText,  label: "Blog",         resource: "content" },
+    { href: "/admin/content/homepage",     icon: Layout,    label: "Homepage",     resource: "content" },
+    { href: "/admin/content/testimonials", icon: Star,      label: "Testimonials", resource: "content" },
+    { href: "/admin/content/faqs",         icon: HelpCircle,label: "FAQs",         resource: "content" },
+    { href: "/admin/content/banners",      icon: ImageIcon, label: "Banners",      resource: "content" },
   ]},
   { label: "ANALYTICS", items: [
-    { href: "/admin/analytics", icon: BarChart2, label: "Reports", page: "analytics" },
-    { href: "/admin/finance",   icon: CreditCard,label: "Finance", page: "finance" },
+    { href: "/admin/analytics", icon: BarChart2, label: "Reports", resource: "analytics" },
+    { href: "/admin/finance",   icon: CreditCard,label: "Finance", resource: "finance" },
   ]},
   { label: "SETTINGS", items: [
     { href: "/admin/notifications", icon: Bell,    label: "Notifications" },
-    { href: "/admin/staff",    icon: Shield,  label: "Staff & Roles", page: "staff" },
-    { href: "/admin/profile",  icon: User,    label: "My Profile",    page: "profile" },
-    { href: "/admin/security", icon: Shield,  label: "Security",      page: "settings" },
-    { href: "/admin/settings", icon: Settings,label: "Settings",      page: "settings" },
+    { href: "/admin/staff",    icon: Shield,  label: "Staff & Roles", resource: "staff" },
+    { href: "/admin/profile",  icon: User,    label: "My Profile" },
+    { href: "/admin/security", icon: Shield,  label: "Security" },
+    { href: "/admin/settings", icon: Settings,label: "Settings",      resource: "settings" },
   ]},
 ];
 
@@ -81,20 +84,19 @@ export function AdminSidebar() {
 
   // Fetch current admin profile to drive permission-based nav filtering.
   // Cached for 5 minutes — sidebar doesn't need real-time permission updates.
-  const { data: me } = useQuery({
-    queryKey: ["admin-me"],
-    queryFn: () => fetch("/api/admin/me").then((r) => r.json()),
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: me } = useAdminMe();
 
-  // Returns true if the current user can see this nav item.
+  // Returns true if the current user can see this nav item. Mirrors useCan's
+  // logic, but as a plain (non-hook) helper — it's called from inside
+  // `.filter()` below, and useCan itself can't be called there since hooks
+  // may only run directly in a component/hook body, not in a callback.
   function canSeeItem(item: NavItem): boolean {
-    // Items with no page key (e.g. Dashboard) are always shown.
-    if (!item.page) return true;
-    // Super-admins see everything.
-    if (me?.isSuperAdmin) return true;
-    const perms = (me?.permissions ?? {}) as Record<string, unknown>;
-    return canAccess(perms, item.page);
+    // Items with no resource (e.g. Dashboard, My Profile, Security) are always shown.
+    if (!item.resource) return true;
+    if (!me?.role) return false;
+    if (me.isSuperAdmin) return true;
+    const permissions = { [item.resource]: [item.action ?? "view"] } as PermissionCheck;
+    return authClient.admin.checkRolePermission({ role: me.role, permissions });
   }
 
   useEffect(() => {

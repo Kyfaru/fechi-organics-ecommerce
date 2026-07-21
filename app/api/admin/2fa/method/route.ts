@@ -11,6 +11,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requireStaffSession } from "@/lib/require-permission";
 
 const BodySchema = z.object({
   method: z.enum(["totp", "email", "sms"]),
@@ -22,14 +23,11 @@ export async function POST(req: NextRequest) {
   if (originCheck) return originCheck;
   await connection();
   try {
+    const denied = await requireStaffSession(req);
+    if (denied) return denied;
+
     const session = await auth.api.getSession({ headers: req.headers });
     if (!session?.user) return Err.authRequired();
-
-    const user = await db.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true },
-    });
-    if (!user || user.role !== "admin") return Err.forbidden();
 
     const body = await req.json().catch(() => ({}));
     const parsed = BodySchema.safeParse(body);
@@ -55,6 +53,6 @@ export async function POST(req: NextRequest) {
     return ok({ method });
   } catch (e) {
     console.error("[admin/2fa/method] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

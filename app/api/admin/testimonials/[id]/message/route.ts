@@ -1,21 +1,14 @@
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { headers } from "next/headers";
 import { connection, NextRequest } from "next/server";
 import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { sendSms } from "@/lib/twilio";
+import { requirePermission } from "@/lib/require-permission";
+import { sendSms } from "@/lib/sms";
+import { combineLegacyPhone } from "@/lib/phone";
 import { Resend } from "resend";
 import { z } from "zod";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-
-async function requireAdmin() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return null;
-  const u = await db.user.findUnique({ where: { id: session.user.id } });
-  return u?.role === "admin" ? u : null;
-}
 
 const BodySchema = z.object({
   message: z.string().min(1).max(2000),
@@ -34,8 +27,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   await connection();
 
   try {
-    const admin = await requireAdmin();
-    if (!admin) return Err.forbidden();
+    const denied = await requirePermission(req, { content: ["update"] });
+    if (denied) return denied;
 
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -47,11 +40,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!testimonial) return Err.notFound("Testimonial");
 
     const user = testimonial.userId
-      ? await db.user.findUnique({ where: { id: testimonial.userId }, select: { id: true, email: true, phone: true, name: true } })
+      ? await db.user.findUnique({ where: { id: testimonial.userId }, select: { id: true, email: true, phone: true, phoneCode: true, name: true } })
       : null;
 
     const email = user?.email ?? testimonial.contactEmail ?? null;
-    const phone = user?.phone ?? testimonial.contactPhone ?? null;
+    const phone = (user?.phone ? combineLegacyPhone(user.phone, user.phoneCode) : null) ?? testimonial.contactPhone ?? null;
 
     const results: Record<string, "sent" | "skipped" | "failed"> = {};
 
@@ -107,6 +100,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return ok({ results });
   } catch (e) {
     console.error("[admin/testimonials/message] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
