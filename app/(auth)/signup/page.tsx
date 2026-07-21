@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 import type { Value as PhoneValue } from "react-phone-number-input";
 import AuthToggle from "@/components/auth/AuthToggle";
@@ -18,6 +18,27 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
 import { SignupLoader } from "@/components/ui/signup-loader";
 import { posthog } from "@/lib/posthog";
+
+// Isolated component so useSearchParams is inside a Suspense boundary.
+// Better Auth redirects OAuth errors (e.g. a banned user) back here as
+// ?error=CODE&error_description=... instead of its own bare error page —
+// show it as a toast rather than leaving the raw query string on screen.
+function SignupSearchParamsReader() {
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const error = searchParams.get("error");
+    if (!error) return;
+    const description = searchParams.get("error_description");
+    toast.error(
+      error === "BANNED_USER" ? "Account suspended" : "Sign-in failed",
+      { message: description || "Please try again or contact support." }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return null;
+}
 
 interface SignupErrors {
   firstName?: string;
@@ -161,7 +182,7 @@ export default function SignupPage() {
   async function handleGoogleSignIn() {
     setIsLoading(true);
     try {
-      await authClient.signIn.social({ provider: "google", callbackURL: "/" });
+      await authClient.signIn.social({ provider: "google", callbackURL: "/", errorCallbackURL: "/signup" });
     } catch {
       toast.error("Google sign-in failed. Please try again.");
     } finally {
@@ -172,7 +193,7 @@ export default function SignupPage() {
   async function handleFacebookSignIn() {
     setIsLoading(true);
     try {
-      await authClient.signIn.social({ provider: "facebook", callbackURL: "/" });
+      await authClient.signIn.social({ provider: "facebook", callbackURL: "/", errorCallbackURL: "/signup" });
     } catch {
       toast.error("Facebook sign-in failed. Please try again.");
     } finally {
@@ -185,6 +206,9 @@ export default function SignupPage() {
   // ---------------------------------------------------------------------------
   return (
     <main className="flex min-h-screen">
+      <Suspense fallback={null}>
+        <SignupSearchParamsReader />
+      </Suspense>
       {/* ====================================================================
           LEFT PANEL — deep green botanical
       ==================================================================== */}

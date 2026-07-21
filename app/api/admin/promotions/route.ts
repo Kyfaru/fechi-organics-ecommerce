@@ -45,6 +45,7 @@ export async function POST(req: Request) {
     code?: string;
     minOrder?: number;
     maxUses?: number;
+    maxUsesPerUser?: number;
     startDate?: string;
     endDate?: string;
     status?: string;
@@ -68,6 +69,7 @@ export async function POST(req: Request) {
         code: body.code ?? null,
         minOrder: body.minOrder ?? null,
         maxUses: body.maxUses ?? null,
+        maxUsesPerUser: body.maxUsesPerUser ?? 1,
         startDate: body.startDate ? new Date(body.startDate) : null,
         endDate: body.endDate ? new Date(body.endDate) : null,
         status: body.status ?? "active",

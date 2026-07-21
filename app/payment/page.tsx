@@ -35,6 +35,7 @@ interface DeliveryData {
   deliveryType: "PICKUP" | "DELIVERY";
   branchName: string | null;
   promoCode?: string | null;
+  isCardEligible?: boolean;
 }
 
 type PaymentMethod = "mpesa" | "card";
@@ -59,6 +60,7 @@ export default function PaymentPage() {
   const [showModal, setShowModal] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [failureCount, setFailureCount] = useState(0);
+  const [paymentLocked, setPaymentLocked] = useState(false);
 
   // Paystack redirects back with ?error= on failure — show banner immediately
   const paystackError = searchParams.get("error");
@@ -158,6 +160,15 @@ export default function PaymentPage() {
     }
   }
 
+  function handleCompleteOrderClick() {
+    if (paymentLocked) {
+      toast.warning("Please wait a moment", { message: "Give it about 30 seconds before trying to pay again." });
+      return;
+    }
+    if (selectedMethod === "mpesa") handleMpesaPay();
+    else handleCardPay();
+  }
+
   if (!deliveryData) {
     return (
       <div className="min-h-screen bg-[#f8f8f7] flex items-center justify-center">
@@ -203,8 +214,10 @@ export default function PaymentPage() {
                 <label className="mb-2 block text-[12px] font-semibold tracking-[0.08em] text-[#40493c] dark:text-gray-200">Enter Your M-Pesa Phone Number</label>
                 <input value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} className="h-12 w-full rounded-[8px] border border-[#c0cab8] dark:border-[#27731e] bg-[#fbfbfb] dark:bg-gray-800 px-4 text-[16px] text-text-dark dark:text-white/90 text-bold outline-none focus:border-yellow-cta" />
               </PaymentOption>
-              <PaymentOption active={selectedMethod === "card"} onClick={() => setSelectedMethod("card")} title="Credit / Debit Card" badge="VISA  MC" />
-              
+              {deliveryData?.isCardEligible && (
+                <PaymentOption active={selectedMethod === "card"} onClick={() => setSelectedMethod("card")} title="Credit / Debit Card" badge="VISA  MC" />
+              )}
+
             </div>
 
             <div className="mt-10 flex flex-wrap justify-center gap-8 text-[12px] font-bold uppercase tracking-[0.12em] text-[#707a6b]">
@@ -257,9 +270,9 @@ export default function PaymentPage() {
             </div>
 
             <button
-              onClick={selectedMethod === "mpesa" ? handleMpesaPay : handleCardPay}
+              onClick={handleCompleteOrderClick}
               disabled={submitting || (selectedMethod === "mpesa" && !mpesaPhone.trim())}
-              className="mt-8 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-[#fec700] text-[18px] font-black text-[#1a1c1c] transition-colors hover:bg-[#f0b800] disabled:cursor-not-allowed disabled:opacity-50"
+              className={`mt-8 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-[#fec700] text-[18px] font-black text-[#1a1c1c] transition-colors hover:bg-[#f0b800] disabled:cursor-not-allowed disabled:opacity-50 ${paymentLocked ? "cursor-not-allowed opacity-50" : ""}`}
             >
               <Icon icon={submitting ? "mdi:loading" : "mdi:lock-outline"} width={22} className={submitting ? "animate-spin" : ""} />
               Complete Order
@@ -273,7 +286,7 @@ export default function PaymentPage() {
       {showModal && activeOrderId ? (
         <PaymentStatusModal
           orderId={activeOrderId}
-          onClose={(wasFailure) => {
+          onClose={(wasFailure, reason) => {
             setShowModal(false);
             setActiveOrderId(null);
             if (wasFailure) {
@@ -282,6 +295,10 @@ export default function PaymentPage() {
               if (next >= 5) {
                 toast.error("Too many failed attempts. Please try again later or contact support.");
                 router.push("/cart");
+              }
+              if (reason?.split(":")[0] === "1032") {
+                setPaymentLocked(true);
+                window.setTimeout(() => setPaymentLocked(false), 30_000);
               }
             }
           }}
@@ -303,7 +320,7 @@ function errorMessage(reason: string | null) {
   return reason?.replace(/^\d+:/, "") || "Payment not completed. Try again or contact support.";
 }
 
-function PaymentStatusModal({ orderId, onClose }: { orderId: string; onClose: (wasFailure?: boolean) => void }) {
+function PaymentStatusModal({ orderId, onClose }: { orderId: string; onClose: (wasFailure?: boolean, reason?: string | null) => void }) {
   const router = useRouter();
   const { status, reason } = usePaymentStream(orderId);
 
@@ -349,7 +366,7 @@ function PaymentStatusModal({ orderId, onClose }: { orderId: string; onClose: (w
             </div>
             <h2 className="mt-6 font-heading text-[25px] font-black text-[#1a1c1c] dark:text-white">Payment failed</h2>
             <p className="mt-3 text-[14px] leading-6 text-[#40493c] dark:text-gray-300">{errorMessage(reason ?? null)}</p>
-            <button onClick={() => onClose(true)} className="mt-6 h-12 w-full rounded-full bg-[#fec700] text-[14px] font-black text-[#1a1c1c] transition-colors hover:bg-[#f0b800]">Try Again</button>
+            <button onClick={() => onClose(true, reason)} className="mt-6 h-12 w-full rounded-full bg-[#fec700] text-[14px] font-black text-[#1a1c1c] transition-colors hover:bg-[#f0b800]">Try Again</button>
           </>
         )}
         {phase === "timeout" && (

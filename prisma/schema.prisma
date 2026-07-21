@@ -174,6 +174,32 @@ enum InStoreProvider {
   @@schema("admin")
 }
 
+enum NotificationSeverity {
+  CRITICAL
+  WARNING
+  INFO
+
+  @@schema("admin")
+}
+
+enum NotificationType {
+  ORDER_NEW
+  ORDER_FAILED
+  PAYMENT_ERROR
+  PRODUCT_ADDED
+  PRODUCT_DELETED
+  STAFF_ADDED
+  STAFF_REMOVED
+  TICKET_NEW
+  TICKET_RESPONSE
+  CONTACT_INQUIRY
+  DELIVERY_ZONE_REQUEST
+  ADMIN_ADDED
+  SYSTEM_ALERT
+
+  @@schema("admin")
+}
+
 // ============================================================================
 // Auth models — Better Auth managed (public schema)
 // ============================================================================
@@ -226,6 +252,8 @@ model user {
   loyaltyPoints    loyaltyPoints?
   inboxMessages    inboxMessage[]
   wishlistItems    wishlistItem[]
+  blogReactions    blogReaction[]
+  blogComments     blogComment[]
 
   @@index([role])
   @@schema("public")
@@ -497,6 +525,7 @@ model branch {
   passkeyEnc        String?
   mpesaGateway      MpesaGateway  @default(DARAJA)
   paystackSubaccount String?
+  cardEligible      Boolean       @default(false)
   apiKeyEnc         String?
   isMain            Boolean       @default(false)
   isActive          Boolean       @default(true)
@@ -506,6 +535,7 @@ model branch {
   transactions      transaction[]
   inStoreOrders          inStoreOrder[]
   mpesaC2bTransactions   mpesaC2bTransaction[]
+  notifications          notification[]
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
@@ -540,6 +570,11 @@ model transaction {
   paystackReference    String?         @unique
   amount               Int
   status               TxStatus        @default(PENDING)
+  // Which gateway actually handled this M-Pesa payment — null for non-M-Pesa
+  // providers. Recorded from the dispatch result, not inferred from
+  // branch.mpesaGateway, since a fallback can route a payment through the
+  // other gateway than the branch's configured default.
+  mpesaGatewayUsed     MpesaGateway?
   rawRequestPayload    Json?
   rawCallbackPayload   Json?
   mpesaReceiptNumber   String?
@@ -618,15 +653,36 @@ model systemConfig {
 }
 
 model notification {
-  id        String   @id @default(cuid())
-  type      String
-  title     String
-  body      String
-  link      String?
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id          String               @id @default(cuid())
+  type        NotificationType
+  severity    NotificationSeverity
+  title       String
+  body        String
+  link        String?
+  branchId    String?
+  branch      branch?              @relation(fields: [branchId], references: [id])
+  targetRoles String[]             @default([])
+  read        Boolean              @default(false)
+  createdAt   DateTime             @default(now())
+
+  recipientStates notificationRecipientState[]
 
   @@index([read, createdAt])
+  @@index([branchId, createdAt])
+  @@index([severity, createdAt])
+  @@schema("admin")
+}
+
+model notificationRecipientState {
+  id             String       @id @default(cuid())
+  notificationId String
+  notification   notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  userId         String
+  readAt         DateTime?
+  pinned         Boolean      @default(false)
+
+  @@unique([notificationId, userId])
+  @@index([userId, readAt])
   @@schema("admin")
 }
 
@@ -709,7 +765,10 @@ model couponRedemption {
   orderId    String   @unique
   redeemedAt DateTime @default(now())
 
-  @@unique([couponId, userId])
+  // Not unique on [couponId, userId] anymore — promotion.maxUsesPerUser lets a
+  // user redeem the same coupon more than once; resolvePromo() in lib/promo.ts
+  // enforces the configured limit by counting rows here instead.
+  @@index([couponId, userId])
   @@index([couponId])
   @@index([userId])
   @@schema("public")
@@ -781,18 +840,20 @@ model campaignRecipient {
 }
 
 model promotion {
-  id        String    @id @default(cuid())
-  name      String
-  type      String
-  value     Float
-  code      String?   @unique
-  minOrder  Int?
-  maxUses   Int?
-  usedCount Int       @default(0)
-  startDate DateTime?
-  endDate   DateTime?
-  status    String    @default("active")
-  createdAt DateTime  @default(now())
+  id             String    @id @default(cuid())
+  name           String
+  type           String
+  value          Float
+  code           String?   @unique
+  minOrder       Int?
+  maxUses        Int?
+  // How many times a single user may reuse this coupon. 0 = unlimited, 1 = default (one use per user).
+  maxUsesPerUser Int       @default(1)
+  usedCount      Int       @default(0)
+  startDate      DateTime?
+  endDate        DateTime?
+  status         String    @default("active")
+  createdAt      DateTime  @default(now())
 
   @@schema("admin")
 }
@@ -819,6 +880,71 @@ model blogPost {
   metaDesc      String?
   views         Int        @default(0)
   createdAt     DateTime   @default(now())
+
+  likeCount     Int        @default(0)
+  dislikeCount  Int        @default(0)
+  commentCount  Int        @default(0)
+  isFeatured    Boolean    @default(false)
+
+  viewEvents    blogView[]
+  reactions     blogReaction[]
+  comments      blogComment[]
+
+  @@schema("admin")
+}
+
+model blogView {
+  id         String   @id @default(cuid())
+  postId     String
+  post       blogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId     String?
+  viewerHash String?
+  viewedAt   DateTime @default(now())
+
+  @@index([postId, viewedAt])
+  @@schema("admin")
+}
+
+model blogReaction {
+  id        String       @id @default(cuid())
+  postId    String
+  post      blogPost     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      user         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      ReactionType
+  createdAt DateTime     @default(now())
+
+  @@unique([postId, userId])
+  @@schema("admin")
+}
+
+enum ReactionType {
+  LIKE
+  DISLIKE
+
+  @@schema("admin")
+}
+
+model blogComment {
+  id        String        @id @default(cuid())
+  postId    String
+  post      blogPost      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      user          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentId  String?
+  content   String
+  status    CommentStatus @default(VISIBLE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([postId, status])
+  @@schema("admin")
+}
+
+enum CommentStatus {
+  VISIBLE
+  HIDDEN
+  FLAGGED
 
   @@schema("admin")
 }
@@ -1018,6 +1144,7 @@ model inStoreTransaction {
   checkoutRequestId       String?              @unique
   paystackReference       String?              @unique
   mpesaReceiptNumber      String?
+  mpesaGatewayUsed        MpesaGateway?
   matchedC2bTransactionId String?              @unique
   matchedC2bTransaction   mpesaC2bTransaction? @relation(fields: [matchedC2bTransactionId], references: [id])
   rawCallbackPayload      Json?

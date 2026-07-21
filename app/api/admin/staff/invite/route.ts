@@ -185,7 +185,13 @@ export async function POST(req: NextRequest) {
 
     // Non-fatal notification
     const { createNotification } = await import("@/lib/notify");
-    createNotification("admin", "New admin added", `${name.trim()} (${role}) joined the team`, `/admin/staff`).catch(() => {});
+    createNotification({
+      type: role === "admin" ? "ADMIN_ADDED" : "STAFF_ADDED",
+      title: role === "admin" ? "New admin added" : "New staff added",
+      body: `${name.trim()} (${role}) joined the team`,
+      link: "/admin/staff",
+      branchId: role === "admin" ? null : (branchId as string | undefined) ?? null,
+    }).catch(() => {});
 
     console.info("[staff/invite] Staff created:", {
       invitedBy: session.user.email,

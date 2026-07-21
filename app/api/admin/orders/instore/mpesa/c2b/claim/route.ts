@@ -17,7 +17,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
-import { resolvePromo } from "@/lib/promo";
+import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { getRedis } from "@/lib/redis";
 import { paymentChannel } from "@/lib/payment-channel";
@@ -112,10 +112,12 @@ export async function POST(req: NextRequest) {
 
     const normalizedPromoCode = promoCode?.trim().toUpperCase();
     let discountKes = 0;
+    let resolvedPromoId: string | null = null;
     if (normalizedPromoCode) {
       try {
-        const r = await resolvePromo(normalizedPromoCode, subtotalKes);
+        const r = await resolvePromo(normalizedPromoCode, subtotalKes, customerUserId ?? undefined);
         discountKes = r.discountKes;
+        resolvedPromoId = r.promo.id;
       } catch {
         /* invalid/expired — discount stays 0 */
       }
@@ -196,6 +198,10 @@ export async function POST(req: NextRequest) {
             where: { id: item.productId },
             data: { stock: { decrement: item.quantity } },
           });
+        }
+
+        if (resolvedPromoId && normalizedPromoCode && customerUserId) {
+          await recordCouponRedemption(resolvedPromoId, customerUserId, order.id, tx);
         }
 
         return { orderId: order.id, orderNumber: order.orderNumber };

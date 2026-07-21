@@ -6,6 +6,7 @@ import { Icon } from "@iconify/react";
 import { useState } from "react";
 import { useCurrency } from "@/app/providers";
 import type { CurrencyCode } from "@/lib/currency";
+import { motion } from "framer-motion";
 
 const COMPANY_LINKS = [
   { label: "Home", href: "/" },
@@ -30,9 +31,9 @@ const SUPPORT_LINKS = [
 ];
 
 const SOCIALS = [
-  { icon: "mdi:facebook", href: "https://facebook.com", label: "Facebook" },
+  { icon: "mdi:facebook", href: "https://www.facebook.com/p/Fechi-organics-100063505811443/", label: "Facebook" },
   { icon: "mdi:instagram", href: "https://instagram.com", label: "Instagram" },
-  { icon: "mdi:twitter", href: "https://twitter.com", label: "Twitter/X" },
+  { icon: "proicons:tiktok", href: "https://www.tiktok.com/@fechi.organics", label: "Tiktok" },
 ];
 
 function InlineCurrencySwitcher() {
@@ -89,7 +90,7 @@ export function Footer() {
       {/* Large watermark logo */}
       <div className="absolute -left-16 -top-8 w-[500px] h-[400px] opacity-[0.09] pointer-events-none select-none">
         <Image
-          src="/logo/white version@5x.webp"
+          src="/logo/symbol-white.webp"
           alt=""
           fill
           className="object-contain object-left"
@@ -102,7 +103,7 @@ export function Footer() {
           {/* Brand column */}
           <div className="md:col-span-1">
             <Image
-              src="/logo/white version@5x.webp"
+              src="/logo/symbol-white.webp"
               alt="Fechi Organics"
               width={140}
               height={50}
@@ -144,7 +145,39 @@ export function Footer() {
         <div className="border-t border-white/20 pt-5">
           <div className="flex flex-col md:flex-row items-center justify-between gap-3 text-white/70 text-[13px] tracking-[0.3px]">
             <p>© 2026 Fechi Organics. All rights reserved.</p>
-            <p className="text-white/50 text-[12px]">Powered by Kyfaru</p>
+            <p className="text-white/50 text-xs flex items-center gap-1">
+  Powered by
+
+  <Link
+    href="https://kyfaru.com"
+    target="_blank"
+    rel="noopener noreferrer"
+    className="flex items-center gap-1 text-white"
+  >
+    <motion.div
+      animate={{
+        y: [0, -8, -8, -8, 0],
+        rotate: [0, -3, 3, -3, 3, -2, 2, 0],
+      }}
+      transition={{
+        duration: 2,
+        repeat: Infinity,
+        ease: "easeInOut",
+        times: [0, 0.2, 0.35, 0.5, 1],
+      }}
+    >
+      <Image
+        src="/logo/Kyfaru-Logo-Filled-07.png"
+        alt="Kyfaru"
+        width={32}
+        height={32}
+        className="object-contain"
+      />
+    </motion.div>
+
+    <span>Kyfaru</span>
+  </Link>
+</p>
             <div className="flex items-center gap-4">
               <p>
                 <Link href="/privacy-policy" className="hover:text-white transition-colors">Privacy</Link>

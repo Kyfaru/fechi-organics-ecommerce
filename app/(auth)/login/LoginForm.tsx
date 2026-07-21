@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent, Suspense } from "react";
+import { useState, useEffect, FormEvent, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@iconify/react";
@@ -30,6 +30,21 @@ function LoginSearchParamsReader({
   const isAdminPortalMsg = searchParams.get("msg") === "use-admin-portal";
   // Call the setter on every render so the parent stays in sync
   onMsg(isAdminPortalMsg);
+
+  // Better Auth redirects OAuth errors (e.g. a banned user) back here as
+  // ?error=CODE&error_description=... instead of its own bare error page —
+  // show it as a toast rather than leaving the raw query string on screen.
+  useEffect(() => {
+    const error = searchParams.get("error");
+    if (!error) return;
+    const description = searchParams.get("error_description");
+    toast.error(
+      error === "BANNED_USER" ? "Account suspended" : "Sign-in failed",
+      { message: description || "Please try again or contact support." }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return null;
 }
 
@@ -92,7 +107,7 @@ export default function LoginForm() {
   async function handleGoogleSignIn() {
     setIsLoading(true);
     try {
-      await authClient.signIn.social({ provider: "google", callbackURL: "/" });
+      await authClient.signIn.social({ provider: "google", callbackURL: "/", errorCallbackURL: "/login" });
     } catch {
       toast.error("Google sign-in failed. Please try again.");
     } finally {
@@ -103,7 +118,7 @@ export default function LoginForm() {
   async function handleFacebookSignIn() {
     setIsLoading(true);
     try {
-      await authClient.signIn.social({ provider: "facebook", callbackURL: "/" });
+      await authClient.signIn.social({ provider: "facebook", callbackURL: "/", errorCallbackURL: "/login" });
     } catch {
       toast.error("Facebook sign-in failed. Please try again.");
     } finally {

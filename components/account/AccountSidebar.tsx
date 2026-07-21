@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { Icon } from "@iconify/react"
 import { signOut } from "@/lib/auth-client"
+import { clearPersistedQueryCache } from "@/app/providers"
 import { LogoutModal } from "@/components/ui/LogoutModal"
 import type { AccountUser } from "@/types/account"
 
@@ -39,6 +40,7 @@ export default function AccountSidebar({
 
   async function handleLogoutConfirm() {
     await signOut()
+    clearPersistedQueryCache()
     router.push("/")
   }
 

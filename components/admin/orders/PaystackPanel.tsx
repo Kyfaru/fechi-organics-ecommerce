@@ -16,6 +16,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AlertCircle, CreditCard, Loader2 } from "lucide-react";
 import type { PaymentOrderContext } from "@/components/admin/orders/PaymentStep";
 import PaymentWaitingModal from "@/components/admin/orders/PaymentWaitingModal";
@@ -83,6 +84,7 @@ const CHARGE_COOLDOWN_MS = 20_000;
 type Phase = "waiting" | "success" | "failed" | null;
 
 export default function PaystackPanel({ orderContext, branchReady }: PaystackPanelProps) {
+  const router = useRouter();
   const [charging, setCharging] = useState(false);
   const [cooldown, setCooldown] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,7 +116,7 @@ export default function PaystackPanel({ orderContext, branchReady }: PaystackPan
         body: JSON.stringify({
           customerUserId: orderContext.customerUserId,
           customerName: orderContext.customerName,
-          customerEmail: orderContext.customerEmail,
+          customerEmail: orderContext.customerEmail.trim() || undefined,
           items: orderContext.items,
           promoCode: orderContext.promoCode,
           branchId: orderContext.branchId,
@@ -183,6 +185,7 @@ export default function PaystackPanel({ orderContext, branchReady }: PaystackPan
   function handleSuccessClose() {
     setPhase(null);
     setOrder(null);
+    router.push("/admin/orders");
   }
 
   function handleTryAgain() {

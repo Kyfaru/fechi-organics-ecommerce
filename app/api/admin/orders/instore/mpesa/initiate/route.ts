@@ -16,11 +16,13 @@ import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
 import { getDarajaToken } from "@/lib/payments/mpesa/daraja-client";
 import { initiateSTKPush } from "@/lib/payments/mpesa/stk-push";
-import { resolvePromo } from "@/lib/promo";
+import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
 import { getRedis } from "@/lib/redis";
 import { makeRatelimit } from "@/lib/ratelimit";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { markInStorePaymentFailed } from "@/lib/payments/instore-post-payment";
+import { resolveMpesaGateway, otherGateway } from "@/lib/payments/mpesa/gateway";
+import type { MpesaGateway } from "@prisma/client";
 import { buildInStoreOrderNumber } from "@/lib/orders/generate-instore-order-number";
 
 const bodySchema = z
@@ -82,7 +84,7 @@ export async function POST(req: NextRequest) {
     // the fresh-attempt one, so a burst of legitimate retries on one failing
     // order doesn't also chew through the 3/60s fresh-order budget.
     if (retryOrderId) {
-      const retryLimiter = makeRatelimit(Ratelimit.slidingWindow(8, "60 s"), "instore_payment_retry");
+      const retryLimiter = makeRatelimit(Ratelimit.slidingWindow(4, "30 s"), "instore_payment_retry");
       if (retryLimiter) {
         const { success } = await retryLimiter.limit(`${admin.id}:${retryOrderId}`);
         if (!success) return Err.rateLimited();
@@ -91,7 +93,7 @@ export async function POST(req: NextRequest) {
       const redis = getRedis();
       const rateKey = `instore_payment_attempt:${admin.id}:mpesa`;
       const attempts = await redis.incr(rateKey);
-      if (attempts === 1) await redis.expire(rateKey, 60);
+      if (attempts === 1) await redis.expire(rateKey, 30);
       if (attempts > 3) return Err.rateLimited();
     }
 
@@ -132,10 +134,12 @@ export async function POST(req: NextRequest) {
 
     const normalizedPromoCode = promoCode?.trim().toUpperCase();
     let discountKes = 0;
+    let resolvedPromoId: string | null = null;
     if (normalizedPromoCode) {
       try {
-        const r = await resolvePromo(normalizedPromoCode, subtotalKes);
+        const r = await resolvePromo(normalizedPromoCode, subtotalKes, customerUserId ?? undefined);
         discountKes = r.discountKes;
+        resolvedPromoId = r.promo.id;
       } catch {
         /* invalid/expired — discount stays 0 */
       }
@@ -144,7 +148,7 @@ export async function POST(req: NextRequest) {
 
     // 1. Create order + PENDING transaction atomically — or, on retry, reuse
     // the existing failed order instead of creating a new one.
-    let order;
+    let order: Awaited<ReturnType<typeof db.inStoreOrder.create>>;
     if (retryOrderId) {
       const existingOrder = await db.inStoreOrder.findUnique({ where: { id: retryOrderId } });
       if (!existingOrder) return Err.notFound("Order");
@@ -196,6 +200,12 @@ export async function POST(req: NextRequest) {
           },
         },
       });
+
+      // Only on the initial creation path — retries reuse the same order and
+      // must not record a second redemption for one order.
+      if (resolvedPromoId && normalizedPromoCode && customerUserId) {
+        await recordCouponRedemption(resolvedPromoId, customerUserId, order.id);
+      }
     }
 
     const transaction = await db.inStoreTransaction.create({
@@ -207,26 +217,26 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // 2. Dispatch STK push — dual-gateway branch, mirrors the customer flow's
-    // KCB_BUNI vs Daraja dispatch in app/api/payments/mpesa/initiate/route.ts.
+    // 2. Dispatch STK push — forced to KCB Buni until DARAJA_ENABLED=true
+    // (see lib/payments/mpesa/gateway.ts), with a same-request fallback to
+    // the other gateway if the primary attempt throws.
     const callbackUrl = `${process.env.MPESA_CALLBACK_BASE_URL}/api/payments/mpesa/instore-callback`;
-    let checkoutRequestId: string;
 
-    if (branch.mpesaGateway === "KCB_BUNI") {
+    async function dispatchKcb(): Promise<string> {
       const { initiateKcbStkPush } = await import("@/lib/payments/kcb/kcb-client");
-      const formatOrderNumber = order.orderNumber?.slice(7, -1);
-      const invoiceCode = `${branch.invoiceNumber}-${formatOrderNumber}`;
-      if (!branch.invoiceNumber) {
-        return err("BRANCH", `Branch ${branch.id} is undefined number`, 500);
+      if (!branch!.invoiceNumber) {
+        throw new Error(`Branch ${branch!.id} has no invoiceNumber configured for KCB Buni`);
       }
+      const formatOrderNumber = order.orderNumber?.slice(7, -1);
+      const invoiceCode = `${branch!.invoiceNumber}-${formatOrderNumber}`;
       const kcbRes = await initiateKcbStkPush({
         branch: {
-          id: branch.id,
-          shortcode: branch.shortcode,
-          invoiceNumber: invoiceCode ?? branch.invoiceNumber,
-          consumerKeyEnc: branch.consumerKeyEnc,
-          consumerSecretEnc: branch.consumerSecretEnc,
-          apiKeyEnc: branch.apiKeyEnc ?? null,
+          id: branch!.id,
+          shortcode: branch!.shortcode,
+          invoiceNumber: invoiceCode ?? branch!.invoiceNumber,
+          consumerKeyEnc: branch!.consumerKeyEnc,
+          consumerSecretEnc: branch!.consumerSecretEnc,
+          apiKeyEnc: branch!.apiKeyEnc ?? null,
         },
         phone: customerPhone,
         amountKes: totalKes,
@@ -234,40 +244,53 @@ export async function POST(req: NextRequest) {
         callbackUrl,
       });
       if (!kcbRes.CheckoutRequestID) {
-        await markInStorePaymentFailed({
-          transactionId: transaction.id,
-          inStoreOrderId: order.id,
-          reason: "KCB STK push did not return a CheckoutRequestID",
-        });
-        return err("STK_FAILED", "Could not initiate M-Pesa prompt. Please try again.", 502);
+        throw new Error("KCB STK push did not return a CheckoutRequestID");
       }
-      checkoutRequestId = kcbRes.CheckoutRequestID;
-    } else {
-      await getDarajaToken(branch); // warm-up / validate credentials early
+      return kcbRes.CheckoutRequestID;
+    }
+
+    async function dispatchDaraja(): Promise<string> {
+      await getDarajaToken(branch!); // warm-up / validate credentials early
+      const stkResponse = await initiateSTKPush({
+        branch: branch!,
+        phone: customerPhone,
+        amountKes: totalKes / 100,
+        orderId: order.orderNumber?.slice(7, -1) ?? order.id,
+        callbackUrl,
+      });
+      return stkResponse.CheckoutRequestID;
+    }
+
+    async function dispatch(gateway: MpesaGateway): Promise<string> {
+      return gateway === "KCB_BUNI" ? dispatchKcb() : dispatchDaraja();
+    }
+
+    const primaryGateway = resolveMpesaGateway(branch);
+    const fallbackGateway = otherGateway(primaryGateway);
+    let checkoutRequestId: string;
+    let gatewayUsed: MpesaGateway = primaryGateway;
+    try {
+      checkoutRequestId = await dispatch(primaryGateway);
+    } catch (primaryErr) {
+      console.error(`[instore/mpesa/initiate] ${primaryGateway} dispatch failed, falling back to ${fallbackGateway}`, primaryErr);
       try {
-        const stkResponse = await initiateSTKPush({
-          branch,
-          phone: customerPhone,
-          amountKes: totalKes / 100,
-          orderId: order.orderNumber?.slice(7, -1) ?? order.id,
-          callbackUrl,
-        });
-        checkoutRequestId = stkResponse.CheckoutRequestID;
-      } catch (e) {
-        console.error("[instore/mpesa/initiate] STK dispatch failed", e);
+        checkoutRequestId = await dispatch(fallbackGateway);
+        gatewayUsed = fallbackGateway;
+      } catch (fallbackErr) {
+        console.error(`[instore/mpesa/initiate] ${fallbackGateway} fallback also failed`, fallbackErr);
         await markInStorePaymentFailed({
           transactionId: transaction.id,
           inStoreOrderId: order.id,
-          reason: "STK push request failed",
+          reason: "Both M-Pesa gateways failed to initiate",
         });
         return err("STK_FAILED", "Could not initiate M-Pesa prompt. Please try again.", 502);
       }
     }
 
-    // 3. Persist CheckoutRequestID so the callback can look up the transaction
+    // 3. Persist CheckoutRequestID + which gateway actually handled this.
     await db.inStoreTransaction.update({
       where: { id: transaction.id },
-      data: { checkoutRequestId },
+      data: { checkoutRequestId, mpesaGatewayUsed: gatewayUsed },
     });
 
     console.info(

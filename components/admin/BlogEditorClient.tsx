@@ -10,13 +10,10 @@ import ScheduleModal from "@/components/admin/blog/ScheduleModal";
 import AuthorPicker, { type AuthorOption } from "@/components/admin/blog/AuthorPicker";
 import { useSession } from "@/lib/auth-client";
 import { canAccess } from "@/lib/permissions";
-
-const R2_BASE = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "").replace(/\/$/, "");
+import { r2PublicUrl } from "@/lib/r2";
 
 function blogImageUrl(key: string): string {
-  if (!key) return "";
-  if (key.startsWith("http")) return key;
-  return R2_BASE ? `${R2_BASE}/${key}` : `/${key}`;
+  return key ? r2PublicUrl(key) : "";
 }
 
 interface BlogPost {
@@ -480,9 +477,109 @@ export function BlogEditorClient() {
               placeholder="Select authors…"
             />
           </FormField>
+
+          {isEdit && postId && <CommentModerationPanel postId={postId} />}
         </div>
       </div>
     </div>
+  );
+}
+
+interface AdminComment {
+  id: string;
+  content: string;
+  status: "VISIBLE" | "HIDDEN" | "FLAGGED";
+  createdAt: string;
+  user: { name: string | null; email: string | null };
+}
+
+function CommentModerationPanel({ postId }: { postId: string }) {
+  const qc = useQueryClient();
+  const queryKey = ["admin-blog-comments", postId];
+
+  const { data, isLoading } = useQuery<{ comments: AdminComment[] }>({
+    queryKey,
+    queryFn: () => fetch(`/api/admin/blog/${postId}/comments`).then((r) => r.json()).then((j) => j.data),
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: async ({ commentId, status }: { commentId: string; status: AdminComment["status"] }) => {
+      const res = await fetch(`/api/admin/blog/comments/${commentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error("FAILED");
+      return { commentId, status };
+    },
+    onSuccess: ({ commentId, status }) => {
+      qc.setQueryData<{ comments: AdminComment[] }>(queryKey, (old) => ({
+        comments: (old?.comments ?? []).map((c) => (c.id === commentId ? { ...c, status } : c)),
+      }));
+    },
+    onError: () => toast.error("Could not update comment status"),
+  });
+
+  const comments = data?.comments ?? [];
+
+  return (
+    <FormField label="Comments" hint={`${comments.length} total`}>
+      {isLoading ? (
+        <p className="text-[13px] text-(--neutral-400)">Loading…</p>
+      ) : comments.length === 0 ? (
+        <p className="text-[13px] text-(--neutral-400)">No comments yet.</p>
+      ) : (
+        <div className="space-y-3 max-h-80 overflow-y-auto">
+          {comments.map((c) => (
+            <div key={c.id} className="border border-(--neutral-200) rounded-[10px] p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-dm text-[12px] font-medium text-(--neutral-700) truncate">
+                  {c.user.name ?? c.user.email ?? "Unknown"}
+                </span>
+                <span
+                  className={`font-dm text-[11px] px-2 py-0.5 rounded-full shrink-0 ${
+                    c.status === "VISIBLE"
+                      ? "bg-(--green-50) text-(--green-800)"
+                      : c.status === "HIDDEN"
+                      ? "bg-(--neutral-100) text-(--neutral-500)"
+                      : "bg-red-50 text-red-600"
+                  }`}
+                >
+                  {c.status}
+                </span>
+              </div>
+              <p className="font-dm text-[13px] text-(--neutral-600) mt-1 line-clamp-3">{c.content}</p>
+              <div className="flex gap-2 mt-2">
+                {c.status !== "VISIBLE" && (
+                  <button
+                    onClick={() => statusMutation.mutate({ commentId: c.id, status: "VISIBLE" })}
+                    className="font-dm text-[12px] text-(--green-800) hover:underline"
+                  >
+                    Restore
+                  </button>
+                )}
+                {c.status !== "HIDDEN" && (
+                  <button
+                    onClick={() => statusMutation.mutate({ commentId: c.id, status: "HIDDEN" })}
+                    className="font-dm text-[12px] text-(--neutral-500) hover:underline"
+                  >
+                    Hide
+                  </button>
+                )}
+                {c.status !== "FLAGGED" && (
+                  <button
+                    onClick={() => statusMutation.mutate({ commentId: c.id, status: "FLAGGED" })}
+                    className="font-dm text-[12px] text-red-600 hover:underline"
+                  >
+                    Flag
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </FormField>
   );
 }
 

@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AlertCircle, Loader2, Send } from "lucide-react";
 import type { Value as PhoneValue } from "react-phone-number-input";
 import PhoneInput from "@/components/ui/PhoneInput";
@@ -43,6 +44,7 @@ interface InitiateResult {
 type Phase = "waiting" | "success" | "failed" | null;
 
 export default function MpesaPromptPanel({ orderContext, branchReady, initialPhone }: MpesaPromptPanelProps) {
+  const router = useRouter();
   const [phone, setPhone] = useState<PhoneValue | undefined>(initialPhone);
   const [sending, setSending] = useState(false);
   const [cooldown, setCooldown] = useState(false);
@@ -76,7 +78,7 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
           customerUserId: orderContext.customerUserId,
           customerName: orderContext.customerName,
           customerPhone: phone as string,
-          customerEmail: orderContext.customerEmail,
+          customerEmail: orderContext.customerEmail.trim() || undefined,
           items: orderContext.items,
           promoCode: orderContext.promoCode,
           branchId: orderContext.branchId,
@@ -125,6 +127,7 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
   function handleSuccessClose() {
     setPhase(null);
     setPending(null);
+    router.push("/admin/orders");
   }
 
   function handleTryAgain() {

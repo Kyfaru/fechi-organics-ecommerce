@@ -17,8 +17,10 @@ import { ok, err, Err } from "@/lib/api";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
 import { getDarajaToken } from "@/lib/payments/mpesa/daraja-client";
 import { initiateSTKPush } from "@/lib/payments/mpesa/stk-push";
+import { resolveMpesaGateway, otherGateway } from "@/lib/payments/mpesa/gateway";
+import type { MpesaGateway } from "@prisma/client";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
-import { resolvePromo } from "@/lib/promo";
+import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
 import { getRedis } from "@/lib/redis";
 import { markPaymentFailed } from "@/lib/payments/post-payment";
 import { assertTrustedOrigin } from "@/lib/origin-check";
@@ -98,11 +100,13 @@ export async function POST(req: NextRequest) {
     const promoCode = deliveryData.promoCode?.trim().toUpperCase();
     let discountCents = 0;
     let deliveryCents = pricing.feeKes;
+    let resolvedPromoId: string | null = null;
     if (promoCode) {
       try {
-        const r = await resolvePromo(promoCode, subtotalCents);
+        const r = await resolvePromo(promoCode, subtotalCents, userId);
         discountCents = r.discountKes;
         if (r.deliveryFree) deliveryCents = 0;
+        resolvedPromoId = r.promo.id;
       } catch {
         /* invalid/expired — discount stays 0 */
       }
@@ -166,6 +170,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Record coupon redemption
+    if (resolvedPromoId && promoCode) {
+      await recordCouponRedemption(resolvedPromoId, userId, order.id);
+    }
+
     // 7. Create transaction record (PENDING until callback arrives)
     const transaction = await db.transaction.create({
       data: {
@@ -177,24 +186,24 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // 8. Dispatch by gateway
-    let checkoutRequestId: string;
-
-    if (branch.mpesaGateway === "KCB_BUNI") {
+    // 8. Dispatch by gateway — forced to KCB Buni until DARAJA_ENABLED=true
+    // (see lib/payments/mpesa/gateway.ts). Falls back to the other gateway
+    // once if the primary attempt throws.
+    async function dispatchKcb(): Promise<string> {
       const { initiateKcbStkPush } = await import("@/lib/payments/kcb/kcb-client");
-      const formatOrderNumber = order.orderNumber?.slice(4,-1);
-    const invoiceCode = `${branch.invoiceNumber}-${formatOrderNumber}`;
-    if (!branch.invoiceNumber) {
-    return err("BRANCH", `Branch ${branch.id} is undefined number`, 500);
-    }
+      if (!branch!.invoiceNumber) {
+        throw new Error(`Branch ${branch!.id} has no invoiceNumber configured for KCB Buni`);
+      }
+      const formatOrderNumber = order.orderNumber?.slice(4, -1);
+      const invoiceCode = `${branch!.invoiceNumber}-${formatOrderNumber}`;
       const kcbRes = await initiateKcbStkPush({
         branch: {
-          id: branch.id,
-          shortcode: branch.shortcode,
-          invoiceNumber: invoiceCode ?? branch.invoiceNumber,
-          consumerKeyEnc: branch.consumerKeyEnc,
-          consumerSecretEnc: branch.consumerSecretEnc,
-          apiKeyEnc: branch.apiKeyEnc ?? null,
+          id: branch!.id,
+          shortcode: branch!.shortcode,
+          invoiceNumber: invoiceCode ?? branch!.invoiceNumber,
+          consumerKeyEnc: branch!.consumerKeyEnc,
+          consumerSecretEnc: branch!.consumerSecretEnc,
+          apiKeyEnc: branch!.apiKeyEnc ?? null,
         },
         phone,
         amountKes: totalCents,
@@ -202,31 +211,55 @@ export async function POST(req: NextRequest) {
         callbackUrl: `${process.env.KCB_CALLBACK_BASE_URL ?? process.env.MPESA_CALLBACK_BASE_URL}/api/payments/kcb/callback`,
       });
       if (!kcbRes.CheckoutRequestID) {
-        await markPaymentFailed({
-          transactionId: transaction.id,
-          orderId: order.id,
-          reason: "KCB STK push did not return a CheckoutRequestID",
-        });
-        return err("STK_FAILED", "Could not initiate M-Pesa prompt. Please try again.", 502);
+        throw new Error("KCB STK push did not return a CheckoutRequestID");
       }
-      checkoutRequestId = kcbRes.CheckoutRequestID;
-    } else {
-      await getDarajaToken(branch); // warm-up / validate credentials early
+      return kcbRes.CheckoutRequestID;
+    }
+
+    async function dispatchDaraja(): Promise<string> {
+      await getDarajaToken(branch!); // warm-up / validate credentials early
       const callbackUrl = `${process.env.MPESA_CALLBACK_BASE_URL}/api/payments/mpesa/callback`;
       const stkResponse = await initiateSTKPush({
-        branch,
+        branch: branch!,
         phone,
         amountKes: totalKes,
         orderId: order.orderNumber ?? order.id,
         callbackUrl,
       });
-      checkoutRequestId = stkResponse.CheckoutRequestID;
+      return stkResponse.CheckoutRequestID;
     }
 
-    // 9. Persist CheckoutRequestID so the callback can look up the transaction
+    async function dispatch(gateway: MpesaGateway): Promise<string> {
+      return gateway === "KCB_BUNI" ? dispatchKcb() : dispatchDaraja();
+    }
+
+    const primaryGateway = resolveMpesaGateway(branch);
+    const fallbackGateway = otherGateway(primaryGateway);
+    let checkoutRequestId: string;
+    let gatewayUsed: MpesaGateway = primaryGateway;
+    try {
+      checkoutRequestId = await dispatch(primaryGateway);
+    } catch (primaryErr) {
+      console.error(`[mpesa/initiate] ${primaryGateway} dispatch failed, falling back to ${fallbackGateway}`, primaryErr);
+      try {
+        checkoutRequestId = await dispatch(fallbackGateway);
+        gatewayUsed = fallbackGateway;
+      } catch (fallbackErr) {
+        console.error(`[mpesa/initiate] ${fallbackGateway} fallback also failed`, fallbackErr);
+        await markPaymentFailed({
+          transactionId: transaction.id,
+          orderId: order.id,
+          reason: "Both M-Pesa gateways failed to initiate",
+        });
+        return err("STK_FAILED", "Could not initiate M-Pesa prompt. Please try again.", 502);
+      }
+    }
+
+    // 9. Persist CheckoutRequestID + which gateway actually handled this, so
+    // the callback can look up the transaction and Finance can see the route.
     await db.transaction.update({
       where: { id: transaction.id },
-      data: { checkoutRequestId },
+      data: { checkoutRequestId, mpesaGatewayUsed: gatewayUsed },
     });
 
     // Schedule a timeout: if the customer abandons the STK prompt and no

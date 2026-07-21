@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
           mpesaType: true,
           shortcode: true,
           phone: true,
+          cardEligible: true,
         },
       });
       return ok({ branches });
@@ -47,6 +48,7 @@ export async function GET(req: NextRequest) {
         mpesaType: true,
         shortcode: true,
         phone: true,
+        cardEligible: true,
       },
     });
 

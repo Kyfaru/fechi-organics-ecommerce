@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { posthog } from "@/lib/posthog";
 
@@ -7,6 +8,10 @@ const WHATSAPP_NUMBER = "254768151505";
 const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}`;
 
 export function WhatsAppButton() {
+  const pathname = usePathname();
+  // Admin has its own WhatsApp entry point in the header — see AdminHeader.tsx
+  if (pathname?.startsWith("/admin")) return null;
+
   return (
     <>
       <style>{`

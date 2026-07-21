@@ -414,7 +414,8 @@ async function main() {
     mpesaGateway: "DARAJA" | "KCB_BUNI";
     mpesaType: "PAYBILL" | "TILL";
     shortcode: string;
-    paystackSubaccount: string;
+    paystackSubaccount?: string;
+    cardEligible: boolean;
   }> = [
     {
       id: "branch-nairobi",
@@ -425,7 +426,9 @@ async function main() {
       mpesaGateway: "KCB_BUNI" as const,
       mpesaType: "PAYBILL" as const,
       shortcode: "placeholder",
-      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_NAIROBI ?? "ACCT_cd1z3skedyfumdv",
+      // Real subaccount codes optional — money goes to the main Paystack account unless set.
+      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_NAIROBI,
+      cardEligible: true,
     },
     {
       id: "branch-nakuru",
@@ -435,7 +438,8 @@ async function main() {
       mpesaGateway: "KCB_BUNI" as const,
       mpesaType: "PAYBILL" as const,
       shortcode: "placeholder",
-      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_NAKURU ?? "ACCT_par1ka0zbibyhxk",
+      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_NAKURU,
+      cardEligible: true,
     },
     {
       id: "branch-mwea",
@@ -445,7 +449,8 @@ async function main() {
       mpesaGateway: "DARAJA" as const,
       mpesaType: "TILL" as const,
       shortcode: "placeholder",
-      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_MWEA ?? "ACCT_uq3xnsh72bgijv5",
+      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_MWEA,
+      cardEligible: false,
     },
     {
       id: "branch-eldoret",
@@ -455,7 +460,8 @@ async function main() {
       mpesaGateway: "DARAJA" as const,
       mpesaType: "TILL" as const,
       shortcode: "placeholder",
-      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_ELDORET ?? "ACCT_par1ka0zbibyhxk",
+      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_ELDORET,
+      cardEligible: false,
     },
     {
       id: "branch-kitengela",
@@ -465,7 +471,8 @@ async function main() {
       mpesaGateway: "DARAJA" as const,
       mpesaType: "TILL" as const,
       shortcode: "placeholder",
-      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_KITENGELA ?? "ACCT_par1ka0zbibyhxk",
+      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_KITENGELA,
+      cardEligible: false,
     },
   ];
 
@@ -480,6 +487,7 @@ async function main() {
         mpesaGateway: b.mpesaGateway,
         mpesaType: b.mpesaType,
         paystackSubaccount: b.paystackSubaccount,
+        cardEligible: b.cardEligible,
         isActive: true,
       },
       create: {
@@ -492,6 +500,7 @@ async function main() {
         mpesaType: b.mpesaType,
         shortcode: b.shortcode,
         paystackSubaccount: b.paystackSubaccount,
+        cardEligible: b.cardEligible,
         consumerKeyEnc: encrypt("PLACEHOLDER"),
         consumerSecretEnc: encrypt("PLACEHOLDER"),
         passkeyEnc: encrypt("PLACEHOLDER"),

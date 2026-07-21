@@ -347,7 +347,7 @@ body {
   border-radius: 3px;
   padding: 0 1px;
   margin: 0 -1px;
-  animation: highlight-fade 3s ease-out forwards;
+  animation: highlight-fade 5s ease-out forwards;
 }
 
 /* ── Switch (components/ui/Switch.tsx) ───────────────────────────────────── */

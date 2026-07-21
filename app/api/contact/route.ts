@@ -9,13 +9,14 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { generateTicketNumber } from "@/lib/tickets/generate-ticket-number";
 import { assignTicketToAdmin } from "@/lib/tickets/assign-admin";
 import { sendTicketAcknowledgmentEmail } from "@/lib/email";
+import { createNotification } from "@/lib/notify";
 
 const ContactSchema = z.object({
   name: z.string().min(2).max(100),
   email: z.string().email(),
   phone: z.string().optional(),
   subject: z.string().min(2).max(200),
-  message: z.string().min(10).max(50000),
+  message: z.string().min(10, "Please write a bit more detail in your message (at least a few words).").max(50000),
 }).strict();
 
 export async function POST(req: NextRequest) {
@@ -43,16 +44,13 @@ export async function POST(req: NextRequest) {
     });
 
     // Always notify admin inbox — fire-and-forget, non-blocking
-    db.notification
-      .create({
-        data: {
-          type: "contact",
-          title: `New contact: ${subject}`,
-          body: `${name} (${email}) — ${message.slice(0, 120)}${message.length > 120 ? "…" : ""}`,
-          link: `/admin/contacts`,
-        },
-      })
-      .catch((e) => console.error("[contact] admin notification failed:", e));
+    createNotification({
+      type: "CONTACT_INQUIRY",
+      title: `New contact: ${subject}`,
+      body: `${name} (${email}) — ${message.slice(0, 120)}${message.length > 120 ? "…" : ""}`,
+      link: `/admin/contacts`,
+      targetRoles: ["customer_care"],
+    }).catch((e) => console.error("[contact] admin notification failed:", e));
 
     // Create a support ticket if the email matches a registered user. This is
     // awaited (not fire-and-forget) because the response needs the ticket

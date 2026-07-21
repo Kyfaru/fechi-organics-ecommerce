@@ -1,4 +1,6 @@
+import { createElement } from 'react';
 import { toast as sonnerToast } from 'sonner';
+import { CriticalToast } from '@/components/admin/CriticalToast';
 
 type Position =
   | 'top-left'
@@ -56,5 +58,26 @@ export const toast = {
       duration: options?.duration ?? 4000,
       position: options?.position ?? 'bottom-right',
     });
+  },
+
+  /**
+   * The one intentional style break from the rest of this wrapper — white
+   * background, black text, red warning icon, bottom timer bar, an optional
+   * "Details" deep-link. Reserved for CRITICAL-severity admin notifications
+   * (failed payments, system alerts) surfaced while an admin is logged in.
+   */
+  critical(title: string, options?: { message?: string; actionUrl?: string; duration?: number }) {
+    const duration = options?.duration ?? 8000;
+    sonnerToast.custom(
+      (id) =>
+        createElement(CriticalToast, {
+          id,
+          title,
+          message: options?.message,
+          actionUrl: options?.actionUrl,
+          duration,
+        }),
+      { duration, position: 'top-right' }
+    );
   },
 };

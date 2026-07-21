@@ -8,6 +8,7 @@ import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { generateTicketNumber } from "@/lib/tickets/generate-ticket-number";
 import { assignTicketToAdmin } from "@/lib/tickets/assign-admin";
+import { createNotification } from "@/lib/notify";
 
 async function requireUser() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -102,6 +103,13 @@ export async function POST(req: NextRequest) {
     });
 
     console.info("[tickets] POST — created ticket", ticketNumber, "for user", user.id);
+    createNotification({
+      type: "TICKET_NEW",
+      title: `New ticket: ${parsed.data.subject}`,
+      body: `${user.name ?? user.email} opened ticket ${ticketNumber}`,
+      link: `/admin/tickets/${ticket.id}`,
+      targetRoles: ["customer_care"],
+    }).catch(() => {});
     return created({ ticket });
   } catch (e) {
     console.error("[tickets] POST error", e);

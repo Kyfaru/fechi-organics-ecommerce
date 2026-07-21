@@ -12,9 +12,11 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { LogoutModal } from "@/components/ui/LogoutModal";
 import { useSession, signOut } from "@/lib/auth-client";
 import { readSessionCache, writeSessionCache, clearSessionCache } from "@/lib/session-cache";
-import { useTheme } from "@/app/providers";
+import { useTheme, clearPersistedQueryCache } from "@/app/providers";
 import { posthog } from "@/lib/posthog";
 import { useUnreadCount } from "@/hooks/useUnreadCount";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { GlobalSearchModal, type SearchResult } from "@/components/ui/GlobalSearchModal";
 
 const NAV_LINKS = [
   { href: "/", label: "Home" },
@@ -272,8 +274,26 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
     return () => document.removeEventListener("mousedown", handle);
   }, [searchOpen]);
 
+  const debouncedSearch = useDebouncedValue(searchQuery, 300);
+  const { data: searchData, isFetching: searchLoading } = useQuery<{ ok: boolean; data: { results: SearchResult[] } }>({
+    queryKey: ["global-search", debouncedSearch],
+    queryFn: () => fetch(`/api/search?q=${encodeURIComponent(debouncedSearch)}`).then((r) => r.json()),
+    enabled: debouncedSearch.trim().length >= 2,
+  });
+  const searchResults = searchData?.data?.results ?? [];
+
+  function handleSelectSearchResult(result: SearchResult) {
+    setSearchOpen(false);
+    setSearchQuery("");
+    router.push(result.url);
+  }
+
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (searchResults[0]) {
+      handleSelectSearchResult(searchResults[0]);
+      return;
+    }
     setSearchOpen(false);
     setSearchQuery("");
   }
@@ -282,6 +302,7 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
     posthog.capture("logout_clicked");
     posthog.reset();
     await signOut();
+    clearPersistedQueryCache();
     router.push("/");
   }
 
@@ -314,7 +335,15 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
             alt="Fechi Organics"
             width={120}
             height={42}
-            className="object-contain h-[33px] w-auto"
+            className="object-contain h-[33px] w-auto dark:hidden"
+            priority
+          />
+          <Image
+            src="/logo/text-only-white.webp"
+            alt="Fechi Organics"
+            width={120}
+            height={42}
+            className="object-contain h-[33px] w-auto hidden dark:block"
             priority
           />
         </Link>
@@ -352,7 +381,7 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
                 exit={{ opacity: 0, width: 40 }}
                 transition={{ type: "spring", stiffness: 300, damping: 28 }}
                 onSubmit={handleSearchSubmit}
-                className="absolute top-1/2 -translate-y-1/2 z-40 overflow-hidden"
+                className="absolute top-1/2 -translate-y-1/2 z-40"
               >
                 <div className="relative flex items-center">
                   <input
@@ -369,6 +398,12 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
                   >
                     <Icon icon="mdi:magnify" width={16} />
                   </button>
+                  <GlobalSearchModal
+                    query={searchQuery}
+                    results={searchResults}
+                    loading={searchLoading}
+                    onSelect={handleSelectSearchResult}
+                  />
                 </div>
               </motion.form>
             )}
@@ -482,6 +517,32 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
             )}
           </Link>
           <button
+            onClick={toggleTheme}
+            className="p-2"
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            <Icon
+              icon={theme === "dark" ? "iconamoon:mode-light" : "mdi:weather-night"}
+              width={20}
+              className="text-[#1a1c1c] dark:text-white"
+            />
+          </button>
+          {user && (
+            <Link
+              href="/account"
+              className="relative w-8 h-8 rounded-full border-2 border-[#27731e] overflow-hidden flex items-center justify-center flex-shrink-0"
+              aria-label="Account settings"
+            >
+              {user.image ? (
+                <Image src={user.image} alt={user.name ?? "Account"} fill sizes="32px" className="object-cover" />
+              ) : (
+                <span className="w-full h-full bg-[#27731e] text-white text-xs font-bold flex items-center justify-center">
+                  {((user.name ?? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()) || "A")[0].toUpperCase()}
+                </span>
+              )}
+            </Link>
+          )}
+          <button
             onClick={() => setMobileOpen(!mobileOpen)}
             className="p-2"
             aria-label="Menu"
@@ -531,16 +592,26 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
                     )}
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setMobileOpen(false);
-                    setLogoutModalOpen(true);
-                  }}
-                  className="flex items-center gap-2 text-[#ef4444] text-sm font-body hover:underline"
-                >
-                  <Icon icon="mdi:logout" width={16} />
-                  Log Out
-                </button>
+                <div className="flex items-center gap-4">
+                  <Link
+                    href="/account"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center gap-2 text-[#1a1c1c] dark:text-white text-sm font-body hover:text-[#27731e]"
+                  >
+                    <Icon icon="mdi:cog-outline" width={16} />
+                    Settings
+                  </Link>
+                  <button
+                    onClick={() => {
+                      setMobileOpen(false);
+                      setLogoutModalOpen(true);
+                    }}
+                    className="flex items-center gap-2 text-[#ef4444] text-sm font-body hover:underline"
+                  >
+                    <Icon icon="mdi:logout" width={16} />
+                    Log Out
+                  </button>
+                </div>
               </div>
             )}
 

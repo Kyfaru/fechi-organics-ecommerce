@@ -23,7 +23,7 @@ export type InitTxInput = {
   email: string;
   amount: number;
   reference: string;
-  subaccount: string;
+  subaccount?: string;
   callback_url?: string;
   metadata?: Record<string, unknown>;
 };

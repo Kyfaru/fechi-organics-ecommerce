@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { signOut } from "@/lib/auth-client";
+import { clearPersistedQueryCache } from "@/app/providers";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { canAccess, type AdminPage } from "@/lib/permissions";
 
@@ -44,7 +45,7 @@ const NAV_GROUPS: NavGroup[] = [
   ]},
   { label: "MARKETING", items: [
     { href: "/admin/marketing",             icon: Mail,  label: "Campaigns",   page: "campaigns" },
-    { href: "/admin/marketing/promotions",  icon: Tag,   label: "Promotions",  page: "promotions" },
+    { href: "/admin/promotions",  icon: Tag,   label: "Promotions",  page: "promotions" },
     { href: "/admin/loyalty",               icon: Heart, label: "Loyalty",     page: "marketing" },
   ]},
   { label: "CONTENT", items: [
@@ -115,6 +116,7 @@ export function AdminSidebar() {
 
   async function handleLogout() {
     await signOut();
+    clearPersistedQueryCache();
     router.push("/admin/login");
   }
 
@@ -127,7 +129,7 @@ export function AdminSidebar() {
         <div className="h-[72px] flex items-center px-4 border-b border-(--green-800) dark:border-(--dark-border) shrink-0">
           {(!collapsed || mobile) ? (
             <div className="flex items-center gap-3">
-              <Image src="/logo/Asset 16@5x.webp" alt="Fechi Organics" width={32} height={32} className="rounded" />
+              <Image src="/logo/symbol-white.webp" alt="Fechi Organics" width={32} height={32} className="rounded" />
               <div>
                 <div className="font-syne text-[14px] font-semibold text-white dark:text-(--dark-text) leading-tight">Fechi Organics</div>
                 <div className="font-dm text-[11px] text-white/60 dark:text-(--dark-muted)">Admin Panel</div>
@@ -135,7 +137,7 @@ export function AdminSidebar() {
             </div>
           ) : (
             <div className="w-full flex justify-center">
-              <Image src="/logo/Asset 16@5x.webp" alt="Fechi" width={32} height={32} className="rounded" />
+              <Image src="/logo/symbol-white.webp" alt="Fechi" width={32} height={32} className="rounded" />
             </div>
           )}
         </div>

@@ -7,6 +7,7 @@ import { Providers } from "./providers";
 import { SessionProvider } from "@/components/providers/session-provider";
 import { Toaster } from "sonner";
 import { WhatsAppButton } from "@/components/ui/WhatsAppButton";
+import { ScrollToSearchMatch } from "@/components/search/ScrollToSearchMatch";
 
 const syne = Syne({ subsets: ["latin"], variable: "--font-syne-var", weight: ["600", "700"] });
 const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm-var", weight: ["400", "500", "600"] });
@@ -35,6 +36,7 @@ export default function RootLayout({
               {children}
               <Toaster position="bottom-right" richColors />
               <WhatsAppButton />
+              <ScrollToSearchMatch />
             </SessionProvider>
           </Providers>
         </Suspense>

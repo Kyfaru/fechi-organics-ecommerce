@@ -60,6 +60,7 @@ const PUBLIC_PATHS = [
   "/api/storefront",
   "/api/cart",
   "/api/favorites",
+  "/api/blog",
   "/api/currency",
   "/api/contact",
   "/api/qstash",
@@ -69,6 +70,10 @@ const PUBLIC_PATHS = [
   "/api/products/options",
   "/api/track",
   "/api/webhooks",
+  // Server-to-server workers (QStash signature / Vercel Cron secret verified
+  // inside each handler) — never carry a session cookie, so they'd otherwise
+  // 307-redirect before the handler's own auth check ever runs.
+  "/api/admin/workers",
 ];
 
 /** Auth API prefix — always pass through. */

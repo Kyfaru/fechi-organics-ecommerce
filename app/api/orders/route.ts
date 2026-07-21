@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { zohoPost } from "@/lib/zoho";
 import { r2PublicUrl } from "@/lib/r2";
-import { resolvePromo as resolvePromoBase } from "@/lib/promo";
+import { resolvePromo as resolvePromoBase, recordCouponRedemption } from "@/lib/promo";
 import { createNotification } from "@/lib/notify";
 import type { ZohoSalesOrderPayload } from "@/lib/zoho";
 import { assertTrustedOrigin } from "@/lib/origin-check";
@@ -75,25 +75,16 @@ export async function GET(req: NextRequest) {
 const DELIVERY_KES = 35000; // 350 KES × 100 cents
 
 // ---------------------------------------------------------------------------
-// Validate a promo code at checkout: shared validation + per-user redemption
-// check. Throws a Response that can be returned directly.
+// Validate a promo code at checkout. Per-user redemption limit enforcement
+// lives in lib/promo.ts's resolvePromo (shared with every payment route).
+// Throws a Response that can be returned directly.
 // ---------------------------------------------------------------------------
 async function resolvePromo(
   promoCode: string,
   userId: string,
   subtotalKes: number,
 ): Promise<{ promo: { id: string; type: string; value: number }; discountKes: number; deliveryFree: boolean }> {
-  const result = await resolvePromoBase(promoCode, subtotalKes);
-
-  // Check this user hasn't already redeemed this coupon
-  const alreadyUsed = await db.couponRedemption.findUnique({
-    where: { couponId_userId: { couponId: result.promo.id, userId } },
-  });
-  if (alreadyUsed) {
-    throw Err.validation("You have already used this coupon");
-  }
-
-  return result;
+  return resolvePromoBase(promoCode, subtotalKes, userId);
 }
 
 // ---------------------------------------------------------------------------
@@ -203,17 +194,7 @@ export async function POST(req: NextRequest) {
 
       // Record coupon redemption and increment usedCount atomically
       if (resolvedPromoId && promoCode) {
-        await tx.couponRedemption.create({
-          data: {
-            couponId: resolvedPromoId,
-            userId,
-            orderId: newOrder.id,
-          },
-        });
-        await tx.promotion.update({
-          where: { id: resolvedPromoId },
-          data: { usedCount: { increment: 1 } },
-        });
+        await recordCouponRedemption(resolvedPromoId, userId, newOrder.id, tx);
       }
 
       // Clear cart
@@ -261,12 +242,13 @@ export async function POST(req: NextRequest) {
 
     console.info("[orders] Created order", order.id, "orderNumber", order.orderNumber, "for user", userId);
 
-    createNotification(
-      "order",
-      "New Order",
-      `Order ${order.orderNumber ?? order.id.slice(0, 8)} was placed`,
-      "/admin/orders",
-    ).catch(() => {});
+    createNotification({
+      type: "ORDER_NEW",
+      title: "New Order",
+      body: `Order ${order.orderNumber ?? order.id.slice(0, 8)} was placed`,
+      link: "/admin/orders",
+      branchId: order.branchId,
+    }).catch(() => {});
 
     return ok({ orderId: order.id });
   } catch (e) {

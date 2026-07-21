@@ -11,6 +11,7 @@ import {
 import Link from "next/link";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { StatsCard } from "@/components/ui/stats-card";
+import type { PeriodChange } from "@/lib/stats";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
@@ -63,7 +64,7 @@ type Stats = {
 
 type ApiResponse = {
   ok: boolean;
-  data: { users: Customer[]; stats: Stats };
+  data: { users: Customer[]; stats: Stats; statsChange: Record<"total" | "newThisMonth", PeriodChange> };
 };
 
 // ---------------------------------------------------------------------------
@@ -440,6 +441,7 @@ export function AdminCustomersClient() {
 
   const allCustomers = data?.data?.users ?? [];
   const stats = data?.data?.stats;
+  const statsChange = data?.data?.statsChange;
 
   // Client-side filter on top of server data (server already handles DB-level filter;
   // this handles additional text search without a round-trip)
@@ -591,9 +593,9 @@ export function AdminCustomersClient() {
       <div className="px-6 pb-8 space-y-6">
         {/* Stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatsCard title="Total Customers" value={isLoading ? "—" : String(stats?.total ?? 0)} icon={<Users className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+          <StatsCard title="Total Customers" value={isLoading ? "—" : String(stats?.total ?? 0)} icon={<Users className="h-4 w-4 text-muted-foreground" />} change={statsChange?.total.change ?? "—"} changeType={statsChange?.total.changeType === "decrease" ? "negative" : "positive"} />
           <StatsCard title="Active (90d)" value={isLoading ? "—" : String(stats?.active ?? 0)} icon={<UserCheck className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
-          <StatsCard title="New This Month" value={isLoading ? "—" : String(stats?.newThisMonth ?? 0)} icon={<UserPlus className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+          <StatsCard title="New This Month" value={isLoading ? "—" : String(stats?.newThisMonth ?? 0)} icon={<UserPlus className="h-4 w-4 text-muted-foreground" />} change={statsChange?.newThisMonth.change ?? "—"} changeType={statsChange?.newThisMonth.changeType === "decrease" ? "negative" : "positive"} />
           <StatsCard title="Banned" value={isLoading ? "—" : String(stats?.banned ?? 0)} icon={<Ban className="h-4 w-4 text-muted-foreground" />} change="—" changeType="negative" />
         </div>
 
