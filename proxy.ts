@@ -22,7 +22,15 @@
  *  - All other routes require a session cookie to exist.
  *  - Unauthenticated requests to /admin/* → redirected to /admin/login.
  *  - Unauthenticated requests to other protected routes → redirected to /login.
- *  - Authenticated users visiting /login, /signup, or /admin/login → redirected away.
+ *
+ * Note: this middleware deliberately does NOT redirect an authenticated
+ * session away from /login, /signup, or /admin/login — doing that correctly
+ * requires knowing the session's role (admin vs client), which means a DB
+ * call this file intentionally avoids (see above). That responsibility lives
+ * client-side instead: each auth page's own mount effect (app/admin/login/page.tsx,
+ * app/(auth)/login/LoginForm.tsx, app/(auth)/signup/page.tsx) redirects away
+ * a same-portal session and signs out a wrong-portal one — see also the
+ * app-wide PortalSessionGuard in app/providers.tsx.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -153,22 +161,7 @@ export function proxy(request: NextRequest): NextResponse {
   // Presence of the session cookie is the first-pass authentication signal.
   const hasSessionCookie = !!sessionCookie;
 
-  // 3. Redirect authenticated users away from auth pages to avoid re-login.
-  //    /admin/login → /admin (the AdminGuard handles role checks server-side).
-  //    /login or /signup → / (the default storefront home).
-  const isAuthPage =
-    pathname === "/login" ||
-    pathname === "/signup" ||
-    pathname === "/admin/login" ||
-    pathname.startsWith("/login/") ||
-    pathname.startsWith("/signup/");
-
-  if (isAuthPage && hasSessionCookie) {
-    const dest = pathname.startsWith("/admin") ? "/admin" : "/";
-    return NextResponse.redirect(new URL(dest, request.url));
-  }
-
-  // 4. Redirect unauthenticated users away from protected routes.
+  // 3. Redirect unauthenticated users away from protected routes.
   //    Admin paths go to /admin/login; all other protected paths go to /login
   //    with a callbackUrl so the user lands back where they intended.
   if (!isPublicPath && !hasSessionCookie) {

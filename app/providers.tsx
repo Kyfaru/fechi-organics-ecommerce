@@ -4,10 +4,12 @@ import { QueryClient, useQuery } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { createContext, useContext, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import type { CurrencyCode, FxRates } from "@/lib/currency";
 import { CURRENCIES, formatPrice } from "@/lib/currency";
 import { PostHogProvider } from "@/components/PostHogProvider";
 import { PrelineInit } from "@/components/admin/PrelineInit";
+import { authClient } from "@/lib/auth-client";
 
 // ── TanStack Query ─────────────────────────────────────────────────────────
 
@@ -150,6 +152,37 @@ export function useCurrency() {
   return useContext(CurrencyContext);
 }
 
+// ── Portal session guard ────────────────────────────────────────────────────
+
+/**
+ * Signs out an admin-role session found anywhere outside /admin/* — an admin
+ * session must never look "logged in" on the customer storefront. Deliberately
+ * skips /admin/* (AdminGuard already redirects a wrong-role session to /403
+ * there; forcibly destroying a client's legitimate session over a mistyped
+ * admin URL would be needlessly punitive).
+ *
+ * This is what catches the one gap the /login and /admin/login pages' own
+ * precheck (lib/portal-check.ts) can't cover: signIn.social() does a full
+ * OAuth redirect with no email step first, so an existing admin who
+ * authenticates via a social button on /login can't be intercepted before a
+ * session exists — this guard catches it on the very next render instead.
+ */
+function PortalSessionGuard() {
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (pathname.startsWith("/admin")) return;
+    (async () => {
+      const { data } = await authClient.getSession();
+      if (data?.session && (data.user as { role?: string } | undefined)?.role === "admin") {
+        await authClient.signOut();
+      }
+    })();
+  }, [pathname]);
+
+  return null;
+}
+
 // ── Root providers wrapper ──────────────────────────────────────────────────
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -164,6 +197,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <PostHogProvider>
       <PrelineInit />
+      <PortalSessionGuard />
       <PersistQueryClientProvider
         client={qc}
         persistOptions={{ persister, maxAge: 24 * 60 * 60_000 }}

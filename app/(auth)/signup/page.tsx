@@ -74,6 +74,26 @@ export default function SignupPage() {
   const [submitted, setSubmitted] = useState(false);
 
   // ---------------------------------------------------------------------------
+  // On mount: an already-correct client session skips straight to /. A
+  // session for the wrong portal (an admin's) is signed out silently — this
+  // only replaces the convenience redirect proxy.ts used to provide; it
+  // overlaps intentionally with the app-wide PortalSessionGuard.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    (async () => {
+      const { data } = await authClient.getSession();
+      if (!data?.session) return;
+      const role = (data.user as { role?: string } | undefined)?.role;
+      if (role === "admin") {
+        await authClient.signOut();
+      } else {
+        router.replace("/");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---------------------------------------------------------------------------
   // Validation
   // ---------------------------------------------------------------------------
   function validate(): SignupErrors {

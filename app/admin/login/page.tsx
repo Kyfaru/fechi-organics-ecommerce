@@ -12,6 +12,7 @@ import { clearPersistedQueryCache } from "@/app/providers";
 import { Spinner } from "@/components/ui/spinner";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "@/lib/toast";
+import { checkPortalMatch } from "@/lib/portal-check";
 
 // ---------------------------------------------------------------------------
 // State machine for the admin login flow:
@@ -91,6 +92,27 @@ export default function AdminLoginPage() {
   }, [resendCountdown]);
 
   // ---------------------------------------------------------------------------
+  // On mount: an already-correct admin session skips straight to /admin. A
+  // session for the wrong portal (a client's) is signed out silently — this
+  // page is under /admin/*, so the app-wide PortalSessionGuard (app/providers.tsx)
+  // deliberately doesn't cover it, and it must handle its own cleanup now that
+  // proxy.ts no longer blindly redirects any session-cookie holder away here.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    (async () => {
+      const { data } = await authClient.getSession();
+      if (!data?.session) return;
+      const role = (data.user as { role?: string } | undefined)?.role;
+      if (role === "admin") {
+        router.replace("/admin");
+      } else {
+        await authClient.signOut();
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
   function validateCredentials(): AdminLoginErrors {
@@ -138,6 +160,14 @@ export default function AdminLoginPage() {
     setIsLoading(true);
 
     try {
+      // Reject a client's email before ever calling signIn — no session is
+      // created for a wrong-portal attempt.
+      const portalOk = await checkPortalMatch(email, "admin");
+      if (!portalOk) {
+        toast.error("Sign in failed.");
+        return;
+      }
+
       const result = await authClient.signIn.email({ email, password });
 
       if (result?.error) {
@@ -145,16 +175,22 @@ export default function AdminLoginPage() {
         return;
       }
 
-      // Role check — reject non-admins before they reach 2FA
+      // Defense-in-depth fallback — reject non-admins before they reach 2FA,
+      // in case the precheck above was ever bypassed.
       const role = (result?.data?.user as { role?: string } | undefined)?.role;
       if (role && role !== "admin") {
         await authClient.signOut();
-        toast.error("Access denied — admin accounts only.");
+        toast.error("Sign in failed.");
         return;
       }
 
       // Fetch admin profile — determines forced password-change and 2FA state
       const meRes = await fetch("/api/admin/me");
+      if (!meRes.ok) {
+        await authClient.signOut();
+        toast.error("Sign in failed.");
+        return;
+      }
       const me: AdminMeResponse = await meRes.json();
       setAdminMe(me);
 

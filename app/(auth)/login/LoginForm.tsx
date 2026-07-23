@@ -14,6 +14,7 @@ import { storeUser } from "@/lib/user-store";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
 import { posthog } from "@/lib/posthog";
+import { checkPortalMatch } from "@/lib/portal-check";
 
 interface LoginErrors {
   email?: string;
@@ -21,15 +22,8 @@ interface LoginErrors {
 }
 
 // Isolated component so useSearchParams is inside a Suspense boundary
-function LoginSearchParamsReader({
-  onMsg,
-}: {
-  onMsg: (isAdminPortalMsg: boolean) => void;
-}) {
+function LoginSearchParamsReader() {
   const searchParams = useSearchParams();
-  const isAdminPortalMsg = searchParams.get("msg") === "use-admin-portal";
-  // Call the setter on every render so the parent stays in sync
-  onMsg(isAdminPortalMsg);
 
   // Better Auth redirects OAuth errors (e.g. a banned user) back here as
   // ?error=CODE&error_description=... instead of its own bare error page —
@@ -50,7 +44,6 @@ function LoginSearchParamsReader({
 
 export default function LoginForm() {
   const router = useRouter();
-  const [isAdminPortalMsg, setIsAdminPortalMsg] = useState(false);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -58,6 +51,27 @@ export default function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   // OTP modal state
   const [showOTP, setShowOTP] = useState(false);
+
+  // ---------------------------------------------------------------------------
+  // On mount: an already-correct client session skips straight to /. A
+  // session for the wrong portal (an admin's) is signed out silently — this
+  // overlaps with the app-wide PortalSessionGuard (app/providers.tsx), which
+  // is intentional defense-in-depth now that proxy.ts no longer blindly
+  // redirects any session-cookie holder away from this page.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    (async () => {
+      const { data } = await authClient.getSession();
+      if (!data?.session) return;
+      const role = (data.user as { role?: string } | undefined)?.role;
+      if (role === "admin") {
+        await signOut();
+      } else {
+        router.replace("/");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Form validation
@@ -86,6 +100,14 @@ export default function LoginForm() {
     setIsLoading(true);
 
     try {
+      // Reject an admin's email before ever sending an OTP — no code is
+      // emailed and no session is created for a wrong-portal attempt.
+      const portalOk = await checkPortalMatch(email, "client");
+      if (!portalOk) {
+        setErrors({ email: "An account with this email already exists." });
+        return;
+      }
+
       // Send the OTP to the user's email before showing the modal.
       // The actual signIn.email call happens inside onVerifyOTP after the code
       // is confirmed, so the session cookie is only set on a verified login.
@@ -145,12 +167,11 @@ export default function LoginForm() {
       if (result?.data?.user) {
         const u = result.data.user as Record<string, unknown>;
 
-        // Admin accounts must use the dedicated admin portal.
-        // Sign them out here and redirect rather than letting them land on /.
+        // Admin accounts must use the dedicated admin portal — defense-in-depth
+        // fallback in case checkPortalMatch (handleSubmit) was bypassed.
         if (u.role === "admin") {
           await signOut();
-          router.push("/admin/login?msg=use-admin-portal");
-          return { success: true };
+          return { success: false, error: "An account with this email already exists." };
         }
 
         storeUser({
@@ -182,7 +203,7 @@ export default function LoginForm() {
     <main className="flex min-h-screen">
       {/* Read search-params inside Suspense to satisfy Next.js static-render rules */}
       <Suspense fallback={null}>
-        <LoginSearchParamsReader onMsg={setIsAdminPortalMsg} />
+        <LoginSearchParamsReader />
       </Suspense>
       {/* ====================================================================
           LEFT PANEL — dark green botanical
@@ -287,20 +308,6 @@ export default function LoginForm() {
               Sign in to your Fechi Organics account
             </p>
           </div>
-
-          {/* Admin-portal redirect banner */}
-          {isAdminPortalMsg && (
-            <div
-              role="status"
-              className="mb-5 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-700"
-            >
-              Admin accounts must sign in at the{" "}
-              <Link href="/admin/login" className="font-semibold underline">
-                admin portal
-              </Link>
-              .
-            </div>
-          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-5">
