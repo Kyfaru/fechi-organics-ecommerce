@@ -161,13 +161,26 @@ export function proxy(request: NextRequest): NextResponse {
   // Presence of the session cookie is the first-pass authentication signal.
   const hasSessionCookie = !!sessionCookie;
 
+  // "Admin-scoped" means either the admin page tree (/admin/*) or its API
+  // routes (/api/admin/*) — pathname.startsWith("/admin") alone does NOT
+  // match /api/admin/me (it starts with "/api/admin", not "/admin"). Getting
+  // this wrong sends an unauthenticated /api/admin/* request through the
+  // *client* login redirect instead of the admin one — worse, if the caller
+  // actually does have a valid admin session that this request merely failed
+  // to detect (e.g. a momentary cookie-read miss), landing them on /login
+  // triggers that page's own wrong-portal guard, which signs the admin
+  // session back out. Same bug existed before this task; it just had no way
+  // to bite until the client login page started actively signing out
+  // wrong-portal sessions.
+  const isAdminScopedPath = pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
+
   // 3. Redirect unauthenticated users away from protected routes.
   //    Admin paths go to /admin/login; all other protected paths go to /login
   //    with a callbackUrl so the user lands back where they intended.
   if (!isPublicPath && !hasSessionCookie) {
-    const loginDest = pathname.startsWith("/admin") ? "/admin/login" : "/login";
+    const loginDest = isAdminScopedPath ? "/admin/login" : "/login";
     const loginUrl = new URL(loginDest, request.url);
-    if (!pathname.startsWith("/admin")) {
+    if (!isAdminScopedPath) {
       loginUrl.searchParams.set("callbackUrl", encodeURIComponent(pathname));
     }
     return NextResponse.redirect(loginUrl);
