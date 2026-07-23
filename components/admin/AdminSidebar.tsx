@@ -6,75 +6,14 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  LayoutDashboard, Package, ShoppingBag, Users, Warehouse, Truck,
-  Mail, Tag, Heart, FileText, Layout, Star, HelpCircle, Image as ImageIcon,
-  BarChart2, CreditCard, Shield, Settings, LogOut, ArrowLeft,
-  ChevronLeft, ChevronRight, Menu, X, User, Bell,
+  LogOut, ArrowLeft, ChevronLeft, ChevronRight, Menu, X,
 } from "lucide-react";
 import { signOut, authClient } from "@/lib/auth-client";
 import { clearPersistedQueryCache } from "@/app/providers";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useAdminMe } from "@/hooks/use-can";
-import type { statements } from "@/lib/permissions";
+import { NAV_GROUPS, isActive, type NavItem } from "@/lib/admin-nav";
 import type { PermissionCheck } from "@/lib/require-permission";
-
-// Each nav item optionally maps to a `statements` resource key for
-// permission-based filtering, defaulting to the "view" action. Items with no
-// resource (e.g. Dashboard, My Profile, Security) are always shown.
-type NavItem = {
-  href: string;
-  icon: React.ElementType;
-  label: string;
-  exact?: boolean;
-  resource?: keyof typeof statements;
-  action?: string;
-};
-
-type NavGroup = {
-  label: string;
-  items: NavItem[];
-};
-
-const NAV_GROUPS: NavGroup[] = [
-  { label: "STORE", items: [
-    { href: "/admin",          icon: LayoutDashboard, label: "Dashboard", exact: true },
-    { href: "/admin/products", icon: Package,         label: "Products",  resource: "products" },
-    { href: "/admin/orders",   icon: ShoppingBag,     label: "Orders",    resource: "orders" },
-    { href: "/admin/customers",icon: Users,           label: "Customers", resource: "customers" },
-  ]},
-  { label: "OPERATIONS", items: [
-    { href: "/admin/inventory", icon: Warehouse, label: "Inventory", resource: "inventory" },
-    { href: "/admin/suppliers", icon: Truck,     label: "Suppliers", resource: "suppliers" },
-  ]},
-  { label: "MARKETING", items: [
-    { href: "/admin/marketing",             icon: Mail,  label: "Campaigns",   resource: "campaigns" },
-    { href: "/admin/promotions",  icon: Tag,   label: "Promotions",  resource: "promotions" },
-    { href: "/admin/loyalty",               icon: Heart, label: "Loyalty",     resource: "loyalty" },
-  ]},
-  { label: "CONTENT", items: [
-    { href: "/admin/content/blog",         icon: FileText,  label: "Blog",         resource: "content" },
-    { href: "/admin/content/homepage",     icon: Layout,    label: "Homepage",     resource: "content" },
-    { href: "/admin/content/testimonials", icon: Star,      label: "Testimonials", resource: "content" },
-    { href: "/admin/content/faqs",         icon: HelpCircle,label: "FAQs",         resource: "content" },
-    { href: "/admin/content/banners",      icon: ImageIcon, label: "Banners",      resource: "content" },
-  ]},
-  { label: "ANALYTICS", items: [
-    { href: "/admin/analytics", icon: BarChart2, label: "Reports", resource: "analytics" },
-    { href: "/admin/finance",   icon: CreditCard,label: "Finance", resource: "finance" },
-  ]},
-  { label: "SETTINGS", items: [
-    { href: "/admin/notifications", icon: Bell,    label: "Notifications" },
-    { href: "/admin/staff",    icon: Shield,  label: "Staff & Roles", resource: "staff" },
-    { href: "/admin/profile",  icon: User,    label: "My Profile" },
-    { href: "/admin/security", icon: Shield,  label: "Security" },
-    { href: "/admin/settings", icon: Settings,label: "Settings",      resource: "settings" },
-  ]},
-];
-
-function isActive(pathname: string, href: string, exact?: boolean) {
-  if (exact) return pathname === href;
-  return pathname === href || pathname.startsWith(href + "/");
-}
 
 export function AdminSidebar() {
   const pathname = usePathname();
@@ -95,6 +34,8 @@ export function AdminSidebar() {
     if (!item.resource) return true;
     if (!me?.role) return false;
     if (me.isSuperAdmin) return true;
+    const deny: string[] = me.permissions?.deny ?? [];
+    if (deny.includes(item.resource)) return false;
     const permissions = { [item.resource]: [item.action ?? "view"] } as PermissionCheck;
     return authClient.admin.checkRolePermission({ role: me.role, permissions });
   }

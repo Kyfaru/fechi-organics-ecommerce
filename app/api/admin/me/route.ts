@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   // Fetch user-level fields needed by the login 2FA flow
   const user = await db.user.findUnique({
     where: { id: session.user.id },
-    select: { email: true, phone: true, twoFactorEnabled: true },
+    select: { email: true, phone: true, twoFactorEnabled: true, mustChangePassword: true },
   })
 
   return NextResponse.json({
@@ -42,5 +42,6 @@ export async function GET(req: NextRequest) {
     twoFaMethod: profile?.twoFaMethod ?? 'totp',
     branchId: profile?.branchId ?? null,
     branchName: profile?.branch?.name ?? null,
+    mustChangePassword: user?.mustChangePassword ?? false,
   })
 }

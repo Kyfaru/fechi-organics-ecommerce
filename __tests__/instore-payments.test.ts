@@ -56,6 +56,7 @@ const mockInStoreOrderUpdate = vi.fn();
 const mockInStoreOrderCreate = vi.fn();
 const mockInStoreOrderItemFindMany = vi.fn();
 const mockProductUpdate = vi.fn();
+const mockStockUpsert = vi.fn();
 const mockMpesaC2bFindUnique = vi.fn();
 const mockMpesaC2bUpdate = vi.fn();
 const mockMpesaC2bCreate = vi.fn();
@@ -72,6 +73,9 @@ vi.mock("@/lib/db", () => ({
       findMany: (...args: unknown[]) => mockProductFindMany(...args),
       update: (...args: unknown[]) => mockProductUpdate(...args),
     },
+    branchProductStock: {
+      upsert: (...args: unknown[]) => mockStockUpsert(...args),
+    },
     inStoreTransaction: {
       findUnique: (...args: unknown[]) => mockInStoreTransactionFindUnique(...args),
       update: (...args: unknown[]) => mockInStoreTransactionUpdate(...args),
@@ -80,6 +84,7 @@ vi.mock("@/lib/db", () => ({
     inStoreOrder: {
       update: (...args: unknown[]) => mockInStoreOrderUpdate(...args),
       create: (...args: unknown[]) => mockInStoreOrderCreate(...args),
+      findUnique: vi.fn(),
     },
     inStoreOrderItem: {
       findMany: (...args: unknown[]) => mockInStoreOrderItemFindMany(...args),
@@ -119,13 +124,14 @@ describe("markInStorePaymentSuccess idempotency", () => {
       .mockResolvedValueOnce({ status: "PENDING" })
       .mockResolvedValueOnce({ status: "SUCCESS" });
     mockInStoreOrderItemFindMany.mockResolvedValue([{ productId: "prod-1", quantity: 2 }]);
+    mockInStoreOrderUpdate.mockResolvedValue({ branchId: "branch-1" });
 
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
       const tx = {
         inStoreTransaction: { findUnique: mockInStoreTransactionFindUnique, update: mockInStoreTransactionUpdate },
         inStoreOrder: { update: mockInStoreOrderUpdate },
         inStoreOrderItem: { findMany: mockInStoreOrderItemFindMany },
-        product: { update: mockProductUpdate },
+        branchProductStock: { upsert: mockStockUpsert },
       };
       return fn(tx);
     });
@@ -146,11 +152,14 @@ describe("markInStorePaymentSuccess idempotency", () => {
     expect(mockInStoreOrderUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ data: { paymentStatus: "PAID" } }),
     );
-    expect(mockProductUpdate).toHaveBeenCalledTimes(1);
-    expect(mockProductUpdate).toHaveBeenCalledWith({
-      where: { id: "prod-1" },
-      data: { stock: { decrement: 2 } },
-    });
+    // Branch-scoped stock, not the deprecated global product.stock column.
+    expect(mockStockUpsert).toHaveBeenCalledTimes(1);
+    expect(mockStockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { branchId_productId: { branchId: "branch-1", productId: "prod-1" } },
+        update: { stock: { decrement: 2 } },
+      }),
+    );
 
     // Redis signal fires on every call (best-effort) — not the correctness guard.
     expect(mockRedisSet).toHaveBeenCalledTimes(2);
@@ -277,7 +286,7 @@ describe("POST /api/admin/orders/instore/mpesa/c2b/claim", () => {
         },
         inStoreOrder: { create: mockInStoreOrderCreate },
         inStoreTransaction: { create: mockInStoreTransactionCreate },
-        product: { update: mockProductUpdate },
+        branchProductStock: { upsert: mockStockUpsert },
       };
       return fn(tx);
     });
@@ -294,10 +303,13 @@ describe("POST /api/admin/orders/instore/mpesa/c2b/claim", () => {
       where: { id: "c2b-1" },
       data: { matchedInStoreTransactionId: "instore-tx-1" },
     });
-    expect(mockProductUpdate).toHaveBeenCalledWith({
-      where: { id: "prod-1" },
-      data: { stock: { decrement: 2 } },
-    });
+    // Branch-scoped stock, not the deprecated global product.stock column.
+    expect(mockStockUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { branchId_productId: { branchId: BRANCH_ID, productId: "prod-1" } },
+        update: { stock: { decrement: 2 } },
+      }),
+    );
   });
 });
 

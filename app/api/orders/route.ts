@@ -3,11 +3,11 @@ import { connection } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { zohoPost } from "@/lib/zoho";
 import { r2PublicUrl } from "@/lib/r2";
 import { resolvePromo as resolvePromoBase, recordCouponRedemption } from "@/lib/promo";
 import { createNotification } from "@/lib/notify";
-import type { ZohoSalesOrderPayload } from "@/lib/zoho";
+import { pushSaleToZoho } from "@/lib/zoho/push-sale";
+import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { generateOrderNumber, type TxClient } from "@/lib/orders/generate-order-number";
 
@@ -132,15 +132,6 @@ export async function POST(req: NextRequest) {
       return Err.validation("Cart is empty");
     }
 
-    // 4. Validate stock
-    for (const ci of cart.items) {
-      if (ci.product.stock < ci.quantity) {
-        return Err.validation(
-          `"${ci.product.name}" is out of stock (requested ${ci.quantity}, available ${ci.product.stock})`,
-        );
-      }
-    }
-
     // 5. Compute subtotal
     const subtotalKes = cart.items.reduce(
       (sum: number, ci: (typeof cart.items)[number]) =>
@@ -203,36 +194,56 @@ export async function POST(req: NextRequest) {
       return newOrder;
     });
 
-    // 8. Fire-and-forget: push Sales Order to Zoho
+    // 8. Fire-and-forget: push Sales Order to Zoho. An online order has no
+    // branch of its own yet (that's chosen later, at fulfillment) — default
+    // to the main branch's org. Known limitation, not fixed here: this
+    // always posts to whichever org the main branch belongs to, even if the
+    // order later ships from a different org's branch. Skip silently if the
+    // main branch isn't linked to a Zoho org, rather than failing an
+    // otherwise-successful checkout.
     (async () => {
       try {
+        const mainBranch = await db.branch.findFirst({
+          where: { isMain: true, isActive: true },
+          select: { id: true },
+        });
+        if (!mainBranch) {
+          console.warn("[orders] No main branch configured — skipping Zoho sales order push for", order.id);
+          return;
+        }
+        const organizationId = await resolveZohoOrganizationId(mainBranch.id);
+        if (!organizationId) {
+          console.warn("[orders] Main branch isn't linked to a Zoho organization — skipping push for", order.id);
+          return;
+        }
+
         const user = await db.user.findUnique({
           where: { id: userId },
           select: { name: true, email: true },
         });
 
-        const soPayload: ZohoSalesOrderPayload = {
-          customer_name: user?.name,
-          customer_email: user?.email,
-          line_items: cart.items.map((ci: (typeof cart.items)[number]) => ({
-            item_id: ci.product.zohoItemId ?? undefined,
+        const { salesorderId } = await pushSaleToZoho({
+          organizationId,
+          branchId: mainBranch.id,
+          referenceType: "order",
+          referenceId: order.id,
+          customerName: user?.name,
+          customerEmail: user?.email,
+          items: cart.items.map((ci: (typeof cart.items)[number]) => ({
+            productId: ci.productId,
             name: ci.product.name,
             quantity: ci.quantity,
-            rate: ci.product.priceKes / 100,
+            priceKes: ci.product.priceKes,
           })),
-          discount: discountKes / 100,
-          shipping_charge: resolvedDeliveryKes / 100,
+          discountKes,
+          shippingKes: resolvedDeliveryKes,
           notes: `Fechi Organics order ${order.id}`,
-        };
+        });
 
-        const soRes = await zohoPost<{
-          salesorder?: { salesorder_id?: string };
-        }>("/salesorders", { salesorder: soPayload });
-
-        if (soRes?.salesorder?.salesorder_id) {
+        if (salesorderId) {
           await db.order.update({
             where: { id: order.id },
-            data: { zohoSoId: soRes.salesorder.salesorder_id },
+            data: { zohoSoId: salesorderId },
           });
         }
       } catch (e) {

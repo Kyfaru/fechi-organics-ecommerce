@@ -11,9 +11,19 @@ export async function GET(req: NextRequest) {
     if (denied) return denied
     const branches = await db.branch.findMany({
       orderBy: { name: "asc" },
-      select: { id: true, name: true, county: true, phone: true, isActive: true, mpesaType: true, shortcode: true },
+      select: {
+        id: true, name: true, county: true, phone: true, isActive: true, mpesaType: true, shortcode: true,
+        // Zoho connection status only — never the org's encrypted credential columns.
+        zohoOrganizationId: true, zohoWarehouseId: true,
+        zohoOrganization: { select: { id: true, name: true } },
+      },
     })
-    return ok({ branches })
+    const shaped = branches.map((b) => ({
+      ...b,
+      zohoConnected: Boolean(b.zohoOrganizationId),
+      zohoOrganizationName: b.zohoOrganization?.name ?? null,
+    }))
+    return ok({ branches: shaped })
   } catch (e) {
     console.error("[admin/branches] GET error", e)
     return Err.internal(e)

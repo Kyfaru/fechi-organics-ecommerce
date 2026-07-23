@@ -71,6 +71,22 @@ async function main() {
         sortOrder: 5,
       },
     }),
+    // Fallback for products created by Zoho sync whose category_name doesn't
+    // match any of the above — kept inactive so it never appears in
+    // storefront nav/filters, only used as a create-time landing spot for
+    // admins to manually reassign (see lib/zoho-sync.ts).
+    prisma.category.upsert({
+      where: { key: "UNCATEGORIZED" },
+      update: {},
+      create: {
+        key: "UNCATEGORIZED",
+        name: "Uncategorized",
+        slug: "uncategorized",
+        imageKey: "img/face care.jpg",
+        sortOrder: 999,
+        isActive: false,
+      },
+    }),
   ]);
 
   const [faceCare, bodyCare, hairCare, wellness, babyKids] = categories;

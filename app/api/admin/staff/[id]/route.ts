@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import { requirePermission } from "@/lib/require-permission";
-import { roles, type RoleName } from "@/lib/permissions";
+import { roles, appResources, grantsFor, type RoleName } from "@/lib/permissions";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 
 interface Params { params: Promise<{ id: string }> }
@@ -34,15 +34,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const isBanChange = typeof body.banned === "boolean" || typeof body.banReason === "string";
   const isRoleChange = typeof body.role === "string" && body.role in roles;
+  const isPermissionChange =
+    !isRoleChange &&
+    typeof body.permissions === "object" &&
+    body.permissions !== null &&
+    Array.isArray((body.permissions as { deny?: unknown }).deny);
 
-  if (!isBanChange && !isRoleChange) {
+  if (!isBanChange && !isRoleChange && !isPermissionChange) {
     return Err.validation("No valid fields to update.");
   }
   if (isBanChange) {
     const denied = await requirePermission(req, { staff: ["update"] });
     if (denied) return denied;
   }
-  if (isRoleChange) {
+  if (isRoleChange || isPermissionChange) {
     const denied = await requirePermission(req, { staff: ["assign_roles"] });
     if (denied) return denied;
   }
@@ -72,6 +77,21 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
     profileUpdate.role = role;
     if (role === "super_admin" || role === "admin") profileUpdate.isSuperAdmin = role === "super_admin";
+    // A stale deny-list surviving a role swap could over-restrict the new
+    // role or reference resources meaningless to it — reset it; the caller
+    // can re-narrow via Edit Permissions afterward if needed.
+    profileUpdate.permissions = {};
+  } else if (isPermissionChange) {
+    const target = await db.user.findUnique({
+      where: { id },
+      select: { adminProfile: { select: { role: true } } },
+    });
+    const targetRole = (target?.adminProfile?.role ?? "viewer") as RoleName;
+    const requestedDeny = new Set((body.permissions as { deny: string[] }).deny);
+    const sanitizedDeny = appResources.filter(
+      (resource) => requestedDeny.has(resource) && grantsFor(targetRole, resource).length > 0
+    );
+    profileUpdate.permissions = sanitizedDeny.length > 0 ? { deny: sanitizedDeny } : {};
   }
 
   try {

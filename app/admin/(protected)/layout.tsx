@@ -6,7 +6,10 @@ import { db } from "@/lib/db";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { AdminHeader } from "@/components/admin/AdminHeader";
 import { AdminFooter } from "@/components/admin/AdminFooter";
+import { Admin403 } from "@/components/admin/Admin403";
 import { Spinner } from "@/components/ui/spinner";
+import { checkPermissionPage } from "@/lib/require-permission";
+import { resourceForPath } from "@/lib/admin-nav";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -39,8 +42,19 @@ async function AdminGuard({ children }: { children: React.ReactNode }) {
   const user = await db.user.findUnique({ where: { id: session.user.id } });
   if (user?.role !== "admin") redirect("/403");
 
-  // Force password change on first login
-  if (user.mustChangePassword) redirect("/admin/change-password");
+  // Resource-level check for the current route — in-place 403 (shell stays
+  // mounted) rather than a redirect, since a redirect would lose the
+  // sidebar/header context for no reason. Auth/inactive/expired states still
+  // redirect below (a session-validity issue, not a "wrong page" issue).
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  const resource = resourceForPath(pathname);
+  if (resource) {
+    const access = await checkPermissionPage({ [resource]: ["view"] });
+    if (!access.allowed) {
+      if (access.reason === "forbidden") return <Admin403 />;
+      redirect(access.reason === "auth" ? "/admin/login" : "/admin");
+    }
+  }
 
   return <>{children}</>;
 }

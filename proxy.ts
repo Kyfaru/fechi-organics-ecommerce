@@ -180,6 +180,17 @@ export function proxy(request: NextRequest): NextResponse {
     return NextResponse.redirect(loginUrl);
   }
 
+  // Forward the resolved pathname as a request header for /admin/* routes so
+  // the server-side layout guard (app/admin/(protected)/layout.tsx) can read
+  // it via next/headers — there's no other way to get the current pathname
+  // inside a server component, and it's needed there to resolve which
+  // resource a page requires for the in-place 403 check.
+  if (pathname.startsWith("/admin")) {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-pathname", pathname);
+    return withSecurityHeaders(NextResponse.next({ request: { headers: requestHeaders } }));
+  }
+
   return withSecurityHeaders(NextResponse.next());
 }
 

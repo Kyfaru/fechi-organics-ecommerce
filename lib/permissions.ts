@@ -46,6 +46,16 @@ export const statements = {
 
 export const ac = createAccessControl(statements)
 
+// The 20 real app resources, derived at runtime from `statements` rather
+// than hardcoded — keeps this list correct if a resource is ever added or
+// removed. Excludes Better Auth's own built-in "user"/"session" statements
+// (spread in from adminDefaultStatements), which aren't app resources.
+export type AppResource = Exclude<keyof typeof statements, "user" | "session">
+
+export const appResources = (Object.keys(statements) as (keyof typeof statements)[]).filter(
+  (resource): resource is AppResource => resource !== "user" && resource !== "session"
+)
+
 // Every role below gets notifications:["view","manage"] — today every
 // notification route is gated by requireAdminPage(req,"dashboard"), a
 // workaround that's effectively open to any authenticated staff member.
@@ -130,3 +140,16 @@ export const roles = {
 } as const
 
 export type RoleName = keyof typeof roles
+
+// Better Auth types each role's `.statements` narrowly — only the resource
+// keys that specific role was granted appear in its type (see
+// node_modules/better-auth/dist/plugins/access/types.d.mts: ExactRoleStatements).
+// Looking up an arbitrary resource across all 20 possibilities therefore
+// needs one controlled cast here rather than an unsafe cast at every call
+// site. Read-only lookup only, never mutates `roles`.
+type GrantMap = Record<string, readonly string[] | undefined>
+
+export function grantsFor(role: RoleName, resource: AppResource): readonly string[] {
+  const grants = roles[role].statements as unknown as GrantMap
+  return grants[resource] ?? []
+}

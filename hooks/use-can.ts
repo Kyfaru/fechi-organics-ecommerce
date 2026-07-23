@@ -26,6 +26,8 @@ export function useCan(permissions: PermissionCheck): boolean {
   const { data: me } = useAdminMe();
   if (!me?.role) return false;
   if (me.isSuperAdmin) return true;
+  const deny: string[] = me.permissions?.deny ?? [];
+  if (Object.keys(permissions).some((resource) => deny.includes(resource))) return false;
   return authClient.admin.checkRolePermission({
     role: me.role,
     permissions,

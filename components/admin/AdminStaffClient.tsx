@@ -15,6 +15,8 @@ import {
   MoreHorizontal, UserPlus, Mail, ChevronDown,
 } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
+import { PermissionOverrideGrid } from "@/components/admin/PermissionOverrideGrid";
+import type { RoleName } from "@/lib/permissions";
 import { StatsCard } from "@/components/ui/stats-card";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
@@ -40,6 +42,7 @@ interface StaffMember {
     department: string | null;
     isActive: boolean;
     role: string;
+    permissions?: { deny?: string[] } | null;
   } | null;
 }
 
@@ -100,12 +103,14 @@ function RowActions({
   onDelete,
   onResetPassword,
   onChangeRole,
+  onEditPermissions,
 }: {
   staff: StaffMember;
   onDeactivate: (s: StaffMember) => void;
   onDelete: (s: StaffMember) => void;
   onResetPassword: (s: StaffMember) => void;
   onChangeRole: (s: StaffMember) => void;
+  onEditPermissions: (s: StaffMember) => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -128,6 +133,12 @@ function RowActions({
               className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
             >
               Change Role
+            </button>
+            <button
+              onClick={() => { setOpen(false); onEditPermissions(staff); }}
+              className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+            >
+              Edit Permissions
             </button>
             <button
               onClick={() => { setOpen(false); onResetPassword(staff); }}
@@ -219,6 +230,7 @@ function InviteDrawer({
     password: "",
     confirmPassword: "",
     role: "viewer" as InviteRole,
+    deny: [] as string[],
     branchId: "",
     expiry: "lifetime" as string,
     customFrom: "",
@@ -288,6 +300,7 @@ function InviteDrawer({
           phone:            form.phone.trim() || undefined,
           password:         form.password,
           role:             form.role,
+          permissions:      form.deny.length > 0 ? { deny: form.deny } : undefined,
           branchId:         form.branchId || undefined,
           accessExpiresAt:  resolveExpiry(),
           note:             form.note.trim() || undefined,
@@ -300,7 +313,7 @@ function InviteDrawer({
       // Reset form
       setForm({
         name: "", username: "", email: "", phone: "", password: "", confirmPassword: "",
-        role: "viewer",
+        role: "viewer", deny: [],
         branchId: "", expiry: "lifetime", customFrom: "", customTo: "",
         note: "", inviteChannels: [],
       });
@@ -454,7 +467,7 @@ function InviteDrawer({
           <div className="relative">
             <select
               value={form.role}
-              onChange={(e) => setForm((p) => ({ ...p, role: e.target.value as InviteRole }))}
+              onChange={(e) => setForm((p) => ({ ...p, role: e.target.value as InviteRole, deny: [] }))}
               className={selectCls}
             >
               {INVITE_ROLES.map((r) => (
@@ -466,6 +479,12 @@ function InviteDrawer({
             <ChevronDown size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-(--neutral-500) pointer-events-none" />
           </div>
         </div>
+
+        <PermissionOverrideGrid
+          role={form.role}
+          deny={form.deny}
+          onChange={(deny) => setForm((p) => ({ ...p, deny }))}
+        />
 
         {/* Access timeframe */}
         <div className="flex flex-col gap-1.5">
@@ -577,6 +596,14 @@ export function AdminStaffClient() {
   const [roleVerified, setRoleVerified] = useState(false);
   const [selectedRole, setSelectedRole] = useState("viewer");
   const [roleLoading, setRoleLoading] = useState(false);
+
+  // Edit permissions modal — narrows one staff member's access below their
+  // role's ceiling. Separate action from "Change Role" on purpose.
+  const [permTarget, setPermTarget] = useState<StaffMember | null>(null);
+  const [permAdminPw, setPermAdminPw] = useState("");
+  const [permVerified, setPermVerified] = useState(false);
+  const [permDeny, setPermDeny] = useState<string[]>([]);
+  const [permLoading, setPermLoading] = useState(false);
 
   // Fetch staff list
   const { data, isLoading } = useQuery({
@@ -710,6 +737,44 @@ export function AdminStaffClient() {
     setSelectedRole("viewer"); setRoleLoading(false);
   }
 
+  function openPermModal(target: StaffMember) {
+    setPermTarget(target);
+    setPermDeny(target.adminProfile?.permissions?.deny ?? []);
+  }
+
+  async function handleVerifyForPerm() {
+    setPermLoading(true);
+    try {
+      const ok = await verifyAdminPassword(permAdminPw);
+      if (!ok) { toast.error("Incorrect password"); return; }
+      setPermVerified(true);
+    } finally { setPermLoading(false); }
+  }
+
+  async function handleSavePerm() {
+    if (!permTarget) return;
+    setPermLoading(true);
+    try {
+      const res = await fetch(`/api/admin/staff/${permTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permissions: { deny: permDeny } }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error?.message ?? "Failed");
+      toast.success("Permissions updated");
+      qc.invalidateQueries({ queryKey: ["admin-staff"] });
+      closePermModal();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally { setPermLoading(false); }
+  }
+
+  function closePermModal() {
+    setPermTarget(null); setPermAdminPw(""); setPermVerified(false);
+    setPermDeny([]); setPermLoading(false);
+  }
+
   // Deactivate / reactivate mutation
   const deactivateMutation = useMutation({
     mutationFn: async (target: StaffMember) => {
@@ -796,6 +861,7 @@ export function AdminStaffClient() {
             onDelete={(target) => setDeleteTarget(target)}
             onResetPassword={(target) => { setResetTarget(target); setResetAdminPw(""); setResetVerified(false); setResetMode("idle"); }}
             onChangeRole={(target) => { setRoleTarget(target); setRoleAdminPw(""); setRoleVerified(false); setSelectedRole(target.adminProfile?.role ?? "viewer"); }}
+            onEditPermissions={openPermModal}
           />
         );
       },
@@ -1002,6 +1068,46 @@ export function AdminStaffClient() {
                 <div className="flex gap-2 justify-end">
                   <button onClick={closeRoleModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
                   <button onClick={handleSaveRole} disabled={roleLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Save Role</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit permissions modal */}
+      {permTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
+              Edit permissions — {permTarget.name}
+            </h3>
+
+            {!permVerified ? (
+              <>
+                <p className="font-dm text-[13px] text-(--neutral-500)">Enter your own admin password to continue.</p>
+                <input
+                  type="password"
+                  value={permAdminPw}
+                  onChange={(e) => setPermAdminPw(e.target.value)}
+                  placeholder="Your password"
+                  className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                />
+                <div className="flex gap-2 justify-end">
+                  <button onClick={closePermModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
+                  <button onClick={handleVerifyForPerm} disabled={permLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Verify</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <PermissionOverrideGrid
+                  role={(permTarget.adminProfile?.role ?? "viewer") as RoleName}
+                  deny={permDeny}
+                  onChange={setPermDeny}
+                />
+                <div className="flex gap-2 justify-end">
+                  <button onClick={closePermModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
+                  <button onClick={handleSavePerm} disabled={permLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Save Permissions</button>
                 </div>
               </>
             )}

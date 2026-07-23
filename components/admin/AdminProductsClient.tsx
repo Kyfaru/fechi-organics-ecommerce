@@ -20,6 +20,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { ScreenLoader } from "@/components/admin/ui/ScreenLoader";
 import Switch from "@/components/ui/Switch";
 import CircularProgress from "@/components/ui/CircularProgress";
+import { useAdminMe } from "@/hooks/use-can";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1315,15 +1316,41 @@ export function AdminProductsClient() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
+  // Caller profile — determines whether Zoho sync targets the caller's own
+  // branch automatically, or needs a branch picker (global tier).
+  const { data: me } = useAdminMe();
+  const isGlobalTier = !!me && (me.isSuperAdmin || !me.branchId);
+
+  // Branch list, only needed for the global-tier sync branch picker.
+  const { data: branchesData } = useQuery({
+    queryKey: ["admin-branches"],
+    queryFn: () => fetch("/api/admin/branches").then((r) => r.json()),
+    enabled: isGlobalTier,
+  });
+  const syncBranches: { id: string; name: string }[] = branchesData?.data?.branches ?? [];
+
   // Zoho sync state
   const [syncing, setSyncing] = useState(false);
+  // Empty string means "not explicitly chosen yet" — falls back to the first
+  // loaded branch below, without needing a setState-in-effect to seed it.
+  const [syncBranchId, setSyncBranchId] = useState("");
+  const selectedSyncBranchId = syncBranchId || syncBranches[0]?.id || "";
 
   async function handleZohoSync() {
     if (syncing) return;
+    const branchId = isGlobalTier ? selectedSyncBranchId : me?.branchId;
+    if (!branchId) {
+      toast.error(isGlobalTier ? "Select a branch to sync" : "No branch assigned to your account");
+      return;
+    }
     setSyncing(true);
     try {
-      // POST /api/admin/zoho/sync — triggers a full product sync with Zoho Inventory
-      const res = await fetch("/api/admin/zoho/sync", { method: "POST" });
+      // POST /api/admin/zoho/sync — syncs one branch's stock with its own Zoho org
+      const res = await fetch("/api/admin/zoho/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branchId }),
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error?.message ?? "Sync failed");
       toast.success("Zoho sync complete.");
@@ -1662,6 +1689,23 @@ export function AdminProductsClient() {
 
   const addButton = (
     <div className="flex items-center gap-2">
+      {/* Global-tier callers pick which branch's Zoho org to sync — each
+          branch runs its own independent org, so sync is never "all branches". */}
+      {isGlobalTier && (
+        <div className="relative">
+          <select
+            value={selectedSyncBranchId}
+            onChange={(e) => setSyncBranchId(e.target.value)}
+            className="h-10 pl-3 pr-8 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-700) focus:outline-none focus:ring-2 focus:ring-(--green-500) appearance-none cursor-pointer"
+          >
+            {syncBranches.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
+        </div>
+      )}
+
       {/* Sync with Zoho — POST /api/admin/zoho/sync */}
       <button
         type="button"

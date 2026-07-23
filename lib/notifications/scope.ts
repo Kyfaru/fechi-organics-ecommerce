@@ -1,8 +1,12 @@
 import { headers } from "next/headers";
 import { NextRequest } from "next/server";
+import type { NotificationType } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Err } from "@/lib/api";
+import type { RoleName } from "@/lib/permissions";
+import { grantsFor } from "@/lib/permissions";
+import { NOTIFICATION_TYPE_RESOURCE } from "@/lib/notifications/type-resource-map";
 
 /**
  * Notification RBAC tiers (design doc Section 3):
@@ -52,4 +56,33 @@ export function buildNotificationWhere(scope: NotificationScope) {
   if (scope.tier === "global") return {};
   if (scope.tier === "manager") return { branchId: scope.branchId };
   return { branchId: scope.branchId, targetRoles: { has: scope.role } };
+}
+
+// Exhaustive over NotificationType via NOTIFICATION_TYPE_RESOURCE's keys —
+// there's no runtime `Object.values` support for a Prisma-generated enum, so
+// this map (which the build already enforces is exhaustive) is the
+// enumeration source.
+const ALL_NOTIFICATION_TYPES = Object.keys(NOTIFICATION_TYPE_RESOURCE) as NotificationType[];
+
+/**
+ * Content-level filter on top of `buildNotificationWhere`'s row-level scope:
+ * which notification `type`s a role is allowed to see, based on whether it
+ * has view access to the resource that type is about. Every role already has
+ * route access to the notifications endpoints (universal `notifications:
+ * ["view","manage"]` grant — see lib/permissions.ts), so without this a role
+ * with no `orders` grant (e.g. `viewer`) would still see `ORDER_NEW` rows.
+ */
+export function allowedNotificationTypes(
+  role: RoleName,
+  isSuperAdmin: boolean,
+  deny: Set<string>
+): NotificationType[] {
+  if (isSuperAdmin) return ALL_NOTIFICATION_TYPES;
+
+  return ALL_NOTIFICATION_TYPES.filter((type) => {
+    const resource = NOTIFICATION_TYPE_RESOURCE[type];
+    if (resource === null) return true; // SYSTEM_ALERT — always visible
+    if (deny.has(resource)) return false;
+    return grantsFor(role, resource).includes("view");
+  });
 }

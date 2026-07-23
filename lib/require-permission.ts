@@ -9,22 +9,45 @@ import type { RoleName, statements } from "@/lib/permissions";
 type Statements = typeof statements;
 export type PermissionCheck = Partial<{ [K in keyof Statements]: Statements[K][number][] }>;
 
-type CallerContext =
-  | { denied: "auth" | "inactive" | "expired" }
-  | { denied?: undefined; role: RoleName; isSuperAdmin: boolean };
+/** Shape stored in adminProfile.permissions — a per-staff-member narrowing
+ * override. Can only turn resources OFF relative to what the role grants;
+ * there is no allow-list — a role's grants are always the ceiling. */
+export type PermissionOverride = { deny?: string[] };
 
-async function loadCallerContext(): Promise<CallerContext> {
+export type CallerContext =
+  | { denied: "auth" | "inactive" | "expired" }
+  | {
+      denied?: undefined;
+      id: string;
+      role: RoleName;
+      isSuperAdmin: boolean;
+      branchId: string | null;
+      deny: Set<string>;
+    };
+
+export async function loadCallerContext(): Promise<CallerContext> {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return { denied: "auth" };
 
   const profile = await db.adminProfile.findUnique({
     where: { userId: session.user.id },
-    select: { role: true, isSuperAdmin: true, isActive: true, accessExpiresAt: true },
+    select: { id: true, role: true, isSuperAdmin: true, isActive: true, accessExpiresAt: true, branchId: true, permissions: true },
   });
   if (!profile?.isActive) return { denied: "inactive" };
   if (profile.accessExpiresAt && profile.accessExpiresAt < new Date()) return { denied: "expired" };
 
-  return { role: profile.role as RoleName, isSuperAdmin: profile.isSuperAdmin };
+  const override = profile.permissions as PermissionOverride | null;
+  return {
+    id: profile.id,
+    role: profile.role as RoleName,
+    isSuperAdmin: profile.isSuperAdmin,
+    branchId: profile.branchId,
+    deny: new Set(override?.deny ?? []),
+  };
+}
+
+function isDenied(ctx: Extract<CallerContext, { denied?: undefined }>, permissions: PermissionCheck): boolean {
+  return Object.keys(permissions).some((resource) => ctx.deny.has(resource));
 }
 
 /**
@@ -43,6 +66,7 @@ export async function requirePermission(
   const ctx = await loadCallerContext();
   if (ctx.denied) return ctx.denied === "auth" ? Err.authRequired() : Err.forbidden();
   if (ctx.isSuperAdmin) return null;
+  if (isDenied(ctx, permissions)) return Err.forbidden();
 
   const result = await auth.api.userHasPermission({
     headers: await headers(),
@@ -56,12 +80,36 @@ export async function requirePermissionPage(permissions: PermissionCheck): Promi
   const ctx = await loadCallerContext();
   if (ctx.denied) redirect(ctx.denied === "auth" ? "/admin/login" : "/admin");
   if (ctx.isSuperAdmin) return;
+  if (isDenied(ctx, permissions)) redirect("/admin");
 
   const result = await auth.api.userHasPermission({
     headers: await headers(),
     body: { role: ctx.role, permissions },
   });
   if (!result.success) redirect("/admin");
+}
+
+export type PageAccessResult =
+  | { allowed: true }
+  | { allowed: false; reason: "auth" | "inactive" | "expired" | "forbidden" };
+
+/**
+ * Same check as requirePermissionPage, but returns a result instead of
+ * redirecting — lets the caller render an in-place 403 (keeping the admin
+ * shell mounted) instead of navigating away. Use requirePermissionPage when
+ * a plain redirect is fine; use this when it isn't.
+ */
+export async function checkPermissionPage(permissions: PermissionCheck): Promise<PageAccessResult> {
+  const ctx = await loadCallerContext();
+  if (ctx.denied) return { allowed: false, reason: ctx.denied };
+  if (ctx.isSuperAdmin) return { allowed: true };
+  if (isDenied(ctx, permissions)) return { allowed: false, reason: "forbidden" };
+
+  const result = await auth.api.userHasPermission({
+    headers: await headers(),
+    body: { role: ctx.role, permissions },
+  });
+  return result.success ? { allowed: true } : { allowed: false, reason: "forbidden" };
 }
 
 /**

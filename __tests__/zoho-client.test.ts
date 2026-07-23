@@ -1,13 +1,15 @@
 /**
  * Unit tests for lib/zoho.ts
- * Mocks: getRedis (lib/redis.ts), global fetch
+ * Mocks: getRedis (lib/redis.ts), getZohoCredentials (lib/zoho-credentials.ts), global fetch
  * Environment: jsdom (vitest default from vitest.config.ts)
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ---------------------------------------------------------------------------
-// Mock lib/redis.ts — must be hoisted before importing zoho
+// Mock lib/redis.ts and lib/zoho-credentials.ts — must be hoisted before
+// importing zoho. Credentials come from a Zoho organization's encrypted DB
+// columns, not global env vars — several branches can share one org.
 // ---------------------------------------------------------------------------
 const mockRedis = {
   get: vi.fn(),
@@ -18,6 +20,17 @@ const mockRedis = {
 
 vi.mock("@/lib/redis", () => ({
   getRedis: () => mockRedis,
+}));
+
+const TEST_ORG_ID = "test-org-id";
+
+vi.mock("@/lib/zoho-credentials", () => ({
+  getZohoCredentials: vi.fn().mockResolvedValue({
+    clientId: "test-client-id",
+    clientSecret: "test-client-secret",
+    refreshToken: "test-refresh-token",
+    orgId: "test-org",
+  }),
 }));
 
 // Import after mocks are set up
@@ -37,12 +50,6 @@ function makeFetchResponse(body: unknown, status = 200) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-
-  // Default env
-  process.env.ZOHO_CLIENT_ID = "test-client-id";
-  process.env.ZOHO_CLIENT_SECRET = "test-client-secret";
-  process.env.ZOHO_REFRESH_TOKEN = "test-refresh-token";
-  process.env.ZOHO_ORG_ID = "test-org";
   process.env.ZOHO_ACCOUNTS_URL = "https://accounts.zoho.com";
 });
 
@@ -54,13 +61,13 @@ describe("getAccessToken", () => {
     mockRedis.get.mockResolvedValue("cached-token-abc");
     const fetchSpy = vi.spyOn(global, "fetch");
 
-    const token = await getAccessToken();
+    const token = await getAccessToken(TEST_ORG_ID);
 
     expect(token).toBe("cached-token-abc");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("fetches fresh token on cache miss and caches it for 3300s", async () => {
+  it("fetches fresh token on cache miss and caches it for 3300s under a per-organization key", async () => {
     mockRedis.get.mockResolvedValue(null);
     mockRedis.set.mockResolvedValue("OK");
 
@@ -68,11 +75,11 @@ describe("getAccessToken", () => {
       makeFetchResponse({ access_token: "fresh-token-xyz" })
     );
 
-    const token = await getAccessToken();
+    const token = await getAccessToken(TEST_ORG_ID);
 
     expect(token).toBe("fresh-token-xyz");
     expect(mockRedis.set).toHaveBeenCalledWith(
-      "zoho:access_token",
+      `zoho:access_token:${TEST_ORG_ID}`,
       "fresh-token-xyz",
       { ex: 3300 }
     );
@@ -85,7 +92,7 @@ describe("getAccessToken", () => {
       makeFetchResponse({ error: "invalid_client" }, 401)
     );
 
-    await expect(getAccessToken()).rejects.toBeInstanceOf(ZohoApiError);
+    await expect(getAccessToken(TEST_ORG_ID)).rejects.toBeInstanceOf(ZohoApiError);
   });
 
   it("throws ZohoApiError when response has error field", async () => {
@@ -95,7 +102,7 @@ describe("getAccessToken", () => {
       makeFetchResponse({ error: "invalid_grant" })
     );
 
-    await expect(getAccessToken()).rejects.toBeInstanceOf(ZohoApiError);
+    await expect(getAccessToken(TEST_ORG_ID)).rejects.toBeInstanceOf(ZohoApiError);
   });
 });
 
@@ -110,7 +117,7 @@ describe("zohoGet", () => {
       makeFetchResponse({ items: [] })
     );
 
-    await zohoGet("/items");
+    await zohoGet(TEST_ORG_ID, "/items");
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
@@ -127,7 +134,7 @@ describe("zohoGet", () => {
       makeFetchResponse({ items: [] })
     );
 
-    await zohoGet("/items", { page: "1" });
+    await zohoGet(TEST_ORG_ID, "/items", { page: "1" });
 
     const [url] = fetchSpy.mock.calls[0] as [string, RequestInit];
     expect(url).toContain("organization_id=test-org");
@@ -141,6 +148,6 @@ describe("zohoGet", () => {
       makeFetchResponse({ message: "Not Found" }, 404)
     );
 
-    await expect(zohoGet("/items")).rejects.toBeInstanceOf(ZohoApiError);
+    await expect(zohoGet(TEST_ORG_ID, "/items")).rejects.toBeInstanceOf(ZohoApiError);
   });
 });

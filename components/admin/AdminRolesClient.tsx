@@ -15,18 +15,9 @@
 import { useMemo, useState } from "react";
 import { Info, Search } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
-import { statements, roles, type RoleName } from "@/lib/permissions";
+import { statements, roles, appResources, grantsFor, type RoleName } from "@/lib/permissions";
 
-// The 20 real app resources, derived at runtime from `statements` rather
-// than hardcoded — keeps this list correct if lib/permissions.ts ever gains
-// or loses a resource. Excludes Better Auth's own built-in "user"/"session"
-// statements (spread in from adminDefaultStatements), which aren't app
-// resources.
-type AppResource = Exclude<keyof typeof statements, "user" | "session">;
-
-const RESOURCES = (Object.keys(statements) as (keyof typeof statements)[]).filter(
-  (resource): resource is AppResource => resource !== "user" && resource !== "session"
-);
+const RESOURCES = appResources;
 
 const ROLE_ORDER = Object.keys(roles) as RoleName[];
 
@@ -36,19 +27,6 @@ function formatLabel(key: string): string {
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
-}
-
-// Better Auth types each role's `.statements` narrowly — only the resource
-// keys that specific role was granted appear in its type (see
-// node_modules/better-auth/dist/plugins/access/types.d.mts: ExactRoleStatements).
-// Looking up an arbitrary resource across all 20 possibilities therefore
-// needs one controlled cast here rather than an unsafe cast at every call
-// site. This never mutates `roles` — read-only lookup only.
-type GrantMap = Record<string, readonly string[] | undefined>;
-
-function grantsFor(role: RoleName, resource: AppResource): readonly string[] {
-  const grants = roles[role].statements as unknown as GrantMap;
-  return grants[resource] ?? [];
 }
 
 export function AdminRolesClient() {

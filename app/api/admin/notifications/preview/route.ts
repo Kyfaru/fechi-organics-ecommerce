@@ -1,8 +1,8 @@
 import { NextRequest, connection } from "next/server";
 import { db } from "@/lib/db";
-import { ok } from "@/lib/api";
-import { requirePermission } from "@/lib/require-permission";
-import { resolveNotificationScope, buildNotificationWhere } from "@/lib/notifications/scope";
+import { Err, ok } from "@/lib/api";
+import { loadCallerContext, requirePermission } from "@/lib/require-permission";
+import { allowedNotificationTypes, resolveNotificationScope, buildNotificationWhere } from "@/lib/notifications/scope";
 
 // GET /api/admin/notifications/preview — backs the bell dropdown. Sort rule
 // (design doc Section 5): unread+CRITICAL newest→oldest first, then other
@@ -16,8 +16,12 @@ export async function GET(req: NextRequest) {
   if (resolved instanceof Response) return resolved;
   const { scope, userId } = resolved;
 
+  const ctx = await loadCallerContext();
+  if (ctx.denied) return ctx.denied === "auth" ? Err.authRequired() : Err.forbidden();
+  const allowedTypes = allowedNotificationTypes(ctx.role, ctx.isSuperAdmin, ctx.deny);
+
   const candidates = await db.notification.findMany({
-    where: buildNotificationWhere(scope),
+    where: { ...buildNotificationWhere(scope), type: { in: allowedTypes } },
     orderBy: { createdAt: "desc" },
     take: 100,
     include: { recipientStates: { where: { userId } } },

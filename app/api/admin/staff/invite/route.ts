@@ -19,6 +19,7 @@ import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { appResources, grantsFor, type RoleName } from "@/lib/permissions";
 
 const VALID_ROLES = [
   "admin", "manager", "finance", "marketing",
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest) {
     phone,
     password,
     role,
+    permissions,
     branchId,
     accessExpiresAt,
     inviteChannels,
@@ -63,6 +65,7 @@ export async function POST(req: NextRequest) {
     phone?: string;
     password?: string;
     role?: string;
+    permissions?: { deny?: string[] };
     branchId?: string;
     accessExpiresAt?: string | null;
     inviteChannels?: string[];
@@ -85,6 +88,13 @@ export async function POST(req: NextRequest) {
   if (username && !/^\w{3,}$/.test(username)) {
     return Err.validation("Username must be alphanumeric/underscore and at least 3 characters.");
   }
+
+  // Narrowing override — only resources the picked role actually grants can
+  // be denied; this can never widen access, only restrict it further.
+  const requestedDeny = new Set(permissions?.deny ?? []);
+  const sanitizedDeny = appResources.filter(
+    (resource) => requestedDeny.has(resource) && grantsFor(role as RoleName, resource).length > 0
+  );
 
   // Check for duplicate email or username
   const existing = await db.user.findFirst({
@@ -122,15 +132,17 @@ export async function POST(req: NextRequest) {
       data: { mustChangePassword: true, ...(username ? { username } : {}) },
     });
 
-    // Upsert adminProfile with all staff fields. Access control is entirely
-    // determined by `role` (looked up against lib/permissions.ts's code-defined
-    // roles) — adminProfile.permissions is a legacy field no longer read anywhere.
+    // Upsert adminProfile with all staff fields. Access control is
+    // determined by `role` (looked up against lib/permissions.ts's
+    // code-defined roles) narrowed by `permissions.deny` — see
+    // lib/require-permission.ts's loadCallerContext.
     await db.adminProfile.upsert({
       where: { userId },
       create: {
         userId,
         fullName:        name.trim(),
         role:            role,
+        permissions:     sanitizedDeny.length > 0 ? { deny: sanitizedDeny } : {},
         branchId:        branchId || null,
         accessExpiresAt: accessExpiresAt ? new Date(accessExpiresAt) : null,
         isActive:        true,
@@ -139,6 +151,7 @@ export async function POST(req: NextRequest) {
       update: {
         fullName:        name.trim(),
         role:            role,
+        permissions:     sanitizedDeny.length > 0 ? { deny: sanitizedDeny } : {},
         branchId:        branchId || null,
         accessExpiresAt: accessExpiresAt ? new Date(accessExpiresAt) : null,
       },
