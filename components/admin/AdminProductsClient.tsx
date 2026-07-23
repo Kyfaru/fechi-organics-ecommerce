@@ -37,7 +37,9 @@ type AdminProduct = {
   id: string;
   name: string;
   slug: string;
-  description: string;
+  // Nullable — Zoho sync nulls this when Zoho doesn't provide one, visible
+  // here as a gap to fill in.
+  description: string | null;
   shortDescription: string | null;
   categoryId: string;
   category: { id: string; name: string; slug: string } | null;
@@ -207,7 +209,7 @@ function productToForm(p: AdminProduct): DrawerFormData {
     return a.sortOrder - b.sortOrder;
   });
   return {
-    name: p.name, slug: p.slug, description: p.description,
+    name: p.name, slug: p.slug, description: p.description ?? "",
     shortDescription: p.shortDescription ?? "",
     categoryId: p.categoryId,
     // E1: store prices as digits (cents) string — priceKes is already in cents

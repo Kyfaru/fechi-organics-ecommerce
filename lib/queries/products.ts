@@ -151,7 +151,10 @@ export async function getProductBySlug(slug: string): Promise<ProductDetail | nu
 
   return {
     ...toCard(p),
-    description: p.description,
+    // Zoho sync nulls description when Zoho doesn't provide one (visible as
+    // a gap in the admin view) — the public storefront has no use for that
+    // distinction, so it just reads as empty here.
+    description: p.description ?? "",
     sizes: p.sizes,
     howToUse: p.howToUse,
     ingredients: p.ingredients,
