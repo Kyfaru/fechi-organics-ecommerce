@@ -319,7 +319,7 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
       {/* ── Desktop Navbar (always fixed) ── */}
       <nav
         className={[
-          "hidden md:flex items-center justify-between h-19 bg-white/80 dark:bg-[#111]/80 px-8 shadow-sm",
+          "hidden md:flex items-center justify-between h-[76px] bg-white/80 dark:bg-[#111]/80 px-8 shadow-sm",
           "sticky z-9999 transition-all duration-300 backdrop-blur-sm mb-5 mt-5 mx-5",
           flat
             ? "top-2 left-0 right-0 rounded-none shadow-sm"
