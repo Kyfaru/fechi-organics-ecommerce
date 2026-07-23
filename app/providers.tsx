@@ -9,7 +9,7 @@ import type { CurrencyCode, FxRates } from "@/lib/currency";
 import { CURRENCIES, formatPrice } from "@/lib/currency";
 import { PostHogProvider } from "@/components/PostHogProvider";
 import { PrelineInit } from "@/components/admin/PrelineInit";
-import { authClient } from "@/lib/auth-client";
+import { authClient, useSession } from "@/lib/auth-client";
 
 // ── TanStack Query ─────────────────────────────────────────────────────────
 
@@ -166,19 +166,27 @@ export function useCurrency() {
  * OAuth redirect with no email step first, so an existing admin who
  * authenticates via a social button on /login can't be intercepted before a
  * session exists — this guard catches it on the very next render instead.
+ *
+ * Uses the shared useSession() hook (not a fresh authClient.getSession()
+ * call) deliberately — Better Auth's client caches that hook's result across
+ * every consumer in the app, so this adds no extra request beyond what
+ * Navbar/PostHogProvider/etc. already trigger. An earlier version called
+ * getSession() imperatively on every pathname change, which fired a fresh
+ * network request per route and tripped Better Auth's global auth-route rate
+ * limit (lib/auth.ts, max 10/60s) for anyone navigating quickly — including
+ * admins browsing the storefront.
  */
 function PortalSessionGuard() {
   const pathname = usePathname();
+  const { data, isPending } = useSession();
 
   useEffect(() => {
     if (pathname.startsWith("/admin")) return;
-    (async () => {
-      const { data } = await authClient.getSession();
-      if (data?.session && (data.user as { role?: string } | undefined)?.role === "admin") {
-        await authClient.signOut();
-      }
-    })();
-  }, [pathname]);
+    if (isPending || !data?.session) return;
+    if ((data.user as { role?: string } | undefined)?.role === "admin") {
+      authClient.signOut();
+    }
+  }, [pathname, data, isPending]);
 
   return null;
 }

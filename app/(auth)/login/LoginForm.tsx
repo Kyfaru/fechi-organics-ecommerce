@@ -9,7 +9,7 @@ import FormInput from "@/components/auth/FormInput";
 import PasswordInput from "@/components/auth/PasswordInput";
 import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
 import OTPModal from "@/components/auth/OTPModal";
-import { authClient, signOut } from "@/lib/auth-client";
+import { authClient, signOut, useSession } from "@/lib/auth-client";
 import { storeUser } from "@/lib/user-store";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
@@ -52,26 +52,28 @@ export default function LoginForm() {
   // OTP modal state
   const [showOTP, setShowOTP] = useState(false);
 
+  const { data: sessionData, isPending: sessionPending } = useSession();
+
   // ---------------------------------------------------------------------------
   // On mount: an already-correct client session skips straight to /. A
   // session for the wrong portal (an admin's) is signed out silently — this
   // overlaps with the app-wide PortalSessionGuard (app/providers.tsx), which
   // is intentional defense-in-depth now that proxy.ts no longer blindly
   // redirects any session-cookie holder away from this page.
+  //
+  // Reads the shared useSession() hook rather than calling getSession()
+  // imperatively — see app/providers.tsx's PortalSessionGuard for why.
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    (async () => {
-      const { data } = await authClient.getSession();
-      if (!data?.session) return;
-      const role = (data.user as { role?: string } | undefined)?.role;
-      if (role === "admin") {
-        await signOut();
-      } else {
-        router.replace("/");
-      }
-    })();
+    if (sessionPending || !sessionData?.session) return;
+    const role = (sessionData.user as { role?: string } | undefined)?.role;
+    if (role === "admin") {
+      signOut();
+    } else {
+      router.replace("/");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sessionPending, sessionData]);
 
   // ---------------------------------------------------------------------------
   // Form validation

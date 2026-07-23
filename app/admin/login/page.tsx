@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 import { Smartphone, Mail, MessageSquare } from "lucide-react";
 import FormInput from "@/components/auth/FormInput";
 import PasswordInput from "@/components/auth/PasswordInput";
-import { authClient, signOut } from "@/lib/auth-client";
+import { authClient, signOut, useSession } from "@/lib/auth-client";
 import { clearPersistedQueryCache } from "@/app/providers";
 import { Spinner } from "@/components/ui/spinner";
 import { QRCodeSVG } from "qrcode.react";
@@ -82,6 +82,8 @@ export default function AdminLoginPage() {
   const [errors, setErrors] = useState<AdminLoginErrors>({});
   const [isLoading, setIsLoading] = useState(false);
 
+  const { data: sessionData, isPending: sessionPending } = useSession();
+
   // ---------------------------------------------------------------------------
   // Resend countdown timer
   // ---------------------------------------------------------------------------
@@ -97,20 +99,22 @@ export default function AdminLoginPage() {
   // page is under /admin/*, so the app-wide PortalSessionGuard (app/providers.tsx)
   // deliberately doesn't cover it, and it must handle its own cleanup now that
   // proxy.ts no longer blindly redirects any session-cookie holder away here.
+  //
+  // Reads the shared useSession() hook rather than calling getSession()
+  // imperatively — avoids firing an extra network request on top of what
+  // every other session consumer in the app already triggers (see
+  // app/providers.tsx's PortalSessionGuard for why this matters).
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    (async () => {
-      const { data } = await authClient.getSession();
-      if (!data?.session) return;
-      const role = (data.user as { role?: string } | undefined)?.role;
-      if (role === "admin") {
-        router.replace("/admin");
-      } else {
-        await authClient.signOut();
-      }
-    })();
+    if (sessionPending || !sessionData?.session) return;
+    const role = (sessionData.user as { role?: string } | undefined)?.role;
+    if (role === "admin") {
+      router.replace("/admin");
+    } else {
+      authClient.signOut();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sessionPending, sessionData]);
 
   // ---------------------------------------------------------------------------
   // Helpers
