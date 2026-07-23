@@ -319,13 +319,13 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
       {/* ── Desktop Navbar (always fixed) ── */}
       <nav
         className={[
-          "hidden md:flex items-center justify-between h-19 bg-white/80 dark:bg-[#111]/80 px-8 shadow-sm",
-          "sticky z-9999 transition-all duration-300 backdrop-blur-sm mb-5 mt-5 mx-5",
+          "hidden md:flex items-center justify-between h-19 bg-white/95 dark:bg-[#111]/95 px-8 shadow-sm",
+          "fixed z-9999 transition-all duration-300 backdrop-blur-sm",
           flat
-            ? "top-2 left-0 right-0 rounded-none shadow-sm"
+            ? "top-0 left-0 right-0 rounded-none shadow-sm"
             : scrolled
-            ? "top-2 left-[5px] right-[5px] rounded-[0px] shadow-md"
-            : "top-4 left-12 right-12 rounded-[40px]",
+            ? "top-4 left-[5px] right-[5px] rounded-none shadow-md"
+            : "top-[2em] left-12 right-12 rounded-[40px]",
         ].join(" ")}
       >
         {/* Logo */}
