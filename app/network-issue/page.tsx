@@ -30,8 +30,8 @@ export default function NetworkIssuePage() {
       <LeafBackground />
       <ErrorPageShell
         metadataLabel="OFFLINE · CONNECTION LOST"
-        heading="The Signal's Gone Quiet"
-        description="We're having trouble reaching the network. This is usually on your end — check your connection and try again."
+        heading="The Connection Has Faded"
+        description="It seems we've lost touch with the server. Like roots seeking water, we're trying to re-establish the connection — please check your network settings."
         primaryCta={{ label: "Try Again", href: "/network-issue" }}
         illustration={<DisconnectedVineNetwork />}
       />

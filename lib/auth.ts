@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { emailOTP, admin, twoFactor } from "better-auth/plugins";
 import { db } from "@/lib/db";
-import { sendOTPEmail } from "@/lib/email";
+import { sendOTPEmail, sendWelcomeEmail } from "@/lib/email";
 import { Argon2id } from "oslo/password";
 import { ac, roles } from "@/lib/permissions";
 
@@ -131,10 +131,17 @@ export const auth = betterAuth({
               },
             });
           } else {
-          
+
             await db.clientProfile.create({
               data: { userId: user.id },
             });
+
+            // Best-effort — a failed welcome email must never block signup.
+            if (process.env.RESEND_API_KEY && user.email) {
+              sendWelcomeEmail(user.email, user.name ?? "there").catch((err) =>
+                console.error("[auth] Failed to send welcome email:", err)
+              );
+            }
           }
         },
       },

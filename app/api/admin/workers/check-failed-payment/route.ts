@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyQstashRequest } from "@/lib/qstash";
 import { sendAdminNotificationEmail } from "@/lib/email";
+import { emailShell, emailSection, emailInfoBox, emailIconCircle, emailLineItem, emailTotalRow, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template";
 import { markPaymentFailed } from "@/lib/payments/post-payment";
 import { createNotification } from "@/lib/notify";
 
@@ -53,10 +54,25 @@ export async function POST(req: NextRequest) {
   ].filter(Boolean);
 
   if (recipients.length) {
+    const sections = [
+      emailSection(`
+        ${emailIconCircle("alert", { bg: EMAIL_BRAND.dangerBg, fg: EMAIL_BRAND.danger })}
+        <h1 style="margin:0 0 20px;text-align:center;font-family:${FONT_HEADING};font-size:24px;font-weight:700;color:${EMAIL_BRAND.textDark};">Payment Failed</h1>
+        ${emailInfoBox("A customer payment failed and has not been retried successfully.", "danger")}
+        <p style="margin:20px 0 8px;font-size:14px;color:${EMAIL_BRAND.textBody};">
+          <strong>${order.user?.name ?? "Customer"}</strong> — ${order.user?.email ?? order.guestEmail ?? ""} — ${order.deliveryPhone ?? order.user?.phone ?? ""}
+        </p>
+        <div style="margin:20px 0;">
+          ${order.items.map((i) => emailLineItem(i.name, undefined, `Qty: ${i.quantity}`)).join("")}
+        </div>
+        ${emailTotalRow("Total", kes(order.totalKes), true)}
+      `),
+    ].join("");
+
     await sendAdminNotificationEmail({
       to: [...new Set(recipients)],
       subject: `Failed payment #${order.id.slice(0, 8).toUpperCase()}`,
-      html: `<p>A customer payment failed and has not been retried successfully.</p><p>${order.user?.name ?? "Customer"} - ${order.user?.email ?? order.guestEmail ?? ""} - ${order.deliveryPhone ?? order.user?.phone ?? ""}</p><p>${order.items.map((i) => `${i.name} x ${i.quantity}`).join("<br/>")}</p><p><strong>${kes(order.totalKes)}</strong></p>`,
+      html: emailShell({ title: "Payment Failed", sectionsHtml: sections }),
     });
   }
 

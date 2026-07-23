@@ -11,8 +11,8 @@ export default function TimeoutPage() {
       <ErrorPageShell
         code="408"
         metadataLabel="ERROR 408 · REQUEST TIMED OUT"
-        heading="A Brief Pause in the Garden"
-        description="Your request took too long to come back. This is usually temporary — give it another try."
+        heading="Nature Takes Its Time — So Did This Connection"
+        description="We're having trouble reaching our servers. Like waiting for a seedling to sprout, some things take a moment — let's give it another try."
         primaryCta={{ label: "Retry Connection", onClick: () => window.location.reload() }}
         illustration={<BloomingClockTimeout408 />}
       />

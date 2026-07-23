@@ -7,6 +7,7 @@ import { sendSms } from "@/lib/sms";
 import { combineLegacyPhone } from "@/lib/phone";
 import { Resend } from "resend";
 import { z } from "zod";
+import { emailShell, emailSection, emailIconCircle, EMAIL_BRAND } from "@/lib/email-template";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -53,11 +54,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         results.EMAIL = "skipped";
       } else {
         try {
+          const sections = [
+            emailSection(`
+              ${emailIconCircle("gift")}
+              <p style="margin:0 0 16px;font-size:15px;color:${EMAIL_BRAND.textBody};line-height:1.6;">Hi ${testimonial.authorName},</p>
+              <p style="margin:0 0 16px;font-size:15px;color:${EMAIL_BRAND.textBody};line-height:1.6;">${message.replace(/\n/g, "<br>")}</p>
+              <p style="margin:24px 0 0;font-size:14px;color:${EMAIL_BRAND.textMuted};">— Fechi Organics</p>
+            `),
+          ].join("");
+
           await resend.emails.send({
             from: process.env.EMAIL_FROM!,
             to: email,
             subject: "A message from Fechi Organics",
-            html: `<p>Hi ${testimonial.authorName},</p><p>${message.replace(/\n/g, "<br>")}</p><p>— Fechi Organics</p>`,
+            html: emailShell({ title: "A message from Fechi Organics", sectionsHtml: sections }),
           });
           results.EMAIL = "sent";
         } catch (err) {

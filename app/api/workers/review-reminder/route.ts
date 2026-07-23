@@ -4,6 +4,7 @@ import { verifyQstashRequest } from "@/lib/qstash"
 import { sendSms, hasSmsConfig } from "@/lib/sms"
 import { combineLegacyPhone } from "@/lib/phone"
 import { Resend } from "resend"
+import { emailShell, emailSection, emailButton, emailIconCircle, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template"
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -48,14 +49,21 @@ export async function POST(req: NextRequest) {
     // Email
     if (user?.email && process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
       const reviewUrl = `${process.env.NEXT_PUBLIC_APP_URL}/account/reviews/${orderId}`
+      const sections = [
+        emailSection(`
+          ${emailIconCircle("gift")}
+          <h1 style="margin:0 0 16px;text-align:center;font-family:${FONT_HEADING};font-size:24px;font-weight:700;color:${EMAIL_BRAND.textDark};">How Was Order ${orderRef}?</h1>
+          <p style="margin:0 0 8px;font-size:15px;color:${EMAIL_BRAND.textBody};line-height:1.6;">Hi ${user?.name ?? "there"},</p>
+          <p style="margin:0 0 28px;font-size:15px;color:${EMAIL_BRAND.textBody};line-height:1.6;">${msg}</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;"><tr><td>${emailButton("Write a Review", reviewUrl)}</td></tr></table>
+        `),
+      ].join("")
+
       await resend.emails.send({
         from: process.env.EMAIL_FROM,
         to: user.email,
         subject: `How was your Fechi Organics order ${orderRef}?`,
-        html: `<p>Hi ${user?.name ?? "there"},</p>
-<p>${msg}</p>
-<p><a href="${reviewUrl}" style="background:#15803D;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block;margin-top:8px">Write a Review</a></p>
-<p style="color:#888;font-size:12px;margin-top:16px">Fechi Organics — Fresh &amp; Organic</p>`,
+        html: emailShell({ title: `How was order ${orderRef}?`, sectionsHtml: sections }),
       }).catch((e) => console.error("[review-reminder] email failed:", e))
     }
 

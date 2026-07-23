@@ -15,8 +15,8 @@ export default function ForbiddenPage() {
       <ErrorPageShell
         code="403"
         metadataLabel="ERROR 403 · ACCESS RESTRICTED"
-        heading="This Bed Is Fenced Off"
-        description="You don't have permission to view this page. If you think that's a mistake, reach out and we'll sort it out."
+        heading="The Garden Is Gated"
+        description="It seems you don't have the key to access this part of our botanical sanctuary. This area is reserved for specific personnel or requires elevated permissions."
         primaryCta={{ label: "Contact Support", href: "/contact" }}
         secondaryCta={{ label: "Return to Safety", href: "/" }}
         illustration={<LockedGate403 />}

@@ -22,8 +22,8 @@ export default function Error({
       <ErrorPageShell
         code="500"
         metadataLabel="ERROR 500 · SOMETHING BROKE"
-        heading="Something Wilted on Our End"
-        description="An unexpected error stopped this page from loading. Try refreshing — if it keeps happening, let us know and we'll dig in."
+        heading="Our Roots Are Untangling"
+        description="We're experiencing a temporary disruption in our systems. Our team is working to restore connection to the digital soil — please bear with us while we prune this issue."
         primaryCta={{ label: "Refresh Page", onClick: reset }}
         secondaryCta={{ label: "Contact Support", href: "/contact" }}
         illustration={<WiltedBottle500 />}

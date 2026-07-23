@@ -15,8 +15,8 @@ export default function NotFound() {
       <ErrorPageShell
         code="404"
         metadataLabel="ERROR 404 · FECHI STOREFRONT"
-        heading="This Path Hasn't Sprouted Yet"
-        description="The page you're looking for doesn't exist, or it's been moved. Let's get you back to solid ground."
+        heading="We've Strayed From the Path"
+        description="The page or product you're looking for has been uprooted or doesn't exist. Let's help you find your way back to nature's best."
         primaryCta={{ label: "Return Home", href: "/" }}
         illustration={<Botanical404 />}
       />

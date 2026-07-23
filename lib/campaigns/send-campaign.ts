@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { sendSms } from "@/lib/sms";
 import { combineLegacyPhone } from "@/lib/phone";
 import { wrapLinksForTracking } from "@/lib/campaign-tracking";
+import { emailShell, emailSection, emailIconCircle, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template";
 import type { campaign as Campaign } from "@prisma/client";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
@@ -55,34 +56,15 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
       campaignId,
       userId
     );
-    return `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"/><title>${campaign.subject ?? campaign.name}</title></head>
-<body style="margin:0;padding:0;background:#f4f6f3;font-family:'DM Sans',Helvetica,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f3;padding:40px 20px;">
-    <tr><td align="center">
-      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.07);">
-        <tr>
-          <td style="background:#27731e;padding:32px 48px;text-align:center;">
-            <p style="margin:0;font-size:13px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,0.7);">Fechi Organics</p>
-            <h1 style="margin:8px 0 0;font-size:22px;font-weight:700;color:#ffffff;">${campaign.subject ?? campaign.name}</h1>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:40px 48px;">
-            <div style="font-size:15px;color:#40493c;line-height:1.7;">${content}</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="background:#f4f6f3;padding:20px 48px;text-align:center;border-top:1px solid #e8ede6;">
-            <p style="margin:0;font-size:12px;color:rgba(64,73,60,0.5);">© ${new Date().getFullYear()} Fechi Organics. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+    const heading = campaign.heading ?? campaign.subject ?? campaign.name;
+    const sections = [
+      emailSection(`
+        ${emailIconCircle("gift")}
+        <h1 style="margin:0 0 20px;text-align:center;font-family:${FONT_HEADING};font-size:24px;font-weight:700;color:${EMAIL_BRAND.textDark};">${heading}</h1>
+        <div style="font-size:15px;color:${EMAIL_BRAND.textBody};line-height:1.7;">${content}</div>
+      `),
+    ].join("");
+    return emailShell({ title: campaign.subject ?? campaign.name, sectionsHtml: sections });
   }
 
   const channelsForType: Record<string, ("EMAIL" | "SMS" | "PUSH")[]> = {
