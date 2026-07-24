@@ -42,86 +42,100 @@ export function HeroCarousel({ posts }: { posts: BlogPostCard[] }) {
 
   return (
     <section
-      className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-10"
+      // -mt-24 cancels the desktop navbar's own reserved flow height (mt-5 +
+      // h-[76px] = 96px) so the hero starts flush at the very top of the
+      // page, with the (always-sticky, never repositioned) navbar floating
+      // over it via z-index instead of pushing it down.
+      className="relative w-full md:-mt-24 h-[100vh] min-h-[640px] max-h-[920px] overflow-hidden rounded-b-[32px] md:rounded-b-[56px]"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
-      <div className="relative h-[420px] md:h-[520px] rounded-3xl overflow-hidden">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={slide.id}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute inset-0"
-          >
-            <Image
-              src={coverImageUrl(slide.featuredImage)}
-              alt={slide.title}
-              fill
-              priority={index === 0}
-              className="object-cover"
-              sizes="(max-width: 768px) 100vw, 1152px"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={slide.id}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+          className="absolute inset-0"
+        >
+          <Image
+            src={coverImageUrl(slide.featuredImage)}
+            alt={slide.title}
+            fill
+            priority={index === 0}
+            className="object-cover"
+            sizes="100vw"
+          />
+          {/* Bottom gradient — grounds the text/CTA block */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" />
+          {/* Top gradient — keeps the floating navbar's white text legible over any photo */}
+          <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-black/45 to-transparent" />
 
-            <div className="absolute inset-x-0 bottom-0 p-6 md:p-10 flex flex-col md:flex-row md:items-end md:justify-between gap-6">
-              <motion.div
-                key={`text-${slide.id}`}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-                className="max-w-xl"
-              >
-                {slide.category && (
-                  <span className="inline-block bg-[#fec700] text-[#1a1c1c] text-xs font-semibold px-3 py-1 rounded-full mb-3">
-                    {slide.category}
-                  </span>
-                )}
-                <h2 className="text-2xl md:text-4xl font-bold font-heading text-white leading-tight mb-2">
-                  {slide.title}
-                </h2>
-                <p className="text-white/70 text-sm">
-                  {slide.author?.name ?? "Fechi Organics"}
-                  {slide.publishedAt ? ` · ${formatDate(slide.publishedAt)}` : ""}
+          <div className="absolute inset-x-0 bottom-0 max-w-7xl mx-auto px-2.5 pb-14 md:pb-20 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <motion.div
+              key={`text-${slide.id}`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+              className="max-w-4xl"
+            >
+              {slide.category && (
+                <span className="inline-block bg-[#fec700] text-[#1a1c1c] text-xs font-semibold px-3 py-1 rounded-full mb-4">
+                  {slide.category}
+                </span>
+              )}
+              <h2 className="text-5xl md:text-7xl font-bold font-heading text-white leading-[1.05] mb-4">
+                {slide.title}
+              </h2>
+              {slide.excerpt && (
+                <p className="text-white/80 text-base md:text-lg leading-relaxed line-clamp-2 mb-3">
+                  {slide.excerpt}
                 </p>
-              </motion.div>
+              )}
+              <p className="text-white/70 text-sm md:text-base">
+                {slide.author?.name ?? "Fechi Organics"}
+                {slide.publishedAt ? ` · ${formatDate(slide.publishedAt)}` : ""}
+              </p>
+            </motion.div>
 
-              <motion.div
-                key={`cta-${slide.id}`}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            <motion.div
+              key={`cta-${slide.id}`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <Link
+                href={`/blog/${slide.slug}`}
+                className="inline-flex items-center gap-2 bg-white text-[#1a1c1c] rounded-full px-8 py-4 text-sm font-semibold hover:bg-[#fec700] transition-colors shrink-0"
               >
-                <Link
-                  href={`/blog/${slide.slug}`}
-                  className="inline-flex items-center gap-2 bg-white text-[#1a1c1c] rounded-full px-6 py-3 text-sm font-semibold hover:bg-[#fec700] transition-colors"
-                >
-                  Read Story →
-                </Link>
-              </motion.div>
-            </div>
-          </motion.div>
-        </AnimatePresence>
-
-        {/* indicators */}
-        {slides.length > 1 && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-10">
-            {slides.map((s, i) => (
-              <button
-                key={s.id}
-                onClick={() => setIndex(i)}
-                aria-label={`Go to slide ${i + 1}`}
-                className={[
-                  "h-1.5 rounded-full transition-all",
-                  i === index ? "w-6 bg-white" : "w-1.5 bg-white/50 hover:bg-white/80",
-                ].join(" ")}
-              />
-            ))}
+                Read Story →
+              </Link>
+            </motion.div>
           </div>
-        )}
-      </div>
+        </motion.div>
+      </AnimatePresence>
+
+      {/* indicators */}
+      {slides.length > 1 && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-10">
+          {slides.map((s, i) => (
+            <button
+              key={s.id}
+              onClick={() => setIndex(i)}
+              aria-label={`Go to slide ${i + 1}`}
+              className={[
+                "h-1.5 rounded-full transition-all",
+                i === index ? "w-6 bg-white" : "w-1.5 bg-white/50 hover:bg-white/80",
+              ].join(" ")}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Marks the hero's bottom edge — Navbar watches this to know when to
+          switch from transparent-over-hero back to its normal solid look. */}
+      <div id="navbar-hero-sentinel" aria-hidden className="absolute bottom-0 left-0 w-px h-px" />
     </section>
   );
 }

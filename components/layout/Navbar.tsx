@@ -46,10 +46,12 @@ function ProfileTrigger({
   user,
   onLogout,
   unreadCount = 0,
+  transparent = false,
 }: {
   user: NavUser;
   onLogout: () => void;
   unreadCount?: number;
+  transparent?: boolean;
 }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const displayName = user.name ?? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() ?? "Account";
@@ -72,7 +74,10 @@ function ProfileTrigger({
     <div className="relative" data-profile-area>
       <button
         onClick={() => setProfileOpen((v) => !v)}
-        className="flex items-center gap-2 h-[44px] px-3 rounded-[40px] hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+        className={[
+          "flex items-center gap-2 h-[44px] px-3 rounded-[40px] transition-colors",
+          transparent ? "hover:bg-white/20" : "hover:bg-gray-100 dark:hover:bg-gray-800",
+        ].join(" ")}
         aria-label="Open profile menu"
       >
         {/* Avatar */}
@@ -81,16 +86,30 @@ function ProfileTrigger({
         </span>
         {/* Name + email */}
         <span className="flex flex-col items-start leading-tight">
-          <span className="text-[14px] font-bold text-[#1a1c1c] dark:text-white whitespace-nowrap">
+          <span
+            className={[
+              "text-[14px] font-bold whitespace-nowrap",
+              transparent ? "text-white" : "text-[#1a1c1c] dark:text-white",
+            ].join(" ")}
+          >
             {displayName}
           </span>
           {user.email && (
-            <span className="text-[12px] text-[#a1a1a1] whitespace-nowrap max-w-[140px] truncate">
+            <span
+              className={[
+                "text-[12px] whitespace-nowrap max-w-[140px] truncate",
+                transparent ? "text-white/70" : "text-[#a1a1a1]",
+              ].join(" ")}
+            >
               {user.email}
             </span>
           )}
         </span>
-        <Icon icon="mdi:chevron-down" width={18} className="text-[#a1a1a1] flex-shrink-0" />
+        <Icon
+          icon="mdi:chevron-down"
+          width={18}
+          className={transparent ? "text-white/70 flex-shrink-0" : "text-[#a1a1a1] flex-shrink-0"}
+        />
       </button>
 
       {/* Dropdown */}
@@ -174,7 +193,13 @@ function DropdownLink({
 
 // ── Navbar ───────────────────────────────────────────────────────────────────
 
-export function Navbar({ flat = false }: { flat?: boolean } = {}) {
+/**
+ * `transparent`: for pages with a full-bleed hero behind the navbar (e.g. /blog).
+ * The navbar starts see-through with white/gold styling and switches to the
+ * normal solid look once the page scrolls past a `#navbar-hero-sentinel`
+ * element the hero renders at its own bottom edge.
+ */
+export function Navbar({ flat = false, transparent = false }: { flat?: boolean; transparent?: boolean } = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -182,7 +207,31 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(flat);
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [pastHero, setPastHero] = useState(!transparent);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // While `transparent`, watch the hero's own sentinel element (rendered by
+  // the page) rather than a hardcoded pixel height — works no matter how
+  // tall the hero renders at a given breakpoint.
+  useEffect(() => {
+    if (!transparent) return;
+    function check() {
+      const sentinel = document.getElementById("navbar-hero-sentinel");
+      setPastHero(!sentinel || sentinel.getBoundingClientRect().top <= 80);
+    }
+    check();
+    window.addEventListener("scroll", check, { passive: true });
+    window.addEventListener("resize", check);
+    return () => {
+      window.removeEventListener("scroll", check);
+      window.removeEventListener("resize", check);
+    };
+  }, [transparent]);
+
+  const isTransparent = transparent && !pastHero;
+  // The mobile drawer is an opaque white overlay — force the sticky mobile
+  // bar solid while it's open so its icons stay visible against it.
+  const mobileIsTransparent = isTransparent && !mobileOpen;
 
   const { theme, toggleTheme } = useTheme();
 
@@ -319,8 +368,11 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
       {/* ── Desktop Navbar (always fixed) ── */}
       <nav
         className={[
-          "hidden md:flex items-center justify-between h-[76px] bg-white/80 dark:bg-[#111]/80 px-8 shadow-sm",
-          "sticky z-9999 transition-all duration-300 backdrop-blur-sm mt-5 mx-5",
+          "hidden md:flex items-center justify-between h-[76px] px-8",
+          "sticky z-9999 transition-all duration-300 mt-5 mx-5",
+          isTransparent
+            ? "bg-transparent shadow-none"
+            : "bg-white/80 dark:bg-[#111]/80 shadow-sm backdrop-blur-sm",
           flat
             ? "top-2 left-0 right-0 rounded-none shadow-sm"
             : scrolled
@@ -330,22 +382,35 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
       >
         {/* Logo */}
         <Link href="/" className="flex-shrink-0">
-          <Image
-            src="/logo/text-only-black.webp"
-            alt="Fechi Organics"
-            width={120}
-            height={42}
-            className="object-contain h-[33px] w-auto dark:hidden"
-            priority
-          />
-          <Image
-            src="/logo/text-only-white.webp"
-            alt="Fechi Organics"
-            width={120}
-            height={42}
-            className="object-contain h-[33px] w-auto hidden dark:block"
-            priority
-          />
+          {isTransparent ? (
+            <Image
+              src="/logo/text-only-white.webp"
+              alt="Fechi Organics"
+              width={120}
+              height={42}
+              className="object-contain h-[33px] w-auto"
+              priority
+            />
+          ) : (
+            <>
+              <Image
+                src="/logo/text-only-black.webp"
+                alt="Fechi Organics"
+                width={120}
+                height={42}
+                className="object-contain h-[33px] w-auto dark:hidden"
+                priority
+              />
+              <Image
+                src="/logo/text-only-white.webp"
+                alt="Fechi Organics"
+                width={120}
+                height={42}
+                className="object-contain h-[33px] w-auto hidden dark:block"
+                priority
+              />
+            </>
+          )}
         </Link>
 
         {/* Nav links — always visible */}
@@ -355,13 +420,23 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
               <Link
                 href={link.href}
                 onClick={() => posthog.capture("nav_link_clicked", { link: link.label, href: link.href, source_path: pathname })}
-                className={[
-                  "relative group text-[16px] tracking-[0.8px] transition-colors font-body",
-                  "after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:bg-[#27731e] after:origin-left after:transition-all after:duration-300",
-                  pathname === link.href
-                    ? "text-[#27731e] font-semibold after:w-full"
-                    : "text-black dark:text-white hover:text-[#27731e] after:w-0 group-hover:after:w-full",
-                ].join(" ")}
+                className={
+                  isTransparent
+                    ? [
+                        "relative group text-[16px] tracking-[0.8px] transition-colors font-body",
+                        "after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:bg-[#fec700] after:origin-left after:transition-all after:duration-300",
+                        pathname === link.href
+                          ? "text-[#fec700] font-semibold after:w-full"
+                          : "text-white hover:text-[#fec700] after:w-0 group-hover:after:w-full",
+                      ].join(" ")
+                    : [
+                        "relative group text-[16px] tracking-[0.8px] transition-colors font-body",
+                        "after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:bg-[#27731e] after:origin-left after:transition-all after:duration-300",
+                        pathname === link.href
+                          ? "text-[#27731e] font-semibold after:w-full"
+                          : "text-black dark:text-white hover:text-[#27731e] after:w-0 group-hover:after:w-full",
+                      ].join(" ")
+                }
               >
                 {link.label}
               </Link>
@@ -416,13 +491,16 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
                 setSearchOpen((v) => !v);
                 if (searchOpen) setSearchQuery("");
               }}
-              className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors relative z-30"
+              className={[
+                "w-9 h-9 flex items-center justify-center rounded-full transition-colors relative z-30",
+                isTransparent ? "hover:bg-white/20" : "hover:bg-gray-100 dark:hover:bg-gray-800",
+              ].join(" ")}
               aria-label={searchOpen ? "Close search" : "Open search"}
             >
               <Icon
                 icon={searchOpen ? "mdi:close" : "mdi:magnify"}
                 width={22}
-                className="text-[#1a1c1c] dark:text-white"
+                className={isTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"}
               />
             </button>
           </Tooltip>
@@ -431,10 +509,13 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
           <Tooltip label="Cart">
             <Link
               href="/cart"
-              className="relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className={[
+                "relative w-9 h-9 flex items-center justify-center rounded-full transition-colors",
+                isTransparent ? "hover:bg-white/20" : "hover:bg-gray-100 dark:hover:bg-gray-800",
+              ].join(" ")}
               aria-label="Shopping cart"
             >
-              <Icon icon="uil:cart" width={22} className="text-[#1a1c1c] dark:text-white" />
+              <Icon icon="uil:cart" width={22} className={isTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"} />
               {cartCount > 0 && (
                 <span className="absolute top-0 right-0 min-w-[15px] h-[15px] bg-[#FFC800] text-black text-[7px] font-bold rounded-full border-2 border-white flex items-center justify-center px-1 leading-none">
                   {cartCount > 99 ? "99+" : cartCount}
@@ -447,10 +528,13 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
           <Tooltip label="Inbox">
             <Link
               href="/account/inbox"
-              className="relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className={[
+                "relative w-9 h-9 flex items-center justify-center rounded-full transition-colors",
+                isTransparent ? "hover:bg-white/20" : "hover:bg-gray-100 dark:hover:bg-gray-800",
+              ].join(" ")}
               aria-label="Notifications"
             >
-              <Icon icon="lucide:bell" width={20} className="text-[#1a1c1c] dark:text-white" />
+              <Icon icon="lucide:bell" width={20} className={isTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"} />
               {unreadCount > 0 && (
                 <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
               )}
@@ -461,24 +545,36 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
           <Tooltip label={theme === "dark" ? "Light mode" : "Dark mode"}>
             <button
               onClick={toggleTheme}
-              className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className={[
+                "w-9 h-9 flex items-center justify-center rounded-full transition-colors",
+                isTransparent ? "hover:bg-white/20" : "hover:bg-gray-100 dark:hover:bg-gray-800",
+              ].join(" ")}
               aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             >
               <Icon
                 icon={theme === "dark" ? "iconamoon:mode-light" : "mdi:weather-night"}
                 width={20}
-                className="text-[#1a1c1c] dark:text-white"
+                className={isTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"}
               />
             </button>
           </Tooltip>
 
           {/* Profile trigger or Log in */}
           {user ? (
-            <ProfileTrigger user={user} onLogout={() => setLogoutModalOpen(true)} unreadCount={unreadCount} />
+            <ProfileTrigger
+              user={user}
+              onLogout={() => setLogoutModalOpen(true)}
+              unreadCount={unreadCount}
+              transparent={isTransparent}
+            />
           ) : (
             <Link
               href="/login"
-              className="flex items-center gap-1.5 bg-[#27731e] text-white rounded-[40px] px-5 h-[44px] text-[16px] tracking-[-0.16px] font-body hover:bg-[#045a03] transition-colors"
+              className={
+                isTransparent
+                  ? "flex items-center gap-1.5 bg-[#fec700] text-[#1a1c1c] rounded-[40px] px-5 h-[44px] text-[16px] tracking-[-0.16px] font-body hover:bg-[#e6b400] transition-colors"
+                  : "flex items-center gap-1.5 bg-[#27731e] text-white rounded-[40px] px-5 h-[44px] text-[16px] tracking-[-0.16px] font-body hover:bg-[#045a03] transition-colors"
+              }
             >
               Log in
               <Icon icon="mdi:chevron-right" width={16} />
@@ -487,14 +583,19 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
         </div>
       </nav>
 
-      {/* Mobile spacer */}
-      <div aria-hidden className="md:hidden h-16" />
+      {/* Mobile spacer — collapsed while transparent-over-hero */}
+      <div aria-hidden className={`md:hidden ${mobileIsTransparent ? "h-0" : "h-16"}`} />
 
       {/* ── Mobile Navbar (fixed) ── */}
-      <nav className="md:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between h-16 bg-white dark:bg-[#111] px-4 shadow-sm">
+      <nav
+        className={[
+          "md:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between h-16 px-4 transition-colors duration-300",
+          mobileIsTransparent ? "bg-transparent shadow-none" : "bg-white dark:bg-[#111] shadow-sm",
+        ].join(" ")}
+      >
         <Link href="/">
           <Image
-            src="/logo/Asset 16@5x.webp"
+            src={mobileIsTransparent ? "/logo/logo-white-version.webp" : "/logo/logo-black.webp"}
             alt="Fechi Organics"
             width={100}
             height={35}
@@ -503,7 +604,7 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
         </Link>
         <div className="flex items-center gap-2">
           <Link href="/cart" className="relative p-2" aria-label="Cart">
-            <Icon icon="mdi:cart-outline" width={22} className="text-[#1a1c1c] dark:text-white" />
+            <Icon icon="mdi:cart-outline" width={22} className={mobileIsTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"} />
             {cartCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] bg-[#27731e] text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none">
                 {cartCount > 99 ? "99+" : cartCount}
@@ -511,7 +612,7 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
             )}
           </Link>
           <Link href="/account/inbox" className="relative p-2" aria-label="Notifications">
-            <Icon icon="lucide:bell" width={20} className="text-[#1a1c1c] dark:text-white" />
+            <Icon icon="lucide:bell" width={20} className={mobileIsTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"} />
             {unreadCount > 0 && (
               <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
             )}
@@ -524,7 +625,7 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
             <Icon
               icon={theme === "dark" ? "iconamoon:mode-light" : "mdi:weather-night"}
               width={20}
-              className="text-[#1a1c1c] dark:text-white"
+              className={mobileIsTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"}
             />
           </button>
           {user && (
@@ -550,7 +651,7 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
             <Icon
               icon={mobileOpen ? "mdi:close" : "mdi:menu"}
               width={24}
-              className="text-[#1a1c1c] dark:text-white"
+              className={mobileIsTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"}
             />
           </button>
         </div>

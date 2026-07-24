@@ -357,6 +357,9 @@ model product {
   /// No longer read by checkout or admin inventory; the public storefront
   /// never gates on stock at all. Left in place for historic data only.
   stock             Int            @default(0)
+  /// Manual admin override — the storefront's only stock gate. Independent
+  /// of the deprecated `stock` field and per-branch Zoho stock.
+  outOfStock        Boolean        @default(false)
   ratingAvg         Float          @default(0)
   ratingCount       Int            @default(0)
   // Zoho catalog fields — populated (or nulled, if absent from Zoho) on every

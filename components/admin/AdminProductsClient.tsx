@@ -51,6 +51,7 @@ type AdminProduct = {
   ingredients: string | null;
   bestSeller: boolean;
   isActive: boolean;
+  outOfStock: boolean;
   stock: number;
   ratingAvg: number;
   ratingCount: number;
@@ -76,6 +77,7 @@ type DrawerFormData = {
   stock: string;
   bestSeller: boolean;
   isActive: boolean;
+  outOfStock: boolean;
   // Images (objectKeys in order, index 0 = primary)
   imageKeys: string[];
   // Product details
@@ -197,7 +199,7 @@ function blankForm(): DrawerFormData {
   return {
     name: "", slug: "", description: "", shortDescription: "",
     categoryId: "", priceKes: "", compareAtPriceKes: "", variantLabel: "",
-    stock: "0", bestSeller: false, isActive: true,
+    stock: "0", bestSeller: false, isActive: true, outOfStock: false,
     imageKeys: [], sizes: [], howToUse: "", ingredients: "",
     seoTitle: "", metaDescription: "",
   };
@@ -218,7 +220,7 @@ function productToForm(p: AdminProduct): DrawerFormData {
       ? String(p.compareAtPriceKes)
       : "",
     variantLabel: p.variantLabel ?? "",
-    stock: String(p.stock), bestSeller: p.bestSeller, isActive: p.isActive,
+    stock: String(p.stock), bestSeller: p.bestSeller, isActive: p.isActive, outOfStock: p.outOfStock,
     imageKeys: sortedImages.map((i) => i.objectKey),
     sizes: p.sizes ?? [], howToUse: p.howToUse ?? "", ingredients: p.ingredients ?? "",
     seoTitle: "", metaDescription: "",
@@ -1196,6 +1198,13 @@ function ProductDrawer({
               />
               <span className="font-dm text-[13px] text-(--neutral-700)">Best Seller badge</span>
             </label>
+            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+              <Switch
+                checked={form.outOfStock}
+                onChange={(v) => onChange({ outOfStock: v })}
+              />
+              <span className="font-dm text-[13px] text-(--neutral-700)">Out of Stock</span>
+            </label>
           </div>
         </section>
 
@@ -1538,6 +1547,7 @@ export function AdminProductsClient() {
       stock,
       bestSeller: form.bestSeller,
       isActive,
+      outOfStock: form.outOfStock,
       imageObjectKeys: form.imageKeys,
       sizes: form.sizes,
       howToUse: form.howToUse.trim() || null,

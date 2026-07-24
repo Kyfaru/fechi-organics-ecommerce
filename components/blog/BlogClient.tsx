@@ -115,7 +115,10 @@ export function BlogClient({ posts }: BlogClientProps) {
     <div className="overflow-x-hidden">
 
       {/* ── 1. HERO ───────────────────────────────────────────────────── */}
-      <section className="relative bg-[#27731e] py-24 md:py-32 flex flex-col items-center justify-center overflow-hidden">
+      <section
+        id="blog-search"
+        className="relative bg-[#27731e] py-24 md:py-32 flex flex-col items-center justify-center overflow-hidden scroll-mt-20"
+      >
 
         {/* animated blob backgrounds */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden">

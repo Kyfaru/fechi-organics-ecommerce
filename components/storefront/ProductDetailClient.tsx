@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Icon } from "@iconify/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -91,36 +91,26 @@ function StarRow({ rating }: { rating: number }) {
   );
 }
 
-/** Stock availability badge */
-function StockBadge({ stock }: { stock: number }) {
-  if (stock === 0) {
-    return (
-      <span
-        className="text-[12px] font-body font-semibold px-3 py-1 rounded-full"
-        style={{ background: "#fee2e2", color: "#dc2626" }}
-      >
-        Out of Stock
-      </span>
-    );
-  }
-  if (stock <= 5) {
-    return (
-      <span
-        className="text-[12px] font-body font-semibold px-3 py-1 rounded-full"
-        style={{ background: "#fef9c3", color: "#ca8a04" }}
-      >
-        Low Stock ({stock} left)
-      </span>
-    );
-  }
+/** Out of stock badge — only rendered when an admin has explicitly flagged the product. */
+function StockBadge() {
   return (
     <span
-      className="text-[12px] font-body font-semibold px-3 py-1 rounded-full"
-      style={{ background: "#e8fce3", color: "#27731e" }}
+      className="text-[12px] font-body font-semibold px-3 py-1 rounded-full w-fit"
+      style={{ background: "#fee2e2", color: "#dc2626" }}
     >
-      In Stock
+      Out of Stock
     </span>
   );
+}
+
+/** Fisher-Yates shuffle — returns a new shuffled array, doesn't mutate the input. */
+function shuffle<T>(arr: T[]): T[] {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
 /** Brand highlight pills */
@@ -181,8 +171,9 @@ export function ProductDetailClient({ product }: Props) {
   const activeImageAlt =
     product.images[selectedImage]?.alt ?? product.name;
 
-  // Quantity stepper bounds
-  const maxQty = Math.min(10, product.stock);
+  // Quantity stepper bounds — product.stock is deprecated (see prisma schema),
+  // so this is just a sane upper bound, not a real inventory check.
+  const maxQty = 10;
 
   function decQty() {
     setQuantity((q) => Math.max(1, q - 1));
@@ -311,22 +302,23 @@ export function ProductDetailClient({ product }: Props) {
     cartMutation.mutate();
   }
 
-  // ── Related products query ─────────────────────────────────────────────────
+  // ── Other Products query — any active product storewide, not category-scoped ──
   const { data: relatedData, isLoading: relatedLoading } =
     useQuery<RelatedResponse>({
-      queryKey: ["relatedProducts", product.categorySlug],
+      queryKey: ["otherProducts"],
       queryFn: () =>
-        fetch(
-          `/api/storefront/products?category=${product.categorySlug}&limit=8`,
-        ).then((r) => r.json()),
+        fetch(`/api/storefront/products?limit=20`).then((r) => r.json()),
       staleTime: 60_000,
     });
 
-  // Filter out the current product from recommendations
-  const relatedProducts =
-    relatedData?.data?.items?.filter((p) => p.slug !== product.slug) ?? [];
+  // Exclude the current product, then randomize and cap at 5 — re-shuffles
+  // only when the fetched pool changes, not on unrelated re-renders.
+  const otherProducts = useMemo(() => {
+    const pool = relatedData?.data?.items?.filter((p) => p.slug !== product.slug) ?? [];
+    return shuffle(pool).slice(0, 5);
+  }, [relatedData, product.slug]);
 
-  // ── Scroll tracking for "Complete Your Routine" ───────────────────────────
+  // ── Scroll tracking for "Other Products" ──────────────────────────────────
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -337,7 +329,7 @@ export function ProductDetailClient({ product }: Props) {
     onScroll();
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
-  }, [relatedProducts]);
+  }, [otherProducts]);
 
   // ── PostHog page view ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -408,21 +400,6 @@ export function ProductDetailClient({ product }: Props) {
               </span>
             )}
 
-            {/* Favourite heart — top right */}
-            <button
-              onClick={() => favMutation.mutate()}
-              disabled={favMutation.isPending}
-              aria-label={isFavorited ? "Remove from wishlist" : "Add to wishlist"}
-              className="absolute top-4 right-4 z-20 w-10 h-10 rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-transform disabled:opacity-60"
-              style={{ background: "rgba(255,255,255,0.9)" }}
-            >
-              <Icon
-                icon={isFavorited ? "mdi:heart" : "mdi:heart-outline"}
-                width={22}
-                style={{ color: isFavorited ? "#c00" : "#c4c4c4" }}
-              />
-            </button>
-
             {/* Left chevron — hidden at first image */}
             {product.images.length > 1 && selectedImage > 0 && (
               <button
@@ -490,13 +467,28 @@ export function ProductDetailClient({ product }: Props) {
             {product.categoryName}
           </span>
 
-          {/* Product name */}
-          <h1
-            className="font-heading font-semibold leading-tight text-[#1a1c1c] dark:text-white"
-            style={{ fontSize: "clamp(28px, 5vw, 42px)", letterSpacing: "-0.8px" }}
-          >
-            {product.name}
-          </h1>
+          {/* Product name + favourite button */}
+          <div className="flex items-start justify-between gap-3">
+            <h1
+              className="font-heading font-semibold leading-tight text-[#1a1c1c] dark:text-white"
+              style={{ fontSize: "clamp(28px, 5vw, 42px)", letterSpacing: "-0.8px" }}
+            >
+              {product.name}
+            </h1>
+            <button
+              onClick={() => favMutation.mutate()}
+              disabled={favMutation.isPending}
+              aria-label={isFavorited ? "Remove from wishlist" : "Add to wishlist"}
+              className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-transform disabled:opacity-60"
+              style={{ background: "#f6f6f6" }}
+            >
+              <Icon
+                icon={isFavorited ? "mdi:heart" : "mdi:heart-outline"}
+                width={22}
+                style={{ color: isFavorited ? "#c00" : "#c4c4c4" }}
+              />
+            </button>
+          </div>
 
           {/* Variant label */}
           {product.variantLabel && (
@@ -504,9 +496,6 @@ export function ProductDetailClient({ product }: Props) {
               {product.variantLabel}
             </p>
           )}
-
-          {/* Star rating (stars only, no count) */}
-          <StarRow rating={product.ratingAvg} />
 
           {/* Price block */}
           <div className="flex items-center gap-3 flex-wrap">
@@ -527,6 +516,9 @@ export function ProductDetailClient({ product }: Props) {
               </>
             )}
           </div>
+
+          {/* Star rating (stars only, no count) — moved below price */}
+          <StarRow rating={product.ratingAvg} />
 
           {/* Sizes picker */}
           {(product.sizes?.length ?? 0) > 0 && (
@@ -554,8 +546,8 @@ export function ProductDetailClient({ product }: Props) {
             </div>
           )}
 
-          {/* Stock badge */}
-          <StockBadge stock={product.stock} />
+          {/* Stock badge — only when admin has flagged the product out of stock */}
+          {product.outOfStock && <StockBadge />}
 
           {/* Divider */}
           <hr className="dark:border-gray-700" style={{ borderColor: "#c0cab8", margin: "2px 0" }} />
@@ -590,33 +582,33 @@ export function ProductDetailClient({ product }: Props) {
                       +
                     </button>
                   </div>
-                  {/* Add to Cart */}
+                  {/* Add to Cart — restyled to the brand yellow accent */}
                   <button
                     onClick={handleAddToCart}
-                    disabled={cartMutation.isPending || product.stock === 0}
+                    disabled={cartMutation.isPending || product.outOfStock}
                     className="flex-1 h-[48px] rounded-[40px] font-body font-semibold text-[15px] flex items-center justify-center gap-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ background: "#27731e", color: "#fff", minWidth: "160px" }}
+                    style={{ background: "#fec700", color: "#1a1c1c", minWidth: "160px" }}
                     onMouseEnter={(e) => {
-                      if (!cartMutation.isPending && product.stock > 0)
-                        (e.currentTarget as HTMLButtonElement).style.background = "#045a03";
+                      if (!cartMutation.isPending && !product.outOfStock)
+                        (e.currentTarget as HTMLButtonElement).style.background = "#e5b600";
                     }}
                     onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLButtonElement).style.background = "#27731e";
+                      (e.currentTarget as HTMLButtonElement).style.background = "#fec700";
                     }}
                     aria-label="Add to cart"
                   >
-                    {cartMutation.isPending ? <Spinner size={16} invert /> : <Icon icon="mdi:cart-plus" width={18} />}
-                    {cartMutation.isPending ? "Adding…" : "Add to Cart"}
+                    {cartMutation.isPending ? <Spinner size={16} /> : <Icon icon="mdi:cart-plus" width={18} />}
+                    {cartMutation.isPending ? "Adding…" : product.outOfStock ? "Out of Stock" : "Add to Cart"}
                   </button>
                 </>
               ) : (
-                /* Go to Cart — yellow, same slot as Add to Cart */
+                /* Go to Cart — green, same slot as Add to Cart */
                 <Link
                   href="/cart"
                   className="flex-1 h-[48px] rounded-[40px] font-body font-semibold text-[15px] flex items-center justify-center gap-2 transition-all duration-200 shadow-sm"
-                  style={{ background: "#fec700", color: "#1a1c1c", minWidth: "160px" }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "#e5b600"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "#fec700"; }}
+                  style={{ background: "#27731e", color: "#fff", minWidth: "160px" }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "#045a03"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "#27731e"; }}
                 >
                   <Icon icon="mdi:cart-check" width={18} />
                   Go to Cart
@@ -675,81 +667,81 @@ export function ProductDetailClient({ product }: Props) {
 
           {/* Divider */}
           <hr className="dark:border-gray-700" style={{ borderColor: "#c0cab8", margin: "2px 0" }} />
-
-          {/* 3-tab toggle */}
-          <div>
-            {/* Tab bar */}
-            <div className="flex border-b dark:border-gray-700" style={{ borderColor: "#c0cab8" }}>
-              {(["description", "howToUse", "ingredients"] as const).map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className="font-body text-[14px] font-medium px-5 py-3 transition-colors"
-                  style={{
-                    borderBottom: activeTab === tab ? "2px solid #27731e" : "2px solid transparent",
-                    color: activeTab === tab ? "#27731e" : "#40493c",
-                    marginBottom: activeTab === tab ? "-1px" : undefined,
-                  }}
-                >
-                  {tab === "description" ? "Description" : tab === "howToUse" ? "How to Use" : "Ingredients"}
-                </button>
-              ))}
-            </div>
-            {/* Tab content */}
-            <div className="pt-4 pb-2">
-              {activeTab === "description" && (
-                <p className="font-body text-[15px] leading-[1.7]" style={{ color: "#40493c" }}>
-                  {product.description}
-                </p>
-              )}
-              {activeTab === "howToUse" && (
-                product.howToUse
-                  ? <p className="font-body text-[15px] leading-[1.7]" style={{ color: "#40493c" }}>{product.howToUse}</p>
-                  : <p className="font-body text-[14px] italic" style={{ color: "#a1a1a1" }}>No information available.</p>
-              )}
-              {activeTab === "ingredients" && (
-                product.ingredients
-                  ? <p className="font-body text-[15px] leading-[1.7]" style={{ color: "#40493c" }}>{product.ingredients}</p>
-                  : <p className="font-body text-[14px] italic" style={{ color: "#a1a1a1" }}>No information available.</p>
-              )}
-            </div>
-          </div>
-
-          {/* WhatsApp CTA */}
-          <div
-            className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mt-2 p-4 rounded-[16px]"
-            style={{ background: "#f0fdf0", border: "1px solid #c4e8be" }}
-          >
-            <p className="font-body text-[13px]" style={{ color: "#40493c" }}>
-              Prefer to order on WhatsApp?
-            </p>
-            <a
-              href={`https://wa.me/254768151505?text=${encodeURIComponent(`Hi! I'd like to order: ${product.name}`)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() =>
-                posthog.capture("whatsapp_order_product_clicked", {
-                  product_id: product.id,
-                  product_name: product.name,
-                })
-              }
-              className="flex items-center gap-2 h-[44px] px-5 rounded-[40px] font-body font-semibold text-[14px] text-white flex-shrink-0"
-              style={{ background: "#25D366" }}
-            >
-              <Icon icon="mdi:whatsapp" width={20} />
-              Order via WhatsApp
-            </a>
-          </div>
         </motion.div>
       </div>
 
-      {/* ── Complete Your Routine ─────────────────────────────────────────────── */}
+      {/* ── Description (full width, below image + buy box) ─────────────────── */}
+      <div className="mt-12">
+        {/* Tab bar */}
+        <div className="flex border-b dark:border-gray-700" style={{ borderColor: "#c0cab8" }}>
+          {(["description", "howToUse", "ingredients"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className="font-body text-[14px] font-medium px-5 py-3 transition-colors"
+              style={{
+                borderBottom: activeTab === tab ? "2px solid #27731e" : "2px solid transparent",
+                color: activeTab === tab ? "#27731e" : "#40493c",
+                marginBottom: activeTab === tab ? "-1px" : undefined,
+              }}
+            >
+              {tab === "description" ? "Description" : tab === "howToUse" ? "How to Use" : "Ingredients"}
+            </button>
+          ))}
+        </div>
+        {/* Tab content */}
+        <div className="pt-4 pb-2 max-w-[820px]">
+          {activeTab === "description" && (
+            <p className="font-body text-[15px] leading-[1.7]" style={{ color: "#40493c" }}>
+              {product.description}
+            </p>
+          )}
+          {activeTab === "howToUse" && (
+            product.howToUse
+              ? <p className="font-body text-[15px] leading-[1.7]" style={{ color: "#40493c" }}>{product.howToUse}</p>
+              : <p className="font-body text-[14px] italic" style={{ color: "#a1a1a1" }}>No information available.</p>
+          )}
+          {activeTab === "ingredients" && (
+            product.ingredients
+              ? <p className="font-body text-[15px] leading-[1.7]" style={{ color: "#40493c" }}>{product.ingredients}</p>
+              : <p className="font-body text-[14px] italic" style={{ color: "#a1a1a1" }}>No information available.</p>
+          )}
+        </div>
+      </div>
+
+      {/* ── WhatsApp CTA (full width, below description) ─────────────────────── */}
+      <div
+        className="mt-8 flex flex-col sm:flex-row items-start sm:items-center gap-3 p-4 rounded-[16px]"
+        style={{ background: "#f0fdf0", border: "1px solid #c4e8be" }}
+      >
+        <p className="font-body text-[13px]" style={{ color: "#40493c" }}>
+          Prefer to order on WhatsApp?
+        </p>
+        <a
+          href={`https://wa.me/254768151505?text=${encodeURIComponent(`Hi! I'd like to order: ${product.name}`)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() =>
+            posthog.capture("whatsapp_order_product_clicked", {
+              product_id: product.id,
+              product_name: product.name,
+            })
+          }
+          className="flex items-center gap-2 h-[44px] px-5 rounded-[40px] font-body font-semibold text-[14px] text-white flex-shrink-0"
+          style={{ background: "#25D366" }}
+        >
+          <Icon icon="mdi:whatsapp" width={20} />
+          Order via WhatsApp
+        </a>
+      </div>
+
+      {/* ── Other Products ────────────────────────────────────────────────────── */}
       <div className="mt-16 relative">
         <h2
           className="font-heading font-semibold text-[28px] mb-6 text-[#1a1c1c] dark:text-white"
           style={{ letterSpacing: "-0.5px" }}
         >
-          Complete Your Routine
+          Other Products
         </h2>
 
         <div className="relative">
@@ -787,15 +779,15 @@ export function ProductDetailClient({ product }: Props) {
                     <SkeletonCard />
                   </div>
                 ))
-              : relatedProducts.length > 0
-                ? relatedProducts.map((p) => (
+              : otherProducts.length > 0
+                ? otherProducts.map((p) => (
                     <div key={p.id} className="flex-shrink-0 w-[280px]">
                       <ProductCard product={p} />
                     </div>
                   ))
                 : (
                   <p className="font-body text-[14px]" style={{ color: "#40493c" }}>
-                    No related products found.
+                    No other products found.
                   </p>
                 )}
           </div>

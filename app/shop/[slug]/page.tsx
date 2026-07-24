@@ -74,9 +74,9 @@ export default async function ProductPage({
       url: `${SITE_URL}/shop/${slug}`,
       priceCurrency: "KES",
       price: product.priceKes,
-      // Stock is tracked per-branch for internal/admin use only — the
-      // storefront never gates availability on it.
-      availability: "https://schema.org/InStock",
+      availability: product.outOfStock
+        ? "https://schema.org/OutOfStock"
+        : "https://schema.org/InStock",
     },
   };
 

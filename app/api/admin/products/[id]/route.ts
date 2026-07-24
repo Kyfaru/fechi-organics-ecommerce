@@ -64,6 +64,7 @@ const UpdateSchema = z.object({
   stock: z.number().int().min(0).optional(),
   bestSeller: z.boolean().optional(),
   isActive: z.boolean().optional(),
+  outOfStock: z.boolean().optional(),
   sizes: z.array(z.string()).optional(),
   howToUse: z.string().nullable().optional(),
   ingredients: z.string().nullable().optional(),

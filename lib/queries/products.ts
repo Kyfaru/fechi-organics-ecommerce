@@ -19,6 +19,7 @@ export type ProductCard = {
   categoryName: string;
   categorySlug: string;
   stock: number;
+  outOfStock: boolean;
 };
 
 export type ProductDetail = ProductCard & {
@@ -41,6 +42,7 @@ function toCard(p: {
   ratingAvg: number;
   ratingCount: number;
   stock: number;
+  outOfStock: boolean;
   images: { objectKey: string; isPrimary: boolean }[];
   category: { name: string; slug: string };
 }): ProductCard {
@@ -60,6 +62,7 @@ function toCard(p: {
     categoryName: p.category.name,
     categorySlug: p.category.slug,
     stock: p.stock,
+    outOfStock: p.outOfStock,
   };
 }
 
