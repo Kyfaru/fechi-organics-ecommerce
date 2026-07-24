@@ -9,7 +9,13 @@ import type { campaign as Campaign } from "@prisma/client";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 const TWILIO_STATUS_CALLBACK = `${APP_URL}/api/webhooks/twilio/status`;
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (!_resend) {
+    _resend = new Resend(process.env.RESEND_API_KEY);
+  }
+  return _resend;
+}
 
 /**
  * Does the actual sending for a campaign — shared by the QStash worker route
@@ -118,7 +124,7 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
 
         try {
           if (channel === "EMAIL") {
-            const { data, error } = await resend.emails.send({
+            const { data, error } = await getResend().emails.send({
               from: process.env.EMAIL_FROM!,
               to: user.email,
               subject: campaign.subject ?? campaign.name,

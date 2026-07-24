@@ -4,7 +4,13 @@ import { qstashReceiver } from "@/lib/qstash";
 import { db } from "@/lib/db";
 import { emailShell, emailSection, emailButton, emailIconCircle, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (!_resend) {
+    _resend = new Resend(process.env.RESEND_API_KEY);
+  }
+  return _resend;
+}
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
@@ -46,7 +52,7 @@ export async function POST(req: NextRequest) {
 
   const html = emailShell({ title: "New customer reply", sectionsHtml: sections });
 
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: process.env.EMAIL_FROM!,
     to: adminEmail,
     subject: `[Customer Reply] ${subject}`,
