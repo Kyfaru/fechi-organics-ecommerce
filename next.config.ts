@@ -4,7 +4,6 @@ import { withSentryConfig } from "@sentry/nextjs";
 const nextConfig: NextConfig = {
   skipTrailingSlashRedirect: true,
   cacheComponents: true,
-  output: "standalone",
 
   transpilePackages: ['d3-array', 'react-simple-maps'],
 
