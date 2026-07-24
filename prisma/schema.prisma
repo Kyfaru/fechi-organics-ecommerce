@@ -870,13 +870,17 @@ model supportTicket {
 }
 
 model ticketMessage {
-  id           String        @id @default(cuid())
-  ticketId     String
-  ticket       supportTicket @relation(fields: [ticketId], references: [id])
-  senderType   MessageSender
-  content      String        @db.Text
-  emailSentAt  DateTime?
-  createdAt    DateTime      @default(now())
+  id             String        @id @default(cuid())
+  ticketId       String
+  ticket         supportTicket @relation(fields: [ticketId], references: [id])
+  senderType     MessageSender
+  content        String        @db.Text
+  attachmentUrl  String?
+  attachmentName String?
+  attachmentType String?
+  attachmentSize Int?
+  emailSentAt    DateTime?
+  createdAt      DateTime      @default(now())
 
   @@index([ticketId])
   @@schema("public")

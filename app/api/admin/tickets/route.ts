@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
         messages: {
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { content: true, senderType: true, createdAt: true },
+          select: { content: true, senderType: true, createdAt: true, attachmentName: true },
         },
       },
     });

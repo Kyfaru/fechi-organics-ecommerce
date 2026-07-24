@@ -8,6 +8,7 @@ const TABS: Array<{ href: string; icon: string; label: string }> = [
   { href: "/account/profile",  icon: "lucide:user",         label: "Profile"  },
   { href: "/account/orders",   icon: "lucide:shopping-bag", label: "Orders"   },
   { href: "/account/reviews",  icon: "lucide:star",         label: "Reviews"  },
+  { href: "/account/messages", icon: "lucide:message-circle", label: "Messages" },
   { href: "/account/settings", icon: "lucide:settings",     label: "Settings" },
   { href: "/account/inbox",    icon: "lucide:inbox",        label: "Inbox"    },
   { href: "/account/wishlist", icon: "lucide:heart",        label: "Wishlist" },

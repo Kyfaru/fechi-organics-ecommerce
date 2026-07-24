@@ -80,9 +80,17 @@ export async function PATCH(
     const parsed = PatchSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
+    // Reopening (status -> OPEN) also pushes expiresAt forward — otherwise a
+    // ticket manually reopened from EXPIRED looks re-expired on the very next
+    // lazy-sweep read, since its old expiresAt is still in the past.
+    const data =
+      parsed.data.status === "OPEN"
+        ? { status: parsed.data.status, expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000) }
+        : { status: parsed.data.status };
+
     const ticket = await db.supportTicket.update({
       where: { id },
-      data: { status: parsed.data.status },
+      data,
       select: { id: true, status: true, ticketNumber: true },
     });
 

@@ -187,7 +187,7 @@ function buildTicketAcknowledgmentEmailHTML(args: {
       ${emailInfoBox("Our team typically responds within <strong>24 hours</strong> on business days.", "success")}
       <p style="margin:24px 0 0;font-size:13px;color:${EMAIL_BRAND.textMuted};line-height:1.6;">
         You can follow the conversation any time from your
-        <a href="${SITE_URL}/messages" style="color:${EMAIL_BRAND.darkGreen};text-decoration:underline;">messages inbox</a>.
+        <a href="${SITE_URL}/account/messages" style="color:${EMAIL_BRAND.darkGreen};text-decoration:underline;">messages inbox</a>.
       </p>
     `),
   ].join("");

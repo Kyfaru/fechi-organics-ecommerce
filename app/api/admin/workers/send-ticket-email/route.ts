@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       <hr style="border:none;border-top:1px solid ${EMAIL_BRAND.divider};margin:32px 0;"/>
       <p style="font-size:13px;color:${EMAIL_BRAND.textMuted};line-height:1.6;">
         Please reply from your message inbox at
-        <a href="${process.env.NEXT_PUBLIC_APP_URL}/messages" style="color:${EMAIL_BRAND.primaryGreen};">fechiorganics.com/messages</a>
+        <a href="${process.env.NEXT_PUBLIC_APP_URL}/account/messages" style="color:${EMAIL_BRAND.primaryGreen};">fechiorganics.com/account/messages</a>
         — replies sent directly to this email are not monitored.
       </p>
     `),

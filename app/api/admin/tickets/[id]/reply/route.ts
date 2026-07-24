@@ -8,10 +8,11 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { getRedis } from "@/lib/redis";
 import { ticketChannel } from "@/lib/ticket-channel";
 import { requirePermission } from "@/lib/require-permission";
+import { uploadTicketAttachment, AttachmentValidationError, type TicketAttachment } from "@/lib/tickets/upload-attachment";
 
 const ReplySchema = z.object({
-  content: z.string().min(1).max(5000),
-}).strict();
+  content: z.string().max(5000).optional(),
+});
 
 // 48 hours in milliseconds — each admin reply resets the expiry window
 const REPLY_EXPIRY_MS = 48 * 60 * 60 * 1000;
@@ -35,9 +36,20 @@ export async function POST(
   try {
     const { id } = await params;
 
-    const body = await req.json().catch(() => ({}));
-    const parsed = ReplySchema.safeParse(body);
+    const formData = await req.formData().catch(() => null);
+    if (!formData) return Err.validation("Invalid form data");
+
+    const rawContent = formData.get("content");
+    const parsed = ReplySchema.safeParse({
+      content: typeof rawContent === "string" ? rawContent.trim() : undefined,
+    });
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
+
+    const file = formData.get("file");
+    const hasFile = file instanceof File && file.size > 0;
+    if (!parsed.data.content && !hasFile) {
+      return Err.validation("Message cannot be empty");
+    }
 
     // Load ticket to get user email and subject for the notification email
     const ticket = await db.supportTicket.findUnique({
@@ -57,6 +69,18 @@ export async function POST(
       return Err.validation("Cannot reply to an expired ticket. Reopen it first.");
     }
 
+    let attachment: TicketAttachment | null = null;
+    if (hasFile) {
+      try {
+        attachment = await uploadTicketAttachment(id, file as File);
+      } catch (uploadErr) {
+        if (uploadErr instanceof AttachmentValidationError) {
+          return Err.validation(uploadErr.message);
+        }
+        throw uploadErr;
+      }
+    }
+
     const now = new Date();
     const newExpiry = new Date(now.getTime() + REPLY_EXPIRY_MS);
 
@@ -66,7 +90,8 @@ export async function POST(
         data: {
           ticketId: id,
           senderType: "ADMIN",
-          content: parsed.data.content,
+          content: parsed.data.content ?? "",
+          ...attachment,
         },
       }),
       db.supportTicket.update({
@@ -74,6 +99,9 @@ export async function POST(
         data: { lastActivityAt: now, expiresAt: newExpiry, status: "OPEN" },
       }),
     ]);
+
+    const notifyContent =
+      parsed.data.content || (attachment ? `📎 Sent an attachment: ${attachment.attachmentName}` : "");
 
     // Fetch the customer's last message so the notification email can quote
     // it above the admin's new reply — gives the recipient context without
@@ -94,7 +122,7 @@ export async function POST(
           recipientEmail: ticket.user.email,
           recipientName: ticket.user.name,
           subject: `Re: ${ticket.subject}`,
-          content: parsed.data.content,
+          content: notifyContent,
           quotedContent: lastCustomerMessage?.content,
         },
       });

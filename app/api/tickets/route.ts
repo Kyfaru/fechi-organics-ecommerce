@@ -29,6 +29,13 @@ export async function GET() {
     const user = await requireUser();
     if (!user) return Err.authRequired();
 
+    // Bulk-expire tickets whose expiresAt has passed — mirrors the same sweep
+    // in GET /api/admin/tickets so status is never stale on either side.
+    await db.supportTicket.updateMany({
+      where: { userId: user.id, expiresAt: { lt: new Date() }, status: "OPEN" },
+      data: { status: "EXPIRED" },
+    });
+
     const tickets = await db.supportTicket.findMany({
       where: { userId: user.id },
       orderBy: { lastActivityAt: "desc" },
@@ -44,7 +51,7 @@ export async function GET() {
         messages: {
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { content: true, senderType: true, createdAt: true },
+          select: { content: true, senderType: true, createdAt: true, attachmentName: true },
         },
       },
     });
