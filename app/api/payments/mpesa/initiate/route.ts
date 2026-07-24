@@ -277,6 +277,6 @@ export async function POST(req: NextRequest) {
     return ok({ orderId: order.id });
   } catch (e) {
     console.error("[mpesa/initiate] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

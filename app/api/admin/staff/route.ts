@@ -5,23 +5,15 @@
 
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
-import { requireAdminPage } from "@/lib/admin-guard";
+import { requirePermission } from "@/lib/require-permission";
 
 export async function GET(req: NextRequest) {
   await connection();
 
-  const denied = await requireAdminPage(req, 'staff');
+  const denied = await requirePermission(req, { staff: ["view"] });
   if (denied) return denied;
-
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const caller = await db.user.findUnique({ where: { id: session.user.id } });
-  if (caller?.role !== "admin") return Err.forbidden();
 
   try {
     const staff = await db.user.findMany({
@@ -70,6 +62,6 @@ export async function GET(req: NextRequest) {
     return ok({ staff: shaped });
   } catch (err) {
     console.error("[GET /api/admin/staff]", err);
-    return Err.internal();
+    return Err.internal(err);
   }
 }

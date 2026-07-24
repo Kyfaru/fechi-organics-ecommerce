@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Err } from "@/lib/api";
 import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-invoice";
+import { requirePermission } from "@/lib/require-permission";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/orders/instore/[id]/invoice — redirects to the in-store
@@ -20,6 +21,9 @@ export async function GET(
 ) {
   await connection();
   try {
+    const denied = await requirePermission(req, { orders: ["view"] });
+    if (denied) return denied;
+
     const session = await auth.api.getSession({ headers: req.headers });
     if (!session?.user) return Err.authRequired();
 
@@ -27,7 +31,7 @@ export async function GET(
       where: { id: session.user.id },
       include: { adminProfile: true },
     });
-    if (user?.role !== "admin") return Err.forbidden();
+    if (!user) return Err.authRequired();
 
     const { id } = await params;
 
@@ -51,6 +55,6 @@ export async function GET(
     return NextResponse.redirect(invoice.url);
   } catch (e) {
     console.error("[admin/orders/instore/[id]/invoice] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

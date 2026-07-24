@@ -248,7 +248,7 @@ export function ProductCard({ product }: Props) {
                     exit={{ scale: 0.9, opacity: 0 }}
                     transition={{ duration: 0.15 }}
                     onClick={handleAddToCart}
-                    disabled={cartMutation.isPending || product.stock === 0}
+                    disabled={cartMutation.isPending || product.outOfStock}
                     className={[
                       "flex items-center gap-1 border rounded-[40px] px-3 py-2 text-[13px] font-body transition-all",
                       justAdded

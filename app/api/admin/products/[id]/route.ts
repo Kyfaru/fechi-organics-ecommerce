@@ -1,22 +1,12 @@
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { invalidateProductCache } from "@/lib/cache-tags";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { createNotification } from "@/lib/notify";
-
-// ---------------------------------------------------------------------------
-// Auth helper
-// ---------------------------------------------------------------------------
-async function requireAdmin(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user) return null;
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  return user?.role === "admin" ? user : null;
-}
+import { requirePermission } from "@/lib/require-permission";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/products/[id]
@@ -27,10 +17,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   await connection();
-  try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { products: ["view"] });
+  if (denied) return denied;
+
+  try {
     const { id } = await params;
 
     const product = await db.product.findUnique({
@@ -49,7 +40,7 @@ export async function GET(
     return ok({ product });
   } catch (e) {
     console.error("[admin/products/[id]] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -73,6 +64,7 @@ const UpdateSchema = z.object({
   stock: z.number().int().min(0).optional(),
   bestSeller: z.boolean().optional(),
   isActive: z.boolean().optional(),
+  outOfStock: z.boolean().optional(),
   sizes: z.array(z.string()).optional(),
   howToUse: z.string().nullable().optional(),
   ingredients: z.string().nullable().optional(),
@@ -88,10 +80,11 @@ export async function PATCH(
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
-  try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { products: ["update"] });
+  if (denied) return denied;
+
+  try {
     const { id } = await params;
 
     const body = await req.json().catch(() => ({}));
@@ -148,7 +141,7 @@ export async function PATCH(
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("A product with this slug already exists");
     }
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -163,10 +156,11 @@ export async function DELETE(
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
-  try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { products: ["delete"] });
+  if (denied) return denied;
+
+  try {
     const { id } = await params;
 
     const existing = await db.product.findUnique({ where: { id } });
@@ -185,6 +179,6 @@ export async function DELETE(
     return ok({ id });
   } catch (e) {
     console.error("[admin/products/[id]] DELETE error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

@@ -86,6 +86,6 @@ export async function GET(req: NextRequest) {
     return ok({ results });
   } catch (e) {
     console.error("[search] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

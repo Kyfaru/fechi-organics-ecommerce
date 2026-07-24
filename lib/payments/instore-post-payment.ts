@@ -15,6 +15,8 @@ import { db } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
 import { paymentChannel } from "@/lib/payment-channel";
 import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-invoice";
+import { pushSaleToZoho } from "@/lib/zoho/push-sale";
+import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
@@ -35,6 +37,9 @@ export async function markInStorePaymentSuccess(args: {
   inStoreOrderId: string;
   transactionData: Prisma.inStoreTransactionUpdateInput;
 }): Promise<void> {
+  let branchId: string | null = null;
+  let paidItems: Array<{ productId: string; name: string; priceKes: number; quantity: number }> = [];
+
   await db.$transaction(async (tx: TxClient) => {
     const transaction = await tx.inStoreTransaction.findUnique({
       where: { id: args.transactionId },
@@ -47,19 +52,26 @@ export async function markInStorePaymentSuccess(args: {
       data: args.transactionData,
     });
 
-    await tx.inStoreOrder.update({
+    const order = await tx.inStoreOrder.update({
       where: { id: args.inStoreOrderId },
       data: { paymentStatus: "PAID" },
+      select: { branchId: true },
     });
+    branchId = order.branchId;
 
     const items = await tx.inStoreOrderItem.findMany({
       where: { inStoreOrderId: args.inStoreOrderId },
-      select: { productId: true, quantity: true },
+      select: { productId: true, name: true, priceKes: true, quantity: true },
     });
+    paidItems = items;
+
+    // Branch-scoped stock, not the deprecated global product.stock column
+    // (which nothing else reads — see its schema comment).
     for (const item of items) {
-      await tx.product.update({
-        where: { id: item.productId },
-        data: { stock: { decrement: item.quantity } },
+      await tx.branchProductStock.upsert({
+        where: { branchId_productId: { branchId: order.branchId, productId: item.productId } },
+        create: { branchId: order.branchId, productId: item.productId, stock: -item.quantity },
+        update: { stock: { decrement: item.quantity } },
       });
     }
   });
@@ -90,6 +102,37 @@ export async function markInStorePaymentSuccess(args: {
     );
   } catch (e) {
     console.error("[instore-post-payment] Redis set failed (success):", e);
+  }
+
+  // Fire-and-forget: push this sale to Zoho as a Sales Order. Must never
+  // throw or block the payment-success path — same convention as the two
+  // best-effort blocks above.
+  if (branchId && paidItems.length > 0) {
+    (async () => {
+      try {
+        const organizationId = await resolveZohoOrganizationId(branchId!);
+        if (!organizationId) return;
+
+        const order = await db.inStoreOrder.findUnique({
+          where: { id: args.inStoreOrderId },
+          select: { customerName: true, customerEmail: true, discountKes: true },
+        });
+
+        await pushSaleToZoho({
+          organizationId,
+          branchId,
+          referenceType: "inStoreOrder",
+          referenceId: args.inStoreOrderId,
+          customerName: order?.customerName,
+          customerEmail: order?.customerEmail,
+          items: paidItems,
+          discountKes: order?.discountKes,
+          notes: `Fechi Organics in-store order ${args.inStoreOrderId}`,
+        });
+      } catch (e) {
+        console.error("[instore-post-payment] Zoho SO push failed:", e);
+      }
+    })();
   }
 }
 

@@ -35,6 +35,7 @@ const mockOrderCreate = vi.fn();
 const mockProductUpdate = vi.fn();
 const mockCartItemDeleteMany = vi.fn();
 const mockUserFindUnique = vi.fn();
+const mockBranchFindFirst = vi.fn();
 const mockTransaction = vi.fn();
 
 vi.mock("@/lib/db", () => ({
@@ -54,6 +55,11 @@ vi.mock("@/lib/db", () => ({
     },
     user: {
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
+    },
+    // Fire-and-forget Zoho push resolves the main branch's org (an online
+    // order has no branch of its own — see app/api/orders/route.ts §8).
+    branch: {
+      findFirst: (...args: unknown[]) => mockBranchFindFirst(...args),
     },
     $transaction: (fn: (tx: unknown) => unknown) => mockTransaction(fn),
   },
@@ -106,6 +112,8 @@ beforeEach(() => {
   mockCartFindUnique.mockResolvedValue(MOCK_CART);
   // Default: user for Zoho push
   mockUserFindUnique.mockResolvedValue({ name: "Test User", email: "test@test.com" });
+  // Default: a main branch exists to receive the Zoho sales order push
+  mockBranchFindFirst.mockResolvedValue({ id: "branch-main" });
   // Default: Zoho post succeeds
   mockZohoPost.mockResolvedValue({ salesorder: { salesorder_id: "SO-1" } });
 
@@ -160,23 +168,25 @@ describe("POST /api/orders", () => {
     expect(json.error.code).toBe("VALIDATION");
   });
 
-  it("returns 400 VALIDATION when an item is out of stock — before any write", async () => {
+  // Stock is intentionally never checked at checkout — the storefront never
+  // gates on it (stock is tracked per-branch for internal/admin use only,
+  // synced from each branch's own Zoho POS). An item with product.stock: 0
+  // must still check out successfully.
+  it("creates the order even when product.stock is 0 (storefront never gates on stock)", async () => {
     mockCartFindUnique.mockResolvedValue({
       ...MOCK_CART,
-      items: [makeCartItem({ quantity: 20, product: { ...makeCartItem().product, stock: 5 } })],
+      items: [makeCartItem({ quantity: 20, product: { ...makeCartItem().product, stock: 0 } })],
     });
 
     const res = await POST(makeRequest());
     const json = await res.json();
 
-    expect(res.status).toBe(400);
-    expect(json.error.code).toBe("VALIDATION");
-    expect(json.error.message).toContain("out of stock");
-    // Transaction must NOT have been called
-    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(json.ok).toBe(true);
+    expect(mockTransaction).toHaveBeenCalledOnce();
   });
 
-  it("creates order, decrements stock, clears cart, returns orderId", async () => {
+  it("creates order, clears cart, returns orderId", async () => {
     const res = await POST(makeRequest());
     const json = await res.json();
 
@@ -188,13 +198,6 @@ describe("POST /api/orders", () => {
     expect(mockTransaction).toHaveBeenCalledOnce();
     // Order created
     expect(mockOrderCreate).toHaveBeenCalledOnce();
-    // Stock decremented
-    expect(mockProductUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "prod-1" },
-        data: { stock: { decrement: 2 } },
-      })
-    );
     // Cart cleared
     expect(mockCartItemDeleteMany).toHaveBeenCalledWith({ where: { cartId: "cart-1" } });
   });

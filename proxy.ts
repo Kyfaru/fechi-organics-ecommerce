@@ -22,7 +22,15 @@
  *  - All other routes require a session cookie to exist.
  *  - Unauthenticated requests to /admin/* → redirected to /admin/login.
  *  - Unauthenticated requests to other protected routes → redirected to /login.
- *  - Authenticated users visiting /login, /signup, or /admin/login → redirected away.
+ *
+ * Note: this middleware deliberately does NOT redirect an authenticated
+ * session away from /login, /signup, or /admin/login — doing that correctly
+ * requires knowing the session's role (admin vs client), which means a DB
+ * call this file intentionally avoids (see above). That responsibility lives
+ * client-side instead: each auth page's own mount effect (app/admin/login/page.tsx,
+ * app/(auth)/login/LoginForm.tsx, app/(auth)/signup/page.tsx) redirects away
+ * a same-portal session and signs out a wrong-portal one — see also the
+ * app-wide PortalSessionGuard in app/providers.tsx.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -56,6 +64,10 @@ const PUBLIC_PATHS = [
   "/faq",
   "/testimonials",
   "/shipping",
+  "/403",
+  "/408",
+  "/network-issue",
+  "/coming-soon",
   // Public API namespaces
   "/api/storefront",
   "/api/cart",
@@ -75,6 +87,13 @@ const PUBLIC_PATHS = [
   // 307-redirect before the handler's own auth check ever runs.
   "/api/admin/workers",
 ];
+
+/**
+ * Paths that should be rewritten to the "/coming-soon" page.
+ * Empty by default — a dev-facing extension point for gating routes
+ * that aren't ready for public traffic yet.
+ */
+const COMING_SOON_PATHS: string[] = [];
 
 /** Auth API prefix — always pass through. */
 const AUTH_API_PREFIX = "/api/auth";
@@ -127,6 +146,14 @@ export function proxy(request: NextRequest): NextResponse {
     return withSecurityHeaders(NextResponse.next());
   }
 
+  if (
+    COMING_SOON_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"))
+  ) {
+    const url = new URL("/coming-soon", request.url);
+    url.searchParams.set("from", pathname);
+    return NextResponse.rewrite(url);
+  }
+
   const isPublicPath = PUBLIC_PATHS.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
   );
@@ -134,31 +161,40 @@ export function proxy(request: NextRequest): NextResponse {
   // Presence of the session cookie is the first-pass authentication signal.
   const hasSessionCookie = !!sessionCookie;
 
-  // 3. Redirect authenticated users away from auth pages to avoid re-login.
-  //    /admin/login → /admin (the AdminGuard handles role checks server-side).
-  //    /login or /signup → / (the default storefront home).
-  const isAuthPage =
-    pathname === "/login" ||
-    pathname === "/signup" ||
-    pathname === "/admin/login" ||
-    pathname.startsWith("/login/") ||
-    pathname.startsWith("/signup/");
+  // "Admin-scoped" means either the admin page tree (/admin/*) or its API
+  // routes (/api/admin/*) — pathname.startsWith("/admin") alone does NOT
+  // match /api/admin/me (it starts with "/api/admin", not "/admin"). Getting
+  // this wrong sends an unauthenticated /api/admin/* request through the
+  // *client* login redirect instead of the admin one — worse, if the caller
+  // actually does have a valid admin session that this request merely failed
+  // to detect (e.g. a momentary cookie-read miss), landing them on /login
+  // triggers that page's own wrong-portal guard, which signs the admin
+  // session back out. Same bug existed before this task; it just had no way
+  // to bite until the client login page started actively signing out
+  // wrong-portal sessions.
+  const isAdminScopedPath = pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
 
-  if (isAuthPage && hasSessionCookie) {
-    const dest = pathname.startsWith("/admin") ? "/admin" : "/";
-    return NextResponse.redirect(new URL(dest, request.url));
-  }
-
-  // 4. Redirect unauthenticated users away from protected routes.
+  // 3. Redirect unauthenticated users away from protected routes.
   //    Admin paths go to /admin/login; all other protected paths go to /login
   //    with a callbackUrl so the user lands back where they intended.
   if (!isPublicPath && !hasSessionCookie) {
-    const loginDest = pathname.startsWith("/admin") ? "/admin/login" : "/login";
+    const loginDest = isAdminScopedPath ? "/admin/login" : "/login";
     const loginUrl = new URL(loginDest, request.url);
-    if (!pathname.startsWith("/admin")) {
+    if (!isAdminScopedPath) {
       loginUrl.searchParams.set("callbackUrl", encodeURIComponent(pathname));
     }
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Forward the resolved pathname as a request header for /admin/* routes so
+  // the server-side layout guard (app/admin/(protected)/layout.tsx) can read
+  // it via next/headers — there's no other way to get the current pathname
+  // inside a server component, and it's needed there to resolve which
+  // resource a page requires for the in-place 403 check.
+  if (pathname.startsWith("/admin")) {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-pathname", pathname);
+    return withSecurityHeaders(NextResponse.next({ request: { headers: requestHeaders } }));
   }
 
   return withSecurityHeaders(NextResponse.next());

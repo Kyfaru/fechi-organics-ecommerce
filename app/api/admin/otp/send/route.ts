@@ -14,8 +14,10 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { sendOTPEmail } from "@/lib/email";
-import { sendSms } from "@/lib/twilio";
+import { sendSms } from "@/lib/sms";
+import { combineLegacyPhone } from "@/lib/phone";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requireStaffSession } from "@/lib/require-permission";
 
 // In-memory OTP store — fine for a single admin panel with low traffic.
 // For multi-instance deployments, replace with Redis.
@@ -61,11 +63,14 @@ export async function POST(req: NextRequest) {
     // Only allow the authenticated user to trigger their own OTP
     if (userId !== session.user.id) return Err.forbidden();
 
+    const denied = await requireStaffSession(req);
+    if (denied) return denied;
+
     const user = await db.user.findUnique({
       where: { id: userId },
-      select: { email: true, phone: true, role: true },
+      select: { email: true, phone: true, phoneCode: true },
     });
-    if (!user || user.role !== "admin") return Err.forbidden();
+    if (!user) return Err.forbidden();
 
     // Rate limiting
     const now = Date.now();
@@ -98,15 +103,16 @@ export async function POST(req: NextRequest) {
       await sendOTPEmail(user.email, otp, "sign-in");
       console.info("[admin/otp/send] OTP sent via email to admin", userId);
     } else {
-      if (!user.phone) return Err.validation("No phone number on file");
-      await sendSms(user.phone, `Your Fechi Organics admin login code: ${otp}. Valid for 10 minutes.`);
+      const phone = user.phone ? combineLegacyPhone(user.phone, user.phoneCode) : null;
+      if (!phone) return Err.validation("No phone number on file");
+      await sendSms(phone, `Your Fechi Organics admin login code: ${otp}. Valid for 10 minutes.`);
       console.info("[admin/otp/send] OTP sent via SMS to admin", userId);
     }
 
     return ok({ sent: true });
   } catch (e) {
     console.error("[admin/otp/send] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 

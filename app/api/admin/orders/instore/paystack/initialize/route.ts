@@ -21,6 +21,7 @@ import { getRedis } from "@/lib/redis";
 import { makeRatelimit } from "@/lib/ratelimit";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { buildInStoreOrderNumber } from "@/lib/orders/generate-instore-order-number";
+import { requirePermission } from "@/lib/require-permission";
 
 const bodySchema = z
   .object({
@@ -56,6 +57,9 @@ async function requireAdmin(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
+
+  const denied = await requirePermission(req, { orders: ["update_status"] });
+  if (denied) return denied;
 
   const admin = await requireAdmin(req);
   if (!admin) return Err.forbidden();
@@ -246,6 +250,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (e) {
     console.error("[instore/paystack/initialize] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

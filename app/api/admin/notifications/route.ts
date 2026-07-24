@@ -1,18 +1,24 @@
 import { NextRequest, connection } from "next/server";
 import { db } from "@/lib/db";
-import { ok } from "@/lib/api";
-import { requireAdminPage } from "@/lib/admin-guard";
-import { resolveNotificationScope, buildNotificationWhere } from "@/lib/notifications/scope";
+import { Err, ok } from "@/lib/api";
+import { loadCallerContext, requirePermission } from "@/lib/require-permission";
+import { allowedNotificationTypes, resolveNotificationScope, buildNotificationWhere } from "@/lib/notifications/scope";
 import type { NotificationSeverity, NotificationType, Prisma } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
   await connection();
-  const denied = await requireAdminPage(req, "dashboard");
+  const denied = await requirePermission(req, { notifications: ["view"] });
   if (denied) return denied;
 
   const resolved = await resolveNotificationScope(req);
   if (resolved instanceof Response) return resolved;
   const { scope, userId } = resolved;
+
+  // Self-contained call, same as requirePermission's own — see the design
+  // brief for why this isn't threaded through instead.
+  const ctx = await loadCallerContext();
+  if (ctx.denied) return ctx.denied === "auth" ? Err.authRequired() : Err.forbidden();
+  const allowedTypes = allowedNotificationTypes(ctx.role, ctx.isSuperAdmin, ctx.deny);
 
   const params = req.nextUrl.searchParams;
   const search = params.get("search")?.trim();
@@ -22,9 +28,18 @@ export async function GET(req: NextRequest) {
   const branchIdParam = params.get("branchId");
   const cursor = params.get("cursor");
 
+  // Security boundary (allowedTypes) always applies; the client's ?type=
+  // filter narrows further within it — never widens past it.
+  const typeFilter: Prisma.notificationWhereInput =
+    type
+      ? allowedTypes.includes(type)
+        ? { type }
+        : { type: { in: [] } }
+      : { type: { in: allowedTypes } };
+
   const where: Prisma.notificationWhereInput = {
     ...buildNotificationWhere(scope),
-    ...(type ? { type } : {}),
+    ...typeFilter,
     ...(severity ? { severity } : {}),
     ...(search
       ? {

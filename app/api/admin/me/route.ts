@@ -13,6 +13,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Fetch user-level fields needed by the login 2FA flow
+  const user = await db.user.findUnique({
+    where: { id: session.user.id },
+    select: { email: true, phone: true, twoFactorEnabled: true, mustChangePassword: true, role: true },
+  })
+
+  // A client session must never read admin data from this route — matches
+  // AdminGuard's own role check (app/admin/(protected)/layout.tsx).
+  if (user?.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   const profile = await db.adminProfile.findUnique({
     where: { userId: session.user.id },
     select: {
@@ -27,12 +39,6 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  // Fetch user-level fields needed by the login 2FA flow
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: { email: true, phone: true, twoFactorEnabled: true },
-  })
-
   return NextResponse.json({
     ...profile,
     userId: session.user.id,
@@ -42,5 +48,6 @@ export async function GET(req: NextRequest) {
     twoFaMethod: profile?.twoFaMethod ?? 'totp',
     branchId: profile?.branchId ?? null,
     branchName: profile?.branch?.name ?? null,
+    mustChangePassword: user?.mustChangePassword ?? false,
   })
 }

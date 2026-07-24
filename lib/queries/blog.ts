@@ -36,7 +36,7 @@ export type BlogRankingCard = {
 };
 
 export type BlogRankings = {
-  favourites: BlogRankingCard[];
+  latest: BlogRankingCard[];
   trending: BlogRankingCard[];
   mostViewed: BlogRankingCard[];
 };
@@ -123,23 +123,14 @@ export async function getPostBySlug(
   return { ...rest, userReaction };
 }
 
-/** Editorial pins (isFeatured) first, then top-liked posts fill remaining slots. */
-async function getFavouritePosts(limit = 5): Promise<BlogRankingCard[]> {
-  const pinned = await db.blogPost.findMany({
-    where: { status: "PUBLISHED", isFeatured: true },
+/** Most recently published posts. */
+async function getLatestPosts(limit = 10): Promise<BlogRankingCard[]> {
+  return db.blogPost.findMany({
+    where: { status: "PUBLISHED" },
     orderBy: { publishedAt: "desc" },
     take: limit,
     select: RANKING_SELECT,
   });
-  if (pinned.length >= limit) return pinned;
-
-  const fill = await db.blogPost.findMany({
-    where: { status: "PUBLISHED", isFeatured: false },
-    orderBy: { likeCount: "desc" },
-    take: limit - pinned.length,
-    select: RANKING_SELECT,
-  });
-  return [...pinned, ...fill];
 }
 
 async function getMostViewedPosts(limit = 5): Promise<BlogRankingCard[]> {
@@ -187,12 +178,12 @@ async function getTrendingPosts(limit = 5): Promise<BlogRankingCard[]> {
   return ordered;
 }
 
-/** Favourites (hybrid pin+likes), trending (7d, Redis-cached), and most-viewed rankings for the blog hub. */
+/** Latest, trending (7d, Redis-cached), and most-viewed rankings for the blog hub scroller rows. */
 export async function getBlogRankings(): Promise<BlogRankings> {
-  const [favourites, mostViewed, trending] = await Promise.all([
-    getFavouritePosts(),
-    getMostViewedPosts(),
-    getTrendingPosts(),
+  const [latest, mostViewed, trending] = await Promise.all([
+    getLatestPosts(10),
+    getMostViewedPosts(10),
+    getTrendingPosts(10),
   ]);
-  return { favourites, mostViewed, trending };
+  return { latest, mostViewed, trending };
 }

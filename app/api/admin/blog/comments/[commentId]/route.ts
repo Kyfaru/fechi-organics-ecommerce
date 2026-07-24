@@ -1,24 +1,21 @@
-import { headers } from "next/headers";
 import { connection } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 
 const StatusSchema = z.object({ status: z.enum(["VISIBLE", "HIDDEN", "FLAGGED"]) }).strict();
 
 /** PATCH /api/admin/blog/comments/[commentId] — moderate a comment (hide/flag/restore) */
-export async function PATCH(req: Request, { params }: { params: Promise<{ commentId: string }> }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ commentId: string }> }) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { content: ["update"] });
+  if (denied) return denied;
 
   const { commentId } = await params;
 
@@ -35,6 +32,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ commen
     return ok(comment);
   } catch (e) {
     console.error("[admin blog comments] PATCH error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

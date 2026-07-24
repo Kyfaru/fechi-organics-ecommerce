@@ -1,19 +1,11 @@
 import { NextRequest } from "next/server";
-import { headers } from "next/headers";
 import { connection } from "next/server";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { searchAdminPages } from "@/lib/search/admin-pages";
+import { requireStaffSession } from "@/lib/require-permission";
 
 const RESULT_LIMIT = 5;
-
-async function requireAdmin() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return null;
-  const u = await db.user.findUnique({ where: { id: session.user.id } });
-  return u?.role === "admin" ? u : null;
-}
 
 /**
  * GET /api/admin/search?q=<query>
@@ -23,8 +15,8 @@ async function requireAdmin() {
  */
 export async function GET(req: NextRequest) {
   await connection();
-  const admin = await requireAdmin();
-  if (!admin) return Err.forbidden();
+  const denied = await requireStaffSession(req);
+  if (denied) return denied;
 
   const q = req.nextUrl.searchParams.get("q")?.trim() ?? "";
   if (!q || q.length < 2) return ok({ results: [] });
@@ -67,6 +59,6 @@ export async function GET(req: NextRequest) {
     return ok({ results });
   } catch (e) {
     console.error("[admin/search] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

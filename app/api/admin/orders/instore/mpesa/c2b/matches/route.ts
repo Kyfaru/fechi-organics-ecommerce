@@ -15,6 +15,7 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { requirePermission } from "@/lib/require-permission";
 
 const MATCH_WINDOW_MS = 10 * 60 * 1000;
 
@@ -29,6 +30,9 @@ async function requireAdmin(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const denied = await requirePermission(req, { orders: ["view"] });
+  if (denied) return denied;
+
   const admin = await requireAdmin(req);
   if (!admin) return Err.forbidden();
 
@@ -69,6 +73,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (e) {
     console.error("[instore/mpesa/c2b/matches] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

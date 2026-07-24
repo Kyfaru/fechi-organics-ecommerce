@@ -18,11 +18,14 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
 import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
+import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { getRedis } from "@/lib/redis";
 import { paymentChannel } from "@/lib/payment-channel";
 import { buildInStoreOrderNumber } from "@/lib/orders/generate-instore-order-number";
 import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-invoice";
+import { pushSaleToZoho } from "@/lib/zoho/push-sale";
+import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
@@ -58,6 +61,9 @@ class AlreadyClaimedError extends Error {}
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
+
+  const denied = await requirePermission(req, { orders: ["update_status"] });
+  if (denied) return denied;
 
   const admin = await requireAdmin(req);
   if (!admin) return Err.forbidden();
@@ -194,9 +200,12 @@ export async function POST(req: NextRequest) {
         });
 
         for (const item of items) {
-          await tx.product.update({
-            where: { id: item.productId },
-            data: { stock: { decrement: item.quantity } },
+          // Branch-scoped stock, not the deprecated global product.stock
+          // column (which nothing else reads — see its schema comment).
+          await tx.branchProductStock.upsert({
+            where: { branchId_productId: { branchId: branch.id, productId: item.productId } },
+            create: { branchId: branch.id, productId: item.productId, stock: -item.quantity },
+            update: { stock: { decrement: item.quantity } },
           });
         }
 
@@ -239,6 +248,33 @@ export async function POST(req: NextRequest) {
       console.error("[instore/mpesa/c2b/claim] Redis set failed:", e);
     }
 
+    // Fire-and-forget: push this sale to Zoho — this route bypasses
+    // markInStorePaymentSuccess (order is created PAID directly), so it
+    // needs its own copy of the push, same reasoning as the invoice/Redis
+    // blocks above.
+    (async () => {
+      try {
+        const organizationId = await resolveZohoOrganizationId(branch.id);
+        if (!organizationId) return;
+        await pushSaleToZoho({
+          organizationId,
+          branchId: branch.id,
+          referenceType: "inStoreOrder",
+          referenceId: result.orderId,
+          customerName: customerName ?? null,
+          customerEmail: customerEmail ?? null,
+          items: items.map((item) => {
+            const product = productById.get(item.productId)!;
+            return { productId: product.id, name: product.name, priceKes: product.priceKes, quantity: item.quantity };
+          }),
+          discountKes,
+          notes: `Fechi Organics in-store order ${result.orderId}`,
+        });
+      } catch (e) {
+        console.error("[instore/mpesa/c2b/claim] Zoho SO push failed:", e);
+      }
+    })();
+
     console.info(
       `[instore/mpesa/c2b/claim] Claimed — order=${result.orderNumber} c2b=${c2bRow.id}`,
     );
@@ -246,6 +282,6 @@ export async function POST(req: NextRequest) {
     return ok({ inStoreOrderId: result.orderId, orderNumber: result.orderNumber });
   } catch (e) {
     console.error("[instore/mpesa/c2b/claim] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

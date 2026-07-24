@@ -61,6 +61,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (e) {
     console.error("[coupons/validate] error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

@@ -2,21 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyQstashRequest } from "@/lib/qstash";
 import { sendOrderConfirmationEmail } from "@/lib/email";
+import { emailShell, emailSection, emailIconCircle, emailLineItem, emailTotalRow, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template";
 
 function kes(cents: number) {
   return `KES ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;
 }
 
 function buildConfirmationHtml(order: { id: string; createdAt: Date; totalKes: number; items: { name: string; quantity: number }[] }) {
-  return `
-    <div style="font-family:Arial,sans-serif;color:#1a1c1c;">
-      <h2 style="color:#27731e;">Thanks for your order!</h2>
-      <p>Order #${order.id.slice(0, 8).toUpperCase()} placed on ${order.createdAt.toLocaleString("en-KE")} is confirmed.</p>
-      <p>${order.items.map((i) => `${i.name} x ${i.quantity}`).join("<br/>")}</p>
-      <p>Total paid: <strong>${kes(order.totalKes)}</strong></p>
-      <p style="color:#666;font-size:13px;">Your invoice will follow shortly in a separate email.</p>
-    </div>
-  `;
+  const sections = [
+    emailSection(`
+      ${emailIconCircle("check")}
+      <h1 style="margin:0 0 8px;text-align:center;font-family:${FONT_HEADING};font-size:24px;font-weight:700;color:${EMAIL_BRAND.textDark};">Thanks for Your Order!</h1>
+      <p style="margin:0 0 28px;text-align:center;font-size:14px;color:${EMAIL_BRAND.textMuted};">
+        Order #${order.id.slice(0, 8).toUpperCase()} · placed ${order.createdAt.toLocaleString("en-KE")}
+      </p>
+      ${order.items.map((i) => emailLineItem(i.name, undefined, `Qty: ${i.quantity}`)).join("")}
+      <div style="margin-top:16px;">${emailTotalRow("Total paid", kes(order.totalKes), true)}</div>
+      <p style="margin:28px 0 0;font-size:13px;color:${EMAIL_BRAND.textMuted};text-align:center;">Your invoice will follow shortly in a separate email.</p>
+    `),
+  ].join("");
+
+  return emailShell({ title: "Order Confirmed", sectionsHtml: sections });
 }
 
 export async function POST(req: NextRequest) {

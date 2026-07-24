@@ -35,6 +35,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ c
     return ok({ id: commentId });
   } catch (e) {
     console.error("[blog comments] DELETE error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

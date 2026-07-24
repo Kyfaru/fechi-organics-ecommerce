@@ -4,21 +4,9 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
-import { headers } from "next/headers";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
 
-// ---------------------------------------------------------------------------
-// Auth guard — confirms the caller is a signed-in admin.
-// Returns the user record on success, null otherwise.
-// ---------------------------------------------------------------------------
-async function requireAdmin(req?: NextRequest) {
-  const h = req ? req.headers : await headers();
-  const session = await auth.api.getSession({ headers: h });
-  if (!session?.user) return null;
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  return user?.role === "admin" ? user : null;
-}
- 
 // ---------------------------------------------------------------------------
 // GET /api/admin/users
 // Returns all users with query filtering: role, search (name/email), status.
@@ -27,8 +15,8 @@ async function requireAdmin(req?: NextRequest) {
 export async function GET(req: NextRequest) {
   await connection();
   try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
+    const denied = await requirePermission(req, { customers: ["view"] });
+    if (denied) return denied;
 
     const { searchParams } = new URL(req.url);
     const role = searchParams.get("role") as "admin" | "client" | null;
@@ -113,7 +101,7 @@ export async function GET(req: NextRequest) {
     return ok({ users, total });
   } catch (e) {
     console.error("[admin/users] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -138,8 +126,8 @@ export async function POST(req: NextRequest) {
   if (originCheck) return originCheck;
   await connection();
   try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
+    const denied = await requirePermission(req, { customers: ["update"] });
+    if (denied) return denied;
 
     const body = await req.json().catch(() => ({}));
     const parsed = CreateUserSchema.safeParse(body);
@@ -157,7 +145,12 @@ export async function POST(req: NextRequest) {
         name,
         email,
         password,
-        role: role as "user" | "admin",
+        // This route manages the coarse Prisma UserRole ("client"|"admin"),
+        // unrelated to the fine-grained admin-panel roles configured on the
+        // admin() plugin (lib/permissions.ts) — Better Auth infers this
+        // param's type from that same roles map, so it doesn't know about
+        // "client". Runtime validation is a bare z.string(), so this is safe.
+        role: role as unknown as NonNullable<Parameters<typeof auth.api.createUser>[0]>["body"]["role"],
         data: { firstName, lastName, ...(phone ? { phone } : {}) },
       },
     });
@@ -209,6 +202,6 @@ export async function POST(req: NextRequest) {
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("A user with this email already exists");
     }
-    return Err.internal();
+    return Err.internal(e);
   }
 }

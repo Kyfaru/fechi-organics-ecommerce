@@ -1,6 +1,4 @@
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { headers } from "next/headers";
 import { connection } from "next/server";
 import { ok, Err } from "@/lib/api";
 import { qstash } from "@/lib/qstash";
@@ -9,17 +7,12 @@ import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { getRedis } from "@/lib/redis";
 import { ticketChannel } from "@/lib/ticket-channel";
-
-async function requireAdmin() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return null;
-  const u = await db.user.findUnique({ where: { id: session.user.id } });
-  return u?.role === "admin" ? u : null;
-}
+import { requirePermission } from "@/lib/require-permission";
+import { uploadTicketAttachment, AttachmentValidationError, type TicketAttachment } from "@/lib/tickets/upload-attachment";
 
 const ReplySchema = z.object({
-  content: z.string().min(1).max(5000),
-}).strict();
+  content: z.string().max(5000).optional(),
+});
 
 // 48 hours in milliseconds — each admin reply resets the expiry window
 const REPLY_EXPIRY_MS = 48 * 60 * 60 * 1000;
@@ -36,15 +29,27 @@ export async function POST(
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
-  try {
-    const admin = await requireAdmin();
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { tickets: ["reply"] });
+  if (denied) return denied;
+
+  try {
     const { id } = await params;
 
-    const body = await req.json().catch(() => ({}));
-    const parsed = ReplySchema.safeParse(body);
+    const formData = await req.formData().catch(() => null);
+    if (!formData) return Err.validation("Invalid form data");
+
+    const rawContent = formData.get("content");
+    const parsed = ReplySchema.safeParse({
+      content: typeof rawContent === "string" ? rawContent.trim() : undefined,
+    });
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
+
+    const file = formData.get("file");
+    const hasFile = file instanceof File && file.size > 0;
+    if (!parsed.data.content && !hasFile) {
+      return Err.validation("Message cannot be empty");
+    }
 
     // Load ticket to get user email and subject for the notification email
     const ticket = await db.supportTicket.findUnique({
@@ -64,6 +69,18 @@ export async function POST(
       return Err.validation("Cannot reply to an expired ticket. Reopen it first.");
     }
 
+    let attachment: TicketAttachment | null = null;
+    if (hasFile) {
+      try {
+        attachment = await uploadTicketAttachment(id, file as File);
+      } catch (uploadErr) {
+        if (uploadErr instanceof AttachmentValidationError) {
+          return Err.validation(uploadErr.message);
+        }
+        throw uploadErr;
+      }
+    }
+
     const now = new Date();
     const newExpiry = new Date(now.getTime() + REPLY_EXPIRY_MS);
 
@@ -73,7 +90,8 @@ export async function POST(
         data: {
           ticketId: id,
           senderType: "ADMIN",
-          content: parsed.data.content,
+          content: parsed.data.content ?? "",
+          ...attachment,
         },
       }),
       db.supportTicket.update({
@@ -81,6 +99,9 @@ export async function POST(
         data: { lastActivityAt: now, expiresAt: newExpiry, status: "OPEN" },
       }),
     ]);
+
+    const notifyContent =
+      parsed.data.content || (attachment ? `📎 Sent an attachment: ${attachment.attachmentName}` : "");
 
     // Fetch the customer's last message so the notification email can quote
     // it above the admin's new reply — gives the recipient context without
@@ -101,7 +122,7 @@ export async function POST(
           recipientEmail: ticket.user.email,
           recipientName: ticket.user.name,
           subject: `Re: ${ticket.subject}`,
-          content: parsed.data.content,
+          content: notifyContent,
           quotedContent: lastCustomerMessage?.content,
         },
       });
@@ -125,6 +146,6 @@ export async function POST(
     return ok({ message });
   } catch (e) {
     console.error("[admin/tickets/[id]/reply] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

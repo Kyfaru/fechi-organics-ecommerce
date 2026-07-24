@@ -228,6 +228,6 @@ export async function POST(req: NextRequest) {
     return ok({ orderId: order.id, message: "Check your phone for the M-Pesa prompt" });
   } catch (e) {
     console.error("[kcb/initiate] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

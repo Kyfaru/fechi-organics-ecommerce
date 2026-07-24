@@ -2,6 +2,10 @@ import twilio from 'twilio'
 
 const client = twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!)
 
+export function hasTwilioConfig(): boolean {
+  return !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER)
+}
+
 /** Sends an SMS message to the given phone number. Returns the Twilio message SID. */
 export async function sendSms(to: string, body: string, statusCallback?: string) {
   const message = await client.messages.create({

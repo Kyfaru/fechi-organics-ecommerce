@@ -1,7 +1,5 @@
-import { MessagesClient } from "@/components/account/MessagesClient";
-
-export const metadata = { title: "Messages | Fechi Organics" };
+import { redirect } from "next/navigation"
 
 export default function MessagesPage() {
-  return <MessagesClient />;
+  redirect("/account/messages")
 }

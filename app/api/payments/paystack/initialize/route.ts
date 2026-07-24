@@ -230,6 +230,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (e) {
     console.error("[paystack/initialize] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

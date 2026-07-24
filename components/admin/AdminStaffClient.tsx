@@ -13,11 +13,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Users, ShieldCheck, UserCog, Activity,
   MoreHorizontal, UserPlus, Mail, ChevronDown,
-  ChevronUp,
 } from "lucide-react";
-import CheckboxGreen from "@/components/ui/CheckboxGreen";
-import { ALL_PAGES, permissionsFromRole, type AdminPage } from "@/lib/permissions";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
+import { PermissionOverrideGrid } from "@/components/admin/PermissionOverrideGrid";
+import type { RoleName } from "@/lib/permissions";
 import { StatsCard } from "@/components/ui/stats-card";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
@@ -43,6 +42,7 @@ interface StaffMember {
     department: string | null;
     isActive: boolean;
     role: string;
+    permissions?: { deny?: string[] } | null;
   } | null;
 }
 
@@ -103,12 +103,14 @@ function RowActions({
   onDelete,
   onResetPassword,
   onChangeRole,
+  onEditPermissions,
 }: {
   staff: StaffMember;
   onDeactivate: (s: StaffMember) => void;
   onDelete: (s: StaffMember) => void;
   onResetPassword: (s: StaffMember) => void;
   onChangeRole: (s: StaffMember) => void;
+  onEditPermissions: (s: StaffMember) => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -131,6 +133,12 @@ function RowActions({
               className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
             >
               Change Role
+            </button>
+            <button
+              onClick={() => { setOpen(false); onEditPermissions(staff); }}
+              className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+            >
+              Edit Permissions
             </button>
             <button
               onClick={() => { setOpen(false); onResetPassword(staff); }}
@@ -165,7 +173,7 @@ function RowActions({
 // ---------------------------------------------------------------------------
 const INVITE_ROLES = [
   "admin", "manager", "finance", "marketing",
-  "inventory", "customer_care", "viewer", "custom",
+  "inventory", "customer_care", "viewer",
 ] as const;
 type InviteRole = (typeof INVITE_ROLES)[number];
 
@@ -222,7 +230,7 @@ function InviteDrawer({
     password: "",
     confirmPassword: "",
     role: "viewer" as InviteRole,
-    permissions: permissionsFromRole("viewer"),
+    deny: [] as string[],
     branchId: "",
     expiry: "lifetime" as string,
     customFrom: "",
@@ -232,7 +240,6 @@ function InviteDrawer({
   });
   const [errors, setErrors]     = useState<Record<string, string>>({});
   const [loading, setLoading]   = useState(false);
-  const [permsOpen, setPermsOpen] = useState(false);
 
   // Fetch branches for the branch select
   const { data: branchData } = useQuery({
@@ -241,23 +248,6 @@ function InviteDrawer({
     staleTime: 10 * 60 * 1000,
   });
   const branches: { id: string; name: string }[] = branchData?.branches ?? [];
-
-  // When role changes, auto-populate permissions from template (unless custom)
-  function handleRoleChange(role: InviteRole) {
-    const perms = role === "custom" ? form.permissions : permissionsFromRole(role);
-    setForm((p) => ({ ...p, role, permissions: perms }));
-    // Show the permissions grid automatically for custom role
-    if (role === "custom") setPermsOpen(true);
-  }
-
-  function togglePage(page: AdminPage) {
-    setForm((p) => {
-      const pages = p.permissions.pages.includes(page)
-        ? p.permissions.pages.filter((pg) => pg !== page)
-        : [...p.permissions.pages, page];
-      return { ...p, permissions: { pages } };
-    });
-  }
 
   function toggleChannel(channel: string) {
     setForm((p) => ({
@@ -310,7 +300,7 @@ function InviteDrawer({
           phone:            form.phone.trim() || undefined,
           password:         form.password,
           role:             form.role,
-          permissions:      form.permissions,
+          permissions:      form.deny.length > 0 ? { deny: form.deny } : undefined,
           branchId:         form.branchId || undefined,
           accessExpiresAt:  resolveExpiry(),
           note:             form.note.trim() || undefined,
@@ -323,11 +313,10 @@ function InviteDrawer({
       // Reset form
       setForm({
         name: "", username: "", email: "", phone: "", password: "", confirmPassword: "",
-        role: "viewer", permissions: permissionsFromRole("viewer"),
+        role: "viewer", deny: [],
         branchId: "", expiry: "lifetime", customFrom: "", customTo: "",
         note: "", inviteChannels: [],
       });
-      setPermsOpen(false);
       onSuccess();
       onClose();
     } catch (err) {
@@ -478,7 +467,7 @@ function InviteDrawer({
           <div className="relative">
             <select
               value={form.role}
-              onChange={(e) => handleRoleChange(e.target.value as InviteRole)}
+              onChange={(e) => setForm((p) => ({ ...p, role: e.target.value as InviteRole, deny: [] }))}
               className={selectCls}
             >
               {INVITE_ROLES.map((r) => (
@@ -491,32 +480,11 @@ function InviteDrawer({
           </div>
         </div>
 
-        {/* Page permissions accordion */}
-        <div className="border border-(--neutral-200) dark:border-(--dark-border) rounded-[10px] overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setPermsOpen((o) => !o)}
-            className="w-full flex items-center justify-between px-4 py-3 font-dm text-[13px] font-medium text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
-          >
-            <span>Page permissions</span>
-            {permsOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-          </button>
-          {permsOpen && (
-            <div className="px-4 pb-4 grid grid-cols-4 gap-x-3 gap-y-3 border-t border-(--neutral-200) dark:border-(--dark-border) pt-4">
-              {ALL_PAGES.map((page) => (
-                <label key={page} className="flex flex-col items-center gap-1 cursor-pointer">
-                  <CheckboxGreen
-                    checked={form.permissions.pages.includes(page)}
-                    onChange={() => togglePage(page)}
-                  />
-                  <span className="font-dm text-[11px] text-(--neutral-600) text-center capitalize leading-tight">
-                    {page.replace("_", " ")}
-                  </span>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
+        <PermissionOverrideGrid
+          role={form.role}
+          deny={form.deny}
+          onChange={(deny) => setForm((p) => ({ ...p, deny }))}
+        />
 
         {/* Access timeframe */}
         <div className="flex flex-col gap-1.5">
@@ -627,8 +595,15 @@ export function AdminStaffClient() {
   const [roleAdminPw, setRoleAdminPw] = useState("");
   const [roleVerified, setRoleVerified] = useState(false);
   const [selectedRole, setSelectedRole] = useState("viewer");
-  const [customPages, setCustomPages] = useState<AdminPage[]>([]);
   const [roleLoading, setRoleLoading] = useState(false);
+
+  // Edit permissions modal — narrows one staff member's access below their
+  // role's ceiling. Separate action from "Change Role" on purpose.
+  const [permTarget, setPermTarget] = useState<StaffMember | null>(null);
+  const [permAdminPw, setPermAdminPw] = useState("");
+  const [permVerified, setPermVerified] = useState(false);
+  const [permDeny, setPermDeny] = useState<string[]>([]);
+  const [permLoading, setPermLoading] = useState(false);
 
   // Fetch staff list
   const { data, isLoading } = useQuery({
@@ -735,7 +710,6 @@ export function AdminStaffClient() {
       const ok = await verifyAdminPassword(roleAdminPw);
       if (!ok) { toast.error("Incorrect password"); return; }
       setRoleVerified(true);
-      setCustomPages(permissionsFromRole(selectedRole).pages);
     } finally { setRoleLoading(false); }
   }
 
@@ -746,7 +720,7 @@ export function AdminStaffClient() {
       const res = await fetch(`/api/admin/staff/${roleTarget.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: selectedRole, pages: customPages }),
+        body: JSON.stringify({ role: selectedRole }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error?.message ?? "Failed");
@@ -760,7 +734,45 @@ export function AdminStaffClient() {
 
   function closeRoleModal() {
     setRoleTarget(null); setRoleAdminPw(""); setRoleVerified(false);
-    setSelectedRole("viewer"); setCustomPages([]); setRoleLoading(false);
+    setSelectedRole("viewer"); setRoleLoading(false);
+  }
+
+  function openPermModal(target: StaffMember) {
+    setPermTarget(target);
+    setPermDeny(target.adminProfile?.permissions?.deny ?? []);
+  }
+
+  async function handleVerifyForPerm() {
+    setPermLoading(true);
+    try {
+      const ok = await verifyAdminPassword(permAdminPw);
+      if (!ok) { toast.error("Incorrect password"); return; }
+      setPermVerified(true);
+    } finally { setPermLoading(false); }
+  }
+
+  async function handleSavePerm() {
+    if (!permTarget) return;
+    setPermLoading(true);
+    try {
+      const res = await fetch(`/api/admin/staff/${permTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permissions: { deny: permDeny } }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error?.message ?? "Failed");
+      toast.success("Permissions updated");
+      qc.invalidateQueries({ queryKey: ["admin-staff"] });
+      closePermModal();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally { setPermLoading(false); }
+  }
+
+  function closePermModal() {
+    setPermTarget(null); setPermAdminPw(""); setPermVerified(false);
+    setPermDeny([]); setPermLoading(false);
   }
 
   // Deactivate / reactivate mutation
@@ -849,6 +861,7 @@ export function AdminStaffClient() {
             onDelete={(target) => setDeleteTarget(target)}
             onResetPassword={(target) => { setResetTarget(target); setResetAdminPw(""); setResetVerified(false); setResetMode("idle"); }}
             onChangeRole={(target) => { setRoleTarget(target); setRoleAdminPw(""); setRoleVerified(false); setSelectedRole(target.adminProfile?.role ?? "viewer"); }}
+            onEditPermissions={openPermModal}
           />
         );
       },
@@ -1037,40 +1050,64 @@ export function AdminStaffClient() {
             ) : (
               <>
                 <div>
-                  <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Role template</label>
+                  <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Role</label>
                   <select
                     value={selectedRole}
-                    onChange={(e) => { setSelectedRole(e.target.value); setCustomPages(permissionsFromRole(e.target.value).pages); }}
+                    onChange={(e) => setSelectedRole(e.target.value)}
                     className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
                   >
                     {(["super_admin","admin","manager","finance","marketing","inventory","customer_care","viewer"] as const).map((r) => (
                       <option key={r} value={r}>{r.replace("_", " ")}</option>
                     ))}
                   </select>
-                </div>
-
-                <div>
-                  <p className="font-dm text-[13px] font-medium text-(--neutral-700) mb-2">Page access</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {ALL_PAGES.map((page) => (
-                      <label key={page} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={customPages.includes(page)}
-                          onChange={(e) => setCustomPages(
-                            e.target.checked ? [...customPages, page] : customPages.filter((p) => p !== page)
-                          )}
-                          className="rounded"
-                        />
-                        <span className="font-dm text-[13px] text-(--neutral-700)">{page}</span>
-                      </label>
-                    ))}
-                  </div>
+                  <p className="font-dm text-[12px] text-(--neutral-400) mt-1.5">
+                    Permissions for each role are fixed and defined in code — see Staff → Roles.
+                  </p>
                 </div>
 
                 <div className="flex gap-2 justify-end">
                   <button onClick={closeRoleModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
                   <button onClick={handleSaveRole} disabled={roleLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Save Role</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit permissions modal */}
+      {permTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
+              Edit permissions — {permTarget.name}
+            </h3>
+
+            {!permVerified ? (
+              <>
+                <p className="font-dm text-[13px] text-(--neutral-500)">Enter your own admin password to continue.</p>
+                <input
+                  type="password"
+                  value={permAdminPw}
+                  onChange={(e) => setPermAdminPw(e.target.value)}
+                  placeholder="Your password"
+                  className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                />
+                <div className="flex gap-2 justify-end">
+                  <button onClick={closePermModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
+                  <button onClick={handleVerifyForPerm} disabled={permLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Verify</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <PermissionOverrideGrid
+                  role={(permTarget.adminProfile?.role ?? "viewer") as RoleName}
+                  deny={permDeny}
+                  onChange={setPermDeny}
+                />
+                <div className="flex gap-2 justify-end">
+                  <button onClick={closePermModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
+                  <button onClick={handleSavePerm} disabled={permLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Save Permissions</button>
                 </div>
               </>
             )}

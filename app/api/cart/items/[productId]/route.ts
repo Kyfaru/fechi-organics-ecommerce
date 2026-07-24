@@ -40,7 +40,7 @@ export async function PATCH(
     return ok(summary);
   } catch (e) {
     console.error("[cart/items/[productId]] PATCH error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -64,6 +64,6 @@ export async function DELETE(
     return ok(summary);
   } catch (e) {
     console.error("[cart/items/[productId]] DELETE error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

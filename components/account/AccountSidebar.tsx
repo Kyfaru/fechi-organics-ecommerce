@@ -13,6 +13,7 @@ const NAV_ITEMS: Array<{ href: string; label: string; icon: string; badge?: bool
   { href: "/account/profile",  label: "Profile",  icon: "lucide:user"         },
   { href: "/account/orders",   label: "Orders",   icon: "lucide:shopping-bag" },
   { href: "/account/reviews",  label: "Reviews",  icon: "lucide:star"         },
+  { href: "/account/messages", label: "Messages", icon: "lucide:message-circle" },
   { href: "/account/settings", label: "Settings", icon: "lucide:settings"     },
   { href: "/account/security", label: "Security", icon: "lucide:shield"       },
   { href: "/account/inbox",    label: "Inbox",    icon: "lucide:inbox", badge: true },

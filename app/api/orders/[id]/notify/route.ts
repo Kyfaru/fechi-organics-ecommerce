@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { sendSms } from "@/lib/twilio";
+import { sendSms, hasSmsConfig } from "@/lib/sms";
+import { combineLegacyPhone } from "@/lib/phone";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 
 export async function POST(
@@ -23,7 +24,7 @@ export async function POST(
       orderNumber: true,
       totalKes: true,
       userId: true,
-      user: { select: { name: true, phone: true } },
+      user: { select: { name: true, phone: true, phoneCode: true } },
     },
   });
   if (!order?.userId) return Err.notFound("Order");
@@ -60,16 +61,12 @@ export async function POST(
     console.error("[notify] inbox create failed:", e);
   }
 
-  // 2. SMS — graceful no-op if Twilio not configured or user has no phone
+  // 2. SMS — graceful no-op if no provider configured or user has no phone
   let smsOk = true; // default true — missing config is not a user-visible error
-  const phone = (order.user as { phone?: string | null } | null)?.phone;
-  const hasTwilio = !!(
-    process.env.TWILIO_ACCOUNT_SID &&
-    process.env.TWILIO_AUTH_TOKEN &&
-    process.env.TWILIO_PHONE_NUMBER
-  );
+  const userPhone = order.user as { phone?: string | null; phoneCode?: string | null } | null;
+  const phone = userPhone?.phone ? combineLegacyPhone(userPhone.phone, userPhone.phoneCode ?? null) : null;
 
-  if (hasTwilio && phone) {
+  if (hasSmsConfig() && phone) {
     try {
       await sendSms(phone, messageBody);
     } catch (e) {

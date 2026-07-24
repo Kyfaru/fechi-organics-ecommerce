@@ -2,9 +2,9 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { emailOTP, admin, twoFactor } from "better-auth/plugins";
 import { db } from "@/lib/db";
-import { sendOTPEmail } from "@/lib/email";
+import { sendOTPEmail, sendWelcomeEmail } from "@/lib/email";
 import { Argon2id } from "oslo/password";
-import { permissionsFromRole } from "@/lib/permissions";
+import { ac, roles } from "@/lib/permissions";
 
 export const auth = betterAuth({
   database: prismaAdapter(db, {
@@ -112,21 +112,36 @@ export const auth = betterAuth({
         after: async (user) => {
           // Auto-create the matching profile row whenever a user is created.
           // adminProfile and clientProfile are defined in the schema redesign.
+          //
+          // isSuperAdmin defaults to false here. This row is created before
+          // callers like app/api/admin/staff/invite/route.ts get a chance to
+          // set the real role, so it must never default to a bypass — the
+          // invite route's own upsert is what sets role/isSuperAdmin for
+          // real. (Previously this hardcoded `true`, which silently made
+          // every invited staff member a super-admin regardless of the role
+          // picked in the invite form, since the invite route's upsert then
+          // took the `update` branch and never touched isSuperAdmin.)
           if (user.role === "admin") {
 
             await db.adminProfile.create({
               data: {
                 userId: user.id,
                 fullName: user.name,
-                isSuperAdmin: true,
-                permissions: permissionsFromRole("admin"),
+                isSuperAdmin: false,
               },
             });
           } else {
-          
+
             await db.clientProfile.create({
               data: { userId: user.id },
             });
+
+            // Best-effort — a failed welcome email must never block signup.
+            if (process.env.RESEND_API_KEY && user.email) {
+              sendWelcomeEmail(user.email, user.name ?? "there").catch((err) =>
+                console.error("[auth] Failed to send welcome email:", err)
+              );
+            }
           }
         },
       },
@@ -150,7 +165,12 @@ export const auth = betterAuth({
     admin({
       // New users are clients by default; admins are provisioned manually.
       defaultRole: "client",
-      adminRole: ["admin"],
+      adminRoles: ["admin"],
+      // Fine-grained resource/action permissions (lib/permissions.ts).
+      // Every permission check passes adminProfile.role explicitly rather
+      // than relying on user.role (which stays the coarse client|admin enum).
+      ac,
+      roles,
     }),
     twoFactor({
       issuer: "Fechi Organics",

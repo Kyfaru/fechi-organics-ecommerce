@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { verifyQstashRequest } from "@/lib/qstash";
 import { getOrCreateInvoice } from "@/lib/invoice/get-or-create-invoice";
 import { sendInvoiceEmail } from "@/lib/email";
+import { emailShell, emailSection, emailButton, emailIconCircle, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template";
 
 function kes(cents: number) {
   return `KES ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;
@@ -31,13 +32,17 @@ export async function POST(req: NextRequest) {
 
   const email = order.user?.email ?? order.guestEmail;
   if (email) {
-    const html = `
-      <div style="font-family:Arial,sans-serif;color:#1a1c1c;">
-        <h2 style="color:#27731e;">Your invoice is ready</h2>
-        <p>Invoice ${invoice.invoiceNumber} for your Fechi Organics order — total paid <strong>${kes(order.totalKes)}</strong>.</p>
-        <p>It's attached as a PDF, or you can view it anytime here: <a href="${invoice.url}">${invoice.url}</a></p>
-      </div>
-    `;
+    const sections = [
+      emailSection(`
+        ${emailIconCircle("receipt")}
+        <h1 style="margin:0 0 16px;text-align:center;font-family:${FONT_HEADING};font-size:24px;font-weight:700;color:${EMAIL_BRAND.textDark};">Your Invoice Is Ready</h1>
+        <p style="margin:0 0 28px;text-align:center;font-size:15px;color:${EMAIL_BRAND.textBody};line-height:1.6;">
+          Invoice <strong>${invoice.invoiceNumber}</strong> for your Fechi Organics order — total paid <strong>${kes(order.totalKes)}</strong>. It's attached as a PDF.
+        </p>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;"><tr><td>${emailButton("View Invoice", invoice.url)}</td></tr></table>
+      `),
+    ].join("");
+    const html = emailShell({ title: "Your Invoice Is Ready", sectionsHtml: sections });
     await sendInvoiceEmail({ email, orderId: order.id, invoiceNumber: invoice.invoiceNumber, html, pdfBuffer: invoice.buffer });
   }
 

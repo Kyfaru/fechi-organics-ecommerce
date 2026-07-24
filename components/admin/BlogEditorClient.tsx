@@ -9,7 +9,7 @@ import RichTextEditor from "@/components/admin/ui/RichTextEditor";
 import ScheduleModal from "@/components/admin/blog/ScheduleModal";
 import AuthorPicker, { type AuthorOption } from "@/components/admin/blog/AuthorPicker";
 import { useSession } from "@/lib/auth-client";
-import { canAccess } from "@/lib/permissions";
+import { roles, type RoleName } from "@/lib/permissions";
 import { r2PublicUrl } from "@/lib/r2";
 
 function blogImageUrl(key: string): string {
@@ -173,7 +173,10 @@ export function BlogEditorClient() {
   });
 
   const authorOptions: AuthorOption[] = ((staffData?.data?.staff ?? []) as StaffListItem[])
-    .filter((s) => !s.banned && (s.adminProfile?.isSuperAdmin || canAccess(s.adminProfile?.permissions ?? {}, "content")))
+    .filter((s) => !s.banned && (
+      s.adminProfile?.isSuperAdmin ||
+      roles[s.adminProfile?.role as RoleName]?.authorize({ content: ["view"] })?.success
+    ))
     .map((s) => ({
       id: s.id,
       name: s.name,

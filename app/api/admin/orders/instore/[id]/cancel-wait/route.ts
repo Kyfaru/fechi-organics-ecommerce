@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { markInStorePaymentFailed } from "@/lib/payments/instore-post-payment";
+import { requirePermission } from "@/lib/require-permission";
 
 async function requireAdmin(req: NextRequest) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -29,6 +30,9 @@ export async function POST(
 ) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
+
+  const denied = await requirePermission(req, { orders: ["cancel"] });
+  if (denied) return denied;
 
   const admin = await requireAdmin(req);
   if (!admin) return Err.forbidden();
@@ -53,6 +57,6 @@ export async function POST(
     return ok({});
   } catch (e) {
     console.error("[instore/cancel-wait] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

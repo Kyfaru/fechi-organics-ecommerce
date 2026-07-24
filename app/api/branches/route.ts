@@ -70,6 +70,6 @@ export async function GET(req: NextRequest) {
     return ok(result);
   } catch (e) {
     console.error("[branches] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

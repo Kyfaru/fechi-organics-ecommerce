@@ -13,6 +13,6 @@ export async function GET() {
     });
   } catch (e) {
     console.error("[currency/rates] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

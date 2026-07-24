@@ -12,7 +12,7 @@ import PasswordChecklist, { checkRequirements } from "@/components/auth/Password
 import PhoneInput from "@/components/auth/PhoneInput";
 import CountrySelect from "@/components/auth/CountrySelect";
 import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
-import { authClient, signUpWithProfile } from "@/lib/auth-client";
+import { authClient, signUpWithProfile, useSession } from "@/lib/auth-client";
 import { storeUser } from "@/lib/user-store";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
@@ -72,6 +72,28 @@ export default function SignupPage() {
   const [passwordFocused, setPasswordFocused] = useState(false);
   // Track whether the form has been submitted (so checklist shows red X on unmet reqs)
   const [submitted, setSubmitted] = useState(false);
+
+  const { data: sessionData, isPending: sessionPending } = useSession();
+
+  // ---------------------------------------------------------------------------
+  // On mount: an already-correct client session skips straight to /. A
+  // session for the wrong portal (an admin's) is signed out silently — this
+  // only replaces the convenience redirect proxy.ts used to provide; it
+  // overlaps intentionally with the app-wide PortalSessionGuard.
+  //
+  // Reads the shared useSession() hook rather than calling getSession()
+  // imperatively — see app/providers.tsx's PortalSessionGuard for why.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (sessionPending || !sessionData?.session) return;
+    const role = (sessionData.user as { role?: string } | undefined)?.role;
+    if (role === "admin") {
+      authClient.signOut();
+    } else {
+      router.replace("/");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionPending, sessionData]);
 
   // ---------------------------------------------------------------------------
   // Validation

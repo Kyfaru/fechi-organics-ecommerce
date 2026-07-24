@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
 
 // ---------------------------------------------------------------------------
 // Auth helper — matches pattern in /api/admin/orders/route.ts
@@ -34,6 +35,9 @@ export async function POST(
 
   await connection();
   try {
+    const denied = await requirePermission(req, { orders: ["update_status"] });
+    if (denied) return denied;
+
     const admin = await requireAdmin(req);
     if (!admin) return Err.forbidden();
 
@@ -64,6 +68,6 @@ export async function POST(
     return ok({});
   } catch (e) {
     console.error("[admin/orders/instore/[id]/pickup] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

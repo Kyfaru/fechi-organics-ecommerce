@@ -3,17 +3,16 @@ import { ok, created, Err } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { connection } from "next/server";
+import { NextRequest } from "next/server";
+import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 
 /** GET /api/admin/blog */
-export async function GET() {
+export async function GET(req: NextRequest) {
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { content: ["view"] });
+  if (denied) return denied;
 
   try {
     const posts = await db.blogPost.findMany({
@@ -23,21 +22,21 @@ export async function GET() {
     return ok(posts);
   } catch (e) {
     console.error("[blog/GET]", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
 /** POST /api/admin/blog — create blog post draft */
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
 
+  const denied = await requirePermission(req, { content: ["create"] });
+  if (denied) return denied;
+
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
 
   let body: {
     title: string;
@@ -102,6 +101,6 @@ export async function POST(req: Request) {
       return Err.validation("A post with this slug already exists. Please choose a different title or slug.");
     }
     console.error("[blog/POST]", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

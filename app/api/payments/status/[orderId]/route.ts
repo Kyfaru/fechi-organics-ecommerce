@@ -37,6 +37,6 @@ export async function DELETE(
     return ok({ deleted: true });
   } catch (e) {
     console.error("[payments/status] DELETE error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

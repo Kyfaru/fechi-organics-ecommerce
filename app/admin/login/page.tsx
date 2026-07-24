@@ -4,21 +4,32 @@ import { useState, useRef, useEffect, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { Smartphone, Mail, MessageSquare } from "lucide-react";
 import FormInput from "@/components/auth/FormInput";
 import PasswordInput from "@/components/auth/PasswordInput";
-import { authClient } from "@/lib/auth-client";
+import { authClient, signOut, useSession } from "@/lib/auth-client";
+import { clearPersistedQueryCache } from "@/app/providers";
 import { Spinner } from "@/components/ui/spinner";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "@/lib/toast";
+import { checkPortalMatch } from "@/lib/portal-check";
 
 // ---------------------------------------------------------------------------
 // State machine for the admin login flow:
-//   credentials   → email + password
-//   totp-verify   → enter 6-digit TOTP code (2FA already set up, method = totp)
-//   totp-setup    → scan QR / copy URI, then enter code to confirm (first login)
-//   otp-verify    → enter 6-digit email/SMS OTP (method = email | sms)
+//   credentials     → email + password
+//   password-change → forced password reset (mustChangePassword) — signs out on success, back to credentials
+//   method-choice   → explicit 2FA method picker (TOTP / Email OTP / SMS OTP)
+//   totp-verify     → enter 6-digit TOTP code (2FA already set up, method = totp)
+//   totp-setup      → scan QR / copy URI, then enter code to confirm (first login)
+//   otp-verify      → enter 6-digit email/SMS OTP (method = email | sms)
 // ---------------------------------------------------------------------------
-type AdminLoginStep = "credentials" | "totp-verify" | "totp-setup" | "otp-verify";
+type AdminLoginStep =
+  | "credentials"
+  | "password-change"
+  | "method-choice"
+  | "totp-verify"
+  | "totp-setup"
+  | "otp-verify";
 
 interface AdminLoginErrors {
   email?: string;
@@ -33,6 +44,7 @@ interface AdminMeResponse {
   userId: string;
   email: string;
   phone: string | null;
+  mustChangePassword: boolean;
 }
 
 export default function AdminLoginPage() {
@@ -53,10 +65,24 @@ export default function AdminLoginPage() {
   const [adminUserId, setAdminUserId] = useState("");
   const [resendCountdown, setResendCountdown] = useState(0);
 
+  // Admin profile fetched after credentials succeed — drives the method-choice
+  // screen and the forced password-change gate.
+  const [adminMe, setAdminMe] = useState<AdminMeResponse | null>(null);
+  // true when the account has no 2FA method configured yet (brand-new admin)
+  const [isNewUser, setIsNewUser] = useState(false);
+  // which method-choice card is mid-request, if any
+  const [methodChoiceLoading, setMethodChoiceLoading] = useState<"totp" | "email" | "sms" | null>(null);
+
+  // Forced password-change fields
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const [errors, setErrors] = useState<AdminLoginErrors>({});
   const [isLoading, setIsLoading] = useState(false);
+
+  const { data: sessionData, isPending: sessionPending } = useSession();
 
   // ---------------------------------------------------------------------------
   // Resend countdown timer
@@ -66,6 +92,29 @@ export default function AdminLoginPage() {
     const id = setTimeout(() => setResendCountdown((c) => c - 1), 1000);
     return () => clearTimeout(id);
   }, [resendCountdown]);
+
+  // ---------------------------------------------------------------------------
+  // On mount: an already-correct admin session skips straight to /admin. A
+  // session for the wrong portal (a client's) is signed out silently — this
+  // page is under /admin/*, so the app-wide PortalSessionGuard (app/providers.tsx)
+  // deliberately doesn't cover it, and it must handle its own cleanup now that
+  // proxy.ts no longer blindly redirects any session-cookie holder away here.
+  //
+  // Reads the shared useSession() hook rather than calling getSession()
+  // imperatively — avoids firing an extra network request on top of what
+  // every other session consumer in the app already triggers (see
+  // app/providers.tsx's PortalSessionGuard for why this matters).
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (sessionPending || !sessionData?.session) return;
+    const role = (sessionData.user as { role?: string } | undefined)?.role;
+    if (role === "admin") {
+      router.replace("/admin");
+    } else {
+      authClient.signOut();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionPending, sessionData]);
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -115,6 +164,14 @@ export default function AdminLoginPage() {
     setIsLoading(true);
 
     try {
+      // Reject a client's email before ever calling signIn — no session is
+      // created for a wrong-portal attempt.
+      const portalOk = await checkPortalMatch(email, "admin");
+      if (!portalOk) {
+        toast.error("Sign in failed.");
+        return;
+      }
+
       const result = await authClient.signIn.email({ email, password });
 
       if (result?.error) {
@@ -122,55 +179,156 @@ export default function AdminLoginPage() {
         return;
       }
 
-      // Role check — reject non-admins before they reach 2FA
+      // Defense-in-depth fallback — reject non-admins before they reach 2FA,
+      // in case the precheck above was ever bypassed.
       const role = (result?.data?.user as { role?: string } | undefined)?.role;
       if (role && role !== "admin") {
         await authClient.signOut();
-        toast.error("Access denied — admin accounts only.");
+        toast.error("Sign in failed.");
         return;
       }
 
-      // Fetch admin profile to determine 2FA method
+      // Fetch admin profile — determines forced password-change and 2FA state
       const meRes = await fetch("/api/admin/me");
+      if (!meRes.ok) {
+        await authClient.signOut();
+        toast.error("Sign in failed.");
+        return;
+      }
       const me: AdminMeResponse = await meRes.json();
+      setAdminMe(me);
 
-      const method = me.twoFaMethod ?? "totp";
+      // Forced password change takes priority over 2FA — this used to be a
+      // server-side redirect that only fired *after* 2FA completed; now it's
+      // checked here, before any 2FA branching.
+      if (me.mustChangePassword) {
+        setStep("password-change");
+        return;
+      }
 
       // Better Auth sets twoFactorRedirect when the account has 2FA enabled
       const hasTwoFactor = (result?.data as { twoFactorRedirect?: boolean } | null)
         ?.twoFactorRedirect === true;
 
-      if (hasTwoFactor) {
-        if (method === "email" || method === "sms") {
-          // Send OTP and show the OTP input screen
-          setAdminUserId(me.userId);
-          setOtpMethod(method as "email" | "sms");
-          await sendOtp(me.userId, method as "email" | "sms");
-          setOtpDigits(["", "", "", "", "", ""]);
-          setResendCountdown(60);
-          setStep("otp-verify");
-          return;
-        }
-
-        // Default — TOTP
-        setStep("totp-verify");
-        return;
-      }
-
-      // No 2FA configured yet — initiate TOTP setup for this admin
-      const setupResult = await authClient.twoFactor.enable({ password });
-      if (setupResult?.error) {
-        toast.error("Could not initialize 2FA setup. Please try again.");
-        return;
-      }
-
-      const uri = (setupResult?.data as { totpURI?: string } | null)?.totpURI ?? "";
-      setTotpUri(uri);
-      setStep("totp-setup");
+      setIsNewUser(!hasTwoFactor);
+      setStep("method-choice");
     } catch {
       toast.error("Sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Password-change step — forced reset on first login (mustChangePassword)
+  // ---------------------------------------------------------------------------
+  async function handlePasswordChangeSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    const errs: AdminLoginErrors = {};
+    if (!newPassword || newPassword.length < 8) {
+      errs.password = "Password must be at least 8 characters.";
+    } else if (newPassword !== confirmNewPassword) {
+      errs.password = "Passwords do not match.";
+    }
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      return;
+    }
+
+    setErrors({});
+    setIsLoading(true);
+
+    try {
+      const res = await fetch("/api/admin/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newPassword }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        toast.error(json.error?.message ?? "Failed to update password.");
+        return;
+      }
+
+      toast.success("Password updated. Please sign in again.");
+
+      // Deliberately sign out and return to a fresh login rather than
+      // continuing into 2FA with the now-stale session.
+      await signOut();
+      clearPersistedQueryCache();
+
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setPassword("");
+      setAdminMe(null);
+      setStep("credentials");
+    } catch {
+      toast.error("Failed to update password. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Method-choice step — explicit 2FA method picker
+  // ---------------------------------------------------------------------------
+  async function handleMethodChoice(method: "totp" | "email" | "sms") {
+    if (methodChoiceLoading) return;
+    setErrors({});
+    setMethodChoiceLoading(method);
+
+    try {
+      if (method === "totp") {
+        if (isNewUser) {
+          // Brand-new admin — initiate TOTP setup
+          const setupResult = await authClient.twoFactor.enable({ password });
+          if (setupResult?.error) {
+            toast.error("Could not initialize 2FA setup. Please try again.");
+            return;
+          }
+          const uri = (setupResult?.data as { totpURI?: string } | null)?.totpURI ?? "";
+          setTotpUri(uri);
+          setCode("");
+          setStep("totp-setup");
+        } else {
+          setCode("");
+          setStep("totp-verify");
+        }
+        return;
+      }
+
+      // method === "email" | "sms"
+      const userId = adminMe?.userId ?? "";
+
+      if (isNewUser) {
+        // Persist the chosen method to the admin profile first
+        const body =
+          method === "sms"
+            ? { method: "sms", phone: adminMe?.phone ?? undefined }
+            : { method: "email" };
+        const res = await fetch("/api/admin/2fa/method", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const json = await res.json();
+        if (!json.ok) {
+          toast.error(json.error?.message ?? "Failed to set 2FA method.");
+          return;
+        }
+      }
+
+      setAdminUserId(userId);
+      setOtpMethod(method);
+      await sendOtp(userId, method);
+      setOtpDigits(["", "", "", "", "", ""]);
+      setResendCountdown(60);
+      setStep("otp-verify");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+    } finally {
+      setMethodChoiceLoading(null);
     }
   }
 
@@ -369,6 +527,119 @@ export default function AdminLoginPage() {
     );
   }
 
+  function renderPasswordChange() {
+    return (
+      <form onSubmit={handlePasswordChangeSubmit} noValidate className="flex flex-col gap-5">
+        <p className="text-sm text-[#40493c] text-center">
+          You must set a new password before continuing.
+        </p>
+
+        <PasswordInput
+          label="New Password"
+          placeholder="Min 8 characters"
+          value={newPassword}
+          onChange={(e) => {
+            setNewPassword(e.target.value);
+            if (errors.password) setErrors((prev) => ({ ...prev, password: undefined }));
+          }}
+          error={errors.password}
+          autoComplete="new-password"
+          disabled={isLoading}
+        />
+
+        <PasswordInput
+          label="Confirm Password"
+          placeholder="Repeat password"
+          value={confirmNewPassword}
+          onChange={(e) => {
+            setConfirmNewPassword(e.target.value);
+            if (errors.password) setErrors((prev) => ({ ...prev, password: undefined }));
+          }}
+          autoComplete="new-password"
+          disabled={isLoading}
+        />
+
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="w-full py-3.5 rounded-full font-bold text-sm tracking-wide text-[#1a1c1c] transition-all duration-150 hover:brightness-95 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed mt-1"
+          style={{ backgroundColor: "#FFC800" }}
+        >
+          {isLoading ? <Spinner size={16} invert /> : "Set Password & Continue"}
+        </button>
+      </form>
+    );
+  }
+
+  function renderMethodChoice() {
+    const showSms = !!adminMe?.phone;
+
+    const cards: {
+      method: "totp" | "email" | "sms";
+      icon: typeof Smartphone;
+      iconBg: string;
+      iconColor: string;
+      title: string;
+      description: string;
+    }[] = [
+      {
+        method: "totp",
+        icon: Smartphone,
+        iconBg: "bg-green-50",
+        iconColor: "text-green-700",
+        title: "Authenticator App",
+        description: "Use Google Authenticator, Authy, or any TOTP app.",
+      },
+      {
+        method: "email",
+        icon: Mail,
+        iconBg: "bg-blue-50",
+        iconColor: "text-blue-700",
+        title: "Email OTP",
+        description: "Receive a one-time code at your email address.",
+      },
+      ...(showSms
+        ? [
+            {
+              method: "sms" as const,
+              icon: MessageSquare,
+              iconBg: "bg-purple-50",
+              iconColor: "text-purple-700",
+              title: "SMS OTP",
+              description: "Receive a one-time code via text message.",
+            },
+          ]
+        : []),
+    ];
+
+    return (
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-[#40493c] text-center mb-1">
+          Choose how you&apos;d like to verify your identity.
+        </p>
+
+        {cards.map(({ method, icon: Icon, iconBg, iconColor, title, description }) => (
+          <button
+            key={method}
+            type="button"
+            onClick={() => handleMethodChoice(method)}
+            disabled={!!methodChoiceLoading}
+            className="w-full flex items-center gap-4 p-4 rounded-[20px] border border-[#c0cab8] dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-[#27731e] hover:bg-[#f9faf8] dark:hover:bg-gray-700 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed text-left"
+          >
+            <div className={`w-10 h-10 rounded-[10px] ${iconBg} flex items-center justify-center shrink-0`}>
+              <Icon size={20} className={iconColor} />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-[#1a1c1c] dark:text-white">{title}</p>
+              <p className="text-xs text-[#40493c] dark:text-gray-400">{description}</p>
+            </div>
+            {methodChoiceLoading === method && <Spinner size={16} />}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   function renderTotpVerify() {
     return (
       <form onSubmit={handleTotpVerify} noValidate className="flex flex-col gap-5">
@@ -402,10 +673,10 @@ export default function AdminLoginPage() {
 
         <button
           type="button"
-          onClick={() => { setStep("credentials"); setCode(""); setErrors({}); }}
+          onClick={() => { setStep("method-choice"); setCode(""); setErrors({}); }}
           className="text-xs text-[#40493c] hover:underline text-center"
         >
-          Back to sign in
+          Back to verification methods
         </button>
       </form>
     );
@@ -528,10 +799,10 @@ export default function AdminLoginPage() {
 
           <button
             type="button"
-            onClick={() => { setStep("credentials"); setOtpDigits(["", "", "", "", "", ""]); setErrors({}); }}
+            onClick={() => { setStep("method-choice"); setOtpDigits(["", "", "", "", "", ""]); setErrors({}); }}
             className="text-xs text-[#40493c] hover:underline text-center"
           >
-            Back to sign in
+            Back to verification methods
           </button>
         </div>
       </div>
@@ -542,10 +813,12 @@ export default function AdminLoginPage() {
   // Heading text per step
   // ---------------------------------------------------------------------------
   const headingByStep: Record<AdminLoginStep, { title: string; subtitle: string }> = {
-    "credentials": { title: "Admin Login", subtitle: "Sign in to the admin panel" },
-    "totp-verify": { title: "Two-Factor Auth", subtitle: "Step 2 of 2 — verify your identity" },
-    "totp-setup":  { title: "Set Up 2FA", subtitle: "One-time setup for your account" },
-    "otp-verify":  { title: "Verify Code", subtitle: "Step 2 of 2 — enter your one-time code" },
+    "credentials":     { title: "Admin Login", subtitle: "Sign in to the admin panel" },
+    "password-change": { title: "New Password", subtitle: "Update your password to continue" },
+    "method-choice":   { title: "Verify Identity", subtitle: "Step 2 of 2 — choose a verification method" },
+    "totp-verify":     { title: "Two-Factor Auth", subtitle: "Step 2 of 2 — verify your identity" },
+    "totp-setup":      { title: "Set Up 2FA", subtitle: "One-time setup for your account" },
+    "otp-verify":      { title: "Verify Code", subtitle: "Step 2 of 2 — enter your one-time code" },
   };
 
   const { title, subtitle } = headingByStep[step];
@@ -576,6 +849,8 @@ export default function AdminLoginPage() {
           </div>
 
           {step === "credentials" && renderCredentialsForm()}
+          {step === "password-change" && renderPasswordChange()}
+          {step === "method-choice" && renderMethodChoice()}
           {step === "totp-verify" && renderTotpVerify()}
           {step === "totp-setup" && renderTotpSetup()}
           {step === "otp-verify" && renderOtpVerify()}

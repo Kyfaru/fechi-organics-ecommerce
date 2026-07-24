@@ -4,8 +4,10 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { sendSms } from "@/lib/twilio";
+import { sendSms, hasSmsConfig } from "@/lib/sms";
+import { combineLegacyPhone } from "@/lib/phone";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
 
 const STATUS_MESSAGES: Record<string, string> = {
   CONFIRMED:  "has been confirmed",
@@ -23,6 +25,7 @@ function notifyOrderStatusChange(
   orderRef: string,
   status: string,
   phone?: string | null,
+  phoneCode?: string | null,
 ) {
   const msg = STATUS_MESSAGES[status];
   if (!msg || !userId) return;
@@ -36,21 +39,11 @@ function notifyOrderStatusChange(
     } catch (e) {
       console.error("[notify] inbox failed:", e);
     }
-    const hasTwilio = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER);
-    if (hasTwilio && phone) {
-      try { await sendSms(phone, body); } catch (e) { console.error("[notify] SMS failed:", e); }
+    const smsPhone = phone ? combineLegacyPhone(phone, phoneCode ?? null) : null;
+    if (hasSmsConfig() && smsPhone) {
+      try { await sendSms(smsPhone, body); } catch (e) { console.error("[notify] SMS failed:", e); }
     }
   });
-}
-
-// ---------------------------------------------------------------------------
-// Auth helper — matches pattern in /api/admin/orders/route.ts
-// ---------------------------------------------------------------------------
-async function requireAdmin(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user) return null;
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  return user?.role === "admin" ? user : null;
 }
 
 // Shared include for returning the full order after mutations
@@ -79,10 +72,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   await connection();
-  try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { orders: ["view"] });
+  if (denied) return denied;
+
+  try {
     const { id } = await params;
 
     const order = await db.order.findUnique({
@@ -114,7 +108,7 @@ export async function GET(
     return ok({ order });
   } catch (e) {
     console.error("[admin/orders/[id]] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -144,17 +138,21 @@ export async function PATCH(
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
-  try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { orders: ["update_status"] });
+  if (denied) return denied;
+
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session?.user) return Err.authRequired();
+
+  try {
     const { id } = await params;
 
     const body = await req.json().catch(() => ({}));
 
     // Route to fulfillment handler when "action" key is present
     if ("action" in body) {
-      return handleFulfillmentAction(id, body, admin.id);
+      return handleFulfillmentAction(id, body, session.user.id);
     }
 
     // Legacy path — direct status / paymentStatus update
@@ -177,7 +175,7 @@ export async function PATCH(
     return ok({ order: updated });
   } catch (e) {
     console.error("[admin/orders/[id]] PATCH error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -198,7 +196,7 @@ async function handleFulfillmentAction(
   const order = await db.order.findUnique({
     where: { id: orderId },
     include: {
-      user: { select: { phone: true } },
+      user: { select: { phone: true, phoneCode: true } },
       branch: { select: { name: true } }
     },
   });
@@ -230,7 +228,7 @@ async function handleFulfillmentAction(
       });
       await db.orderStatusEvent.create({ data: { orderId, status: "PROCESSING", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] set_processing —", orderId);
-      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "PROCESSING", order.user?.phone);
+      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "PROCESSING", order.user?.phone, order.user?.phoneCode);
       return ok({ order: updated });
     }
 
@@ -269,7 +267,7 @@ async function handleFulfillmentAction(
       });
       await db.orderStatusEvent.create({ data: { orderId, status: "SHIPPED", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] ship —", orderId);
-      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "SHIPPED", order.user?.phone);
+      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "SHIPPED", order.user?.phone, order.user?.phoneCode);
       return ok({ order: updated });
     }
 
@@ -288,7 +286,7 @@ async function handleFulfillmentAction(
       });
       await db.orderStatusEvent.create({ data: { orderId, status: "CANCELLED", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] cancel —", orderId);
-      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "CANCELLED", order.user?.phone);
+      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "CANCELLED", order.user?.phone, order.user?.phoneCode);
       return ok({ order: updated });
     }
 
@@ -316,7 +314,7 @@ async function handleFulfillmentAction(
       });
       await db.orderStatusEvent.create({ data: { orderId, status: "WAITING_TO_PACKAGE", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] set_packaging —", orderId);
-      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "WAITING_TO_PACKAGE", order.user?.phone);
+      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "WAITING_TO_PACKAGE", order.user?.phone, order.user?.phoneCode);
       return ok({ order: updated });
     }
 
@@ -373,7 +371,7 @@ async function handleFulfillmentAction(
       if (customerAlreadyConfirmed) {
         await db.orderStatusEvent.create({ data: { orderId, status: "PICKED_UP", occurredAt: new Date() } });
         console.info("[admin/orders/[id]] set_picked_up — completed —", orderId);
-        notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "PICKED_UP", order.user?.phone);
+        notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "PICKED_UP", order.user?.phone, order.user?.phoneCode);
       } else {
         console.info("[admin/orders/[id]] set_picked_up — staff confirmed, waiting on customer —", orderId);
       }

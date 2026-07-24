@@ -1,12 +1,10 @@
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import { publishQstashJSON } from "@/lib/qstash";
 import { runCampaignSend, markCampaignFailed } from "@/lib/campaigns/send-campaign";
-import { requireAdminPage } from "@/lib/admin-guard";
+import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import type { CampaignStatus } from "@prisma/client";
 
@@ -29,14 +27,8 @@ export async function POST(
   if (originCheck) return originCheck;
   await connection();
 
-  const denied = await requireAdminPage(req, 'campaigns');
+  const denied = await requirePermission(req, { campaigns: ["send"] });
   if (denied) return denied;
-
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
 
   const { id } = await params;
 

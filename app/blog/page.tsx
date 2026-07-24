@@ -14,8 +14,8 @@ export default async function BlogPage() {
   const [posts, rankings] = await Promise.all([getPublishedPosts(), getBlogRankings()]);
 
   return (
-    <main className="min-h-screen bg-white overflow-x-hidden">
-      <Navbar />
+    <main className="min-h-screen bg-white overflow-x-hidden scroll-smooth">
+      <Navbar transparent />
       <HeroCarousel posts={posts} />
       <RankingStrip rankings={rankings} />
       <BlogClient posts={posts} />

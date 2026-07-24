@@ -41,6 +41,6 @@ export async function GET(
     return ok({ ticket });
   } catch (e) {
     console.error("[tickets/[id]] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

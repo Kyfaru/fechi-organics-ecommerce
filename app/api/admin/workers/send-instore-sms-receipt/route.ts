@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { verifyQstashRequest } from "@/lib/qstash";
 import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-invoice";
 import { createInstoreInvoiceToken } from "@/lib/invoice-token";
-import { sendSms } from "@/lib/twilio";
+import { sendSms } from "@/lib/sms";
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();

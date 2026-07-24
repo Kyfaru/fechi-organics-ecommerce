@@ -6,26 +6,20 @@ import { ok, Err } from "@/lib/api";
 import { z } from "zod";
 import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-
-async function requireAdmin() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return null;
-  const u = await db.user.findUnique({ where: { id: session.user.id } });
-  return u?.role === "admin" ? u : null;
-}
+import { requirePermission } from "@/lib/require-permission";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/customers/[id]
 // Returns a single user with order count and loyalty points.
 // ---------------------------------------------------------------------------
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   await connection();
   try {
-    const admin = await requireAdmin();
-    if (!admin) return Err.forbidden();
+    const denied = await requirePermission(req, { customers: ["view"] });
+    if (denied) return denied;
 
     const { id } = await params;
 
@@ -57,7 +51,7 @@ export async function GET(
     return ok({ user });
   } catch (e) {
     console.error("[admin/customers/[id]] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -79,12 +73,13 @@ export async function PATCH(
   if (originCheck) return originCheck;
   await connection();
   try {
-    const admin = await requireAdmin();
-    if (!admin) return Err.forbidden();
+    const denied = await requirePermission(req, { customers: ["update"] });
+    if (denied) return denied;
 
     const { id } = await params;
 
-    if (id === admin.id) {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (id === session?.user.id) {
       return Err.validation("You cannot modify your own account this way");
     }
 
@@ -102,6 +97,6 @@ export async function PATCH(
     return ok({ user });
   } catch (e) {
     console.error("[admin/customers/[id]] PATCH error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

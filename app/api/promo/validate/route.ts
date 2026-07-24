@@ -25,6 +25,6 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     if (e instanceof Response) return e;
     console.error("[promo/validate]", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

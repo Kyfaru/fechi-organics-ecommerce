@@ -188,6 +188,7 @@ enum NotificationType {
   PAYMENT_ERROR
   PRODUCT_ADDED
   PRODUCT_DELETED
+  LOW_STOCK
   STAFF_ADDED
   STAFF_REMOVED
   TICKET_NEW
@@ -338,7 +339,9 @@ model product {
   id                String         @id @default(uuid())
   name              String
   slug              String         @unique
-  description       String
+  /// Nullable because it's Zoho-sourced — a sync with no description for this
+  /// item nulls it out rather than leaving stale/default text (see zoho-sync.ts).
+  description       String?
   shortDescription  String?
   categoryId        String
   category          category       @relation(fields: [categoryId], references: [id])
@@ -350,14 +353,36 @@ model product {
   ingredients       String?
   bestSeller        Boolean        @default(false)
   isActive          Boolean        @default(true)
+  /// DEPRECATED — superseded by branchProductStock (stock is now per-branch).
+  /// No longer read by checkout or admin inventory; the public storefront
+  /// never gates on stock at all. Left in place for historic data only.
   stock             Int            @default(0)
+  /// Manual admin override — the storefront's only stock gate. Independent
+  /// of the deprecated `stock` field and per-branch Zoho stock.
+  outOfStock        Boolean        @default(false)
   ratingAvg         Float          @default(0)
   ratingCount       Int            @default(0)
-  zohoItemId        String?        @unique
+  // Zoho catalog fields — populated (or nulled, if absent from Zoho) on every
+  // sync. Which Zoho item this maps to per organization now lives in
+  // productZohoMapping (each of the two orgs assigns its own opaque item id
+  // to "the same" product), not a column here.
+  zohoSku             String?
+  zohoItemType        String?
+  zohoStatus          String?
+  zohoUnit            String?
+  zohoBrand           String?
+  purchaseRateKes     Int?
+  /// Raw Zoho category_name text, kept even when it doesn't match one of our
+  /// active categories, so the gap is visible for manual reconciliation
+  /// instead of silently disappearing (categoryId itself is left untouched).
+  zohoCategoryNameRaw String?
+  lastZohoSyncedAt    DateTime?
   images            productImage[]
   cartItems         cartItem[]
   favorites         favorite[]
   orderItems        orderItem[]
+  branchStocks      branchProductStock[]
+  zohoMappings      productZohoMapping[]
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
@@ -529,6 +554,15 @@ model branch {
   apiKeyEnc         String?
   isMain            Boolean       @default(false)
   isActive          Boolean       @default(true)
+  // Zoho Inventory — a branch belongs to one of a small number of shared
+  // orgs (credentials live on zohoOrganization; several branches can point
+  // at the same org). zohoWarehouseId is this branch's Zoho warehouse/
+  // location id within that org's catalog, used to split stock per-branch
+  // when Zoho's per-warehouse breakdown is available (falls back to the
+  // org's aggregate quantity_available when unset — see lib/zoho-sync.ts).
+  zohoOrganizationId    String?
+  zohoOrganization      zohoOrganization? @relation(fields: [zohoOrganizationId], references: [id])
+  zohoWarehouseId       String?
   orders            order[]
   deliveryZones     DeliveryZone[]
   adminProfiles     adminProfile[]
@@ -536,10 +570,13 @@ model branch {
   inStoreOrders          inStoreOrder[]
   mpesaC2bTransactions   mpesaC2bTransaction[]
   notifications          notification[]
+  branchProductStocks    branchProductStock[]
+  zohoPushLogs           zohoPushLog[]
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
   @@index([county, isActive])
+  @@index([zohoOrganizationId])
   @@schema("public")
 }
 
@@ -557,6 +594,108 @@ model DeliveryZone {
   @@index([county, isActive])
   @@index([branchId])
   @@schema("public")
+}
+
+// Per-branch stock count, synced from that branch's own Zoho POS. The
+// product catalog itself (name/price/description/images) stays one shared
+// row per SKU in `product` — only quantity is branch-specific. Admin/internal
+// use only; the public storefront never reads this (deliberately unlimited
+// "in stock" on the customer-facing site — see product.stock's deprecation
+// note below).
+model branchProductStock {
+  id           String    @id @default(cuid())
+  branchId     String
+  branch       branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  productId    String
+  product      product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  stock        Int       @default(0)
+  lastSyncedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([branchId, productId])
+  @@index([productId])
+  @@index([branchId, stock])
+  @@schema("admin")
+}
+
+// One row per real-world Zoho Inventory organization. Several branches can
+// share the same org (credentials + webhook secret live here once, not
+// duplicated per branch) — see branch.zohoOrganizationId.
+model zohoOrganization {
+  id               String    @id @default(cuid())
+  name             String
+  zohoOrgId        String    @unique
+  clientIdEnc      String
+  clientSecretEnc  String
+  refreshTokenEnc  String
+  webhookSecretEnc String?
+  connectedAt      DateTime?
+  branches         branch[]
+  productMappings  productZohoMapping[]
+  pushLogs         zohoPushLog[]
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@schema("admin")
+}
+
+// Maps a shared product catalog row to its Zoho item id *within one org's
+// catalog*. Necessary because each org assigns its own opaque item ids —
+// the same physical product has a different zohoItemId under Org A than
+// under Org B. Both directions are direct unique-index lookups.
+model productZohoMapping {
+  id             String           @id @default(cuid())
+  productId      String
+  product        product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   zohoOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  zohoItemId     String
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([productId, organizationId])
+  @@unique([organizationId, zohoItemId])
+  @@schema("admin")
+}
+
+enum ZohoPushKind {
+  SALES_ORDER
+  INVENTORY_ADJUSTMENT
+
+  @@schema("admin")
+}
+
+enum ZohoPushStatus {
+  SENT
+  FAILED
+  SKIPPED
+
+  @@schema("admin")
+}
+
+// Durable record of every outbound push to Zoho (a sale or a manual stock
+// adjustment), written once after each attempt completes. Exists so a
+// failed push is discoverable in the admin panel instead of only ever
+// appearing in server logs — see lib/zoho/push-log.ts.
+model zohoPushLog {
+  id             String            @id @default(cuid())
+  kind           ZohoPushKind
+  status         ZohoPushStatus
+  organizationId String?
+  organization   zohoOrganization? @relation(fields: [organizationId], references: [id])
+  branchId       String?
+  branch         branch?           @relation(fields: [branchId], references: [id])
+  productId      String?
+  referenceType  String?           // "order" | "inStoreOrder" | "inventoryAdjustment"
+  referenceId    String?
+  zohoRecordId   String?
+  errorMessage   String?
+  createdAt      DateTime          @default(now())
+
+  @@index([status, createdAt])
+  @@index([referenceType, referenceId])
+  @@schema("admin")
 }
 
 model transaction {
@@ -731,13 +870,17 @@ model supportTicket {
 }
 
 model ticketMessage {
-  id           String        @id @default(cuid())
-  ticketId     String
-  ticket       supportTicket @relation(fields: [ticketId], references: [id])
-  senderType   MessageSender
-  content      String        @db.Text
-  emailSentAt  DateTime?
-  createdAt    DateTime      @default(now())
+  id             String        @id @default(cuid())
+  ticketId       String
+  ticket         supportTicket @relation(fields: [ticketId], references: [id])
+  senderType     MessageSender
+  content        String        @db.Text
+  attachmentUrl  String?
+  attachmentName String?
+  attachmentType String?
+  attachmentSize Int?
+  emailSentAt    DateTime?
+  createdAt      DateTime      @default(now())
 
   @@index([ticketId])
   @@schema("public")

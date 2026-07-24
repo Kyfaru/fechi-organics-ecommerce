@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
     return ok({ products });
   } catch (e) {
     console.error("[favorites] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -96,6 +96,6 @@ export async function POST(req: NextRequest) {
     }
   } catch (e) {
     console.error("[favorites] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

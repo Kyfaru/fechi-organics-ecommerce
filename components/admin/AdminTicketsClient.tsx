@@ -3,10 +3,13 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Search, Send, X, MessageSquare, CheckCheck, Check } from "lucide-react";
+import { Search, Send, X, MessageSquare, CheckCheck, Check, Paperclip, FileText } from "lucide-react";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { EmptyState } from "@/components/admin/ui/EmptyState";
 import { useTicketStream } from "@/hooks/use-ticket-stream";
+
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_ATTACHMENT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif", "application/pdf"];
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,6 +25,7 @@ type LastMessage = {
   content: string;
   senderType: "CUSTOMER" | "ADMIN";
   createdAt: string;
+  attachmentName?: string | null;
 };
 
 type AssignedAdmin = { id: string; name: string };
@@ -44,6 +48,9 @@ type TicketMessage = {
   senderType: "CUSTOMER" | "ADMIN";
   content: string;
   createdAt: string;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
+  attachmentType?: string | null;
 };
 
 type TicketDetail = TicketSummary & {
@@ -116,9 +123,10 @@ function TicketListItem({
   onClick: () => void;
 }) {
   const lastMsg = ticket.messages[0];
-  const preview = lastMsg
-    ? lastMsg.content.slice(0, 40) + (lastMsg.content.length > 40 ? "…" : "")
-    : ticket.subject.slice(0, 40);
+  const previewText = lastMsg
+    ? lastMsg.content || (lastMsg.attachmentName ? `📎 ${lastMsg.attachmentName}` : "")
+    : ticket.subject;
+  const preview = previewText.slice(0, 40) + (previewText.length > 40 ? "…" : "");
 
   return (
     <button
@@ -158,6 +166,47 @@ function TicketListItem({
 // ---------------------------------------------------------------------------
 // Column 2 — Message bubble
 // ---------------------------------------------------------------------------
+function MessageAttachment({ message, isAdmin }: { message: TicketMessage; isAdmin: boolean }) {
+  if (!message.attachmentUrl) return null;
+  const isImage = message.attachmentType?.startsWith("image/");
+
+  if (isImage) {
+    return (
+      <a
+        href={message.attachmentUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block mb-2 rounded-[10px] overflow-hidden max-w-[220px]"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={message.attachmentUrl} alt={message.attachmentName ?? "Attachment"} className="w-full h-auto block" />
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={message.attachmentUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={[
+        "flex items-center gap-2 mb-2 px-3 py-2 rounded-[10px] transition-colors",
+        isAdmin ? "bg-white/15 hover:bg-white/25" : "bg-(--neutral-100) dark:bg-(--dark-border) hover:bg-(--neutral-200)",
+      ].join(" ")}
+    >
+      <FileText size={16} className={isAdmin ? "text-white shrink-0" : "text-(--green-800) dark:text-green-400 shrink-0"} />
+      <span
+        className={[
+          "font-dm text-[13px] truncate",
+          isAdmin ? "text-white" : "text-(--neutral-900) dark:text-(--dark-text)",
+        ].join(" ")}
+      >
+        {message.attachmentName ?? "Attachment"}
+      </span>
+    </a>
+  );
+}
+
 function MessageBubble({
   message,
   isOptimistic,
@@ -171,7 +220,10 @@ function MessageBubble({
     return (
       <div className="flex justify-end">
         <div className="max-w-[70%] bg-(--green-800) rounded-[16px] rounded-tr-[4px] px-4 py-3">
-          <p className="font-dm text-[14px] text-white leading-relaxed">{message.content}</p>
+          <MessageAttachment message={message} isAdmin />
+          {message.content && (
+            <p className="font-dm text-[14px] text-white leading-relaxed">{message.content}</p>
+          )}
           <span className="font-dm text-[11px] text-white/60 mt-1 flex items-center justify-end gap-1">
             {formatTime(message.createdAt)}
             {isOptimistic ? (
@@ -188,9 +240,12 @@ function MessageBubble({
   return (
     <div className="flex justify-start">
       <div className="max-w-[70%] bg-white dark:bg-(--dark-surface) border border-(--neutral-200) dark:border-(--dark-border) rounded-[16px] rounded-tl-[4px] px-4 py-3 shadow-(--e1)">
-        <p className="font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) leading-relaxed">
-          {message.content}
-        </p>
+        <MessageAttachment message={message} isAdmin={false} />
+        {message.content && (
+          <p className="font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) leading-relaxed">
+            {message.content}
+          </p>
+        )}
         <span className="font-dm text-[11px] text-(--neutral-400) dark:text-(--dark-muted) mt-1 block">
           {formatTime(message.createdAt)}
         </span>
@@ -209,7 +264,24 @@ export function AdminTicketsClient() {
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [replyText, setReplyText] = useState("");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!ALLOWED_ATTACHMENT_TYPES.includes(file.type)) {
+      toast.error("Only images and PDFs can be attached");
+      return;
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      toast.error("File exceeds 10 MB");
+      return;
+    }
+    setPendingFile(file);
+  }
 
   // -------------------------------------------------------------------------
   // Fetch admin/customer_care staff — populates the assignee filter dropdown
@@ -287,14 +359,17 @@ export function AdminTicketsClient() {
   // Reply mutation with optimistic update
   // -------------------------------------------------------------------------
   const replyMutation = useMutation({
-    mutationFn: (content: string) =>
-      fetch(`/api/admin/tickets/${activeTicketId}/reply`, {
+    mutationFn: ({ content, file }: { content: string; file: File | null }) => {
+      const fd = new FormData();
+      if (content) fd.append("content", content);
+      if (file) fd.append("file", file);
+      return fetch(`/api/admin/tickets/${activeTicketId}/reply`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
-      }).then((r) => r.json()),
+        body: fd,
+      }).then((r) => r.json());
+    },
 
-    onMutate: async (content) => {
+    onMutate: async ({ content, file }) => {
       // Append optimistic message immediately
       const optimisticMsg: TicketMessage & { isOptimistic?: boolean } = {
         id: `optimistic-${Date.now()}`,
@@ -302,6 +377,9 @@ export function AdminTicketsClient() {
         content,
         createdAt: new Date().toISOString(),
         isOptimistic: true,
+        attachmentUrl: file ? URL.createObjectURL(file) : null,
+        attachmentName: file?.name ?? null,
+        attachmentType: file?.type ?? null,
       };
       qc.setQueryData(
         ["admin-ticket", activeTicketId],
@@ -365,9 +443,11 @@ export function AdminTicketsClient() {
 
   function handleSend() {
     const text = replyText.trim();
-    if (!text || !activeTicketId) return;
+    if ((!text && !pendingFile) || !activeTicketId) return;
     setReplyText("");
-    replyMutation.mutate(text);
+    const file = pendingFile;
+    setPendingFile(null);
+    replyMutation.mutate({ content: text, file });
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -594,22 +674,52 @@ export function AdminTicketsClient() {
                   </p>
                 </div>
               ) : (
-                <div className="flex gap-2 items-end">
-                  <textarea
-                    value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Type a reply... (Ctrl+Enter to send)"
-                    rows={2}
-                    className="flex-1 resize-none rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg) px-3 py-2 font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) placeholder:text-(--neutral-400) min-h-[40px] max-h-[120px] focus:border-(--green-800) focus:outline-none transition-colors"
-                  />
-                  <button
-                    onClick={handleSend}
-                    disabled={!replyText.trim() || replyMutation.isPending}
-                    className="w-10 h-10 rounded-full bg-(--green-800) text-white flex items-center justify-center hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity shrink-0"
-                  >
-                    <Send size={16} />
-                  </button>
+                <div className="flex flex-col gap-2">
+                  {pendingFile && (
+                    <div className="flex items-center gap-2 self-start px-3 py-1.5 rounded-full bg-(--neutral-100) dark:bg-(--dark-border) max-w-full">
+                      <FileText size={14} className="text-(--neutral-500) dark:text-(--dark-muted) shrink-0" />
+                      <span className="font-dm text-[12px] text-(--neutral-700) dark:text-(--dark-text) truncate">
+                        {pendingFile.name}
+                      </span>
+                      <button
+                        onClick={() => setPendingFile(null)}
+                        className="text-(--neutral-400) hover:text-(--neutral-700) shrink-0"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex gap-2 items-end">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      title="Attach a file"
+                      className="w-10 h-10 rounded-full border border-(--neutral-200) dark:border-(--dark-border) text-(--neutral-500) dark:text-(--dark-muted) flex items-center justify-center hover:bg-(--neutral-50) dark:hover:bg-(--dark-border) transition-colors shrink-0"
+                    >
+                      <Paperclip size={16} />
+                    </button>
+                    <textarea
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder="Type a reply... (Ctrl+Enter to send)"
+                      rows={2}
+                      className="flex-1 resize-none rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg) px-3 py-2 font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) placeholder:text-(--neutral-400) min-h-[40px] max-h-[120px] focus:border-(--green-800) focus:outline-none transition-colors"
+                    />
+                    <button
+                      onClick={handleSend}
+                      disabled={(!replyText.trim() && !pendingFile) || replyMutation.isPending}
+                      className="w-10 h-10 rounded-full bg-(--green-800) text-white flex items-center justify-center hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity shrink-0"
+                    >
+                      <Send size={16} />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

@@ -7,13 +7,7 @@ import { z } from "zod";
 import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { getPeriodChange } from "@/lib/stats";
-
-async function requireAdmin() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return null;
-  const u = await db.user.findUnique({ where: { id: session.user.id } });
-  return u?.role === "admin" ? u : null;
-}
+import { requirePermission } from "@/lib/require-permission";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/customers
@@ -23,8 +17,8 @@ async function requireAdmin() {
 export async function GET(req: NextRequest) {
   await connection();
   try {
-    const admin = await requireAdmin();
-    if (!admin) return Err.forbidden();
+    const denied = await requirePermission(req, { customers: ["view"] });
+    if (denied) return denied;
 
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search")?.trim() ?? "";
@@ -105,7 +99,7 @@ export async function GET(req: NextRequest) {
     return ok({ users, stats, statsChange });
   } catch (e) {
     console.error("[admin/customers] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -123,14 +117,15 @@ export async function PATCH(req: NextRequest) {
   if (originCheck) return originCheck;
   await connection();
   try {
-    const admin = await requireAdmin();
-    if (!admin) return Err.forbidden();
+    const denied = await requirePermission(req, { customers: ["update"] });
+    if (denied) return denied;
 
     const body = await req.json().catch(() => ({}));
     const parsed = RoleSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
-    if (parsed.data.id === admin.id && parsed.data.role === "client") {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (parsed.data.id === session?.user.id && parsed.data.role === "client") {
       return Err.validation("You cannot demote your own account");
     }
 
@@ -144,6 +139,6 @@ export async function PATCH(req: NextRequest) {
     return ok({ user });
   } catch (e) {
     console.error("[admin/customers] PATCH error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

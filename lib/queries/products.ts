@@ -19,6 +19,7 @@ export type ProductCard = {
   categoryName: string;
   categorySlug: string;
   stock: number;
+  outOfStock: boolean;
 };
 
 export type ProductDetail = ProductCard & {
@@ -41,6 +42,7 @@ function toCard(p: {
   ratingAvg: number;
   ratingCount: number;
   stock: number;
+  outOfStock: boolean;
   images: { objectKey: string; isPrimary: boolean }[];
   category: { name: string; slug: string };
 }): ProductCard {
@@ -60,6 +62,7 @@ function toCard(p: {
     categoryName: p.category.name,
     categorySlug: p.category.slug,
     stock: p.stock,
+    outOfStock: p.outOfStock,
   };
 }
 
@@ -122,6 +125,18 @@ export async function getProducts(opts: {
   return { items, nextCursor: hasMore ? items[items.length - 1].id : null };
 }
 
+/** Slugs + last-modified timestamps for every active product, for the sitemap. */
+export async function getAllProductSlugs(): Promise<{ slug: string; updatedAt: Date }[]> {
+  "use cache";
+  cacheTag("products");
+  cacheLife("minutes");
+
+  return db.product.findMany({
+    where: { isActive: true },
+    select: { slug: true, updatedAt: true },
+  });
+}
+
 /** Single product detail. */
 export async function getProductBySlug(slug: string): Promise<ProductDetail | null> {
   "use cache";
@@ -139,7 +154,10 @@ export async function getProductBySlug(slug: string): Promise<ProductDetail | nu
 
   return {
     ...toCard(p),
-    description: p.description,
+    // Zoho sync nulls description when Zoho doesn't provide one (visible as
+    // a gap in the admin view) — the public storefront has no use for that
+    // distinction, so it just reads as empty here.
+    description: p.description ?? "",
     sizes: p.sizes,
     howToUse: p.howToUse,
     ingredients: p.ingredients,

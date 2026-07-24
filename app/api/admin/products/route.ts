@@ -1,22 +1,12 @@
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { invalidateProductCache } from "@/lib/cache-tags";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { createNotification } from "@/lib/notify";
-
-// ---------------------------------------------------------------------------
-// Auth helper — reuses the req.headers pattern from other admin routes
-// ---------------------------------------------------------------------------
-async function requireAdmin(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user) return null;
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  return user?.role === "admin" ? user : null;
-}
+import { requirePermission } from "@/lib/require-permission";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/products
@@ -24,10 +14,11 @@ async function requireAdmin(req: NextRequest) {
 // ---------------------------------------------------------------------------
 export async function GET(req: NextRequest) {
   await connection();
-  try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { products: ["view"] });
+  if (denied) return denied;
+
+  try {
     const products = await db.product.findMany({
       orderBy: { createdAt: "desc" },
       include: {
@@ -43,7 +34,7 @@ export async function GET(req: NextRequest) {
     return ok({ products });
   } catch (e) {
     console.error("[admin/products] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -66,6 +57,7 @@ const CreateSchema = z.object({
   stock: z.number().int().min(0, "Stock cannot be negative").default(0),
   bestSeller: z.boolean().default(false),
   isActive: z.boolean().default(true),
+  outOfStock: z.boolean().default(false),
   sizes: z.array(z.string()).default([]),
   howToUse: z.string().nullable().optional(),
   ingredients: z.string().nullable().optional(),
@@ -77,10 +69,11 @@ export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
-  try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { products: ["create"] });
+  if (denied) return denied;
+
+  try {
     const body = await req.json().catch(() => ({}));
     const parsed = CreateSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
@@ -126,7 +119,7 @@ export async function POST(req: NextRequest) {
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("A product with this slug already exists");
     }
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -151,6 +144,7 @@ const UpdateSchema = z.object({
   stock: z.number().int().min(0).optional(),
   bestSeller: z.boolean().optional(),
   isActive: z.boolean().optional(),
+  outOfStock: z.boolean().optional(),
   sizes: z.array(z.string()).optional(),
   howToUse: z.string().nullable().optional(),
   ingredients: z.string().nullable().optional(),
@@ -163,10 +157,11 @@ export async function PATCH(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
-  try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { products: ["update"] });
+  if (denied) return denied;
+
+  try {
     const body = await req.json().catch(() => ({}));
     const parsed = UpdateSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
@@ -203,6 +198,6 @@ export async function PATCH(req: NextRequest) {
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("A product with this slug already exists");
     }
-    return Err.internal();
+    return Err.internal(e);
   }
 }

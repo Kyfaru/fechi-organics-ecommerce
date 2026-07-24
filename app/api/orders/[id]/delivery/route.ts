@@ -65,6 +65,6 @@ export async function PATCH(
     return ok({ order: updated });
   } catch (e) {
     console.error("[orders/:id/delivery] PATCH error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

@@ -10,6 +10,7 @@ import { generateTicketNumber } from "@/lib/tickets/generate-ticket-number";
 import { assignTicketToAdmin } from "@/lib/tickets/assign-admin";
 import { sendTicketAcknowledgmentEmail } from "@/lib/email";
 import { createNotification } from "@/lib/notify";
+import { emailShell, emailSection, emailInfoBox, emailIconCircle, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template";
 
 const ContactSchema = z.object({
   name: z.string().min(2).max(100),
@@ -102,7 +103,7 @@ export async function POST(req: NextRequest) {
     return ok({ id: record.id, ticketNumber });
   } catch (e) {
     console.error("[contact] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
@@ -122,17 +123,21 @@ async function sendNotificationEmail(data: {
   }
 
   const resend = new Resend(apiKey);
+  const sections = [
+    emailSection(`
+      ${emailIconCircle("alert")}
+      <h1 style="margin:0 0 20px;text-align:center;font-family:${FONT_HEADING};font-size:24px;font-weight:700;color:${EMAIL_BRAND.textDark};">New Contact Message</h1>
+      <p style="font-size:14px;color:${EMAIL_BRAND.textBody};margin:0 0 4px;"><strong>From:</strong> ${data.name} (${data.email})</p>
+      <p style="font-size:14px;color:${EMAIL_BRAND.textBody};margin:0 0 20px;"><strong>Subject:</strong> ${data.subject}</p>
+      ${emailInfoBox(data.message.replace(/\n/g, "<br>"), "info")}
+      <p style="font-size:12px;color:${EMAIL_BRAND.textMuted};margin:20px 0 0;">Message ID: ${data.id}</p>
+    `),
+  ].join("");
+
   await resend.emails.send({
     from: "Fechi Organics <noreply@fechiorganics.com>",
     to: adminEmail,
     subject: `New contact: ${data.subject}`,
-    html: `
-      <h2>New Contact Message</h2>
-      <p><strong>From:</strong> ${data.name} (${data.email})</p>
-      <p><strong>Subject:</strong> ${data.subject}</p>
-      <p><strong>Message:</strong></p>
-      <blockquote>${data.message.replace(/\n/g, "<br>")}</blockquote>
-      <p><small>Message ID: ${data.id}</small></p>
-    `,
+    html: emailShell({ title: "New Contact Message", sectionsHtml: sections }),
   });
 }

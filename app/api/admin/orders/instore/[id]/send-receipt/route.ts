@@ -19,8 +19,9 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-invoice";
 import { createInstoreInvoiceToken } from "@/lib/invoice-token";
 import { sendInvoiceEmail } from "@/lib/email";
-import { sendSms } from "@/lib/twilio";
+import { sendSms } from "@/lib/sms";
 import { publishQstashJSON } from "@/lib/qstash";
+import { emailShell, emailSection, emailButton, emailIconCircle, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template";
 
 // Fire-and-forget "both" path shouldn't block the request on Twilio — same
 // short delay used by the campaign "send later" window.
@@ -43,13 +44,18 @@ function kes(cents: number) {
 }
 
 function buildInvoiceEmailHtml(args: { invoiceNumber: string; totalKes: number; url: string }) {
-  return `
-    <div style="font-family:Arial,sans-serif;color:#1a1c1c;">
-      <h2 style="color:#27731e;">Your invoice is ready</h2>
-      <p>Invoice ${args.invoiceNumber} for your Fechi Organics in-store purchase — total paid <strong>${kes(args.totalKes)}</strong>.</p>
-      <p>It's attached as a PDF, or you can view it anytime here: <a href="${args.url}">${args.url}</a></p>
-    </div>
-  `;
+  const sections = [
+    emailSection(`
+      ${emailIconCircle("receipt")}
+      <h1 style="margin:0 0 16px;text-align:center;font-family:${FONT_HEADING};font-size:24px;font-weight:700;color:${EMAIL_BRAND.textDark};">Your Invoice Is Ready</h1>
+      <p style="margin:0 0 28px;text-align:center;font-size:15px;color:${EMAIL_BRAND.textBody};line-height:1.6;">
+        Invoice <strong>${args.invoiceNumber}</strong> for your Fechi Organics in-store purchase — total paid <strong>${kes(args.totalKes)}</strong>. It's attached as a PDF.
+      </p>
+      <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;"><tr><td>${emailButton("View Invoice", args.url)}</td></tr></table>
+    `),
+  ].join("");
+
+  return emailShell({ title: "Your Invoice Is Ready", sectionsHtml: sections });
 }
 
 function buildSmsMessage(args: { invoiceNumber: string; orderNumber: string | null; url: string }) {
@@ -138,6 +144,6 @@ export async function POST(
     return ok({ sent, smsScheduled });
   } catch (e) {
     console.error("[instore/send-receipt] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

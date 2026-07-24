@@ -10,29 +10,23 @@
 
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
+import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Err } from "@/lib/api";
-import { requireAdminPage } from "@/lib/admin-guard";
+import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-
-async function requireAdmin(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user) return null;
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  return user?.role === "admin" ? user : null;
-}
 
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
 
-  const denied = await requireAdminPage(req, 'finance');
+  const denied = await requirePermission(req, { finance: ["export"] });
   if (denied) return denied;
 
-  const admin = await requireAdmin(req);
-  if (!admin) return Err.forbidden();
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) return Err.authRequired();
 
   try {
     const transactions = await db.transaction.findMany({
@@ -81,7 +75,7 @@ export async function POST(req: NextRequest) {
     const csvString = [header, ...rows].join("\n");
 
     console.info(
-      `[admin/finance/export] POST admin=${admin.id} rows=${transactions.length}`
+      `[admin/finance/export] POST admin=${session.user.id} rows=${transactions.length}`
     );
 
     return new Response(csvString, {
@@ -92,6 +86,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (e) {
     console.error("[admin/finance/export] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

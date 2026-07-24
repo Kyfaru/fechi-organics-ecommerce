@@ -59,6 +59,6 @@ export async function POST(req: NextRequest) {
     return resp;
   } catch (e) {
     console.error("[cart/items] POST error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

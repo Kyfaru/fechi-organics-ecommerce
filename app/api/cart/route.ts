@@ -37,6 +37,6 @@ export async function GET(req: NextRequest) {
     return res;
   } catch (e) {
     console.error("[cart] GET error", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }

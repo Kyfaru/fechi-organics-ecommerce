@@ -1,20 +1,16 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
-import { connection } from "next/server";
+import { connection, NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
 
 /** GET /api/admin/homepage — return sections ordered by `order` */
-export async function GET() {
+export async function GET(req: NextRequest) {
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { content: ["view"] });
+  if (denied) return denied;
 
   try {
     const sections = await db.homepageSection.findMany({
@@ -23,21 +19,18 @@ export async function GET() {
     return ok(sections);
   } catch (e) {
     console.error("[homepage/GET]", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
 
 /** PUT /api/admin/homepage — upsert all sections */
-export async function PUT(req: Request) {
+export async function PUT(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { content: ["update"] });
+  if (denied) return denied;
 
   let sections: Array<{ id?: string; type: string; order: number; visible: boolean; config: Record<string, unknown> }>;
   try {
@@ -67,6 +60,6 @@ export async function PUT(req: Request) {
     return ok(updated);
   } catch (e) {
     console.error("[homepage/PUT]", e);
-    return Err.internal();
+    return Err.internal(e);
   }
 }
