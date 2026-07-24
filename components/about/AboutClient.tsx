@@ -312,7 +312,7 @@ export function AboutClient() {
               <motion.div animate={{ rotate: -360 }} transition={{ duration: 45, repeat: Infinity, ease: "linear" }} className="absolute inset-[-36px] rounded-full border border-dashed border-[#a4f690]/40 dark:border-green-400/20 pointer-events-none" />
 
               <div className="relative w-[340px] h-[440px] rounded-[200px] overflow-hidden shadow-2xl">
-                <Image src="/img/side-view-woman-with-afro-hairstyle.jpg" alt="Wangeci — Founder of FECHI Organics" fill className="object-cover" sizes="340px" />
+                <Image src="/img/wangeci-1.jpeg" alt="Wangeci — Founder of FECHI Organics" fill className="object-cover" sizes="340px" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#27731e]/60 via-transparent to-transparent" />
                 <div className="absolute bottom-6 left-0 right-0 text-center">
                   <p className="font-heading text-white font-semibold text-xl">Wangeci</p>
