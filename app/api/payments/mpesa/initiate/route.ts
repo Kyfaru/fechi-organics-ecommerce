@@ -200,7 +200,7 @@ export async function POST(req: NextRequest) {
         branch: {
           id: branch!.id,
           shortcode: branch!.shortcode,
-          invoiceNumber: invoiceCode ?? branch!.invoiceNumber,
+          invoiceNumber: invoiceCode,
           consumerKeyEnc: branch!.consumerKeyEnc,
           consumerSecretEnc: branch!.consumerSecretEnc,
           apiKeyEnc: branch!.apiKeyEnc ?? null,

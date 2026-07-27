@@ -31,6 +31,12 @@ const nextConfig: NextConfig = {
         hostname: "*.cloudflarestorage.com",
         pathname: "/**",
       },
+      // Cloudflare R2 Custom domain public bucket
+      {
+        protocol: "https",
+        hostname: "media.fechiorganics.shop",
+        pathname: "/**",
+      },
       {
         protocol: "https",
         hostname: "*.r2.cloudflarestorage.com",
