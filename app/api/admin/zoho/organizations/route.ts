@@ -29,10 +29,11 @@ const CreateSchema = z.object({
  */
 export async function GET(req: NextRequest) {
   await connection();
-  const denied = await requirePermission(req, { branches: ["view"] });
-  if (denied) return denied;
 
   try {
+    const denied = await requirePermission(req, { branches: ["view"] });
+    if (denied) return denied;
+
     const orgs = await db.zohoOrganization.findMany({
       orderBy: { name: "asc" },
       select: {
@@ -52,24 +53,24 @@ export async function POST(req: NextRequest) {
   if (originCheck) return originCheck;
   await connection();
 
-  const denied = await requirePermission(req, { branches: ["update"] });
-  if (denied) return denied;
-
-  const caller = await loadCallerContext();
-  if (caller.denied) return caller.denied === "auth" ? Err.authRequired() : Err.forbidden();
-  if (!isGlobalScope(caller)) return Err.forbidden();
-
-  let body: unknown;
   try {
-    body = await req.json();
-  } catch {
-    return Err.validation("Invalid JSON body.");
-  }
-  const parsed = CreateSchema.safeParse(body);
-  if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
-  const { name, zohoOrgId, clientId, clientSecret, refreshToken } = parsed.data;
+    const denied = await requirePermission(req, { branches: ["update"] });
+    if (denied) return denied;
 
-  try {
+    const caller = await loadCallerContext();
+    if (caller.denied) return caller.denied === "auth" ? Err.authRequired() : Err.forbidden();
+    if (!isGlobalScope(caller)) return Err.forbidden();
+
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return Err.validation("Invalid JSON body.");
+    }
+    const parsed = CreateSchema.safeParse(body);
+    if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
+    const { name, zohoOrgId, clientId, clientSecret, refreshToken } = parsed.data;
+
     const webhookSecret = randomBytes(32).toString("hex");
 
     const org = await db.zohoOrganization.create({

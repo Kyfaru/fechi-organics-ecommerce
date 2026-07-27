@@ -18,7 +18,7 @@
  * AdminStaffClient.tsx's "Change Role" modal.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, CheckCircle2, XCircle, Copy, Plus } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
@@ -44,23 +44,75 @@ interface ZohoOrganization {
   branches: { id: string; name: string }[];
 }
 
+// Fetches an admin API's { ok, data } envelope and throws with the server's
+// own error message (or the raw response text, for a route handler that
+// crashed before ever reaching that envelope) instead of failing silently
+// inside react-query — see reportLoadFailure below for what happens with it.
+async function fetchJson(url: string): Promise<unknown> {
+  const res = await fetch(url);
+  let json: { ok?: boolean; data?: unknown; error?: { message?: string } } | null = null;
+  try {
+    json = await res.json();
+  } catch {
+    // Response wasn't JSON at all — most commonly an uncaught exception in
+    // the route handler, which Next.js renders as a bare HTML/text 500.
+    throw new Error(`${url} → HTTP ${res.status} (non-JSON response)`);
+  }
+  if (!res.ok || !json?.ok) {
+    throw new Error(json?.error?.message ?? `${url} → HTTP ${res.status}`);
+  }
+  return json.data;
+}
+
+// Surfaces a failed load to the console + a toast, and pulls in /api/health
+// so a DB/env problem is named instead of just "something failed".
+async function reportLoadFailure(label: string, err: unknown) {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`[AdminBranchesClient] ${label} failed:`, err);
+  try {
+    const healthRes = await fetch("/api/health");
+    const health = await healthRes.json();
+    if (!health.ok) {
+      const failing = Object.entries(health.checks as Record<string, { ok: boolean; error?: string }>)
+        .filter(([, c]) => !c.ok)
+        .map(([name, c]) => `${name}: ${c.error}`)
+        .join("; ");
+      toast.error(`Couldn't load ${label}`, { message: `${message} — health check found: ${failing}` });
+      return;
+    }
+  } catch (healthErr) {
+    console.error("[AdminBranchesClient] health check itself failed:", healthErr);
+  }
+  toast.error(`Couldn't load ${label}`, { message });
+}
+
 export function AdminBranchesClient() {
   const qc = useQueryClient();
   const { data: me } = useAdminMe();
   const isGlobalScope = Boolean(me?.isSuperAdmin || !me?.branchId);
 
-  const { data: branchData, isLoading: branchesLoading } = useQuery({
+  const { data: branchData, isLoading: branchesLoading, isError: branchesErrored, error: branchesError } = useQuery({
     queryKey: ["admin-branches"],
-    queryFn: () => fetch("/api/admin/branches").then((r) => r.json()).then((j) => j.data?.branches ?? []),
+    queryFn: () => fetchJson("/api/admin/branches") as Promise<Branch[]>,
+    retry: 1,
   });
   const branches: Branch[] = branchData ?? [];
 
-  const { data: orgData, isLoading: orgsLoading } = useQuery({
+  const { data: orgData, isLoading: orgsLoading, isError: orgsErrored, error: orgsError } = useQuery({
     queryKey: ["admin-zoho-organizations"],
-    queryFn: () => fetch("/api/admin/zoho/organizations").then((r) => r.json()).then((j) => j.data?.organizations ?? []),
+    queryFn: () => fetchJson("/api/admin/zoho/organizations") as Promise<ZohoOrganization[]>,
     enabled: isGlobalScope,
+    retry: 1,
   });
   const organizations: ZohoOrganization[] = orgData ?? [];
+
+  useEffect(() => {
+    if (branchesErrored) reportLoadFailure("branches", branchesError);
+  }, [branchesErrored, branchesError]);
+
+  useEffect(() => {
+    if (orgsErrored) reportLoadFailure("Zoho organizations", orgsError);
+  }, [orgsErrored, orgsError]);
 
   async function verifyAdminPassword(password: string): Promise<boolean> {
     const res = await fetch("/api/admin/verify-password", {
@@ -234,6 +286,10 @@ export function AdminBranchesClient() {
             </div>
             {orgsLoading ? (
               <div className="p-8 text-center font-dm text-[14px] text-(--neutral-400)">Loading…</div>
+            ) : orgsErrored ? (
+              <div className="p-8 text-center font-dm text-[14px] text-(--danger)">
+                Couldn&apos;t load Zoho organizations — see the toast for details.
+              </div>
             ) : organizations.length === 0 ? (
               <div className="p-8 text-center font-dm text-[14px] text-(--neutral-400)">No Zoho organizations yet.</div>
             ) : (
@@ -272,6 +328,10 @@ export function AdminBranchesClient() {
         <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) overflow-hidden">
           {branchesLoading ? (
             <div className="p-8 text-center font-dm text-[14px] text-(--neutral-400)">Loading…</div>
+          ) : branchesErrored ? (
+            <div className="p-8 text-center font-dm text-[14px] text-(--danger)">
+              Couldn&apos;t load branches — see the toast for details.
+            </div>
           ) : (
             <table className="w-full">
               <thead>

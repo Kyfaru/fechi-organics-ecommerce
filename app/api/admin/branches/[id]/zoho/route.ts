@@ -33,27 +33,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (originCheck) return originCheck;
   await connection();
 
-  const denied = await requirePermission(req, { branches: ["update"] });
-  if (denied) return denied;
-
-  const { id: branchId } = await params;
-
-  const ctx = await loadCallerContext();
-  if (ctx.denied) return ctx.denied === "auth" ? Err.authRequired() : Err.forbidden();
-  const forbidden = assertBranchAccess(ctx, branchId);
-  if (forbidden) return forbidden;
-
-  let body: unknown;
   try {
-    body = await req.json();
-  } catch {
-    return Err.validation("Invalid JSON body.");
-  }
-  const parsed = PatchSchema.safeParse(body);
-  if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
-  const { zohoOrganizationId, zohoWarehouseId } = parsed.data;
+    const denied = await requirePermission(req, { branches: ["update"] });
+    if (denied) return denied;
 
-  try {
+    const { id: branchId } = await params;
+
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return ctx.denied === "auth" ? Err.authRequired() : Err.forbidden();
+    const forbidden = assertBranchAccess(ctx, branchId);
+    if (forbidden) return forbidden;
+
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return Err.validation("Invalid JSON body.");
+    }
+    const parsed = PatchSchema.safeParse(body);
+    if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
+    const { zohoOrganizationId, zohoWarehouseId } = parsed.data;
+
     const branch = await db.branch.findUnique({ where: { id: branchId }, select: { id: true } });
     if (!branch) return Err.notFound("Branch");
 
