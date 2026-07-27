@@ -182,7 +182,7 @@ export async function POST(req: NextRequest) {
     const consumer_secret = branch.consumerSecretEnc || process.env.KCB_CONSUMER_SECRET;
     const consumer_key = branch.consumerKeyEnc || process.env.KCB_CONSUMER_KEY;
     const api_key = branch.apiKeyEnc || process.env.KCB_API_KEY;
-    const shortcode = branch.shortcode || process.env.KCB_SHORTCODE;
+    const shortcode = branch.shortcode || process.env.KCB_SHORTCODE || "null";
     const formatOrderNumber = order.orderNumber?.slice(4,-1);
     const invoiceCode = `${branch.invoiceNumber}-${formatOrderNumber}`;
     if (!branch.invoiceNumber) {
@@ -192,7 +192,7 @@ export async function POST(req: NextRequest) {
     const kcbRes = await initiateKcbStkPush({
       branch: {
         id: branch.id,
-        shortcode: branch.shortcode ?? shortcode,
+        shortcode: branch.shortcode ?? shortcode ?? null,
         invoiceNumber: invoiceCode ?? branch.invoiceNumber,
         consumerKeyEnc:branch.consumerKeyEnc ?? consumer_key,
         consumerSecretEnc: branch.consumerSecretEnc ?? consumer_secret,

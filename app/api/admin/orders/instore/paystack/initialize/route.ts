@@ -118,10 +118,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Never trust client-submitted prices — recompute from the DB.
-    const products = await db.product.findMany({
+    const products = (await db.product.findMany({
       where: { id: { in: items.map((i) => i.productId) } },
       select: { id: true, name: true, priceKes: true, isActive: true },
-    });
+    })) as { id: string; name: string; priceKes: number; isActive: boolean }[];
     const productById = new Map(products.map((p) => [p.id, p]));
     for (const item of items) {
       const product = productById.get(item.productId);

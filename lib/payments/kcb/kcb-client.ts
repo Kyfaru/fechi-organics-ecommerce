@@ -4,7 +4,7 @@ import { getRedis } from "@/lib/redis";
 export interface KcbStkPushOpts {
   branch: {
     id: string;
-    shortcode: string;         // orgShortCode / paybill number
+    shortcode: string | null;         // orgShortCode / paybill number
     invoiceNumber: string | null; // KCB Buni invoice/account number (distinct from shortcode)
     consumerKeyEnc: string;
     consumerSecretEnc: string;
@@ -70,7 +70,7 @@ export async function initiateKcbStkPush(
     body: JSON.stringify({
       phoneNumber: phone,
       amount: Math.round(opts.amountKes / 100), // whole KES
-      invoiceNumber: opts.branch.invoiceNumber ?? opts.branch.shortcode, // KCB invoice/account number
+      invoiceNumber: opts.branch.invoiceNumber ?? opts.branch.shortcode ?? null, // KCB invoice/account number
       sharedShortCode: true,
       orgShortCode: "",       // paybill number should always be empty
       orgPassKey: "",                            // empty for KCB Buni
