@@ -4,7 +4,7 @@ import { Err } from "@/lib/api";
  * Origins this app is allowed to receive state-changing requests from.
  * Falls back gracefully if one of the env vars isn't set in a given environment.
  */
-const ALLOWED_ORIGINS = [process.env.BETTER_AUTH_URL, process.env.NEXT_PUBLIC_APP_URL].filter(
+const ALLOWED_ORIGINS = [process.env.BETTER_AUTH_URL, process.env.NEXT_PUBLIC_APP_URL, "https://www.fechiorganics.shop",].filter(
   (v): v is string => !!v,
 );
 
