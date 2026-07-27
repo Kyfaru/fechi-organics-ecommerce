@@ -40,8 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# prisma
 Prisma seed/scripts
-prisma/seed.ts
-prisma/set-daraja-creds.ts
-prisma/create-admin.ts
-prisma/iseed-blog.ts
+/prisma/seed.ts
+/prisma/set-daraja-creds.ts
+/prisma/create-admin.ts
+/prisma/iseed-blog.ts
