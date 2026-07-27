@@ -72,7 +72,7 @@ export async function initiateKcbStkPush(
       amount: Math.round(opts.amountKes / 100), // whole KES
       invoiceNumber: opts.branch.invoiceNumber ?? opts.branch.shortcode, // KCB invoice/account number
       sharedShortCode: true,
-      orgShortCode: "522522",       // paybill number e.g. "522522"
+      orgShortCode: "",       // paybill number should always be empty
       orgPassKey: "",                            // empty for KCB Buni
       callbackUrl: opts.callbackUrl,
       transactionDescription: `Fechi Organics Order ${opts.orderId.slice(0, 8).toUpperCase()}`,

@@ -543,7 +543,7 @@ model branch {
   lat               Float?
   lng               Float?
   mpesaType         MpesaType
-  shortcode         String
+  shortcode         String?
   invoiceNumber     String?       // KCB Buni invoice/account number (plaintext)
   consumerKeyEnc    String
   consumerSecretEnc String

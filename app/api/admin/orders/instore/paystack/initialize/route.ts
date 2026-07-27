@@ -234,7 +234,6 @@ export async function POST(req: NextRequest) {
       email: customerEmail || "walkin@fechiorganics.com",
       amount: totalKes,
       reference,
-      subaccount: branch.paystackSubaccount ?? undefined,
       metadata: { inStoreOrderId: order.id, adminId: admin.id },
     });
 
