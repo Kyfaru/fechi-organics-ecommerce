@@ -27,7 +27,7 @@
  * error from inStoreOrder.create(), which the caller already runs inside a
  * try/catch.
  */
-export function buildInStoreOrderNumber(date: Date, branchid: string): string {
+export function buildInStoreOrderNumber(date: Date, branchid: string | null): string {
   const eat = new Date(date.getTime() + 3 * 60 * 60 * 1000);
   const pad = (n: number, width = 2) => String(n).padStart(width, "0");
 
@@ -36,10 +36,6 @@ export function buildInStoreOrderNumber(date: Date, branchid: string): string {
   const dd = pad(eat.getUTCDate());
   const hh = pad(eat.getUTCHours());
   const min = pad(eat.getUTCMinutes());
-  //const ss = pad(eat.getUTCSeconds());
-  //const ms = pad(eat.getUTCMilliseconds(), 3);
-
-  const branchSuffix = branchid.slice(7).toUpperCase();
 
   return `#STORE-${dd}${hh}${min}${mm}${yy}`;
 }
