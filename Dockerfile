@@ -2,7 +2,7 @@
 
 # ---- base: pin the exact pnpm version, matching your local 11.4.0 ----
 FROM node:22-slim AS base
-RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl curl \
     && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@11.4.0 --activate
 WORKDIR /app
