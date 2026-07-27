@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+Prisma seed/scripts
+prisma/seed.ts
+prisma/set-daraja-creds.ts
+prisma/create-admin.ts
+prisma/iseed-blog.ts
