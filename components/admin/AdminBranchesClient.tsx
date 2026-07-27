@@ -48,7 +48,16 @@ interface ZohoOrganization {
 // own error message (or the raw response text, for a route handler that
 // crashed before ever reaching that envelope) instead of failing silently
 // inside react-query — see reportLoadFailure below for what happens with it.
-async function fetchJson(url: string): Promise<unknown> {
+//
+// IMPORTANT: returns the full { ok, data } envelope, unwrapped no further —
+// several other admin components (AdminProductsClient, AdminInventoryClient,
+// NotificationsClient, AdminDeliveryZonesClient, AdminStaffClient) share the
+// exact same react-query key ["admin-branches"] for /api/admin/branches and
+// all read `data?.data?.branches`. Returning anything else here means
+// whichever component fetches first silently poisons the shared cache entry
+// for all the others (symptom: "x.map is not a function" on a totally
+// unrelated page).
+async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
   let json: { ok?: boolean; data?: unknown; error?: { message?: string } } | null = null;
   try {
@@ -61,7 +70,7 @@ async function fetchJson(url: string): Promise<unknown> {
   if (!res.ok || !json?.ok) {
     throw new Error(json?.error?.message ?? `${url} → HTTP ${res.status}`);
   }
-  return json.data;
+  return json as T;
 }
 
 // Surfaces a failed load to the console + a toast, and pulls in /api/health
@@ -93,18 +102,18 @@ export function AdminBranchesClient() {
 
   const { data: branchData, isLoading: branchesLoading, isError: branchesErrored, error: branchesError } = useQuery({
     queryKey: ["admin-branches"],
-    queryFn: () => fetchJson("/api/admin/branches") as Promise<Branch[]>,
+    queryFn: () => fetchJson<{ data: { branches: Branch[] } }>("/api/admin/branches"),
     retry: 1,
   });
-  const branches: Branch[] = branchData ?? [];
+  const branches: Branch[] = branchData?.data?.branches ?? [];
 
   const { data: orgData, isLoading: orgsLoading, isError: orgsErrored, error: orgsError } = useQuery({
     queryKey: ["admin-zoho-organizations"],
-    queryFn: () => fetchJson("/api/admin/zoho/organizations") as Promise<ZohoOrganization[]>,
+    queryFn: () => fetchJson<{ data: { organizations: ZohoOrganization[] } }>("/api/admin/zoho/organizations"),
     enabled: isGlobalScope,
     retry: 1,
   });
-  const organizations: ZohoOrganization[] = orgData ?? [];
+  const organizations: ZohoOrganization[] = orgData?.data?.organizations ?? [];
 
   useEffect(() => {
     if (branchesErrored) reportLoadFailure("branches", branchesError);

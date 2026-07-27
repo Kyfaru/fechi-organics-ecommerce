@@ -174,6 +174,18 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     return Err.validation("Deactivate the user before deleting.");
   }
 
-  await db.user.delete({ where: { id } }); // cascades to adminProfile, session, account
+  try {
+    await db.user.delete({ where: { id } }); // cascades to adminProfile, session, account
+  } catch (e: unknown) {
+    // P2003: still-referenced by a Restrict relation we haven't nulled out
+    // (e.g. authored blog posts) — name it instead of a bare 500.
+    if ((e as { code?: string }).code === "P2003") {
+      return Err.validation(
+        "This staff member is still referenced elsewhere (e.g. authored content) and can't be deleted yet."
+      );
+    }
+    console.error("[DELETE /api/admin/staff/[id]]", e);
+    return Err.internal(e);
+  }
   return ok({ deleted: id });
 }

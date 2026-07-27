@@ -856,7 +856,10 @@ model supportTicket {
   userId          String
   user            user            @relation("TicketOwner", fields: [userId], references: [id])
   assignedAdminId String?
-  assignedAdmin   user?           @relation("TicketAssignee", fields: [assignedAdminId], references: [id])
+  // SetNull — deleting a staff member unassigns their tickets instead of
+  // being blocked by the FK; the ticket itself (id, history, owner) is
+  // untouched, it just goes back to unassigned.
+  assignedAdmin   user?           @relation("TicketAssignee", fields: [assignedAdminId], references: [id], onDelete: SetNull)
   subject         String
   status          TicketStatus    @default(OPEN)
   lastActivityAt  DateTime        @default(now())

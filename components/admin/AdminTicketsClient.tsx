@@ -709,7 +709,7 @@ export function AdminTicketsClient() {
                       onChange={(e) => setReplyText(e.target.value)}
                       onKeyDown={handleKeyDown}
                       placeholder="Type a reply... (Ctrl+Enter to send)"
-                      rows={2}
+                      rows={1}
                       className="flex-1 resize-none rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg) px-3 py-2 font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) placeholder:text-(--neutral-400) min-h-[40px] max-h-[120px] focus:border-(--green-800) focus:outline-none transition-colors"
                     />
                     <button

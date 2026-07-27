@@ -415,13 +415,13 @@ export function MessagesClient() {
           {/* Header */}
           <div className="h-14 flex items-center justify-between px-4 border-b border-(--neutral-200)">
             <span className="font-syne text-[16px] font-semibold text-(--neutral-900)">Messages</span>
-            <button
+            {/*<button
               onClick={() => setShowNewModal(true)}
               className="w-8 h-8 flex items-center justify-center rounded-[6px] bg-(--green-800) text-white hover:opacity-90 transition-opacity"
               title="New ticket"
             >
               <Plus size={16} />
-            </button>
+            </button>*/}
           </div>
 
           {/* List */}
@@ -588,7 +588,7 @@ export function MessagesClient() {
                         onChange={(e) => setReplyText(e.target.value)}
                         onKeyDown={handleKeyDown}
                         placeholder="Type a message... (Ctrl+Enter to send)"
-                        rows={2}
+                        rows={1}
                         className="flex-1 resize-none rounded-[10px] border border-(--neutral-200) bg-(--neutral-50) px-3 py-2 font-dm text-[14px] text-(--neutral-900) placeholder:text-(--neutral-400) min-h-[40px] max-h-[120px] focus:border-(--green-800) focus:outline-none transition-colors"
                       />
                       <button

@@ -256,7 +256,7 @@ function InviteDrawer({
     queryFn: () => fetch("/api/admin/branches").then((r) => r.json()),
     staleTime: 10 * 60 * 1000,
   });
-  const branches: { id: string; name: string }[] = branchData?.branches ?? [];
+  const branches: { id: string; name: string }[] = branchData?.data?.branches ?? [];
 
   function toggleChannel(channel: string) {
     setForm((p) => ({
