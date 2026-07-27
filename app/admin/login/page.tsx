@@ -106,7 +106,11 @@ export default function AdminLoginPage() {
   // app/providers.tsx's PortalSessionGuard for why this matters).
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (sessionPending || !sessionData?.session) return;
+    // step !== "credentials" means a sign-in is already mid-flow (password
+    // change, 2FA setup/verify) — a real session can legitimately exist at
+    // that point (e.g. a brand-new admin's first signIn.email() call, before
+    // 2FA has ever been confirmed) and must NOT trigger this redirect.
+    if (sessionPending || !sessionData?.session || step !== "credentials") return;
     const role = (sessionData.user as { role?: string } | undefined)?.role;
     if (role === "admin") {
       router.replace("/admin");
@@ -114,7 +118,7 @@ export default function AdminLoginPage() {
       authClient.signOut();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionPending, sessionData]);
+  }, [sessionPending, sessionData, step]);
 
   // ---------------------------------------------------------------------------
   // Helpers

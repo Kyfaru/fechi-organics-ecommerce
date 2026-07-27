@@ -310,6 +310,15 @@ export function BlogEditorClient() {
             <Calendar size={14} />
             Schedule
           </button>
+          {form.status !== "PUBLISHED" && (
+            <button
+              onClick={() => saveMutation.mutate({ status: "PUBLISHED", publishedAt: new Date().toISOString() })}
+              disabled={!canSave}
+              className="h-10 px-5 rounded-[8px] border border-(--green-800) text-(--green-800) font-dm text-[14px] font-medium hover:bg-(--green-50) transition-colors disabled:opacity-50"
+            >
+              Publish Now
+            </button>
+          )}
           <button
             onClick={() => saveMutation.mutate(undefined)}
             disabled={!canSave}

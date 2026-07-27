@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@source "../node_modules/preline/dist/*.js";
+@import "../node_modules/preline/variants.css";
 
 /* Enable class-based dark mode for Tailwind v4 dark: utilities */
 @variant dark (&:where(.dark, .dark *));

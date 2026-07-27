@@ -32,6 +32,7 @@ interface StaffMember {
   id: string;
   name: string;
   email: string;
+  phone: string | null;
   role: string;
   banned: boolean;
   banReason: string | null;
@@ -104,6 +105,7 @@ function RowActions({
   onResetPassword,
   onChangeRole,
   onEditPermissions,
+  onEditDetails,
 }: {
   staff: StaffMember;
   onDeactivate: (s: StaffMember) => void;
@@ -111,6 +113,7 @@ function RowActions({
   onResetPassword: (s: StaffMember) => void;
   onChangeRole: (s: StaffMember) => void;
   onEditPermissions: (s: StaffMember) => void;
+  onEditDetails: (s: StaffMember) => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -128,6 +131,12 @@ function RowActions({
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-9 z-50 w-48 bg-white dark:bg-(--dark-surface) rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e2) py-1 overflow-hidden">
+            <button
+              onClick={() => { setOpen(false); onEditDetails(staff); }}
+              className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+            >
+              Edit Details
+            </button>
             <button
               onClick={() => { setOpen(false); onChangeRole(staff); }}
               className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
@@ -597,6 +606,13 @@ export function AdminStaffClient() {
   const [selectedRole, setSelectedRole] = useState("viewer");
   const [roleLoading, setRoleLoading] = useState(false);
 
+  // Edit details modal (name / email / phone / role)
+  const [detailsTarget, setDetailsTarget] = useState<StaffMember | null>(null);
+  const [detailsAdminPw, setDetailsAdminPw] = useState("");
+  const [detailsVerified, setDetailsVerified] = useState(false);
+  const [detailsForm, setDetailsForm] = useState({ name: "", email: "", phone: "", role: "viewer" });
+  const [detailsLoading, setDetailsLoading] = useState(false);
+
   // Edit permissions modal — narrows one staff member's access below their
   // role's ceiling. Separate action from "Change Role" on purpose.
   const [permTarget, setPermTarget] = useState<StaffMember | null>(null);
@@ -737,6 +753,57 @@ export function AdminStaffClient() {
     setSelectedRole("viewer"); setRoleLoading(false);
   }
 
+  // Edit details handlers
+  function openDetailsModal(target: StaffMember) {
+    setDetailsTarget(target);
+    setDetailsAdminPw("");
+    setDetailsVerified(false);
+    setDetailsForm({
+      name: target.name,
+      email: target.email,
+      phone: target.phone ?? "",
+      role: target.adminProfile?.role ?? "viewer",
+    });
+  }
+
+  async function handleVerifyForDetails() {
+    setDetailsLoading(true);
+    try {
+      const ok = await verifyAdminPassword(detailsAdminPw);
+      if (!ok) { toast.error("Incorrect password"); return; }
+      setDetailsVerified(true);
+    } finally { setDetailsLoading(false); }
+  }
+
+  async function handleSaveDetails() {
+    if (!detailsTarget) return;
+    setDetailsLoading(true);
+    try {
+      const res = await fetch(`/api/admin/staff/${detailsTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: detailsForm.name,
+          email: detailsForm.email,
+          phone: detailsForm.phone,
+          role: detailsForm.role,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error?.message ?? "Failed");
+      toast.success("Staff details updated");
+      qc.invalidateQueries({ queryKey: ["admin-staff"] });
+      closeDetailsModal();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally { setDetailsLoading(false); }
+  }
+
+  function closeDetailsModal() {
+    setDetailsTarget(null); setDetailsAdminPw(""); setDetailsVerified(false);
+    setDetailsForm({ name: "", email: "", phone: "", role: "viewer" }); setDetailsLoading(false);
+  }
+
   function openPermModal(target: StaffMember) {
     setPermTarget(target);
     setPermDeny(target.adminProfile?.permissions?.deny ?? []);
@@ -862,6 +929,7 @@ export function AdminStaffClient() {
             onResetPassword={(target) => { setResetTarget(target); setResetAdminPw(""); setResetVerified(false); setResetMode("idle"); }}
             onChangeRole={(target) => { setRoleTarget(target); setRoleAdminPw(""); setRoleVerified(false); setSelectedRole(target.adminProfile?.role ?? "viewer"); }}
             onEditPermissions={openPermModal}
+            onEditDetails={openDetailsModal}
           />
         );
       },
@@ -1068,6 +1136,81 @@ export function AdminStaffClient() {
                 <div className="flex gap-2 justify-end">
                   <button onClick={closeRoleModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
                   <button onClick={handleSaveRole} disabled={roleLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Save Role</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit details modal */}
+      {detailsTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
+              Edit details — {detailsTarget.name}
+            </h3>
+
+            {!detailsVerified ? (
+              <>
+                <p className="font-dm text-[13px] text-(--neutral-500)">Enter your own admin password to continue.</p>
+                <input
+                  type="password"
+                  value={detailsAdminPw}
+                  onChange={(e) => setDetailsAdminPw(e.target.value)}
+                  placeholder="Your password"
+                  className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                />
+                <div className="flex gap-2 justify-end">
+                  <button onClick={closeDetailsModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
+                  <button onClick={handleVerifyForDetails} disabled={detailsLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Verify</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Name</label>
+                  <input
+                    type="text"
+                    value={detailsForm.name}
+                    onChange={(e) => setDetailsForm((p) => ({ ...p, name: e.target.value }))}
+                    className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                  />
+                </div>
+                <div>
+                  <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={detailsForm.email}
+                    onChange={(e) => setDetailsForm((p) => ({ ...p, email: e.target.value }))}
+                    className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                  />
+                </div>
+                <div>
+                  <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Phone</label>
+                  <input
+                    type="tel"
+                    value={detailsForm.phone}
+                    onChange={(e) => setDetailsForm((p) => ({ ...p, phone: e.target.value }))}
+                    className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                  />
+                </div>
+                <div>
+                  <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Role</label>
+                  <select
+                    value={detailsForm.role}
+                    onChange={(e) => setDetailsForm((p) => ({ ...p, role: e.target.value }))}
+                    className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                  >
+                    {(["super_admin","admin","manager","finance","marketing","inventory","customer_care","viewer"] as const).map((r) => (
+                      <option key={r} value={r}>{r.replace("_", " ")}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex gap-2 justify-end">
+                  <button onClick={closeDetailsModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
+                  <button onClick={handleSaveDetails} disabled={detailsLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Save Details</button>
                 </div>
               </>
             )}
