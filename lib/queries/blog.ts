@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
+import { connection } from "next/server";
 
 export type BlogPostCard = {
   id: string;
@@ -147,6 +148,7 @@ const TRENDING_TTL_SECONDS = 1200; // 20 min — recompute lazily on cache miss
 
 /** Posts with the most views in the last 7 days. Redis cache-aside — no scheduled job. */
 async function getTrendingPosts(limit = 5): Promise<BlogRankingCard[]> {
+  await connection();
   const redis = getRedis();
 
   const cached = await redis.get(TRENDING_CACHE_KEY);

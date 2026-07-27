@@ -11,7 +11,13 @@ import {
   FONT_HEADING,
 } from "@/lib/email-template";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (!_resend) {
+    _resend = new Resend(process.env.RESEND_API_KEY);
+  }
+  return _resend;
+}
 const sendEmail = process.env.EMAIL_FROM
 
 export async function sendOTPEmail(email: string, otp: string, type: string): Promise<void> {
@@ -24,7 +30,7 @@ export async function sendOTPEmail(email: string, otp: string, type: string): Pr
       ? "Your Fechi Organics password reset code"
       : "Your Fechi Organics verification code";
 
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: sendEmail!,
     to: email,
     subject,
@@ -45,7 +51,7 @@ export async function sendOTPEmail(email: string, otp: string, type: string): Pr
  * @throws When Resend fails to deliver the email.
  */
 export async function sendPasswordResetEmail(email: string, resetUrl: string): Promise<void> {
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: sendEmail!,
     to: email,
     subject: "Reset your Fechi Organics password",
@@ -63,7 +69,7 @@ export async function sendPasswordResetEmail(email: string, resetUrl: string): P
  * blocking account creation.
  */
 export async function sendWelcomeEmail(email: string, name: string): Promise<void> {
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: sendEmail!,
     to: email,
     subject: "Welcome to Fechi Organics",
@@ -81,7 +87,7 @@ export async function sendOrderConfirmationEmail(args: {
   html: string;
   pdfBuffer?: Buffer;
 }): Promise<void> {
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: sendEmail!,
     to: args.email,
     subject: `Your Fechi Organics receipt #${args.orderId.slice(0, 8).toUpperCase()}`,
@@ -104,7 +110,7 @@ export async function sendInvoiceEmail(args: {
   html: string;
   pdfBuffer: Buffer;
 }): Promise<void> {
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: sendEmail!,
     to: args.email,
     subject: `Your Fechi Organics invoice ${args.invoiceNumber}`,
@@ -123,7 +129,7 @@ export async function sendAdminNotificationEmail(args: {
   subject: string;
   html: string;
 }) {
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: sendEmail!,
     to: args.to,
     subject: args.subject,
@@ -154,7 +160,7 @@ export async function sendTicketAcknowledgmentEmail(args: {
   ticketNumber: string;
   subject: string;
 }): Promise<void> {
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: sendEmail!,
     to: args.email,
     subject: `We've received your message — Ticket ${args.ticketNumber}`,

@@ -122,7 +122,13 @@ async function sendNotificationEmail(data: {
     return;
   }
 
-  const resend = new Resend(apiKey);
+  let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (!_resend) {
+    _resend = new Resend(apiKey);
+  }
+  return _resend;
+}
   const sections = [
     emailSection(`
       ${emailIconCircle("alert")}
@@ -134,7 +140,7 @@ async function sendNotificationEmail(data: {
     `),
   ].join("");
 
-  await resend.emails.send({
+  await getResend().emails.send({
     from: "Fechi Organics <noreply@fechiorganics.com>",
     to: adminEmail,
     subject: `New contact: ${data.subject}`,

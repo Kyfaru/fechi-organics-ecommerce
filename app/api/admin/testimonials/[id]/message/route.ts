@@ -9,7 +9,13 @@ import { Resend } from "resend";
 import { z } from "zod";
 import { emailShell, emailSection, emailIconCircle, EMAIL_BRAND } from "@/lib/email-template";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (!_resend) {
+    _resend = new Resend(process.env.RESEND_API_KEY);
+  }
+  return _resend;
+}
 
 const BodySchema = z.object({
   message: z.string().min(1).max(2000),
@@ -63,7 +69,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             `),
           ].join("");
 
-          await resend.emails.send({
+          await getResend().emails.send({
             from: process.env.EMAIL_FROM!,
             to: email,
             subject: "A message from Fechi Organics",

@@ -3,10 +3,16 @@ import { db } from "@/lib/db"
 import { verifyQstashRequest } from "@/lib/qstash"
 import { sendSms, hasSmsConfig } from "@/lib/sms"
 import { combineLegacyPhone } from "@/lib/phone"
-import { Resend } from "resend"
 import { emailShell, emailSection, emailButton, emailIconCircle, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template"
+import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (!_resend) {
+    _resend = new Resend(process.env.RESEND_API_KEY);
+  }
+  return _resend;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -59,7 +65,7 @@ export async function POST(req: NextRequest) {
         `),
       ].join("")
 
-      await resend.emails.send({
+      await getResend().emails.send({
         from: process.env.EMAIL_FROM,
         to: user.email,
         subject: `How was your Fechi Organics order ${orderRef}?`,
