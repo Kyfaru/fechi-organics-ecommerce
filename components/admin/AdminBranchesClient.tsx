@@ -33,6 +33,7 @@ interface Branch {
   zohoConnected: boolean;
   zohoOrganizationId: string | null;
   zohoOrganizationName: string | null;
+  zohoLocationId: string | null;
 }
 
 interface ZohoOrganization {
@@ -139,7 +140,7 @@ export function AdminBranchesClient() {
   const [linkPw, setLinkPw] = useState("");
   const [linkVerified, setLinkVerified] = useState(false);
   const [linkLoading, setLinkLoading] = useState(false);
-  const [linkForm, setLinkForm] = useState({ zohoOrganizationId: "" });
+  const [linkForm, setLinkForm] = useState({ zohoOrganizationId: "", zohoLocationId: "" });
 
   const canUpdateBranches = useCan({ branches: ["update"] });
 
@@ -154,7 +155,7 @@ export function AdminBranchesClient() {
     setLinkTarget(branch);
     setLinkPw("");
     setLinkVerified(false);
-    setLinkForm({ zohoOrganizationId: branch.zohoOrganizationId ?? "" });
+    setLinkForm({ zohoOrganizationId: branch.zohoOrganizationId ?? "", zohoLocationId: branch.zohoLocationId ?? "" });
   }
 
   function closeLinkModal() {
@@ -182,6 +183,7 @@ export function AdminBranchesClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           zohoOrganizationId: linkForm.zohoOrganizationId,
+          zohoLocationId: linkForm.zohoLocationId,
         }),
       });
       if (result.status === "denied") return;
@@ -206,7 +208,7 @@ export function AdminBranchesClient() {
   const [orgLoading, setOrgLoading] = useState(false);
   const [orgForm, setOrgForm] = useState({ name: "", zohoOrgId: "", clientId: "", clientSecret: "", refreshToken: "" });
 
-  const [webhookReveal, setWebhookReveal] = useState<{ secret: string; url: string } | null>(null);
+  const [webhookReveal, setWebhookReveal] = useState<{ secret: string; urls: Record<string, string> } | null>(null);
 
   function openOrgModal(target: ZohoOrganization | "new") {
     setOrgTarget(target);
@@ -263,7 +265,7 @@ export function AdminBranchesClient() {
       closeOrgModal();
 
       if (json.data?.webhookSecret) {
-        setWebhookReveal({ secret: json.data.webhookSecret, url: json.data.webhookUrl });
+        setWebhookReveal({ secret: json.data.webhookSecret, urls: json.data.webhookUrls });
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save");
@@ -433,6 +435,18 @@ export function AdminBranchesClient() {
                       ))}
                     </select>
                   </div>
+                  <div>
+                    <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Zoho Location ID (optional)</label>
+                    <input
+                      value={linkForm.zohoLocationId}
+                      onChange={(e) => setLinkForm((p) => ({ ...p, zohoLocationId: e.target.value }))}
+                      placeholder="Zoho Books → Settings → Locations"
+                      className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                    />
+                    <p className="font-dm text-[11px] text-(--neutral-400) mt-1">
+                      Tags every Sales Receipt pushed from this branch with its physical location in Zoho Books. Leave blank if the org isn&apos;t using Zoho Books Locations.
+                    </p>
+                  </div>
                 </div>
                 <div className="flex gap-2 justify-end">
                   <button onClick={closeLinkModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
@@ -539,22 +553,24 @@ export function AdminBranchesClient() {
               Webhook secret — copy it now
             </h3>
             <p className="font-dm text-[13px] text-(--neutral-500)">
-              This secret is shown only once. Paste it, along with the webhook URL, into this organization&apos;s Zoho
-              webhook configuration.
+              This secret is shown only once. Zoho Books needs a separate webhook entry per event — paste this secret
+              plus each URL below into its own entry (Settings → Automation → Webhooks).
             </p>
-            <div>
-              <label className="font-dm text-[12px] font-medium text-(--neutral-500) block mb-1">Webhook URL</label>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 px-3 py-2 rounded-lg bg-(--neutral-50) dark:bg-(--dark-bg) font-dm text-[12px] break-all">{webhookReveal.url}</code>
-                <button
-                  onClick={() => { navigator.clipboard.writeText(webhookReveal.url); toast.success("Copied"); }}
-                  className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-(--neutral-100)"
-                  aria-label="Copy webhook URL"
-                >
-                  <Copy size={15} />
-                </button>
+            {Object.entries(webhookReveal.urls ?? {}).map(([event, url]) => (
+              <div key={event}>
+                <label className="font-dm text-[12px] font-medium text-(--neutral-500) block mb-1">{event}</label>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 px-3 py-2 rounded-lg bg-(--neutral-50) dark:bg-(--dark-bg) font-dm text-[12px] break-all">{url}</code>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(url); toast.success("Copied"); }}
+                    className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-(--neutral-100)"
+                    aria-label={`Copy ${event} webhook URL`}
+                  >
+                    <Copy size={15} />
+                  </button>
+                </div>
               </div>
-            </div>
+            ))}
             <div>
               <label className="font-dm text-[12px] font-medium text-(--neutral-500) block mb-1">Webhook Secret</label>
               <div className="flex items-center gap-2">

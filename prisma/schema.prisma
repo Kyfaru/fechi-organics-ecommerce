@@ -556,15 +556,16 @@ model branch {
   apiKeyEnc         String?
   isMain            Boolean       @default(false)
   isActive          Boolean       @default(true)
-  // Zoho Inventory — a branch belongs to one of a small number of shared
-  // orgs (credentials live on zohoOrganization; several branches can point
-  // at the same org). zohoWarehouseId is this branch's Zoho warehouse/
-  // location id within that org's catalog, used to split stock per-branch
-  // when Zoho's per-warehouse breakdown is available (falls back to the
-  // org's aggregate quantity_available when unset — see lib/zoho-sync.ts).
+  // Zoho Books — a branch belongs to one of a small number of shared orgs
+  // (credentials live on zohoOrganization; several branches can point at the
+  // same org). zohoLocationId is this branch's Zoho Books Location id
+  // (Settings → Locations) within that org — tags every Sales Receipt this
+  // branch pushes with the correct physical location. Not used for stock
+  // splitting (every branch under an org shares the org's aggregate stock —
+  // see lib/zoho-sync.ts).
   zohoOrganizationId    String?
   zohoOrganization      zohoOrganization? @relation(fields: [zohoOrganizationId], references: [id])
-  zohoWarehouseId       String?
+  zohoLocationId        String?
   orders            order[]
   deliveryZones     DeliveryZone[]
   adminProfiles     adminProfile[]

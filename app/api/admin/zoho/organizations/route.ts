@@ -8,6 +8,7 @@ import { encrypt } from "@/lib/crypto";
 import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { isGlobalScope } from "@/lib/branch-access";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { zohoWebhookUrls } from "@/lib/zoho/webhook-events";
 
 const CreateSchema = z.object({
   name: z.string().min(1),
@@ -91,7 +92,9 @@ export async function POST(req: NextRequest) {
       name: org.name,
       // Only ever shown once — the one and only time.
       webhookSecret,
-      webhookUrl: `${appUrl}/api/zoho/webhook?organizationId=${org.id}`,
+      // One URL per event — Zoho Books needs a separate webhook config entry
+      // per event (see app/api/zoho/webhook/route.ts).
+      webhookUrls: zohoWebhookUrls(appUrl, org.id),
     });
   } catch (e) {
     console.error("[admin/zoho/organizations] POST error", e);

@@ -15,10 +15,12 @@ vi.mock("@/lib/zoho/resolve-customer", () => ({
 
 const mockMappingFindMany = vi.fn();
 const mockPushLogCreate = vi.fn();
+const mockBranchFindUnique = vi.fn();
 vi.mock("@/lib/db", () => ({
   db: {
     productZohoMapping: { findMany: (...args: unknown[]) => mockMappingFindMany(...args) },
     zohoPushLog: { create: (...args: unknown[]) => mockPushLogCreate(...args) },
+    branch: { findUnique: (...args: unknown[]) => mockBranchFindUnique(...args) },
   },
 }));
 
@@ -42,11 +44,12 @@ beforeEach(() => {
   mockMappingFindMany.mockResolvedValue([{ productId: "prod-1", zohoItemId: "ZI-001" }]);
   mockResolveZohoCustomer.mockResolvedValue({ contactId: "contact-1" });
   mockPushLogCreate.mockResolvedValue({ id: "log-1" });
+  mockBranchFindUnique.mockResolvedValue({ zohoLocationId: "loc-1" });
 });
 
 describe("pushSaleReceiptToZoho", () => {
   it("resolves the mapped zohoItemId, resolves a customer, and posts a sales receipt", async () => {
-    mockZohoPost.mockResolvedValue({ salesreceipt: { salesreceipt_id: "SR-1" } });
+    mockZohoPost.mockResolvedValue({ sales_receipt: { sales_receipt_id: "SR-1" } });
 
     const result = await pushSaleReceiptToZoho(baseArgs);
 
@@ -62,6 +65,7 @@ describe("pushSaleReceiptToZoho", () => {
     expect(body.customer_id).toBe("contact-1");
     expect(body.payment_mode).toBe("Mpesa(Daraja)");
     expect(body.reference_number).toBe("FO-0001");
+    expect(body.location_id).toBe("loc-1");
     expect(body.line_items[0].item_id).toBe("ZI-001");
 
     expect(mockPushLogCreate).toHaveBeenCalledWith(
@@ -71,7 +75,7 @@ describe("pushSaleReceiptToZoho", () => {
 
   it("sends no item_id when a product has no mapping for this org", async () => {
     mockMappingFindMany.mockResolvedValue([]);
-    mockZohoPost.mockResolvedValue({ salesreceipt: {} });
+    mockZohoPost.mockResolvedValue({ sales_receipt: {} });
 
     await pushSaleReceiptToZoho(baseArgs);
 

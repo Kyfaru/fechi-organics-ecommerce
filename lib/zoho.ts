@@ -78,6 +78,12 @@ export type ZohoSalesReceiptPayload = {
     quantity: number;
     rate: number;
   }>;
+  // UNVERIFIED — not listed on the generic Sales Receipt docs page, but
+  // Zoho Books' Locations feature (Settings → Locations, confirmed via
+  // GET /locations) is expected to extend most transaction types with this
+  // field once enabled for the org. Confirm against a live payload; Zoho
+  // will simply ignore an unrecognized field if this guess is wrong.
+  location_id?: string;
   reference_number?: string;
   notes?: string;
 };

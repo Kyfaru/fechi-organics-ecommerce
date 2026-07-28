@@ -39,6 +39,10 @@ export async function pushSaleReceiptToZoho(args: {
     });
     const itemIdByProductId = new Map(mappings.map((m) => [m.productId, m.zohoItemId]));
 
+    const branch = branchId
+      ? await db.branch.findUnique({ where: { id: branchId }, select: { zohoLocationId: true } })
+      : null;
+
     const { contactId } = await resolveZohoCustomer(organizationId, {
       email: args.customerEmail,
       name: args.customerName,
@@ -63,20 +67,21 @@ export async function pushSaleReceiptToZoho(args: {
         quantity: item.quantity,
         rate: item.priceKes / 100,
       })),
+      location_id: branch?.zohoLocationId ?? undefined,
       reference_number: args.referenceNumber ?? undefined,
       notes,
     };
 
-    // UNVERIFIED — response is expected to wrap the created record under a
-    // "salesreceipt" key per Zoho's usual response convention (the request
-    // body itself is sent flat, per Books' documented example). Confirm
-    // both against a live call.
-    const res = await zohoPost<{ salesreceipt?: { salesreceipt_id?: string } }>(
+    // Response wraps the created record under "sales_receipt" (snake_case) —
+    // confirmed via a real Zoho Books webhook payload example showing
+    // { "sales_receipt": { "sales_receipt_id": ... } }; the request body
+    // itself is sent flat, per Books' documented create example.
+    const res = await zohoPost<{ sales_receipt?: { sales_receipt_id?: string } }>(
       organizationId,
       "/salesreceipts",
       payload,
     );
-    const salesReceiptId = res?.salesreceipt?.salesreceipt_id ?? null;
+    const salesReceiptId = res?.sales_receipt?.sales_receipt_id ?? null;
 
     await recordZohoPush({
       kind: "SALES_RECEIPT",

@@ -8,6 +8,7 @@ import { encrypt } from "@/lib/crypto";
 import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { isGlobalScope } from "@/lib/branch-access";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { zohoWebhookUrls } from "@/lib/zoho/webhook-events";
 
 // All fields optional — blank/omitted means "leave existing value", same
 // convention as the branch-level Zoho PATCH this replaced. Real secrets are
@@ -78,7 +79,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return ok({
       saved: true,
       webhookSecret: webhookSecretPlaintext,
-      webhookUrl: webhookSecretPlaintext ? `${appUrl}/api/zoho/webhook?organizationId=${id}` : null,
+      webhookUrls: webhookSecretPlaintext ? zohoWebhookUrls(appUrl, id) : null,
     });
   } catch (e) {
     console.error("[admin/zoho/organizations/[id]] PATCH error", e);
