@@ -24,4 +24,10 @@ export const NOTIFICATION_TYPE_RESOURCE: Record<NotificationType, AppResource | 
   CONTACT_INQUIRY: "contact_messages",
   DELIVERY_ZONE_REQUEST: "delivery",
   SYSTEM_ALERT: null,
+  APPROVAL_REQUESTED: "approvals",
+  // null, not "approvals" — the requester (who by definition doesn't hold
+  // the approvals permission) needs to see the outcome of their own
+  // request. The notification system has no per-user targeting, so this is
+  // visible to everyone rather than hidden from the one person who needs it.
+  APPROVAL_DECIDED: null,
 };

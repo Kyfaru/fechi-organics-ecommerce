@@ -22,8 +22,9 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, CheckCircle2, XCircle, Copy, Plus } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
-import { useAdminMe } from "@/hooks/use-can";
+import { useAdminMe, useCan } from "@/hooks/use-can";
 import { toast } from "@/lib/toast";
+import { adminFetch } from "@/lib/admin-fetch";
 
 interface Branch {
   id: string;
@@ -142,8 +143,11 @@ export function AdminBranchesClient() {
   const [linkLoading, setLinkLoading] = useState(false);
   const [linkForm, setLinkForm] = useState({ zohoOrganizationId: "", zohoWarehouseId: "" });
 
+  const canUpdateBranches = useCan({ branches: ["update"] });
+
   function canEdit(branch: Branch): boolean {
     if (!me?.role) return false;
+    if (!canUpdateBranches) return false;
     if (me.isSuperAdmin) return true;
     return me.branchId === branch.id;
   }
@@ -175,7 +179,7 @@ export function AdminBranchesClient() {
     if (!linkTarget) return;
     setLinkLoading(true);
     try {
-      const res = await fetch(`/api/admin/branches/${linkTarget.id}/zoho`, {
+      const result = await adminFetch(`/api/admin/branches/${linkTarget.id}/zoho`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -183,14 +187,14 @@ export function AdminBranchesClient() {
           zohoWarehouseId: linkForm.zohoWarehouseId,
         }),
       });
-      const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json.error?.message ?? "Failed to save");
+      if (result.status === "denied") return;
+      if (result.status === "queued") { closeLinkModal(); return; }
 
       toast.success("Branch updated", { message: `${linkTarget.name}'s Zoho link was saved.` });
       qc.invalidateQueries({ queryKey: ["admin-branches"] });
       closeLinkModal();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save");
+    } catch {
+      // adminFetch already surfaced a toast for this case
     } finally {
       setLinkLoading(false);
     }

@@ -2,7 +2,10 @@ import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
 import { connection, NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { requirePermission } from "@/lib/require-permission";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { logActivity } from "@/lib/admin-activity";
 
 /** GET /api/admin/promotions */
 export async function GET(req: NextRequest) {
@@ -54,21 +57,17 @@ export async function POST(req: NextRequest) {
   if (body.value == null) return Err.validation("Value is required");
 
   try {
-    const promotion = await db.promotion.create({
-      data: {
-        name: body.name.trim(),
-        type: body.type,
-        value: body.value,
-        code: body.code ?? null,
-        minOrder: body.minOrder ?? null,
-        maxUses: body.maxUses ?? null,
-        maxUsesPerUser: body.maxUsesPerUser ?? 1,
-        startDate: body.startDate ? new Date(body.startDate) : null,
-        endDate: body.endDate ? new Date(body.endDate) : null,
-        status: body.status ?? "active",
-      },
-    });
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return Err.forbidden();
+
+    const outcome = await requireApprovalOrProceed(ctx, "promotions", "create", body);
+    if (!outcome.proceed) return Approval.queued(outcome.requestId);
+
+    const promotion = await approvalExecutors["promotions:create"](body, null) as
+      Awaited<ReturnType<typeof db.promotion.create>>;
+
     console.info(`[promotions/POST] Created promotion: ${promotion.id} — ${promotion.name}`);
+    logActivity(ctx.id, `Created promotion "${promotion.name}"`, "promotion", promotion.id, req);
     return created(promotion);
   } catch (e) {
     console.error("[promotions/POST]", e);

@@ -2,9 +2,11 @@ import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { invalidateProductCache } from "@/lib/cache-tags";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { requirePermission } from "@/lib/require-permission";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { logActivity } from "@/lib/admin-activity";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/products/[id]/permanent
@@ -61,13 +63,16 @@ export async function DELETE(
       return Err.validation("This product has order history and can't be permanently deleted.");
     }
 
-    await db.$transaction([
-      db.cartItem.deleteMany({ where: { productId: id } }),
-      db.product.delete({ where: { id } }),
-    ]);
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return Err.forbidden();
+
+    const outcome = await requireApprovalOrProceed(ctx, "products", "delete", { slug: existing.slug }, id);
+    if (!outcome.proceed) return Approval.queued(outcome.requestId);
+
+    await approvalExecutors["products:delete"]({ slug: existing.slug }, id);
 
     console.info("[admin/products/[id]/permanent] DELETE (hard) —", id);
-    invalidateProductCache(existing.slug);
+    logActivity(ctx.id, `Permanently deleted product "${existing.name}"`, "product", id, req);
     return ok({ id });
   } catch (e) {
     console.error("[admin/products/[id]/permanent] DELETE error", e);

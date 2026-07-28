@@ -6,6 +6,9 @@ import { ok, Err } from "@/lib/api";
 import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { assertBranchAccess } from "@/lib/branch-access";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { logActivity } from "@/lib/admin-activity";
 
 // Both fields optional so a partial update (e.g. only setting the warehouse
 // id after the org link is already made) doesn't require resending both.
@@ -52,7 +55,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     const parsed = PatchSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
-    const { zohoOrganizationId, zohoWarehouseId } = parsed.data;
+    const { zohoOrganizationId } = parsed.data;
 
     const branch = await db.branch.findUnique({ where: { id: branchId }, select: { id: true } });
     if (!branch) return Err.notFound("Branch");
@@ -62,14 +65,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (!org) return Err.validation("Zoho organization not found");
     }
 
-    const data: { zohoOrganizationId?: string | null; zohoWarehouseId?: string | null } = {};
-    if (zohoOrganizationId !== undefined) data.zohoOrganizationId = zohoOrganizationId || null;
-    if (zohoWarehouseId !== undefined) data.zohoWarehouseId = zohoWarehouseId || null;
+    const outcome = await requireApprovalOrProceed(ctx, "branches", "update", parsed.data, branchId);
+    if (!outcome.proceed) return Approval.queued(outcome.requestId);
 
-    if (Object.keys(data).length > 0) {
-      await db.branch.update({ where: { id: branchId }, data });
-    }
+    await approvalExecutors["branches:update"](parsed.data, branchId);
 
+    logActivity(ctx.id, "Updated branch Zoho link", "branch", branchId, req, parsed.data);
     return ok({ saved: true });
   } catch (e) {
     console.error("[admin/branches/[id]/zoho] PATCH error", e);

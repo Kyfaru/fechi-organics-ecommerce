@@ -26,10 +26,30 @@ interface ActivityLog {
   resourceId: string | null;
   details: Record<string, unknown> | null;
   ipAddress: string | null;
+  userAgent: string | null;
+  path: string | null;
   createdAt: string;
   adminProfileId: string;
   staffName: string;
   staffEmail: string;
+}
+
+// Trims a raw user-agent string down to "Browser on OS" — good enough for an
+// audit trail without pulling in a full UA-parsing dependency.
+function formatDevice(ua: string | null): string {
+  if (!ua) return "—";
+  const os =
+    /Windows/.test(ua) ? "Windows" :
+    /Mac OS X/.test(ua) ? "macOS" :
+    /Android/.test(ua) ? "Android" :
+    /iPhone|iPad/.test(ua) ? "iOS" :
+    /Linux/.test(ua) ? "Linux" : "Unknown OS";
+  const browser =
+    /Edg\//.test(ua) ? "Edge" :
+    /Chrome\//.test(ua) ? "Chrome" :
+    /Firefox\//.test(ua) ? "Firefox" :
+    /Safari\//.test(ua) ? "Safari" : "Unknown browser";
+  return `${browser} on ${os}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +192,24 @@ export function AdminActivityClient() {
         </span>
       ),
     },
+    {
+      key: "userAgent",
+      label: "Device",
+      render: (_: unknown, row: Record<string, unknown>) => (
+        <span className="font-dm text-[12px] text-(--neutral-500) whitespace-nowrap">
+          {formatDevice((row as unknown as ActivityLog).userAgent)}
+        </span>
+      ),
+    },
+    {
+      key: "path",
+      label: "URL",
+      render: (_: unknown, row: Record<string, unknown>) => (
+        <span className="font-mono text-[12px] text-(--neutral-400) whitespace-nowrap">
+          {(row as unknown as ActivityLog).path ?? "—"}
+        </span>
+      ),
+    },
   ];
 
   const hasFilters = applied.staffId || applied.resource || applied.from || applied.to;
@@ -220,7 +258,7 @@ export function AdminActivityClient() {
                 style={{ width: 150 }}
               >
                 <option value="">All types</option>
-                {["product", "order", "customer", "setting", "staff"].map((r) => (
+                {["product", "order", "customer", "setting", "staff", "branch", "blog", "campaign", "testimonial", "faq", "promotion", "approval"].map((r) => (
                   <option key={r} value={r} className="capitalize">{r.charAt(0).toUpperCase() + r.slice(1)}</option>
                 ))}
               </select>

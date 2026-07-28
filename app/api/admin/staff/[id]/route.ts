@@ -4,9 +4,12 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
-import { requirePermission } from "@/lib/require-permission";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { roles, appResources, grantsFor, type RoleName } from "@/lib/permissions";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { logActivity } from "@/lib/admin-activity";
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -115,29 +118,49 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   try {
-    const updated = await db.user.update({
-      where: { id },
-      data: {
-        ...userUpdate,
-        ...(Object.keys(profileUpdate).length > 0
-          ? { adminProfile: { update: profileUpdate } }
-          : {}),
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        role: true,
-        banned: true,
-        banReason: true,
-        createdAt: true,
-        updatedAt: true,
-        adminProfile: {
-          select: { id: true, fullName: true, department: true, permissions: true, isSuperAdmin: true, isActive: true },
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return Err.forbidden();
+
+    if (isRoleChange || isPermissionChange) {
+      const outcome = await requireApprovalOrProceed(ctx, "staff", "assign_roles", { role: body.role, permissions: body.permissions }, id);
+      if (!outcome.proceed) return Approval.queued(outcome.requestId);
+    }
+
+    let updated;
+    if (isRoleChange || isPermissionChange) {
+      // Same profileUpdate this route already built — reuse the shared
+      // executor so the approval-decide path performs the identical mutation.
+      await approvalExecutors["staff:assign_roles"]({ role: profileUpdate.role, permissions: profileUpdate.permissions }, id);
+      updated = await db.user.update({
+        where: { id },
+        data: userUpdate,
+        select: {
+          id: true, name: true, email: true, phone: true, role: true, banned: true, banReason: true,
+          createdAt: true, updatedAt: true,
+          adminProfile: { select: { id: true, fullName: true, department: true, permissions: true, isSuperAdmin: true, isActive: true } },
         },
-      },
-    });
+      });
+    } else {
+      updated = await db.user.update({
+        where: { id },
+        data: {
+          ...userUpdate,
+          ...(Object.keys(profileUpdate).length > 0 ? { adminProfile: { update: profileUpdate } } : {}),
+        },
+        select: {
+          id: true, name: true, email: true, phone: true, role: true, banned: true, banReason: true,
+          createdAt: true, updatedAt: true,
+          adminProfile: { select: { id: true, fullName: true, department: true, permissions: true, isSuperAdmin: true, isActive: true } },
+        },
+      });
+    }
+
+    if (isBanChange) {
+      logActivity(ctx.id, typeof body.banned === "boolean" ? (body.banned ? "Deactivated staff member" : "Reactivated staff member") : "Updated ban reason", "staff", id, req);
+    }
+    if (isDetailsChange) logActivity(ctx.id, "Updated staff details", "staff", id, req);
+    if (isRoleChange || isPermissionChange) logActivity(ctx.id, "Changed staff role/permissions", "staff", id, req, { role: body.role, permissions: body.permissions });
+
     return ok({ user: updated });
   } catch (err: unknown) {
     if ((err as { code?: string }).code === "P2002") {
@@ -174,8 +197,17 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     return Err.validation("Deactivate the user before deleting.");
   }
 
+  const ctx = await loadCallerContext();
+  if (ctx.denied) return Err.forbidden();
+
+  // Effectively always "proceed" today — staff:delete is hard-restricted to
+  // isSuperAdmin above, and super_admin always skips the queue — but wired
+  // in case staff:delete permission is ever extended to another role.
+  const outcome = await requireApprovalOrProceed(ctx, "staff", "delete", {}, id);
+  if (!outcome.proceed) return Approval.queued(outcome.requestId);
+
   try {
-    await db.user.delete({ where: { id } }); // cascades to adminProfile, session, account
+    await approvalExecutors["staff:delete"]({}, id); // cascades to adminProfile, session, account
   } catch (e: unknown) {
     // P2003: still-referenced by a Restrict relation we haven't nulled out
     // (e.g. authored blog posts) — name it instead of a bare 500.
@@ -187,5 +219,6 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     console.error("[DELETE /api/admin/staff/[id]]", e);
     return Err.internal(e);
   }
+  logActivity(ctx.id, "Deleted staff member", "staff", id, req);
   return ok({ deleted: id });
 }

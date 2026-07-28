@@ -21,6 +21,7 @@ import { ScreenLoader } from "@/components/admin/ui/ScreenLoader";
 import Switch from "@/components/ui/Switch";
 import CircularProgress from "@/components/ui/CircularProgress";
 import { useAdminMe } from "@/hooks/use-can";
+import { Can } from "@/components/admin/Can";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -291,18 +292,22 @@ function CardMenu({
             className="absolute right-0 bottom-full mb-1 w-44 bg-white rounded-[10px] shadow-(--e3) border border-(--neutral-200) z-50 overflow-hidden py-1"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              onClick={() => { setOpen(false); onEdit(); }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
-            >
-              <Pencil size={14} /> Edit
-            </button>
-            <button
-              onClick={() => { setOpen(false); onDuplicate(); }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
-            >
-              <Copy size={14} /> Duplicate
-            </button>
+            <Can permissions={{ products: ["update"] }}>
+              <button
+                onClick={() => { setOpen(false); onEdit(); }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+              >
+                <Pencil size={14} /> Edit
+              </button>
+            </Can>
+            <Can permissions={{ products: ["create"] }}>
+              <button
+                onClick={() => { setOpen(false); onDuplicate(); }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+              >
+                <Copy size={14} /> Duplicate
+              </button>
+            </Can>
             <a
               href={`/shop/${product.slug}`}
               target="_blank"
@@ -312,21 +317,23 @@ function CardMenu({
             >
               <ExternalLink size={14} /> View on Store
             </a>
-            <div className="h-px bg-(--neutral-200) mx-2 my-1" />
-            <button
-              onClick={() => { setOpen(false); onDelete(); }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
-            >
-              <Trash2 size={14} /> Delete
-            </button>
-            {!product.isActive && (
+            <Can permissions={{ products: ["delete"] }}>
+              <div className="h-px bg-(--neutral-200) mx-2 my-1" />
               <button
-                onClick={() => { setOpen(false); onPermanentDelete(); }}
+                onClick={() => { setOpen(false); onDelete(); }}
                 className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
               >
-                <Trash2 size={14} /> Permanently Delete
+                <Trash2 size={14} /> Delete
               </button>
-            )}
+              {!product.isActive && (
+                <button
+                  onClick={() => { setOpen(false); onPermanentDelete(); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
+                >
+                  <Trash2 size={14} /> Permanently Delete
+                </button>
+              )}
+            </Can>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1788,13 +1795,15 @@ export function AdminProductsClient() {
         <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
         {syncing ? "Syncing…" : "Sync with Zoho"}
       </button>
-      <button
-        onClick={openCreate}
-        className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
-      >
-        <Plus size={16} />
-        Add Product
-      </button>
+      <Can permissions={{ products: ["create"] }}>
+        <button
+          onClick={openCreate}
+          className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+        >
+          <Plus size={16} />
+          Add Product
+        </button>
+      </Can>
       
       <button
         onClick={() => router.push('/admin/products/reviews')}

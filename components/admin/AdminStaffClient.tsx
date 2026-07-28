@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { PermissionOverrideGrid } from "@/components/admin/PermissionOverrideGrid";
+import { Can } from "@/components/admin/Can";
 import type { RoleName } from "@/lib/permissions";
 import { StatsCard } from "@/components/ui/stats-card";
 import { DataTable } from "@/components/admin/ui/DataTable";
@@ -131,44 +132,54 @@ function RowActions({
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-9 z-50 w-48 bg-white dark:bg-(--dark-surface) rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e2) py-1 overflow-hidden">
-            <button
-              onClick={() => { setOpen(false); onEditDetails(staff); }}
-              className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
-            >
-              Edit Details
-            </button>
-            <button
-              onClick={() => { setOpen(false); onChangeRole(staff); }}
-              className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
-            >
-              Change Role
-            </button>
-            <button
-              onClick={() => { setOpen(false); onEditPermissions(staff); }}
-              className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
-            >
-              Edit Permissions
-            </button>
-            <button
-              onClick={() => { setOpen(false); onResetPassword(staff); }}
-              className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
-            >
-              Reset Password
-            </button>
-            <div className="h-px bg-(--neutral-200) dark:bg-(--dark-border) my-1" />
-            <button
-              onClick={() => { setOpen(false); onDeactivate(staff); }}
-              className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
-            >
-              {staff.banned ? "Reactivate" : "Deactivate"}
-            </button>
-            {staff.banned && (
+            <Can permissions={{ staff: ["update"] }}>
               <button
-                onClick={() => { setOpen(false); onDelete(staff); }}
+                onClick={() => { setOpen(false); onEditDetails(staff); }}
+                className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+              >
+                Edit Details
+              </button>
+            </Can>
+            <Can permissions={{ staff: ["assign_roles"] }}>
+              <button
+                onClick={() => { setOpen(false); onChangeRole(staff); }}
+                className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+              >
+                Change Role
+              </button>
+              <button
+                onClick={() => { setOpen(false); onEditPermissions(staff); }}
+                className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+              >
+                Edit Permissions
+              </button>
+            </Can>
+            <Can permissions={{ staff: ["update"] }}>
+              <button
+                onClick={() => { setOpen(false); onResetPassword(staff); }}
+                className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+              >
+                Reset Password
+              </button>
+            </Can>
+            <Can permissions={{ staff: ["deactivate"] }}>
+              <div className="h-px bg-(--neutral-200) dark:bg-(--dark-border) my-1" />
+              <button
+                onClick={() => { setOpen(false); onDeactivate(staff); }}
                 className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
               >
-                Delete Permanently
+                {staff.banned ? "Reactivate" : "Deactivate"}
               </button>
+            </Can>
+            {staff.banned && (
+              <Can permissions={{ staff: ["delete"] }}>
+                <button
+                  onClick={() => { setOpen(false); onDelete(staff); }}
+                  className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
+                >
+                  Delete Permanently
+                </button>
+              </Can>
             )}
           </div>
         </>
@@ -942,13 +953,15 @@ export function AdminStaffClient() {
         title="Staff & Roles"
         description="Manage admin accounts and permissions"
         action={
-          <button
-            onClick={() => setInviteOpen(true)}
-            className="h-10 px-5 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors flex items-center gap-2"
-          >
-            <UserPlus size={16} />
-            Invite Staff
-          </button>
+          <Can permissions={{ staff: ["invite"] }}>
+            <button
+              onClick={() => setInviteOpen(true)}
+              className="h-10 px-5 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors flex items-center gap-2"
+            >
+              <UserPlus size={16} />
+              Invite Staff
+            </button>
+          </Can>
         }
       />
 
@@ -1039,7 +1052,7 @@ export function AdminStaffClient() {
                 <p className="font-dm text-[13px] text-(--neutral-500)">Choose how to reset {resetTarget.name}&apos;s password.</p>
                 <div className="flex flex-col gap-2">
                   <button onClick={() => setResetMode("link")} className="w-full h-11 rounded-xl border border-(--green-500) text-(--green-700) font-dm text-[14px] font-medium hover:bg-(--green-50) transition-colors">
-                    Send reset link (expires 45 min)
+                    Send reset link (expires 12 hours)
                   </button>
                   <button onClick={() => setResetMode("set")} className="w-full h-11 rounded-xl bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors">
                     Set new password directly
@@ -1049,7 +1062,7 @@ export function AdminStaffClient() {
               </>
             ) : resetMode === "link" ? (
               <>
-                <p className="font-dm text-[13px] text-(--neutral-500)">A reset link will be emailed and/or SMSed to {resetTarget.name}. Link expires in 45 minutes.</p>
+                <p className="font-dm text-[13px] text-(--neutral-500)">A reset link will be emailed to {resetTarget.name}. Link expires in 12 hours.</p>
                 <div className="flex gap-2 justify-end">
                   <button onClick={() => setResetMode("idle")} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Back</button>
                   <button onClick={handleSendResetLink} disabled={resetLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Send Link</button>

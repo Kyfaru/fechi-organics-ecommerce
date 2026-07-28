@@ -42,7 +42,7 @@ next-env.d.ts
 
 # prisma
 Prisma seed/scripts
-/prisma/seed.ts
-/prisma/set-daraja-creds.ts
-/prisma/create-admin.ts
-/prisma/iseed-blog.ts
+/seed.ts
+/set-daraja-creds.ts
+/create-admin.ts
+/seed-blog.ts
