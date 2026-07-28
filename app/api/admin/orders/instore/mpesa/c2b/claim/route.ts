@@ -265,7 +265,7 @@ export async function POST(req: NextRequest) {
           referenceNumber: result.orderNumber,
           customerName: customerName ?? null,
           customerEmail: customerEmail ?? null,
-          paymentMode: "Mpesa(Daraja)",
+          paymentMode: "Mpesa",
           items: items.map((item) => {
             const product = productById.get(item.productId)!;
             return { productId: product.id, name: product.name, priceKes: product.priceKes, quantity: item.quantity };
