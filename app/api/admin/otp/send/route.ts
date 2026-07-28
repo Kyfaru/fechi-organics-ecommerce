@@ -10,6 +10,7 @@
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { z } from "zod";
+import { Ratelimit } from "@upstash/ratelimit";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
@@ -18,28 +19,12 @@ import { sendSms } from "@/lib/sms";
 import { combineLegacyPhone } from "@/lib/phone";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requireStaffSession } from "@/lib/require-permission";
+import { generateOtp, storeOtp } from "@/lib/otp";
+import { getRedis } from "@/lib/redis";
+import { makeRatelimit } from "@/lib/ratelimit";
 
-// In-memory OTP store — fine for a single admin panel with low traffic.
-// For multi-instance deployments, replace with Redis.
-interface OtpEntry {
-  otp: string;
-  expires: number;     // Unix ms
-  attempts: number;    // verify attempts, max 5
-  sends: number;       // send attempts, reset every 10 min
-  windowStart: number; // when the 10-min rate window started
-}
-
-const otpStore = new Map<string, OtpEntry>();
-
-const RATE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
-const MAX_SENDS_PER_WINDOW = 3;
-const OTP_TTL_MS = 10 * 60 * 1000;   // 10 minutes
-
-function generateOtp(): string {
-  // Cryptographically random 6-digit integer padded with leading zeros
-  const num = Math.floor(Math.random() * 1_000_000);
-  return String(num).padStart(6, "0");
-}
+const ratelimit = makeRatelimit(Ratelimit.slidingWindow(3, "10 m"), "admin_2fa_otp_send");
+const OTP_TTL_SECONDS = 10 * 60;
 
 const BodySchema = z.object({
   userId: z.string(),
@@ -66,37 +51,27 @@ export async function POST(req: NextRequest) {
     const denied = await requireStaffSession(req);
     if (denied) return denied;
 
+    if (ratelimit) {
+      const { success } = await ratelimit.limit(userId);
+      if (!success) return Err.rateLimited();
+    }
+
     const user = await db.user.findUnique({
       where: { id: userId },
       select: { email: true, phone: true, phoneCode: true },
     });
     if (!user) return Err.forbidden();
 
-    // Rate limiting
-    const now = Date.now();
-    const existing = otpStore.get(userId);
-    if (existing) {
-      const windowElapsed = now - existing.windowStart;
-      if (windowElapsed < RATE_WINDOW_MS && existing.sends >= MAX_SENDS_PER_WINDOW) {
-        return Err.rateLimited();
-      }
-    }
-
     const otp = generateOtp();
-    const windowStart = existing && (now - existing.windowStart) < RATE_WINDOW_MS
-      ? existing.windowStart
-      : now;
-    const previousSends = existing && (now - existing.windowStart) < RATE_WINDOW_MS
-      ? existing.sends
-      : 0;
-
-    otpStore.set(userId, {
-      otp,
-      expires: now + OTP_TTL_MS,
-      attempts: 0,
-      sends: previousSends + 1,
-      windowStart,
-    });
+    // Redis-backed (not an in-memory Map — see lib/otp.ts's doc comment for
+    // why: this route runs on serverless instances where /send and /verify
+    // can land on different processes, so anything in-memory silently loses
+    // every OTP and every code comes back "invalid" regardless of correctness).
+    // One active code per user regardless of channel — picking a method and
+    // resending replaces whichever code was pending.
+    await storeOtp(`admin:2fa:otp:${userId}`, otp, OTP_TTL_SECONDS);
+    // Fresh code = fresh attempt budget.
+    await getRedis().del(`admin:2fa:otp:attempts:${userId}`);
 
     if (method === "email") {
       if (!user.email) return Err.validation("No email address on file");
@@ -115,7 +90,3 @@ export async function POST(req: NextRequest) {
     return Err.internal(e);
   }
 }
-
-// Export the store so the verify route can access it from the same module space.
-// In a real multi-instance setup this would be Redis.
-export { otpStore };

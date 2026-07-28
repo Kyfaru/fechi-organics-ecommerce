@@ -176,7 +176,11 @@ export default function AdminLoginPage() {
         return;
       }
 
-      const result = await authClient.signIn.email({ email, password });
+      // rememberMe: false — the admin session cookie gets no Max-Age, so the
+      // browser itself drops it the moment the browser (not just this tab)
+      // closes. A different browser/device is unaffected — cookies are
+      // already scoped per browser instance.
+      const result = await authClient.signIn.email({ email, password, rememberMe: false });
 
       if (result?.error) {
         toast.error("Invalid email or password.");
@@ -442,17 +446,8 @@ export default function AdminLoginPage() {
     if (digit && index < 5) {
       otpRefs.current[index + 1]?.focus();
     }
-
-    // Auto-submit when all 6 filled
-    if (digit && index === 5) {
-      const fullOtp = next.join("");
-      if (fullOtp.length === 6) {
-        // Small delay so state settles before submit
-        setTimeout(() => {
-          setOtpDigits(next);
-        }, 0);
-      }
-    }
+    // Auto-submit is handled by the useEffect below, which fires once
+    // otpDigits actually contains all 6 filled values.
   }
 
   // Auto-submit when all digits filled

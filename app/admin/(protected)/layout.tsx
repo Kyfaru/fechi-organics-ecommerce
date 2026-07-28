@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { AdminHeader } from "@/components/admin/AdminHeader";
 import { AdminFooter } from "@/components/admin/AdminFooter";
+import { AdminSessionGuard } from "@/components/admin/AdminSessionGuard";
 import { Admin403 } from "@/components/admin/Admin403";
 import { Spinner } from "@/components/ui/spinner";
 import { checkPermissionPage } from "@/lib/require-permission";
@@ -15,6 +16,7 @@ import { DEV_ACCESS_COOKIE } from "@/lib/dev-access";
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="admin-shell min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
+      <AdminSessionGuard />
       <AdminSidebar />
       <main className="md:ml-[var(--sidebar-w,264px)] min-h-screen flex flex-col transition-all duration-200">
         <AdminHeader />

@@ -1018,8 +1018,12 @@ model blogPost {
   category      String?
   tags          String[]
   status        PostStatus @default(DRAFT)
-  authorId      String
-  author        user       @relation(fields: [authorId], references: [id])
+  authorId      String?
+  // SetNull — deleting a staff member unattributes their posts instead of
+  // being blocked by the FK (same reasoning as supportTicket.assignedAdmin).
+  // Every read site already treats `author` as nullable (`post.author?.name
+  // ?? "Fechi Organics"`), so this doesn't change any consuming code.
+  author        user?      @relation(fields: [authorId], references: [id], onDelete: SetNull)
   authorIds     String[]   @default([])
   publishedAt   DateTime?
   seoTitle      String?
