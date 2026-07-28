@@ -52,7 +52,7 @@ function paymentMethodLine(order: InvoiceOrder): string {
   if (!tx) return "Paid";
   const provider = PROVIDER_LABELS[tx.provider] ?? tx.provider;
   return tx.mpesaReceiptNumber
-    ? `Paid via ${provider} — Receipt ${tx.mpesaReceiptNumber}`
+    ? `Paid via ${provider} , Receipt ${tx.mpesaReceiptNumber}`
     : `Paid via ${provider}`;
 }
 
@@ -70,7 +70,7 @@ export function renderInvoicePdfBuffer(order: InvoiceOrder): Buffer {
 
   // ---- Header: title + PAID badge --------------------------------------
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(24);
+  doc.setFontSize(28);
   doc.setTextColor(...GREEN);
   doc.text("INVOICE", MARGIN_X, 24);
 
@@ -115,14 +115,14 @@ export function renderInvoicePdfBuffer(order: InvoiceOrder): Buffer {
   const customerEmail = order.user?.email ?? order.guestEmail ?? "";
   const isPickup = order.deliveryType === "PICKUP";
   const billLines = isPickup
-    ? [`Store Pickup — ${order.branch?.name ?? "Fechi Organics"}`]
+    ? [`Store Pickup : ${order.branch?.name ?? "Fechi Organics"}`]
     : [order.deliveryAddress, [order.deliveryCity, order.deliveryCounty].filter(Boolean).join(", ")].filter(Boolean) as string[];
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
   doc.setTextColor(...TEXT_MUTED);
   doc.text("BILL TO", MARGIN_X, y);
-  doc.text("INVOICE #", CONTENT_RIGHT - 60, y);
+  doc.text("INVOICE #", CONTENT_RIGHT - 75, y);
   doc.text("DATE", CONTENT_RIGHT - 30, y);
 
   doc.setFont("helvetica", "normal");
@@ -136,7 +136,7 @@ export function renderInvoicePdfBuffer(order: InvoiceOrder): Buffer {
 
   doc.setFontSize(10.5);
   doc.setTextColor(...TEXT_DARK);
-  doc.text(order.invoiceNumber, CONTENT_RIGHT - 60, y + 5.5);
+  doc.text(order.invoiceNumber, CONTENT_RIGHT - 75, y + 5.5);
   doc.text(fmtDate(order.createdAt), CONTENT_RIGHT - 30, y + 5.5);
 
   y += 15.5 + billLines.length * 5 + 8;
