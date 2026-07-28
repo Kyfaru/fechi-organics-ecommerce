@@ -79,12 +79,11 @@ export const approvalExecutors: Record<string, Executor> = {
 
   "branches:update": async (payload, resourceId) => {
     if (!resourceId) return null;
-    const { zohoOrganizationId, zohoWarehouseId } = payload as {
-      zohoOrganizationId?: string; zohoWarehouseId?: string;
+    const { zohoOrganizationId } = payload as {
+      zohoOrganizationId?: string;
     };
-    const data: { zohoOrganizationId?: string | null; zohoWarehouseId?: string | null } = {};
+    const data: { zohoOrganizationId?: string | null } = {};
     if (zohoOrganizationId !== undefined) data.zohoOrganizationId = zohoOrganizationId || null;
-    if (zohoWarehouseId !== undefined) data.zohoWarehouseId = zohoWarehouseId || null;
     if (Object.keys(data).length > 0) {
       await db.branch.update({ where: { id: resourceId }, data });
     }

@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
       select: {
         id: true, name: true, county: true, phone: true, isActive: true, mpesaType: true, shortcode: true,
         // Zoho connection status only — never the org's encrypted credential columns.
-        zohoOrganizationId: true, zohoWarehouseId: true,
+        zohoOrganizationId: true,
         zohoOrganization: { select: { id: true, name: true } },
       },
     })

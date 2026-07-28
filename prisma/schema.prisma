@@ -479,7 +479,7 @@ model order {
   user         user?       @relation(fields: [userId], references: [id], onDelete: SetNull)
   guestEmail   String?
   status       OrderStatus @default(PENDING)
-  zohoSoId     String?     @unique
+  zohoSoId     String?     @unique // Zoho Books salesreceipt_id (name kept for historical/migration reasons)
   orderNumber  String?     @unique
   processingBy String?
   processedAt  DateTime?
@@ -664,6 +664,7 @@ model productZohoMapping {
 enum ZohoPushKind {
   SALES_ORDER
   INVENTORY_ADJUSTMENT
+  SALES_RECEIPT
 
   @@schema("admin")
 }
@@ -676,8 +677,8 @@ enum ZohoPushStatus {
   @@schema("admin")
 }
 
-// Durable record of every outbound push to Zoho (a sale or a manual stock
-// adjustment), written once after each attempt completes. Exists so a
+// Durable record of every outbound push to Zoho (a sales receipt), written
+// once after each attempt completes. Exists so a
 // failed push is discoverable in the admin panel instead of only ever
 // appearing in server logs — see lib/zoho/push-log.ts.
 model zohoPushLog {

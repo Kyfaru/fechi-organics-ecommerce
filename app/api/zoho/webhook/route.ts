@@ -8,7 +8,7 @@ import { syncItemToProduct } from "@/lib/zoho-sync";
 // ---------------------------------------------------------------------------
 // POST /api/zoho/webhook?organizationId=<id>  — public, no auth (per-org
 // webhook secret verified below). Receives item lifecycle events from a
-// Zoho Inventory organization shared by one or more branches.
+// Zoho Books organization shared by one or more branches.
 //
 // Each org's Zoho config POSTs here with its own organizationId in the query
 // string, so we know which org's secret to check the incoming token
@@ -17,8 +17,59 @@ import { syncItemToProduct } from "@/lib/zoho-sync";
 // a forged organizationId without that org's real webhookSecretEnc still
 // fails the token comparison below.
 //
+// UNVERIFIED — the event name strings and the { eventType, data: { item } }
+// envelope below are Zoho Inventory's specific webhook shape, carried over
+// as a starting point. Zoho Books' exact event names/envelope aren't
+// enumerated in public docs — capture one real test payload from Zoho
+// Books' webhook settings page (Settings → Automation → Webhooks → send
+// test event) and correct EVENT_HANDLERS' keys/parsing below before
+// removing this flag. The secret-verification skeleton above is
+// provider-agnostic and doesn't need changing.
+//
 // Always returns 200 to prevent Zoho from retrying on our internal errors.
 // ---------------------------------------------------------------------------
+
+type WebhookEventData = { item?: unknown };
+type WebhookHandler = (organizationId: string, data: WebhookEventData) => Promise<void>;
+
+async function handleItemUpsert(organizationId: string, data: WebhookEventData): Promise<void> {
+  const item = data.item as { item_id?: string; [key: string]: unknown } | undefined;
+  if (!item) return;
+  const orgBranches = await db.branch.findMany({
+    where: { zohoOrganizationId: organizationId },
+    select: { id: true },
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await syncItemToProduct(organizationId, item as any, orgBranches);
+}
+
+async function handleItemDeleted(organizationId: string, data: WebhookEventData): Promise<void> {
+  const item = data.item as { item_id?: string } | undefined;
+  if (!item?.item_id) return;
+  // An item deleted from this org's Zoho catalog means every sibling branch
+  // under this org no longer stocks it — zero out every branch's stock row,
+  // don't touch the shared product's global isActive.
+  const mapping = await db.productZohoMapping.findUnique({
+    where: { organizationId_zohoItemId: { organizationId, zohoItemId: item.item_id } },
+    select: { productId: true },
+  });
+  if (!mapping) return;
+  const orgBranches = await db.branch.findMany({
+    where: { zohoOrganizationId: organizationId },
+    select: { id: true },
+  });
+  await db.branchProductStock.updateMany({
+    where: { branchId: { in: orgBranches.map((b) => b.id) }, productId: mapping.productId },
+    data: { stock: 0 },
+  });
+}
+
+const EVENT_HANDLERS: Record<string, WebhookHandler> = {
+  item_created: handleItemUpsert,
+  item_updated: handleItemUpsert,
+  item_deleted: handleItemDeleted,
+};
+
 export async function POST(req: NextRequest) {
   await connection();
 
@@ -73,38 +124,9 @@ export async function POST(req: NextRequest) {
 
   // 4. Handle event — catch errors so we always return 200
   try {
-    const item = data?.item as { item_id?: string; [key: string]: unknown } | undefined;
-
-    if (eventType === "item_created" || eventType === "item_updated") {
-      if (item) {
-        const orgBranches = await db.branch.findMany({
-          where: { zohoOrganizationId: organizationId },
-          select: { id: true, zohoWarehouseId: true },
-        });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await syncItemToProduct(organizationId, item as any, orgBranches);
-      }
-    } else if (eventType === "item_deleted") {
-      if (item?.item_id) {
-        // An item deleted from this org's Zoho catalog means every sibling
-        // branch under this org no longer stocks it — zero out every
-        // branch's stock row, don't touch the shared product's global
-        // isActive.
-        const mapping = await db.productZohoMapping.findUnique({
-          where: { organizationId_zohoItemId: { organizationId, zohoItemId: item.item_id } },
-          select: { productId: true },
-        });
-        if (mapping) {
-          const orgBranches = await db.branch.findMany({
-            where: { zohoOrganizationId: organizationId },
-            select: { id: true },
-          });
-          await db.branchProductStock.updateMany({
-            where: { branchId: { in: orgBranches.map((b) => b.id) }, productId: mapping.productId },
-            data: { stock: 0 },
-          });
-        }
-      }
+    const handler = EVENT_HANDLERS[eventType];
+    if (handler) {
+      await handler(organizationId, data ?? {});
     } else {
       // Unknown event type — log and ignore
       console.info("[zoho/webhook] Unhandled eventType:", eventType);

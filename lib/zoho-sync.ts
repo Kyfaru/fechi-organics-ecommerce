@@ -1,5 +1,5 @@
 /**
- * Zoho Inventory → Fechi Organics product sync
+ * Zoho Books → Fechi Organics product sync
  *
  * Several branches can share one Zoho organization's catalog (see
  * lib/zoho-credentials.ts and prisma schema `zohoOrganization`/`branch`).
@@ -7,7 +7,9 @@
  * row per SKU, linked to each org's own item id via `productZohoMapping`
  * (a product has a *different* zohoItemId per org, since each org's catalog
  * is independent). Stock is branch-specific and lives in
- * `branchProductStock`, keyed on (branchId, productId).
+ * `branchProductStock`, keyed on (branchId, productId) — every branch under
+ * an org currently receives the same org-level aggregate stock number (no
+ * per-branch/location splitting).
  *
  * Every mapped field is written on every sync, including nulling out fields
  * Zoho doesn't return for an item — the admin fills gaps manually rather
@@ -29,7 +31,7 @@ import { LOW_STOCK_THRESHOLD } from "@/lib/inventory/constants";
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
-type OrgBranch = { id: string; zohoWarehouseId: string | null };
+type OrgBranch = { id: string };
 
 // ---------------------------------------------------------------------------
 // Slug helpers
@@ -90,11 +92,10 @@ async function notifyIfCrossedLowStock(
 }
 
 /**
- * Upserts one product's stock for every branch in orgBranches. Uses Zoho's
- * per-warehouse breakdown when a branch has a zohoWarehouseId configured and
- * the item's payload includes it; otherwise falls back to applying the org's
- * aggregate quantity_available identically to that branch (see
- * syncAllItems's one-warning-per-run notice for this fallback).
+ * Upserts one product's stock for every branch in orgBranches. Every branch
+ * under the org receives the same org-level aggregate stock number — no
+ * per-branch/location splitting (see lib/zoho.ts's ZohoItem.locations for the
+ * unused per-location capability, kept in case it's wanted later).
  */
 async function upsertBranchStocks(
   tx: TxClient,
@@ -103,13 +104,9 @@ async function upsertBranchStocks(
   orgBranches: OrgBranch[],
 ): Promise<Array<{ branchId: string; previousStock: number | null; newStock: number }>> {
   const results: Array<{ branchId: string; previousStock: number | null; newStock: number }> = [];
+  const stock = item.stock_on_hand ?? 0;
 
   for (const branch of orgBranches) {
-    const warehouseEntry = branch.zohoWarehouseId
-      ? item.warehouses?.find((w) => w.warehouse_id === branch.zohoWarehouseId)
-      : undefined;
-    const stock = warehouseEntry?.warehouse_available_stock ?? item.quantity_available ?? 0;
-
     const previousRow = await tx.branchProductStock.findUnique({
       where: { branchId_productId: { branchId: branch.id, productId } },
       select: { stock: true },
@@ -134,7 +131,7 @@ async function upsertBranchStocks(
  * Upserts one Zoho item into the shared product catalog row (linked via
  * productZohoMapping), and its stock into every branch under this org.
  * @param organizationId - the org this item's catalog belongs to
- * @param item - the Zoho Inventory item payload
+ * @param item - the Zoho Books item payload
  * @param orgBranches - every branch currently linked to this organization
  */
 export async function syncItemToProduct(
@@ -173,7 +170,7 @@ export async function syncItemToProduct(
     name: item.name,
     description: item.description ?? null,
     zohoSku: item.sku ?? null,
-    zohoItemType: item.item_type ?? item.product_type ?? null,
+    zohoItemType: item.product_type ?? null,
     zohoStatus: item.status ?? null,
     zohoUnit: item.unit ?? null,
     zohoBrand: item.brand ?? null,
@@ -283,17 +280,11 @@ export async function syncAllItems(organizationId: string): Promise<{
 }> {
   const orgBranches = await db.branch.findMany({
     where: { zohoOrganizationId: organizationId },
-    select: { id: true, zohoWarehouseId: true },
+    select: { id: true },
   });
 
   if (orgBranches.length === 0) {
     console.warn(`[zoho-sync] No branches linked to organization ${organizationId} — nothing to sync stock into`);
-  }
-  const branchesWithoutWarehouse = orgBranches.filter((b) => !b.zohoWarehouseId);
-  if (branchesWithoutWarehouse.length > 0) {
-    console.warn(
-      `[zoho-sync] ${branchesWithoutWarehouse.length} branch(es) in org ${organizationId} have no zohoWarehouseId configured — applying Zoho's aggregate quantity_available to them instead of a real per-branch number.`,
-    );
   }
 
   let page = 1;

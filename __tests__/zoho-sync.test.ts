@@ -86,7 +86,7 @@ import { syncItemToProduct, syncAllItems, slugify } from "@/lib/zoho-sync";
 
 const MOCK_CATEGORY = { id: "cat-1", name: "Face Care", isActive: true };
 const UNCATEGORIZED = { id: "cat-uncategorized", key: "UNCATEGORIZED" };
-const ORG_BRANCHES = [{ id: TEST_BRANCH_ID, zohoWarehouseId: null }];
+const ORG_BRANCHES = [{ id: TEST_BRANCH_ID }];
 
 const makeItem = (overrides = {}) => ({
   item_id: "ZI-001",
@@ -94,7 +94,7 @@ const makeItem = (overrides = {}) => ({
   status: "active",
   description: "Great cream",
   rate: 1500,
-  quantity_available: 10,
+  stock_on_hand: 10,
   category_name: "Face Care",
   ...overrides,
 });
@@ -233,7 +233,7 @@ describe("syncItemToProduct", () => {
   });
 
   it("upserts branch-specific stock keyed on (branchId, productId), not the shared product row", async () => {
-    await syncItemToProduct(TEST_ORG_ID, makeItem({ quantity_available: 42 }), ORG_BRANCHES);
+    await syncItemToProduct(TEST_ORG_ID, makeItem({ stock_on_hand: 42 }), ORG_BRANCHES);
 
     expect(mockStockUpsert).toHaveBeenCalledOnce();
     const upsertCall = mockStockUpsert.mock.calls[0][0];
@@ -244,34 +244,21 @@ describe("syncItemToProduct", () => {
 
   it("splits stock across every branch in orgBranches", async () => {
     const branches = [
-      { id: "branch-a", zohoWarehouseId: null },
-      { id: "branch-b", zohoWarehouseId: null },
+      { id: "branch-a" },
+      { id: "branch-b" },
     ];
 
-    await syncItemToProduct(TEST_ORG_ID, makeItem({ quantity_available: 7 }), branches);
+    await syncItemToProduct(TEST_ORG_ID, makeItem({ stock_on_hand: 7 }), branches);
 
     expect(mockStockUpsert).toHaveBeenCalledTimes(2);
     expect(mockStockUpsert.mock.calls[0][0].where.branchId_productId.branchId).toBe("branch-a");
     expect(mockStockUpsert.mock.calls[1][0].where.branchId_productId.branchId).toBe("branch-b");
   });
 
-  it("uses a matching warehouse entry's stock over the aggregate when the branch has a zohoWarehouseId", async () => {
-    const branches = [{ id: TEST_BRANCH_ID, zohoWarehouseId: "wh-1" }];
-    const item = makeItem({
-      quantity_available: 100,
-      warehouses: [{ warehouse_id: "wh-1", warehouse_available_stock: 6 }],
-    });
-
-    await syncItemToProduct(TEST_ORG_ID, item, branches);
-
-    const upsertCall = mockStockUpsert.mock.calls[0][0];
-    expect(upsertCall.create.stock).toBe(6);
-  });
-
   it("fires a LOW_STOCK notification on a crossing-edge drop below threshold", async () => {
     mockStockFindUnique.mockResolvedValue({ stock: 15 }); // was above the 10-unit threshold
 
-    await syncItemToProduct(TEST_ORG_ID, makeItem({ quantity_available: 5 }), ORG_BRANCHES);
+    await syncItemToProduct(TEST_ORG_ID, makeItem({ stock_on_hand: 5 }), ORG_BRANCHES);
 
     expect(mockCreateNotification).toHaveBeenCalledOnce();
     const call = mockCreateNotification.mock.calls[0][0];
@@ -282,7 +269,7 @@ describe("syncItemToProduct", () => {
   it("does not re-fire when stock was already below threshold (no new crossing)", async () => {
     mockStockFindUnique.mockResolvedValue({ stock: 4 }); // already low
 
-    await syncItemToProduct(TEST_ORG_ID, makeItem({ quantity_available: 3 }), ORG_BRANCHES);
+    await syncItemToProduct(TEST_ORG_ID, makeItem({ stock_on_hand: 3 }), ORG_BRANCHES);
 
     expect(mockCreateNotification).not.toHaveBeenCalled();
   });

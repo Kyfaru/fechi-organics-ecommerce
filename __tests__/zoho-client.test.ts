@@ -121,7 +121,7 @@ describe("zohoGet", () => {
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain("/inventory/v1/items");
+    expect(url).toContain("/books/v3/items");
     expect((init.headers as Record<string, string>)["Authorization"]).toBe(
       "Zoho-oauthtoken my-token"
     );

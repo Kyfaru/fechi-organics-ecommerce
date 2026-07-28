@@ -24,7 +24,7 @@ import { getRedis } from "@/lib/redis";
 import { paymentChannel } from "@/lib/payment-channel";
 import { buildInStoreOrderNumber } from "@/lib/orders/generate-instore-order-number";
 import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-invoice";
-import { pushSaleToZoho } from "@/lib/zoho/push-sale";
+import { pushSaleReceiptToZoho } from "@/lib/zoho/push-sale-receipt";
 import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
@@ -248,30 +248,33 @@ export async function POST(req: NextRequest) {
       console.error("[instore/mpesa/c2b/claim] Redis set failed:", e);
     }
 
-    // Fire-and-forget: push this sale to Zoho — this route bypasses
-    // markInStorePaymentSuccess (order is created PAID directly), so it
-    // needs its own copy of the push, same reasoning as the invoice/Redis
-    // blocks above.
+    // Fire-and-forget: push this sale to Zoho as a Sales Receipt — this
+    // route bypasses markInStorePaymentSuccess (order is created PAID
+    // directly), so it needs its own copy of the push, same reasoning as the
+    // invoice/Redis blocks above. Provider is unambiguous here — a C2B
+    // till/paybill payment is always M-Pesa via Daraja.
     (async () => {
       try {
         const organizationId = await resolveZohoOrganizationId(branch.id);
         if (!organizationId) return;
-        await pushSaleToZoho({
+        await pushSaleReceiptToZoho({
           organizationId,
           branchId: branch.id,
           referenceType: "inStoreOrder",
           referenceId: result.orderId,
+          referenceNumber: result.orderNumber,
           customerName: customerName ?? null,
           customerEmail: customerEmail ?? null,
+          paymentMode: "Mpesa(Daraja)",
           items: items.map((item) => {
             const product = productById.get(item.productId)!;
             return { productId: product.id, name: product.name, priceKes: product.priceKes, quantity: item.quantity };
           }),
           discountKes,
-          notes: `Fechi Organics in-store order ${result.orderId}`,
+          notes: `Fechi Organics in-store order ${result.orderNumber ?? result.orderId}`,
         });
       } catch (e) {
-        console.error("[instore/mpesa/c2b/claim] Zoho SO push failed:", e);
+        console.error("[instore/mpesa/c2b/claim] Zoho sales receipt push failed:", e);
       }
     })();
 

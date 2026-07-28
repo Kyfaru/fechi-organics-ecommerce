@@ -81,7 +81,7 @@ function makeRequest(
 beforeEach(() => {
   vi.clearAllMocks();
   mockOrgFindUnique.mockResolvedValue({ webhookSecretEnc: "encrypted-blob" });
-  mockBranchFindMany.mockResolvedValue([{ id: TEST_BRANCH_ID, zohoWarehouseId: null }]);
+  mockBranchFindMany.mockResolvedValue([{ id: TEST_BRANCH_ID }]);
   mockStockUpdateMany.mockResolvedValue({ count: 1 });
   mockSyncItemToProduct.mockResolvedValue(undefined);
 });
@@ -114,7 +114,7 @@ describe("POST /api/zoho/webhook", () => {
     expect(mockSyncItemToProduct).toHaveBeenCalledWith(
       TEST_ORG_ID,
       expect.objectContaining({ item_id: "ZI-001" }),
-      [{ id: TEST_BRANCH_ID, zohoWarehouseId: null }],
+      [{ id: TEST_BRANCH_ID }],
     );
   });
 

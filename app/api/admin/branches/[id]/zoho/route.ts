@@ -10,19 +10,14 @@ import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
 import { approvalExecutors } from "@/lib/approval-executors";
 import { logActivity } from "@/lib/admin-activity";
 
-// Both fields optional so a partial update (e.g. only setting the warehouse
-// id after the org link is already made) doesn't require resending both.
 // zohoOrganizationId: "" explicitly unlinks the branch from its org.
 const PatchSchema = z.object({
   zohoOrganizationId: z.string().optional(),
-  zohoWarehouseId: z.string().optional(),
 }).strict();
 
 /**
  * PATCH /api/admin/branches/[id]/zoho — link (or unlink) a branch to an
- * already-configured Zoho organization, and optionally set which Zoho
- * warehouse/location represents this branch's physical stock within that
- * org's catalog. Gated by branches:update plus branch ownership: admin/
+ * already-configured Zoho organization. Gated by branches:update plus branch ownership: admin/
  * super_admin may edit any branch, a branch-scoped manager only their own
  * (lib/branch-access.ts — requirePermission has no row-level concept).
  *

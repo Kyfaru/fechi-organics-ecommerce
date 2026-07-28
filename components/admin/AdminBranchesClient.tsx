@@ -5,11 +5,10 @@
  *
  * Two sections:
  *  - Zoho organizations (HQ/global-scope only): the small number of shared
- *    Zoho Inventory orgs and their credentials. Several branches can point
+ *    Zoho Books orgs and their credentials. Several branches can point
  *    at the same org.
  *  - Branches: lists branches and lets an authorized admin link a branch to
- *    one of those organizations (+ optionally its Zoho warehouse id for
- *    per-branch stock splitting). Admin/super_admin can edit any branch; a
+ *    one of those organizations. Admin/super_admin can edit any branch; a
  *    branch-scoped manager only their own (enforced server-side regardless —
  *    this client-side hide is UX only, matching the pattern everywhere else
  *    in the admin panel).
@@ -34,7 +33,6 @@ interface Branch {
   zohoConnected: boolean;
   zohoOrganizationId: string | null;
   zohoOrganizationName: string | null;
-  zohoWarehouseId: string | null;
 }
 
 interface ZohoOrganization {
@@ -141,7 +139,7 @@ export function AdminBranchesClient() {
   const [linkPw, setLinkPw] = useState("");
   const [linkVerified, setLinkVerified] = useState(false);
   const [linkLoading, setLinkLoading] = useState(false);
-  const [linkForm, setLinkForm] = useState({ zohoOrganizationId: "", zohoWarehouseId: "" });
+  const [linkForm, setLinkForm] = useState({ zohoOrganizationId: "" });
 
   const canUpdateBranches = useCan({ branches: ["update"] });
 
@@ -156,7 +154,7 @@ export function AdminBranchesClient() {
     setLinkTarget(branch);
     setLinkPw("");
     setLinkVerified(false);
-    setLinkForm({ zohoOrganizationId: branch.zohoOrganizationId ?? "", zohoWarehouseId: branch.zohoWarehouseId ?? "" });
+    setLinkForm({ zohoOrganizationId: branch.zohoOrganizationId ?? "" });
   }
 
   function closeLinkModal() {
@@ -184,7 +182,6 @@ export function AdminBranchesClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           zohoOrganizationId: linkForm.zohoOrganizationId,
-          zohoWarehouseId: linkForm.zohoWarehouseId,
         }),
       });
       if (result.status === "denied") return;
@@ -279,7 +276,7 @@ export function AdminBranchesClient() {
     <div className="min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
       <PageHeader
         title="Branches"
-        description="Manage store locations and their Zoho Inventory connections"
+        description="Manage store locations and their Zoho Books connections"
       />
 
       {isGlobalScope && (
@@ -435,18 +432,6 @@ export function AdminBranchesClient() {
                         <option key={org.id} value={org.id}>{org.name}</option>
                       ))}
                     </select>
-                  </div>
-                  <div>
-                    <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Zoho Warehouse ID (optional)</label>
-                    <input
-                      value={linkForm.zohoWarehouseId}
-                      onChange={(e) => setLinkForm((p) => ({ ...p, zohoWarehouseId: e.target.value }))}
-                      placeholder="Zoho Inventory → Settings → Warehouses"
-                      className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
-                    />
-                    <p className="font-dm text-[11px] text-(--neutral-400) mt-1">
-                      Splits this branch&apos;s stock from the org&apos;s per-warehouse breakdown. Leave blank to use the org&apos;s combined stock number for this branch.
-                    </p>
                   </div>
                 </div>
                 <div className="flex gap-2 justify-end">
