@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
@@ -10,6 +10,7 @@ import { Admin403 } from "@/components/admin/Admin403";
 import { Spinner } from "@/components/ui/spinner";
 import { checkPermissionPage } from "@/lib/require-permission";
 import { resourceForPath } from "@/lib/admin-nav";
+import { DEV_ACCESS_COOKIE } from "@/lib/dev-access";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -36,6 +37,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
 async function AdminGuard({ children }: { children: React.ReactNode }) {
   if (process.env.ADMIN_DEV_BYPASS === "true") return <>{children}</>;
+
+  const devSecret = process.env.DEV_ACCESS_SECRET;
+  if (devSecret && (await cookies()).get(DEV_ACCESS_COOKIE)?.value === devSecret) {
+    return <>{children}</>;
+  }
+
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) redirect("/admin/login");
 

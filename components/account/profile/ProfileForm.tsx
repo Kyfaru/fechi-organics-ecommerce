@@ -116,7 +116,7 @@ export default function ProfileForm({ user }: { user: AccountUser }) {
               type="text"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
-              placeholder="Jefferson"
+              placeholder="Joe"
               className={inputClass()}
             />
           </div>
@@ -128,7 +128,7 @@ export default function ProfileForm({ user }: { user: AccountUser }) {
               type="text"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
-              placeholder="Kimotho"
+              placeholder="Mwangi"
               className={inputClass()}
             />
           </div>
