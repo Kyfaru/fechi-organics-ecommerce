@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
     const { name, zohoOrgId, clientId, clientSecret, refreshToken } = parsed.data;
 
-    const webhookSecret = randomBytes(64).toString("hex");
+    const webhookSecret = randomBytes(24).toString("hex");
 
     const org = await db.zohoOrganization.create({
       data: {
