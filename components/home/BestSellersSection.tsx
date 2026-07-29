@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Icon } from "@iconify/react";
 import { ProductCard } from "@/components/storefront/ProductCard";
@@ -10,7 +11,63 @@ type Props = {
   products: ProductCardType[];
 };
 
+const CARD_WIDTH = 220; // px — mobile scroller card wrapper width
+const CARD_GAP = 24; // px — gap-6
+
 export function BestSellersSection({ products }: Props) {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [atStart, setAtStart] = useState(true);
+  const [atEnd, setAtEnd] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const directionRef = useRef<1 | -1>(1);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  function updateEdges() {
+    const el = scrollerRef.current;
+    if (!el) return;
+    setAtStart(el.scrollLeft <= 1);
+    setAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 1);
+  }
+
+  useEffect(() => {
+    updateEdges();
+    window.addEventListener("resize", updateEdges);
+    return () => window.removeEventListener("resize", updateEdges);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products.length]);
+
+  function scrollByCard(dir: 1 | -1) {
+    scrollerRef.current?.scrollBy({ left: dir * (CARD_WIDTH + CARD_GAP), behavior: "smooth" });
+  }
+
+  // 3s ping-pong autoplay — scroll to the end, reverse, scroll back to the
+  // start, loop — mirroring HeroSection's timerRef/isPaused autoplay pattern.
+  useEffect(() => {
+    if (products.length <= 1 || isPaused) return;
+
+    timerRef.current = setInterval(() => {
+      const el = scrollerRef.current;
+      if (!el) return;
+      const max = el.scrollWidth - el.clientWidth;
+      if (directionRef.current === 1 && el.scrollLeft >= max - 1) directionRef.current = -1;
+      else if (directionRef.current === -1 && el.scrollLeft <= 1) directionRef.current = 1;
+      el.scrollBy({ left: directionRef.current * (CARD_WIDTH + CARD_GAP), behavior: "smooth" });
+    }, 3000);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isPaused, products.length]);
+
+  function pause() {
+    setIsPaused(true);
+    if (timerRef.current) clearInterval(timerRef.current);
+  }
+
+  function resume() {
+    setIsPaused(false);
+  }
+
   return (
     <section className="py-16 px-4 md:px-8 bg-[#f4fff3] dark:bg-gray-950">
       <div className="max-w-[1440px] mx-auto">
@@ -47,8 +104,8 @@ export function BestSellersSection({ products }: Props) {
           </motion.div>
         </div>
 
-        {/* Product cards grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 justify-items-center">
+        {/* Desktop — static grid, unchanged */}
+        <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-6 justify-items-center">
           {products.map((product, idx) => (
             <motion.div
               key={product.id}
@@ -61,6 +118,45 @@ export function BestSellersSection({ products }: Props) {
               <ProductCard product={product} />
             </motion.div>
           ))}
+        </div>
+
+        {/* Mobile — horizontal auto-scroller with edge arrows */}
+        <div className="relative sm:hidden">
+          <div
+            ref={scrollerRef}
+            onScroll={updateEdges}
+            onTouchStart={pause}
+            onTouchEnd={resume}
+            onPointerDown={pause}
+            onPointerUp={resume}
+            className="flex overflow-x-auto gap-6 pb-2 touch-pan-x [&::-webkit-scrollbar]:hidden"
+            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+          >
+            {products.map((product) => (
+              <div key={product.id} className="shrink-0" style={{ width: CARD_WIDTH }}>
+                <ProductCard product={product} />
+              </div>
+            ))}
+          </div>
+
+          {!atStart && (
+            <button
+              onClick={() => scrollByCard(-1)}
+              aria-label="Scroll left"
+              className="absolute left-1 top-[100px] -translate-y-1/2 w-9 h-9 rounded-full bg-white shadow-md flex items-center justify-center text-[#27731e]"
+            >
+              <Icon icon="mdi:chevron-left" width={22} />
+            </button>
+          )}
+          {!atEnd && (
+            <button
+              onClick={() => scrollByCard(1)}
+              aria-label="Scroll right"
+              className="absolute right-1 top-[100px] -translate-y-1/2 w-9 h-9 rounded-full bg-white shadow-md flex items-center justify-center text-[#27731e]"
+            >
+              <Icon icon="mdi:chevron-right" width={22} />
+            </button>
+          )}
         </div>
 
         {/* Mobile see all button */}

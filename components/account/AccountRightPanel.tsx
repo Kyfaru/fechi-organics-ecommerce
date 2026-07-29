@@ -3,11 +3,22 @@
 import { Icon } from "@iconify/react"
 import type { AccountUser } from "@/types/account"
 
-export default function AccountRightPanel({ user }: { user: AccountUser }) {
+export default function AccountRightPanel({
+  user,
+  hideExtras = false,
+  className = "",
+}: {
+  user: AccountUser
+  /** Hides the Security/Identity badges and Support Concierge card below the
+   *  tablet breakpoint (1200px) — settings page only, CSS-hidden not unmounted
+   *  so desktop is unaffected. */
+  hideExtras?: boolean
+  className?: string
+}) {
   const username = user.username || `USER_${user.id.slice(-7).toUpperCase()}`
 
   return (
-    <div className="flex flex-col gap-4 sticky top-[calc(72px+32px)]">
+    <div className={`flex flex-col gap-4 sticky top-[calc(72px+32px)] ${className}`}>
 
       {/* Identity card */}
       <div className="bg-[#14532D] rounded-2xl p-5 text-white">
@@ -31,7 +42,7 @@ export default function AccountRightPanel({ user }: { user: AccountUser }) {
       </div>
 
       {/* Security + Identity badges */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className={`grid grid-cols-2 gap-3 ${hideExtras ? "max-tablet:hidden" : ""}`}>
         <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl p-3 text-center">
           <Icon icon="lucide:shield-check" width={16} className="text-neutral-400 dark:text-neutral-500 mx-auto mb-1" />
           <p className="text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Security</p>
@@ -45,7 +56,7 @@ export default function AccountRightPanel({ user }: { user: AccountUser }) {
       </div>
 
       {/* Support concierge */}
-      <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+      <div className={`bg-yellow-50 border border-yellow-200 rounded-xl p-4 ${hideExtras ? "max-tablet:hidden" : ""}`}>
         <p className="text-amber-800 font-semibold text-sm">Support Concierge</p>
         <p className="text-amber-700 text-xs mt-1 leading-relaxed">
           Need help with your account details or security settings? Our support team is available through the contact page.

@@ -57,7 +57,7 @@ export default async function SettingsPage() {
           currencyDisplay={user.currencyDisplay}
         />
       </div>
-      <AccountRightPanel user={user} />
+      <AccountRightPanel user={user} hideExtras className="max-tablet:order-first" />
     </div>
   )
 }

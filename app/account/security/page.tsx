@@ -3,8 +3,7 @@ import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import PageHeader from "@/components/account/PageHeader"
-import PasswordForm from "@/components/account/security/PasswordForm"
-import TwoFactorSection from "@/components/account/security/TwoFactorSection"
+import SecurityForms from "@/components/account/security/SecurityForms"
 import AccountRightPanel from "@/components/account/AccountRightPanel"
 import type { AccountUser } from "@/types/account"
 
@@ -54,16 +53,18 @@ export default async function SecurityPage() {
           description="Manage your password and two-factor authentication settings."
         />
 
-        <PasswordForm isOAuthOnly={isOAuthOnly} />
-        <TwoFactorSection
-          enabled={user.twoFactorEnabled}
-          twoFaEmail={dbUser?.twoFaEmail ?? false}
-          twoFaPhone={dbUser?.twoFaPhone ?? false}
-          userEmail={u.email}
-          userPhone={(u as any).phone ?? null}
+        <SecurityForms
+          isOAuthOnly={isOAuthOnly}
+          twoFactor={{
+            enabled: user.twoFactorEnabled,
+            twoFaEmail: dbUser?.twoFaEmail ?? false,
+            twoFaPhone: dbUser?.twoFaPhone ?? false,
+            userEmail: u.email,
+            userPhone: (u as any).phone ?? null,
+          }}
         />
       </div>
-      <AccountRightPanel user={user} />
+      <AccountRightPanel user={user} className="max-tablet:order-first" />
     </div>
   )
 }

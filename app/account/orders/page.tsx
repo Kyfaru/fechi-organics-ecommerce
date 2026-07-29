@@ -54,7 +54,7 @@ export default async function OrdersPage({
         totalKes: true,
         deliveryType: true,
         items: {
-          take: 1,
+          take: 3,
           select: {
             product: {
               select: {
@@ -111,11 +111,10 @@ export default async function OrdersPage({
               paymentStatus={o.paymentStatus}
               createdAt={o.createdAt}
               totalKes={o.totalKes}
-              thumbnail={
-                o.items[0]?.product.images[0]?.objectKey
-                  ? r2PublicUrl(o.items[0].product.images[0].objectKey)
-                  : null
-              }
+              thumbnails={o.items
+                .map((i) => i.product.images[0]?.objectKey)
+                .filter((k): k is string => !!k)
+                .map((k) => r2PublicUrl(k))}
               itemCount={o._count.items}
               deliveryType={o.deliveryType}
             />

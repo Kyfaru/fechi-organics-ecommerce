@@ -11,6 +11,8 @@ export function WhatsAppButton() {
   const pathname = usePathname();
   // Admin has its own WhatsApp entry point in the header — see AdminHeader.tsx
   if (pathname?.startsWith("/admin")) return null;
+  // Removed entirely from the account area per product decision
+  if (pathname?.startsWith("/account")) return null;
 
   return (
     <>
