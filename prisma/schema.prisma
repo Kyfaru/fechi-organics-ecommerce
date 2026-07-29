@@ -622,9 +622,13 @@ model branchProductStock {
   @@schema("admin")
 }
 
-// One row per real-world Zoho Inventory organization. Several branches can
+// One row per real-world Zoho Books organization. Several branches can
 // share the same org (credentials + webhook secret live here once, not
 // duplicated per branch) — see branch.zohoOrganizationId.
+//
+// isActive: must be set false (deactivated) before the row can be deleted —
+// deactivation itself is blocked while any branch still points at this org
+// (branch.zohoOrganizationId), see app/api/admin/zoho/organizations/[id]/route.ts.
 model zohoOrganization {
   id               String    @id @default(cuid())
   name             String
@@ -633,6 +637,7 @@ model zohoOrganization {
   clientSecretEnc  String
   refreshTokenEnc  String
   webhookSecretEnc String?
+  isActive         Boolean   @default(true)
   connectedAt      DateTime?
   branches         branch[]
   productMappings  productZohoMapping[]

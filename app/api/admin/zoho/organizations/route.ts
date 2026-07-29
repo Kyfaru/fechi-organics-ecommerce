@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     const orgs = await db.zohoOrganization.findMany({
       orderBy: { name: "asc" },
       select: {
-        id: true, name: true, zohoOrgId: true, connectedAt: true,
+        id: true, name: true, zohoOrgId: true, connectedAt: true, isActive: true,
         branches: { select: { id: true, name: true } },
       },
     });

@@ -75,34 +75,30 @@ export async function markPaymentSuccess(args: {
   // Fire-and-forget: push this now-confirmed-paid sale to Zoho as a Sales
   // Receipt. Guarded by `result` so a late/duplicate callback that hit the
   // idempotency guard above (transaction already non-PENDING) doesn't push
-  // the same sale to Zoho twice. An online order has no branch of its own
-  // yet at checkout time (that's chosen later, at fulfillment) — default to
-  // the main branch's org, same known limitation as before: this always
-  // posts to whichever org the main branch belongs to, even if the order
-  // later ships from a different org's branch. Skip silently if the main
-  // branch isn't linked to a Zoho org, rather than failing an
-  // otherwise-successful payment.
+  // the same sale to Zoho twice. Online checkout (mpesa/kcb/paystack
+  // initiate routes) already resolves a real branch from the delivery
+  // address and stores it on order.branchId — use that directly, so the
+  // Sales Receipt's location matches where the order actually belongs
+  // instead of always attributing to one hardcoded "main" branch. Skip
+  // silently (rather than failing an otherwise-successful payment) if the
+  // order somehow has no branch, or that branch isn't linked to a Zoho org.
   if (result) {
     const { order, provider } = result;
     (async () => {
       try {
-        const mainBranch = await db.branch.findFirst({
-          where: { isMain: true, isActive: true },
-          select: { id: true },
-        });
-        if (!mainBranch) {
-          console.warn("[post-payment] No main branch configured — skipping Zoho sales receipt push for", order.id);
+        if (!order.branchId) {
+          console.warn("[post-payment] Order has no branchId — skipping Zoho sales receipt push for", order.id);
           return;
         }
-        const organizationId = await resolveZohoOrganizationId(mainBranch.id);
+        const organizationId = await resolveZohoOrganizationId(order.branchId);
         if (!organizationId) {
-          console.warn("[post-payment] Main branch isn't linked to a Zoho organization — skipping push for", order.id);
+          console.warn("[post-payment] Order's branch isn't linked to a Zoho organization — skipping push for", order.id);
           return;
         }
 
         const { salesReceiptId } = await pushSaleReceiptToZoho({
           organizationId,
-          branchId: mainBranch.id,
+          branchId: order.branchId,
           referenceType: "order",
           referenceId: order.id,
           referenceNumber: order.orderNumber,

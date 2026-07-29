@@ -41,6 +41,7 @@ interface ZohoOrganization {
   name: string;
   zohoOrgId: string;
   connectedAt: string | null;
+  isActive: boolean;
   branches: { id: string; name: string }[];
 }
 
@@ -274,6 +275,111 @@ export function AdminBranchesClient() {
     }
   }
 
+  // Deactivating (blocked server-side while any branch is still linked) and
+  // reactivating are both easily reversible, so a native confirm is enough —
+  // no password re-gate needed, unlike credential edits/permanent delete.
+  async function handleToggleActive(org: ZohoOrganization) {
+    const activating = !org.isActive;
+    if (!activating && !window.confirm(
+      `Deactivate "${org.name}"? Syncing and Sales Receipt pushes for any linked branch will stop immediately.`,
+    )) return;
+
+    try {
+      const res = await fetch(`/api/admin/zoho/organizations/${org.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: activating }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        if (json.error?.code === "ORG_IN_USE") {
+          toast.error(json.error.message);
+          toast.warning(
+            "Unlink each listed branch from this organization below first, then retry deactivating — about a minute per branch.",
+          );
+          return;
+        }
+        throw new Error(json.error?.message ?? "Failed to update");
+      }
+      toast.success(activating ? "Organization activated" : "Organization deactivated");
+      qc.invalidateQueries({ queryKey: ["admin-zoho-organizations"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update");
+    }
+  }
+
+  async function handleRotateWebhook(org: ZohoOrganization) {
+    if (!window.confirm(
+      `Rotate the webhook secret for "${org.name}"? The old secret stops being accepted immediately — every webhook entry configured in Zoho Books will need the new one.`,
+    )) return;
+
+    try {
+      const res = await fetch(`/api/admin/zoho/organizations/${org.id}/rotate-webhook`, { method: "POST" });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error?.message ?? "Failed to rotate webhook credentials");
+      toast.success("Webhook credentials rotated", { message: "Update Zoho Books with the new secret now shown." });
+      setWebhookReveal({ secret: json.data.webhookSecret, urls: json.data.webhookUrls });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to rotate webhook credentials");
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Zoho organization permanent delete — only reachable once deactivated;
+  // password-gated like the credentials modal since it's irreversible.
+  // ---------------------------------------------------------------------
+  const [deleteTarget, setDeleteTarget] = useState<ZohoOrganization | null>(null);
+  const [deletePw, setDeletePw] = useState("");
+  const [deleteVerified, setDeleteVerified] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  function openDeleteModal(org: ZohoOrganization) {
+    setDeleteTarget(org);
+    setDeletePw("");
+    setDeleteVerified(false);
+  }
+
+  function closeDeleteModal() {
+    setDeleteTarget(null);
+    setDeletePw("");
+    setDeleteVerified(false);
+    setDeleteLoading(false);
+  }
+
+  async function handleVerifyForDelete() {
+    setDeleteLoading(true);
+    try {
+      const ok = await verifyAdminPassword(deletePw);
+      if (!ok) { toast.error("Incorrect password"); return; }
+      setDeleteVerified(true);
+    } finally { setDeleteLoading(false); }
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    try {
+      const res = await fetch(`/api/admin/zoho/organizations/${deleteTarget.id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        if (json.error?.code === "ORG_IN_USE") {
+          toast.error(json.error.message);
+          toast.warning("Unlink each listed branch from this organization first, then retry — about a minute per branch.");
+        } else {
+          toast.error(json.error?.message ?? "Failed to delete");
+        }
+        return;
+      }
+      toast.success("Zoho organization deleted");
+      qc.invalidateQueries({ queryKey: ["admin-zoho-organizations"] });
+      closeDeleteModal();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete");
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
       <PageHeader
@@ -310,6 +416,7 @@ export function AdminBranchesClient() {
                   <tr className="border-b border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg)">
                     <th className="px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Organization</th>
                     <th className="px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Zoho Org ID</th>
+                    <th className="px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Status</th>
                     <th className="px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Linked Branches</th>
                     <th className="px-6 py-3 text-right font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Actions</th>
                   </tr>
@@ -319,13 +426,37 @@ export function AdminBranchesClient() {
                     <tr key={org.id} className={`border-b border-(--neutral-200) dark:border-(--dark-border) ${idx % 2 === 0 ? "" : "bg-(--neutral-50)/50 dark:bg-(--dark-bg)/30"}`}>
                       <td className="px-6 py-4 font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">{org.name}</td>
                       <td className="px-6 py-4 font-dm text-[13px] text-(--neutral-600)">{org.zohoOrgId}</td>
+                      <td className="px-6 py-4">
+                        {org.isActive ? (
+                          <span className="inline-flex items-center gap-1.5 font-dm text-[13px] text-(--success)">
+                            <CheckCircle2 size={14} /> Active
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 font-dm text-[13px] text-(--neutral-400)">
+                            <XCircle size={14} /> Deactivated
+                          </span>
+                        )}
+                      </td>
                       <td className="px-6 py-4 font-dm text-[13px] text-(--neutral-600)">
                         {org.branches.length > 0 ? org.branches.map((b) => b.name).join(", ") : "None linked"}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button onClick={() => openOrgModal(org)} className="font-dm text-[13px] font-medium text-(--green-800) hover:underline">
-                          Edit credentials
-                        </button>
+                        <div className="flex items-center justify-end gap-3">
+                          <button onClick={() => openOrgModal(org)} className="font-dm text-[13px] font-medium text-(--green-800) hover:underline">
+                            Edit credentials
+                          </button>
+                          <button onClick={() => handleRotateWebhook(org)} className="font-dm text-[13px] font-medium text-(--green-800) hover:underline">
+                            Rotate webhook
+                          </button>
+                          <button onClick={() => handleToggleActive(org)} className="font-dm text-[13px] font-medium text-(--neutral-600) hover:underline">
+                            {org.isActive ? "Deactivate" : "Activate"}
+                          </button>
+                          {!org.isActive && (
+                            <button onClick={() => openDeleteModal(org)} className="font-dm text-[13px] font-medium text-(--danger) hover:underline">
+                              Delete
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -592,6 +723,51 @@ export function AdminBranchesClient() {
                 Done — I&apos;ve saved it
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Permanent delete confirmation */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
+            <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
+              Delete {deleteTarget.name}
+            </h3>
+
+            {!deleteVerified ? (
+              <>
+                <p className="font-dm text-[13px] text-(--neutral-500)">Enter your own admin password to continue.</p>
+                <input
+                  type="password"
+                  value={deletePw}
+                  onChange={(e) => setDeletePw(e.target.value)}
+                  placeholder="Your password"
+                  className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                />
+                <div className="flex gap-2 justify-end">
+                  <button onClick={closeDeleteModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
+                  <button onClick={handleVerifyForDelete} disabled={deleteLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Verify</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="font-dm text-[13px] text-(--neutral-500)">
+                  This permanently deletes <strong>{deleteTarget.name}</strong>&apos;s credentials and cannot be undone.
+                  This action is only reachable because it&apos;s already deactivated and unlinked from every branch.
+                </p>
+                <div className="flex gap-2 justify-end">
+                  <button onClick={closeDeleteModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
+                  <button
+                    onClick={handleConfirmDelete}
+                    disabled={deleteLoading}
+                    className="px-4 py-2 rounded-xl bg-(--danger) text-white font-dm text-[14px] disabled:opacity-60"
+                  >
+                    Delete permanently
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

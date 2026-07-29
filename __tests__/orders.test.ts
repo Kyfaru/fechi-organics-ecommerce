@@ -1,6 +1,10 @@
 /**
  * Unit tests for app/api/orders/route.ts
- * Mocks: lib/auth.ts, lib/db.ts, lib/zoho.ts
+ * Mocks: lib/auth.ts, lib/db.ts
+ *
+ * Note: this route no longer pushes to Zoho — an order isn't paid yet at
+ * creation time, so the Sales Receipt push happens later, at payment
+ * confirmation (lib/payments/post-payment.ts), not here.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -19,23 +23,12 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Mock lib/zoho.ts (fire-and-forget — should NOT throw)
-// ---------------------------------------------------------------------------
-const mockZohoPost = vi.fn();
-vi.mock("@/lib/zoho", () => ({
-  zohoPost: (...args: unknown[]) => mockZohoPost(...args),
-  ZohoApiError: class ZohoApiError extends Error {},
-}));
-
-// ---------------------------------------------------------------------------
 // Mock lib/db.ts
 // ---------------------------------------------------------------------------
 const mockCartFindUnique = vi.fn();
 const mockOrderCreate = vi.fn();
 const mockProductUpdate = vi.fn();
 const mockCartItemDeleteMany = vi.fn();
-const mockUserFindUnique = vi.fn();
-const mockBranchFindFirst = vi.fn();
 const mockTransaction = vi.fn();
 
 vi.mock("@/lib/db", () => ({
@@ -52,14 +45,6 @@ vi.mock("@/lib/db", () => ({
     },
     cartItem: {
       deleteMany: (...args: unknown[]) => mockCartItemDeleteMany(...args),
-    },
-    user: {
-      findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
-    },
-    // Fire-and-forget Zoho push resolves the main branch's org (an online
-    // order has no branch of its own — see app/api/orders/route.ts §8).
-    branch: {
-      findFirst: (...args: unknown[]) => mockBranchFindFirst(...args),
     },
     $transaction: (fn: (tx: unknown) => unknown) => mockTransaction(fn),
   },
@@ -110,12 +95,6 @@ beforeEach(() => {
   mockGetSession.mockResolvedValue(MOCK_SESSION);
   // Default: cart with items
   mockCartFindUnique.mockResolvedValue(MOCK_CART);
-  // Default: user for Zoho push
-  mockUserFindUnique.mockResolvedValue({ name: "Test User", email: "test@test.com" });
-  // Default: a main branch exists to receive the Zoho sales order push
-  mockBranchFindFirst.mockResolvedValue({ id: "branch-main" });
-  // Default: Zoho post succeeds
-  mockZohoPost.mockResolvedValue({ salesorder: { salesorder_id: "SO-1" } });
 
   // Default transaction: execute the callback and return a mock order
   const MOCK_ORDER = { id: "order-123", userId: "user-1" };
@@ -200,19 +179,6 @@ describe("POST /api/orders", () => {
     expect(mockOrderCreate).toHaveBeenCalledOnce();
     // Cart cleared
     expect(mockCartItemDeleteMany).toHaveBeenCalledWith({ where: { cartId: "cart-1" } });
-  });
-
-  it("order is still created even when Zoho push fails (fire-and-forget)", async () => {
-    // Zoho post rejects immediately
-    mockZohoPost.mockRejectedValue(new Error("Zoho unavailable"));
-
-    const res = await POST(makeRequest());
-    const json = await res.json();
-
-    // Order should still have been created
-    expect(res.status).toBe(200);
-    expect(json.ok).toBe(true);
-    expect(json.data.orderId).toBe("order-123");
   });
 
   it("applies FECHI10 promo code — 10% discount on subtotal", async () => {
