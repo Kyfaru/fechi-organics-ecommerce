@@ -7,6 +7,7 @@ import { Icon } from "@iconify/react"
 import { toast } from "sonner"
 import type { AccountUser } from "@/types/account"
 import { updateProfile } from "@/lib/account/actions"
+import { BotanicalDashboardCard } from "@/components/account/AccountRightPanel"
 import AvatarUpload from "./AvatarUpload"
 import CountrySelect, { type CountryItem } from "./CountrySelect"
 import CitySelect from "./CitySelect"
@@ -96,6 +97,10 @@ export default function ProfileForm({ user }: { user: AccountUser }) {
         <p className="text-base text-neutral-500 dark:text-neutral-400 mt-1.5">
           Update your name, email, phone, country, city and username.
         </p>
+      </div>
+
+      <div className="tablet:hidden">
+        <BotanicalDashboardCard user={user} />
       </div>
 
       {/* Avatar */}

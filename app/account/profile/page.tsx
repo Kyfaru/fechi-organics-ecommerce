@@ -50,7 +50,7 @@ export default async function ProfilePage() {
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[1fr_260px] gap-8">
       <ProfileForm user={user} />
-      <AccountRightPanel user={user} className="max-tablet:order-first" />
+      <AccountRightPanel user={user} />
     </div>
   )
 }

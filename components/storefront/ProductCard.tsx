@@ -27,20 +27,22 @@ type Props = {
 
 const SIZES = {
   default: {
-    card: "max-w-[310px]",
+    card: "max-w-[310px] h-[500px] sm:h-[560px]",
     image: "h-[210px] sm:h-[280px]",
-    body: "px-5 pb-7 pt-1",
+    body: "px-5 pb-5 pt-1",
     name: "text-[15px] sm:text-[18px]",
     price: "text-[16px] sm:text-[20px]",
     desc: "text-[12px] sm:text-[13px]",
+    descBox: "min-h-[16px] sm:min-h-[36px]",
   },
   compact: {
-    card: "max-w-none",
+    card: "max-w-none h-[310px] sm:h-[360px] lg:h-[500px]",
     image: "h-[130px] sm:h-[170px] lg:h-[280px]",
-    body: "px-3 pb-3 pt-1 sm:px-5 sm:pb-7",
+    body: "px-3 pb-3 pt-1 sm:px-5 sm:pb-5",
     name: "text-[12px] sm:text-[14px] lg:text-[18px]",
     price: "text-[13px] sm:text-[15px] lg:text-[20px]",
     desc: "text-[11px] sm:text-[13px]",
+    descBox: "min-h-[14px] sm:min-h-[16px] lg:min-h-[36px]",
   },
 } as const;
 
@@ -181,7 +183,7 @@ export function ProductCard({ product, variant = "default" }: Props) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ duration: 0.4 }}
-      className={`relative bg-white dark:bg-gray-900 rounded-[20px] shadow-[0px_4px_15.3px_0px_rgba(0,0,0,0.10)] w-full overflow-hidden group ${sizes.card}`}
+      className={`relative flex flex-col bg-white dark:bg-gray-900 rounded-[20px] shadow-[0px_4px_15.3px_0px_rgba(0,0,0,0.10)] w-full overflow-hidden group ${sizes.card}`}
     >
       {/* Offer badge */}
       {hasDiscount && (
@@ -227,41 +229,46 @@ export function ProductCard({ product, variant = "default" }: Props) {
         </div>
       </Link>
 
-      {/* Card body */}
-      <div className={sizes.body}>
+      {/* Card body — flex-1 fills the remaining fixed card height so every
+          card in a row ends up the same height regardless of content. */}
+      <div className={`flex flex-1 flex-col min-h-0 ${sizes.body}`}>
         {/* Category */}
         <p className="text-[#27731e] text-[14px] font-body mb-1">{product.categoryName}</p>
 
-        {/* Name */}
+        {/* Name — clamped to 2 lines so it never grows the card */}
         <Link href={`/shop/${product.slug}`}>
-          <h3 className={`font-body text-black dark:text-white leading-snug mb-1 hover:text-[#27731e] transition-colors ${sizes.name}`}>
+          <h3 className={`font-body text-black dark:text-white leading-snug mb-1 line-clamp-2 hover:text-[#27731e] transition-colors ${sizes.name}`}>
             {product.name}
           </h3>
         </Link>
 
-        {/* Short description */}
-        {product.shortDescription && (
-          <p className={`text-[#a1a1a1] font-body mb-3 line-clamp-1 pr-6 ${sizes.desc}`}>
-            {product.shortDescription}
-          </p>
-        )}
+        {/* Short description — reserved slot, stays blank (not collapsed) when absent */}
+        <div className={`mb-2 ${sizes.descBox}`}>
+          {product.shortDescription && (
+            <p className={`text-[#a1a1a1] font-body line-clamp-1 sm:line-clamp-2 pr-6 ${sizes.desc}`}>
+              {product.shortDescription}
+            </p>
+          )}
+        </div>
 
-        {/* Price + CTA */}
-        <div className="mt-2">
-          <div className="flex items-center justify-between">
-            {/* Price */}
-            <div className="flex flex-col">
-              <span className={`font-body text-black dark:text-white leading-tight ${sizes.price}`}>
-                {format(product.priceKes)}
+        {/* Spacer absorbs leftover height so the footer always sits at the bottom */}
+        <div className="flex-1" />
+
+        {/* Footer — price on its own line, button on its own line below */}
+        <div className="mt-auto">
+          <div className="flex flex-col">
+            <span className={`font-bold font-body text-black dark:text-white leading-tight ${sizes.price}`}>
+              {format(product.priceKes)}
+            </span>
+            {hasDiscount && (
+              <span className="text-[12px] text-[#c4c4c4] line-through font-body">
+                {format(product.compareAtPriceKes!)}
               </span>
-              {hasDiscount && (
-                <span className="text-[12px] text-[#c4c4c4] line-through font-body">
-                  {format(product.compareAtPriceKes!)}
-                </span>
-              )}
-            </div>
+            )}
+          </div>
 
-            {/* CTA — Add to Cart OR Go to Cart */}
+          {/* CTA — Add to Cart OR Go to Cart */}
+          <div className="mt-2">
             {!showInCart ? (
               <Tooltip label="Add to cart">
                 <AnimatePresence mode="wait">
@@ -274,7 +281,7 @@ export function ProductCard({ product, variant = "default" }: Props) {
                     onClick={handleAddToCart}
                     disabled={cartMutation.isPending || product.outOfStock}
                     className={[
-                      "flex items-center gap-1 border rounded-[40px] px-3 py-2 text-[13px] font-body transition-all",
+                      "w-full flex items-center justify-center gap-1 border rounded-[40px] px-3 py-2 text-[13px] font-body transition-all",
                       justAdded
                         ? "bg-[#27731e] text-white border-[#27731e]"
                         : "border-black dark:border-gray-600 text-black dark:text-gray-200 hover:bg-[#27731e] hover:text-white hover:border-[#27731e]",
@@ -285,7 +292,7 @@ export function ProductCard({ product, variant = "default" }: Props) {
                     {justAdded ? (
                       <><Icon icon="mdi:check" width={14} />Added</>
                     ) : (
-                      <>{cartMutation.isPending ? <Spinner size={14} invert /> : <Icon icon="mdi:cart-plus" width={14} />}Add to Cart</>
+                      <>{cartMutation.isPending ? <Spinner size={14} invert /> : <Icon icon="mdi:cart-plus" width={14} />}Add</>
                     )}
                   </motion.button>
                 </AnimatePresence>
@@ -293,7 +300,7 @@ export function ProductCard({ product, variant = "default" }: Props) {
             ) : (
               <Link
                 href="/cart"
-                className="flex items-center gap-1.5 rounded-[40px] px-3 py-2 text-[13px] font-body font-semibold transition-all shadow-sm"
+                className="w-full flex items-center justify-center gap-1.5 rounded-[40px] px-3 py-2 text-[13px] font-body font-semibold transition-all shadow-sm"
                 style={{ background: "#fec700", color: "#1a1c1c" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "#e5b600"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "#fec700"; }}
@@ -304,9 +311,10 @@ export function ProductCard({ product, variant = "default" }: Props) {
             )}
           </div>
 
-          {/* Quantity input — own row, only when in cart */}
-          {showInCart && (
-            <div className="flex justify-center mt-3">
+          {/* Quantity stepper — reserved slot (always allocated) so entering
+              cart state never grows the card past its fixed height. */}
+          <div className="h-[38px] mt-2 flex items-center justify-center">
+            {showInCart && (
               <div className="py-1.5 px-3 inline-flex bg-white dark:bg-gray-900 border border-[#c0cab8] dark:border-gray-600 rounded-[10px]">
                 <div className="flex items-center gap-x-2">
                   <button
@@ -345,8 +353,8 @@ export function ProductCard({ product, variant = "default" }: Props) {
                   </button>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </motion.div>

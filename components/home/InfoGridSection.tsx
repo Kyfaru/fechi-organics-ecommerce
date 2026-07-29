@@ -79,9 +79,8 @@ export function InfoGridSection() {
           <FeatureCard card={FEATURE_CARDS[2]} idx={2} />
         </div>
 
-        {/* Bottom row — 2 big promo cards. Hidden below 1200px (tablet); a
-            normal stacked flow (image on top, text below) rather than the
-            old grid-of-absolute-halves, so it's correct if ever unhidden. */}
+        {/* Bottom row — 2 big promo cards. Hidden below 1200px (tablet);
+            desktop appearance is unchanged from the original design. */}
         <div className="hidden tablet:grid tablet:grid-cols-2 gap-5">
           {/* Natural Tummy Tea card */}
           <motion.div
@@ -89,27 +88,29 @@ export function InfoGridSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5 }}
-            className="flex flex-col bg-[#27731e] rounded-[29px] overflow-hidden"
+            className="relative bg-[#27731e] rounded-[29px] overflow-hidden h-[360px] md:h-[396px] flex items-end"
           >
-            {/* Tea image */}
-            <div className="relative h-[200px] w-full shrink-0">
+            {/* Tea image — left side */}
+            <div className="absolute left-0 bottom-0 w-[50%] h-full">
               <Image
-                src="img/tummy-tea-detox.png"
+                src="/img/tummy-tea-detox.png"
                 alt="Natural Tummy Tea"
                 fill
                 className="object-contain object-bottom"
-                sizes="400px"
+                sizes="300px"
               />
             </div>
 
-            {/* Text + CTA */}
-            <div className="flex flex-col p-8">
+            {/* Text + CTA — right side */}
+            <div className="relative z-10 flex flex-col justify-end p-8 ml-auto w-[54%]">
+              <div className="relative -top-18 mr-10">
               <h3 className="font-body text-[#7fde6c] text-[26px] md:text-[30px] tracking-[0.6px] leading-[1.2] mb-5">
                 Natural Tummy Tea
               </h3>
               <p className="font-body text-white text-[15px] md:text-[16px] tracking-[0.32px] leading-[1.39] mb-6 opacity-90">
                 Refreshing tasty tea that also makes you glow.
               </p>
+              </div>
               <Link
                 href="/shop"
                 className="inline-flex items-center gap-2 bg-[#ffc800] text-[#1a1c1c] rounded-full px-6 py-4 font-body font-medium text-[15px] tracking-[0.3px] hover:brightness-95 transition-all w-fit"
@@ -126,21 +127,21 @@ export function InfoGridSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="flex flex-col bg-[#e4abff] rounded-[29px] overflow-hidden"
+            className="relative bg-[#e4abff] rounded-[29px] overflow-hidden h-[360px] md:h-[396px]"
           >
             {/* Woman image */}
-            <div className="relative h-[200px] w-full shrink-0">
+            <div className="absolute left-0 top-0 w-[55%] h-full">
               <Image
                 src="http://localhost:3845/assets/a0c7881967cfb65060a29b299cc8b4b9272ab9f8.png"
                 alt="We Are Near To You"
                 fill
                 className="object-cover object-top"
-                sizes="400px"
+                sizes="300px"
               />
             </div>
 
-            {/* Text + CTA */}
-            <div className="flex flex-col justify-between p-8 flex-1">
+            {/* Text + CTA — right side */}
+            <div className="absolute right-0 top-0 bottom-0 w-[50%] flex flex-col justify-between p-8">
               <h3 className="font-body text-[#1a1c1c] font-semibold text-[26px] md:text-[30px] tracking-[0.6px] leading-[1.2]">
                 We Are Near
                 <br />

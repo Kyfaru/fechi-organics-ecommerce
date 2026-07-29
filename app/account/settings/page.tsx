@@ -5,7 +5,7 @@ import { db } from "@/lib/db"
 import PageHeader from "@/components/account/PageHeader"
 import CommunicationToggles from "@/components/account/settings/CommunicationToggles"
 import RegionalSettings from "@/components/account/settings/RegionalSettings"
-import AccountRightPanel from "@/components/account/AccountRightPanel"
+import AccountRightPanel, { BotanicalDashboardCard } from "@/components/account/AccountRightPanel"
 import type { AccountUser } from "@/types/account"
 
 export default async function SettingsPage() {
@@ -46,6 +46,10 @@ export default async function SettingsPage() {
           description="Manage your communication preferences and regional settings."
         />
 
+        <div className="tablet:hidden">
+          <BotanicalDashboardCard user={user} />
+        </div>
+
         <CommunicationToggles
           notifBotanicalUpdates={user.notifBotanicalUpdates}
           notifOrderTracking={user.notifOrderTracking}
@@ -57,7 +61,7 @@ export default async function SettingsPage() {
           currencyDisplay={user.currencyDisplay}
         />
       </div>
-      <AccountRightPanel user={user} hideExtras className="max-tablet:order-first" />
+      <AccountRightPanel user={user} hideExtras />
     </div>
   )
 }

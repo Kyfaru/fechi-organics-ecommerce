@@ -3,6 +3,32 @@
 import { Icon } from "@iconify/react"
 import type { AccountUser } from "@/types/account"
 
+export function BotanicalDashboardCard({ user }: { user: AccountUser }) {
+  const username = user.username || `USER_${user.id.slice(-7).toUpperCase()}`
+
+  return (
+    <div className="bg-[#14532D] rounded-2xl p-5 text-white">
+      <span className="inline-block text-[10px] font-bold uppercase tracking-widest bg-amber-500 text-white px-2.5 py-0.5 rounded-full">
+        Botanical Dashboard
+      </span>
+      <h3 className="mt-3 text-xl font-bold leading-tight">{user.name}</h3>
+      <p className="text-green-200 text-sm mt-0.5">@{username}</p>
+      <div className="mt-4 space-y-2">
+        <div>
+          <p className="text-green-300 uppercase text-[10px] tracking-wider">Email</p>
+          <p className="text-white text-xs truncate">{user.email}</p>
+        </div>
+        <div>
+          <p className="text-green-300 uppercase text-[10px] tracking-wider">Location</p>
+          <p className="text-white text-xs">
+            {user.city || "—"}{user.country ? `, ${user.country}` : ""}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AccountRightPanel({
   user,
   hideExtras = false,
@@ -15,30 +41,14 @@ export default function AccountRightPanel({
   hideExtras?: boolean
   className?: string
 }) {
-  const username = user.username || `USER_${user.id.slice(-7).toUpperCase()}`
-
   return (
     <div className={`flex flex-col gap-4 sticky top-[calc(72px+32px)] ${className}`}>
 
-      {/* Identity card */}
-      <div className="bg-[#14532D] rounded-2xl p-5 text-white">
-        <span className="inline-block text-[10px] font-bold uppercase tracking-widest bg-amber-500 text-white px-2.5 py-0.5 rounded-full">
-          Botanical Dashboard
-        </span>
-        <h3 className="mt-3 text-xl font-bold leading-tight">{user.name}</h3>
-        <p className="text-green-200 text-sm mt-0.5">@{username}</p>
-        <div className="mt-4 space-y-2">
-          <div>
-            <p className="text-green-300 uppercase text-[10px] tracking-wider">Email</p>
-            <p className="text-white text-xs truncate">{user.email}</p>
-          </div>
-          <div>
-            <p className="text-green-300 uppercase text-[10px] tracking-wider">Location</p>
-            <p className="text-white text-xs">
-              {user.city || "—"}{user.country ? `, ${user.country}` : ""}
-            </p>
-          </div>
-        </div>
+      {/* Identity card — hidden below 1200px; a duplicate renders inline near
+          the page title on mobile/tablet instead (see BotanicalDashboardCard
+          usage in profile/security/settings pages). */}
+      <div className="max-tablet:hidden">
+        <BotanicalDashboardCard user={user} />
       </div>
 
       {/* Security + Identity badges */}

@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import PageHeader from "@/components/account/PageHeader"
 import SecurityForms from "@/components/account/security/SecurityForms"
-import AccountRightPanel from "@/components/account/AccountRightPanel"
+import AccountRightPanel, { BotanicalDashboardCard } from "@/components/account/AccountRightPanel"
 import type { AccountUser } from "@/types/account"
 
 export default async function SecurityPage() {
@@ -53,6 +53,10 @@ export default async function SecurityPage() {
           description="Manage your password and two-factor authentication settings."
         />
 
+        <div className="tablet:hidden">
+          <BotanicalDashboardCard user={user} />
+        </div>
+
         <SecurityForms
           isOAuthOnly={isOAuthOnly}
           twoFactor={{
@@ -64,7 +68,7 @@ export default async function SecurityPage() {
           }}
         />
       </div>
-      <AccountRightPanel user={user} className="max-tablet:order-first" />
+      <AccountRightPanel user={user} />
     </div>
   )
 }

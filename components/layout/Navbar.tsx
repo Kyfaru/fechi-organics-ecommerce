@@ -661,7 +661,7 @@ export function Navbar({ flat = false, transparent = false }: { flat?: boolean; 
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-30 bg-black/30 md:hidden"
+              className="fixed inset-0 z-[60] bg-black/30 md:hidden"
               onClick={() => setMobileOpen(false)}
             />
 
@@ -671,7 +671,7 @@ export function Navbar({ flat = false, transparent = false }: { flat?: boolean; 
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -8, scale: 0.97 }}
               transition={{ duration: 0.18 }}
-              className="fixed top-16 right-4 z-40 w-[360px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-5rem)] overflow-y-auto rounded-[24px] bg-white dark:bg-[#111] shadow-xl md:hidden"
+              className="fixed top-16 right-4 z-[70] w-[300px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-5rem)] overflow-y-auto rounded-[24px] bg-white dark:bg-[#111] shadow-xl md:hidden"
             >
               {/* Search */}
               <div className="p-4 pb-3 relative" data-search-area>
@@ -727,7 +727,7 @@ export function Navbar({ flat = false, transparent = false }: { flat?: boolean; 
                   <Icon icon={theme === "dark" ? "mdi:weather-night" : "iconamoon:mode-light"} width={20} className="text-[#27731e]" />
                   <div className="flex flex-col leading-tight">
                     <span className="text-[14px] font-semibold text-[#1a1c1c] dark:text-white">Appearance</span>
-                    <span className="text-[12px] text-[#a1a1a1]">Switch between light and dark mode</span>
+                    <span className="text-[12px] text-[#a1a1a1]">Toggle between modes</span>
                   </div>
                 </div>
                 <button
@@ -754,16 +754,15 @@ export function Navbar({ flat = false, transparent = false }: { flat?: boolean; 
                       )}
                     </div>
                   </div>
-                  <DropdownLink href="/account/profile" icon="mdi:account-outline" label="Profile" onClick={() => setMobileOpen(false)} />
-                  <DropdownLink href="/account/wishlist" icon="mdi:heart-outline" label="Wishlist" onClick={() => setMobileOpen(false)} />
-                  <DropdownLink href="/account/settings" icon="mdi:cog-outline" label="Settings" onClick={() => setMobileOpen(false)} />
                   <DropdownLink href="/account/orders" icon="mdi:receipt-outline" label="Orders" onClick={() => setMobileOpen(false)} />
+                  <DropdownLink href="/account/wishlist" icon="mdi:heart-outline" label="Favourites" onClick={() => setMobileOpen(false)} />
+                  <DropdownLink href="/account/settings" icon="mdi:cog-outline" label="Settings" onClick={() => setMobileOpen(false)} />
                   <button
                     onClick={() => {
                       setMobileOpen(false);
                       setLogoutModalOpen(true);
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-[14px] font-body text-[#ef4444] hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors"
+                    className="w-full flex items-center justify-center gap-2 mt-1 px-4 py-2.5 text-[14px] font-body font-medium text-[#ef4444] bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-950/40 rounded-xl transition-colors"
                   >
                     <Icon icon="mdi:logout" width={18} />
                     Log Out
