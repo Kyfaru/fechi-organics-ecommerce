@@ -94,9 +94,17 @@ export default function ProfileForm({
       toast.success("Profile updated")
       // Instant update everywhere the ["profile"] query is read (sidebar,
       // dashboard card) — no need to wait on a route refresh for this.
+      // Server actions serialize their return value over React's flight
+      // protocol, which (like JSON) has no Date type — lastUsernameChange
+      // arrives back here as a string, so revive it before it lands in the
+      // query cache (see lib/account/profile-query.ts's fetchProfile for the
+      // same fix on the GET path).
       qc.setQueryData(PROFILE_QUERY_KEY, (old: AccountUser | undefined) => ({
         ...(old ?? user),
         ...result.user,
+        lastUsernameChange: result.user.lastUsernameChange
+          ? new Date(result.user.lastUsernameChange)
+          : null,
       }))
       qc.invalidateQueries({ queryKey: PROFILE_QUERY_KEY })
       router.refresh()
