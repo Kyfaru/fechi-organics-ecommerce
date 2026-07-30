@@ -1,12 +1,14 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import { Icon } from "@iconify/react"
 import { toast } from "sonner"
 import type { AccountUser } from "@/types/account"
 import { updateProfile } from "@/lib/account/actions"
+import { authClient } from "@/lib/auth-client"
+import { PROFILE_QUERY_KEY, fetchProfile } from "@/lib/account/profile-query"
 import { BotanicalDashboardCard } from "@/components/account/AccountRightPanel"
 import AvatarUpload from "./AvatarUpload"
 import CountrySelect, { type CountryItem } from "./CountrySelect"
@@ -19,9 +21,28 @@ function inputClass(extra = "") {
   return `w-full px-4 py-3 border border-neutral-300 dark:border-neutral-700 rounded-lg text-[15px] bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-500 focus:outline-none focus:border-[#15803D] focus:ring-1 focus:ring-[#15803D] ${extra}`
 }
 
-export default function ProfileForm({ user }: { user: AccountUser }) {
+const SOCIAL_LABEL: Record<string, string> = { google: "Google", facebook: "Facebook" }
+
+export default function ProfileForm({
+  user: initialUser,
+  socialProvider,
+}: {
+  user: AccountUser
+  /** "google" | "facebook" | null — which social account (if any) is linked,
+   *  so the email-change note only shows when it's actually relevant. */
+  socialProvider: string | null
+}) {
   const router = useRouter()
+  const qc = useQueryClient()
   const [countries, setCountries] = useState<CountryItem[]>([])
+
+  // Kept in sync with AccountSidebar/BotanicalDashboardCard via the same
+  // query key — initialData is the server-rendered prop for first paint.
+  const { data: user } = useQuery({
+    queryKey: PROFILE_QUERY_KEY,
+    queryFn: fetchProfile,
+    initialData: initialUser,
+  })
 
   // Form state
   const [firstName, setFirstName] = useState(user.firstName ?? "")
@@ -32,6 +53,7 @@ export default function ProfileForm({ user }: { user: AccountUser }) {
   const [city, setCity] = useState(user.city ?? "")
   const [username, setUsername] = useState(user.username ?? "")
   const [avatarUrl, setAvatarUrl] = useState(user.image)
+  const [email, setEmail] = useState(user.email)
 
   // Snapshot for discard
   const original = {
@@ -68,10 +90,15 @@ export default function ProfileForm({ user }: { user: AccountUser }) {
   const updateProfileMutation = useMutation({
     mutationFn: () =>
       updateProfile({ firstName, lastName, phone, phoneCode, country, city, username }),
-    onSuccess: () => {
+    onSuccess: (result) => {
       toast.success("Profile updated")
-      // Server action already revalidates the /account layout; refresh the
-      // current route tree so the sidebar (@username, name) picks it up.
+      // Instant update everywhere the ["profile"] query is read (sidebar,
+      // dashboard card) — no need to wait on a route refresh for this.
+      qc.setQueryData(PROFILE_QUERY_KEY, (old: AccountUser | undefined) => ({
+        ...(old ?? user),
+        ...result.user,
+      }))
+      qc.invalidateQueries({ queryKey: PROFILE_QUERY_KEY })
       router.refresh()
     },
     onError: (e: any) => {
@@ -79,8 +106,30 @@ export default function ProfileForm({ user }: { user: AccountUser }) {
     },
   })
 
+  const changeEmailMutation = useMutation({
+    mutationFn: async (newEmail: string) => {
+      const { error } = await authClient.changeEmail({
+        newEmail,
+        callbackURL: "/account/profile",
+      })
+      if (error) throw new Error(error.message ?? "Could not change email")
+    },
+    onSuccess: () => {
+      toast.success("Check your inbox to confirm the new email address")
+    },
+    onError: (e: any) => {
+      toast.error(e?.message ?? "Could not change email")
+      setEmail(user.email)
+    },
+  })
+
   function handleSave() {
     updateProfileMutation.mutate()
+  }
+
+  function handleEmailBlur() {
+    const trimmed = email.trim()
+    if (trimmed && trimmed !== user.email) changeEmailMutation.mutate(trimmed)
   }
 
   return (
@@ -147,11 +196,22 @@ export default function ProfileForm({ user }: { user: AccountUser }) {
             </label>
             <input
               type="email"
-              value={user.email}
-              disabled
-              className={inputClass("disabled:bg-neutral-50 dark:disabled:bg-neutral-800/60 disabled:text-neutral-400 dark:disabled:text-neutral-500 disabled:cursor-not-allowed")}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onBlur={handleEmailBlur}
+              disabled={changeEmailMutation.isPending}
+              className={inputClass("disabled:opacity-60")}
             />
-            <p className="text-sm text-neutral-400 dark:text-neutral-500 mt-1.5">Email cannot be changed here.</p>
+            {socialProvider ? (
+              <p className="text-sm text-neutral-400 dark:text-neutral-500 mt-1.5">
+                Changing your email won't affect signing in with {SOCIAL_LABEL[socialProvider] ?? socialProvider} —
+                that's linked to your account directly, not your email address.
+              </p>
+            ) : (
+              <p className="text-sm text-neutral-400 dark:text-neutral-500 mt-1.5">
+                You'll get a confirmation link at your new address before this takes effect.
+              </p>
+            )}
           </div>
           <PhoneInput
             phone={phone}

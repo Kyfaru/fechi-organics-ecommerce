@@ -3,11 +3,13 @@
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
+import { useQuery } from "@tanstack/react-query"
 import { Icon } from "@iconify/react"
 import { signOut } from "@/lib/auth-client"
 import { clearPersistedQueryCache } from "@/app/providers"
 import { LogoutModal } from "@/components/ui/LogoutModal"
 import type { AccountUser } from "@/types/account"
+import { PROFILE_QUERY_KEY, fetchProfile } from "@/lib/account/profile-query"
 
 const NAV_ITEMS: Array<{ href: string; label: string; icon: string; badge?: boolean }> = [
   { href: "/account/profile",  label: "Profile",  icon: "lucide:user"         },
@@ -27,7 +29,7 @@ function getInitials(name: string) {
 }
 
 export default function AccountSidebar({
-  user,
+  user: initialUser,
   unreadCount = 0,
 }: {
   user: AccountUser
@@ -35,6 +37,11 @@ export default function AccountSidebar({
 }) {
   const pathname = usePathname()
   const router = useRouter()
+  const { data: user } = useQuery({
+    queryKey: PROFILE_QUERY_KEY,
+    queryFn: fetchProfile,
+    initialData: initialUser,
+  })
   const [logoutModalOpen, setLogoutModalOpen] = useState(false)
   const displayName = user.name || "Account"
   const username = user.username || `USER_${user.id.slice(-7).toUpperCase()}`

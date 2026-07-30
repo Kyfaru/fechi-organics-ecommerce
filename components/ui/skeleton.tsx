@@ -75,11 +75,11 @@ export function SkeletonImage({ className, aspectRatio = '1/1' }: SkeletonImageP
 // ---------------------------------------------------------------------------
 // Product card skeleton
 // ---------------------------------------------------------------------------
-// Mirrors ProductCard's SIZES so the skeleton doesn't jump in size once real
-// cards replace it (components/storefront/ProductCard.tsx).
+// Mirrors ProductCard's image height (components/storefront/ProductCard.tsx)
+// so the skeleton doesn't jump in size once real cards replace it.
 const SKELETON_SIZES = {
-  default: { card: 'h-[500px] sm:h-[560px]', image: 'h-[210px] sm:h-[280px]' },
-  compact: { card: 'h-[310px] sm:h-[360px] lg:h-[500px]', image: 'h-[130px] sm:h-[170px] lg:h-[280px]' },
+  default: { image: 'h-[210px] sm:h-[280px]' },
+  compact: { image: 'h-[130px] sm:h-[170px] lg:h-[280px]' },
 } as const;
 
 export function SkeletonCard({
@@ -91,7 +91,7 @@ export function SkeletonCard({
 }) {
   const sizes = SKELETON_SIZES[variant];
   return (
-    <div className={cn('flex flex-col gap-3 p-3 rounded-[20px] bg-white dark:bg-gray-900', sizes.card, className)}>
+    <div className={cn('flex flex-col gap-3 p-3 rounded-[20px] bg-white dark:bg-gray-900', className)}>
       {/* Image */}
       <SkeletonImage aspectRatio="auto" className={cn('rounded-[16px]', sizes.image)} />
       {/* Title lines */}

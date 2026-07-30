@@ -1,9 +1,19 @@
 "use client"
 
+import { useQuery } from "@tanstack/react-query"
 import { Icon } from "@iconify/react"
 import type { AccountUser } from "@/types/account"
+import { PROFILE_QUERY_KEY, fetchProfile } from "@/lib/account/profile-query"
 
-export function BotanicalDashboardCard({ user }: { user: AccountUser }) {
+export function BotanicalDashboardCard({ user: initialUser }: { user: AccountUser }) {
+  // initialData means first paint uses the server-rendered prop; once
+  // ProfileForm's mutation writes to this same query key, this card updates
+  // instantly without needing a page reload.
+  const { data: user } = useQuery({
+    queryKey: PROFILE_QUERY_KEY,
+    queryFn: fetchProfile,
+    initialData: initialUser,
+  })
   const username = user.username || `USER_${user.id.slice(-7).toUpperCase()}`
 
   return (

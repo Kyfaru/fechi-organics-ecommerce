@@ -366,7 +366,7 @@ function BackupCodesMethod({ totpEnabled, isOAuthOnly, onRequirePasswordFirst }:
       icon="lucide:key"
       title="Backup Codes"
       description="One-time codes for account recovery"
-      statusLabel={totpEnabled ? "Available" : "Requires authenticator app"}
+      statusLabel={totpEnabled ? "Available" : "TOTP Required"}
       isEnabled={false}
       open={open}
       onToggle={handleOpen}

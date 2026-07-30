@@ -1,6 +1,8 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { combineLegacyPhone } from "@/lib/phone";
 import { DeliveryClient } from "@/components/checkout/DeliveryClient";
 
 export default async function DeliveryPage() {
@@ -16,6 +18,15 @@ export default async function DeliveryPage() {
     country?: string | null;
   };
 
+  // session.user doesn't carry phoneCode (not a Better Auth additionalField),
+  // and phone/phoneCode are stored as separate DB columns — fetch and join
+  // them into one E.164 value so the phone input shows the right country code.
+  const dbUser = await db.user.findUnique({
+    where: { id: session.user.id },
+    select: { phoneCode: true },
+  });
+  const phone = user.phone ? combineLegacyPhone(user.phone, dbUser?.phoneCode ?? null) : null;
+
   return (
     <DeliveryClient
       user={{
@@ -24,7 +35,7 @@ export default async function DeliveryPage() {
           user.name ||
           "",
         email: user.email ?? "",
-        phone: user.phone ?? "",
+        phone: phone ?? "",
         country: user.country ?? "KE",
       }}
     />

@@ -3,8 +3,31 @@ import { connection } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getAccountUser } from "@/lib/account/get-account-user";
 import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+
+// ---------------------------------------------------------------------------
+// GET /api/users/me — fetch the authenticated user's account profile fresh
+// from the DB. Backs the ["profile"] TanStack Query used by ProfileForm,
+// AccountSidebar and BotanicalDashboardCard so a save in one place shows up
+// immediately everywhere else (see lib/account/profile-query.ts).
+// ---------------------------------------------------------------------------
+export async function GET(req: NextRequest) {
+  await connection();
+  try {
+    const session = await auth.api.getSession({ headers: req.headers });
+    if (!session?.user?.id) return Err.authRequired();
+
+    const user = await getAccountUser(session.user.id);
+    if (!user) return Err.notFound("User");
+
+    return ok(user);
+  } catch (e) {
+    console.error("[users/me] GET error", e);
+    return Err.internal(e);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // PATCH /api/users/me — update the authenticated user's profile fields.

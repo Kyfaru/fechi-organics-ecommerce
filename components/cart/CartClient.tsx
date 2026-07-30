@@ -184,7 +184,8 @@ export function CartClient() {
   }
 
   const deliveryKes = freeShipping ? 0 : DELIVERY_KES;
-  const totalKes = subtotalKes + deliveryKes - promoDiscount;
+  //const totalKesDelivery = subtotalKes + deliveryKes - promoDiscount;
+  const totalKes = subtotalKes - promoDiscount;
 
   function handleStartDelivery() {
     if (!items.length) return;

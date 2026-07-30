@@ -27,22 +27,20 @@ type Props = {
 
 const SIZES = {
   default: {
-    card: "max-w-[310px] h-[500px] sm:h-[560px]",
+    card: "max-w-[310px]",
     image: "h-[210px] sm:h-[280px]",
-    body: "px-5 pb-5 pt-1",
+    body: "px-5 pb-7 pt-1",
     name: "text-[15px] sm:text-[18px]",
     price: "text-[16px] sm:text-[20px]",
     desc: "text-[12px] sm:text-[13px]",
-    descBox: "min-h-[16px] sm:min-h-[36px]",
   },
   compact: {
-    card: "max-w-none h-[310px] sm:h-[360px] lg:h-[500px]",
+    card: "max-w-none",
     image: "h-[130px] sm:h-[170px] lg:h-[280px]",
-    body: "px-3 pb-3 pt-1 sm:px-5 sm:pb-5",
+    body: "px-3 pb-3 pt-1 sm:px-5 sm:pb-7",
     name: "text-[12px] sm:text-[14px] lg:text-[18px]",
     price: "text-[13px] sm:text-[15px] lg:text-[20px]",
     desc: "text-[11px] sm:text-[13px]",
-    descBox: "min-h-[14px] sm:min-h-[16px] lg:min-h-[36px]",
   },
 } as const;
 
@@ -183,7 +181,7 @@ export function ProductCard({ product, variant = "default" }: Props) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ duration: 0.4 }}
-      className={`relative flex flex-col bg-white dark:bg-gray-900 rounded-[20px] shadow-[0px_4px_15.3px_0px_rgba(0,0,0,0.10)] w-full overflow-hidden group ${sizes.card}`}
+      className={`relative bg-white dark:bg-gray-900 rounded-[20px] shadow-[0px_4px_15.3px_0px_rgba(0,0,0,0.10)] w-full overflow-hidden group ${sizes.card}`}
     >
       {/* Offer badge */}
       {hasDiscount && (
@@ -229,46 +227,41 @@ export function ProductCard({ product, variant = "default" }: Props) {
         </div>
       </Link>
 
-      {/* Card body — flex-1 fills the remaining fixed card height so every
-          card in a row ends up the same height regardless of content. */}
-      <div className={`flex flex-1 flex-col min-h-0 ${sizes.body}`}>
+      {/* Card body */}
+      <div className={sizes.body}>
         {/* Category */}
         <p className="text-[#27731e] text-[14px] font-body mb-1">{product.categoryName}</p>
 
-        {/* Name — clamped to 2 lines so it never grows the card */}
+        {/* Name */}
         <Link href={`/shop/${product.slug}`}>
-          <h3 className={`font-body text-black dark:text-white leading-snug mb-1 line-clamp-2 hover:text-[#27731e] transition-colors ${sizes.name}`}>
+          <h3 className={`font-body text-black dark:text-white leading-snug mb-1 hover:text-[#27731e] transition-colors ${sizes.name}`}>
             {product.name}
           </h3>
         </Link>
 
-        {/* Short description — reserved slot, stays blank (not collapsed) when absent */}
-        <div className={`mb-2 ${sizes.descBox}`}>
-          {product.shortDescription && (
-            <p className={`text-[#a1a1a1] font-body line-clamp-1 sm:line-clamp-2 pr-6 ${sizes.desc}`}>
-              {product.shortDescription}
-            </p>
-          )}
-        </div>
+        {/* Short description */}
+        {product.shortDescription && (
+          <p className={`text-[#a1a1a1] font-body mb-3 line-clamp-1 pr-6 ${sizes.desc}`}>
+            {product.shortDescription}
+          </p>
+        )}
 
-        {/* Spacer absorbs leftover height so the footer always sits at the bottom */}
-        <div className="flex-1" />
-
-        {/* Footer — price on its own line, button on its own line below */}
-        <div className="mt-auto">
-          <div className="flex flex-col">
-            <span className={`font-bold font-body text-black dark:text-white leading-tight ${sizes.price}`}>
-              {format(product.priceKes)}
-            </span>
-            {hasDiscount && (
-              <span className="text-[12px] text-[#c4c4c4] line-through font-body">
-                {format(product.compareAtPriceKes!)}
+        {/* Price + CTA */}
+        <div className="mt-2">
+          <div className="flex items-center justify-between">
+            {/* Price */}
+            <div className="flex flex-col">
+              <span className={`font-body text-black dark:text-white leading-tight ${sizes.price}`}>
+                {format(product.priceKes)}
               </span>
-            )}
-          </div>
+              {hasDiscount && (
+                <span className="text-[12px] text-[#c4c4c4] line-through font-body">
+                  {format(product.compareAtPriceKes!)}
+                </span>
+              )}
+            </div>
 
-          {/* CTA — Add to Cart OR Go to Cart */}
-          <div className="mt-2">
+            {/* CTA — Add to Cart OR Go to Cart */}
             {!showInCart ? (
               <Tooltip label="Add to cart">
                 <AnimatePresence mode="wait">
@@ -281,7 +274,7 @@ export function ProductCard({ product, variant = "default" }: Props) {
                     onClick={handleAddToCart}
                     disabled={cartMutation.isPending || product.outOfStock}
                     className={[
-                      "w-full flex items-center justify-center gap-1 border rounded-[40px] px-3 py-2 text-[13px] font-body transition-all",
+                      "flex items-center gap-1 border rounded-[40px] px-3 py-2 text-[13px] font-body transition-all",
                       justAdded
                         ? "bg-[#27731e] text-white border-[#27731e]"
                         : "border-black dark:border-gray-600 text-black dark:text-gray-200 hover:bg-[#27731e] hover:text-white hover:border-[#27731e]",
@@ -292,7 +285,7 @@ export function ProductCard({ product, variant = "default" }: Props) {
                     {justAdded ? (
                       <><Icon icon="mdi:check" width={14} />Added</>
                     ) : (
-                      <>{cartMutation.isPending ? <Spinner size={14} invert /> : <Icon icon="mdi:cart-plus" width={14} />}Add</>
+                      <>{cartMutation.isPending ? <Spinner size={14} invert /> : <Icon icon="mdi:cart-plus" width={14} />}Add to Cart</>
                     )}
                   </motion.button>
                 </AnimatePresence>
@@ -300,7 +293,7 @@ export function ProductCard({ product, variant = "default" }: Props) {
             ) : (
               <Link
                 href="/cart"
-                className="w-full flex items-center justify-center gap-1.5 rounded-[40px] px-3 py-2 text-[13px] font-body font-semibold transition-all shadow-sm"
+                className="flex items-center gap-1.5 rounded-[40px] px-3 py-2 text-[13px] font-body font-semibold transition-all shadow-sm"
                 style={{ background: "#fec700", color: "#1a1c1c" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "#e5b600"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "#fec700"; }}
@@ -311,50 +304,48 @@ export function ProductCard({ product, variant = "default" }: Props) {
             )}
           </div>
 
-          {/* Quantity stepper — reserved slot (always allocated) so entering
-              cart state never grows the card past its fixed height. */}
-          <div className="h-[38px] mt-2 flex items-center justify-center">
-            {showInCart && (
-              <div className="py-1.5 px-3 inline-flex bg-white dark:bg-gray-900 border border-[#c0cab8] dark:border-gray-600 rounded-[10px]">
-                <div className="flex items-center gap-x-2">
-                  <button
-                    type="button"
-                    onClick={() => handleQtyChange(displayQty - 1)}
-                    className="size-6 inline-flex justify-center items-center rounded-md border border-[#c0cab8] dark:border-gray-600 text-[#1a1c1c] dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none transition-colors"
-                    aria-label="Decrease"
-                  >
-                    <svg className="shrink-0 size-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M5 12h14"/>
-                    </svg>
-                  </button>
-                  <input
-                    className="p-0 w-7 bg-transparent border-0 text-[#1a1c1c] dark:text-neutral-200 text-center focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none font-body text-[14px] font-semibold"
-                    style={{ MozAppearance: "textfield" } as React.CSSProperties}
-                    type="number"
-                    value={displayQty}
-                    min={0}
-                    max={99}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (!isNaN(v) && v >= 0) handleQtyChange(v);
-                    }}
-                    aria-label="Cart quantity"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleQtyChange(displayQty + 1)}
-                    className="size-6 inline-flex justify-center items-center rounded-md border border-[#c0cab8] dark:border-gray-600 text-[#1a1c1c] dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none transition-colors"
-                    aria-label="Increase"
-                  >
-                    <svg className="shrink-0 size-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M5 12h14"/>
-                      <path d="M12 5v14"/>
-                    </svg>
-                  </button>
-                </div>
+          {/* Quantity input — own row, only when in cart — full width & pill
+              radius to match the Go to Cart button above it */}
+          {showInCart && (
+            <div className="mt-3 w-full py-2 px-3 flex bg-white dark:bg-gray-900 border border-[#c0cab8] dark:border-gray-600 rounded-[40px]">
+              <div className="flex items-center justify-center gap-x-2 w-full">
+                <button
+                  type="button"
+                  onClick={() => handleQtyChange(displayQty - 1)}
+                  className="size-6 inline-flex justify-center items-center rounded-md border border-[#c0cab8] dark:border-gray-600 text-[#1a1c1c] dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none transition-colors"
+                  aria-label="Decrease"
+                >
+                  <svg className="shrink-0 size-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14"/>
+                  </svg>
+                </button>
+                <input
+                  className="p-0 w-7 bg-transparent border-0 text-[#1a1c1c] dark:text-neutral-200 text-center focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none font-body text-[14px] font-semibold"
+                  style={{ MozAppearance: "textfield" } as React.CSSProperties}
+                  type="number"
+                  value={displayQty}
+                  min={0}
+                  max={99}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (!isNaN(v) && v >= 0) handleQtyChange(v);
+                  }}
+                  aria-label="Cart quantity"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleQtyChange(displayQty + 1)}
+                  className="size-6 inline-flex justify-center items-center rounded-md border border-[#c0cab8] dark:border-gray-600 text-[#1a1c1c] dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none transition-colors"
+                  aria-label="Increase"
+                >
+                  <svg className="shrink-0 size-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14"/>
+                    <path d="M12 5v14"/>
+                  </svg>
+                </button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </motion.div>
