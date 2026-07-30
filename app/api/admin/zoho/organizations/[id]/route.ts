@@ -87,7 +87,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     let webhookSecretPlaintext: string | null = null;
     if (!org.webhookSecretEnc) {
-      webhookSecretPlaintext = randomBytes(32).toString("hex");
+      // 24 bytes -> 48 hex chars, under Zoho's 50-character webhook secret
+      // limit (matches the create route in ../route.ts).
+      webhookSecretPlaintext = randomBytes(24).toString("hex");
       data.webhookSecretEnc = encrypt(webhookSecretPlaintext);
     }
 

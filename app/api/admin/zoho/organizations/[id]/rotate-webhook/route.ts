@@ -35,7 +35,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const org = await db.zohoOrganization.findUnique({ where: { id }, select: { id: true } });
     if (!org) return Err.notFound("Zoho organization");
 
-    const webhookSecret = randomBytes(32).toString("hex");
+    // 24 bytes -> 48 hex chars, under Zoho's 50-character webhook secret
+    // limit (matches ../route.ts's create/PATCH paths).
+    const webhookSecret = randomBytes(24).toString("hex");
     await db.zohoOrganization.update({
       where: { id },
       data: { webhookSecretEnc: encrypt(webhookSecret) },

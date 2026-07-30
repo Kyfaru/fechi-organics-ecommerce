@@ -361,11 +361,11 @@ export function CartClient() {
                   label={`Subtotal (${cart?.itemCount ?? 0} ${(cart?.itemCount ?? 0) === 1 ? "item" : "items"})`}
                   value={format(subtotalKes)}
                 />
-                <SummaryRow
+                {/*<SummaryRow
                   label="Delivery"
                   value={freeShipping ? "FREE" : format(DELIVERY_KES)}
                   green={freeShipping}
-                />
+                />*/}
                 {appliedPromo && (
                   <SummaryRow
                     label="Discount"
