@@ -3,16 +3,22 @@
  * Tests the POST handler directly (no real network/DB).
  *
  * The webhook is per-organization: each org's Zoho config POSTs to
- * ?organizationId=<id>, authenticated against that org's own encrypted
- * webhookSecretEnc. Several branches can share one org.
+ * ?organizationId=<id>&event=<event>, authenticated against this org's own
+ * encrypted webhookSecretEnc via an HMAC-SHA256 signature header. Several
+ * branches can share one org.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
+import crypto from "crypto";
 
 const TEST_ORG_ID = "org-1";
 const TEST_BRANCH_ID = "branch-1";
 const TEST_SECRET = "correct-secret";
+
+function sign(body: string, secret: string = TEST_SECRET): string {
+  return crypto.createHmac("sha256", secret).update(body).digest("hex");
+}
 
 // ---------------------------------------------------------------------------
 // Mock lib/zoho-sync.ts
@@ -64,24 +70,30 @@ import { POST } from "@/app/api/zoho/webhook/route";
 // ---------------------------------------------------------------------------
 function makeRequest(
   body: unknown,
-  { token = TEST_SECRET as string | null, organizationId = TEST_ORG_ID as string | null } = {}
+  {
+    signature,
+    organizationId = TEST_ORG_ID as string | null,
+    event = "item_updated" as string | null,
+  }: { signature?: string | null; organizationId?: string | null; event?: string | null } = {},
 ): NextRequest {
+  const raw = JSON.stringify(body);
+  const sig = signature === undefined ? sign(raw) : signature;
   const headers = new Headers({ "Content-Type": "application/json" });
-  if (token !== null) headers.set("x-zoho-webhook-token", token);
-  const url = organizationId
-    ? `http://localhost/api/zoho/webhook?organizationId=${organizationId}`
-    : "http://localhost/api/zoho/webhook";
-  return new NextRequest(url, {
+  if (sig !== null) headers.set("x-zoho-webhook-signature", sig);
+  const params = new URLSearchParams();
+  if (organizationId !== null) params.set("organizationId", organizationId);
+  if (event !== null) params.set("event", event);
+  return new NextRequest(`http://localhost/api/zoho/webhook?${params.toString()}`, {
     method: "POST",
     headers,
-    body: JSON.stringify(body),
+    body: raw,
   });
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockOrgFindUnique.mockResolvedValue({ webhookSecretEnc: "encrypted-blob" });
-  mockBranchFindMany.mockResolvedValue([{ id: TEST_BRANCH_ID, zohoWarehouseId: null }]);
+  mockBranchFindMany.mockResolvedValue([{ id: TEST_BRANCH_ID }]);
   mockStockUpdateMany.mockResolvedValue({ count: 1 });
   mockSyncItemToProduct.mockResolvedValue(undefined);
 });
@@ -90,21 +102,21 @@ beforeEach(() => {
 // Tests
 // ---------------------------------------------------------------------------
 describe("POST /api/zoho/webhook", () => {
-  it("returns 200 with valid org + token and item_updated event", async () => {
-    const req = makeRequest({
-      eventType: "item_updated",
-      data: {
+  it("returns 200 with a valid signature and item_updated event", async () => {
+    const req = makeRequest(
+      {
         item: {
           item_id: "ZI-001",
           name: "Cream",
           status: "active",
           description: "",
           rate: 500,
-          quantity_available: 5,
+          stock_on_hand: 5,
           category_name: "Face",
         },
       },
-    });
+      { event: "item_updated" },
+    );
 
     const res = await POST(req);
     expect(res.status).toBe(200);
@@ -114,12 +126,19 @@ describe("POST /api/zoho/webhook", () => {
     expect(mockSyncItemToProduct).toHaveBeenCalledWith(
       TEST_ORG_ID,
       expect.objectContaining({ item_id: "ZI-001" }),
-      [{ id: TEST_BRANCH_ID, zohoWarehouseId: null }],
+      [{ id: TEST_BRANCH_ID }],
     );
   });
 
   it("returns 400 when organizationId query param is missing", async () => {
-    const req = makeRequest({ eventType: "item_updated", data: {} }, { organizationId: null });
+    const req = makeRequest({ item: {} }, { organizationId: null });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when event query param is missing", async () => {
+    const req = makeRequest({ item: {} }, { event: null });
 
     const res = await POST(req);
     expect(res.status).toBe(400);
@@ -127,27 +146,21 @@ describe("POST /api/zoho/webhook", () => {
 
   it("returns 403 when the organization has no Zoho webhook secret configured", async () => {
     mockOrgFindUnique.mockResolvedValue({ webhookSecretEnc: null });
-    const req = makeRequest({ eventType: "item_updated", data: {} });
+    const req = makeRequest({ item: {} });
 
     const res = await POST(req);
     expect(res.status).toBe(403);
   });
 
-  it("returns 403 when webhook token is wrong", async () => {
-    const req = makeRequest(
-      { eventType: "item_updated", data: {} },
-      { token: "wrong-token" }
-    );
+  it("returns 403 when the signature is wrong", async () => {
+    const req = makeRequest({ item: {} }, { signature: sign(JSON.stringify({ item: {} }), "wrong-secret") });
 
     const res = await POST(req);
     expect(res.status).toBe(403);
   });
 
-  it("returns 403 when webhook token header is missing", async () => {
-    const req = makeRequest(
-      { eventType: "item_updated", data: {} },
-      { token: null }
-    );
+  it("returns 403 when the signature header is missing", async () => {
+    const req = makeRequest({ item: {} }, { signature: null });
 
     const res = await POST(req);
     expect(res.status).toBe(403);
@@ -155,10 +168,7 @@ describe("POST /api/zoho/webhook", () => {
 
   it("zeroes out stock for every branch in the org on item_deleted, leaving the shared product row untouched", async () => {
     mockMappingFindUnique.mockResolvedValue({ productId: "prod-1" });
-    const req = makeRequest({
-      eventType: "item_deleted",
-      data: { item: { item_id: "ZI-001" } },
-    });
+    const req = makeRequest({ item: { item_id: "ZI-001" } }, { event: "item_deleted" });
 
     const res = await POST(req);
     expect(res.status).toBe(200);
@@ -169,21 +179,15 @@ describe("POST /api/zoho/webhook", () => {
   });
 
   it("returns 400 on malformed (non-JSON) body", async () => {
-    const req = new NextRequest(`http://localhost/api/zoho/webhook?organizationId=${TEST_ORG_ID}`, {
+    const raw = "NOT_JSON{{{{";
+    const req = new NextRequest(`http://localhost/api/zoho/webhook?organizationId=${TEST_ORG_ID}&event=item_updated`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-zoho-webhook-token": TEST_SECRET,
+        "x-zoho-webhook-signature": sign(raw),
       },
-      body: "NOT_JSON{{{{",
+      body: raw,
     });
-
-    const res = await POST(req);
-    expect(res.status).toBe(400);
-  });
-
-  it("returns 400 when eventType is missing", async () => {
-    const req = makeRequest({ data: { item: {} } });
 
     const res = await POST(req);
     expect(res.status).toBe(400);
@@ -192,15 +196,21 @@ describe("POST /api/zoho/webhook", () => {
   it("returns 200 even when syncItemToProduct throws (idempotent)", async () => {
     mockSyncItemToProduct.mockRejectedValue(new Error("DB error"));
 
-    const req = makeRequest({
-      eventType: "item_created",
-      data: {
-        item: { item_id: "ZI-002", name: "Test", status: "active", rate: 100 },
-      },
-    });
+    const req = makeRequest(
+      { item: { item_id: "ZI-002", name: "Test", status: "active", rate: 100 } },
+      { event: "item_created" },
+    );
 
     const res = await POST(req);
     // Must still return 200 so Zoho does not retry
     expect(res.status).toBe(200);
+  });
+
+  it("returns 200 and logs, ignoring an unrecognized event", async () => {
+    const req = makeRequest({ item: {} }, { event: "something_unknown" });
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    expect(mockSyncItemToProduct).not.toHaveBeenCalled();
   });
 });

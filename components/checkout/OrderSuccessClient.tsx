@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import confetti from "canvas-confetti";
 import { Icon } from "@iconify/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { toast } from "@/lib/toast";
@@ -38,7 +39,18 @@ function capture(event: string, props?: Record<string, unknown>) {
 }
 
 export function OrderSuccessClient({ order }: { order: Order }) {
+  const qc = useQueryClient();
+
   useEffect(() => {
+    // The order is paid and its cart was already cleared server-side
+    // (lib/payments/post-payment.ts). Drop the persisted ["cart"] entry
+    // (react-query's localStorage-backed cache, "fechi-cache") rather than
+    // just invalidating it — remove first so no stale item list is ever
+    // served from the persisted snapshot, then let the next read refetch
+    // the now-actually-empty cart fresh from the server.
+    qc.removeQueries({ queryKey: ["cart"] });
+    qc.invalidateQueries({ queryKey: ["cart"] });
+
     // Mark the coupon as used before clearing session
     const usedPromo = sessionStorage.getItem("fechi_promo");
     if (usedPromo) {
@@ -73,7 +85,7 @@ export function OrderSuccessClient({ order }: { order: Order }) {
       .catch(() => undefined);
 
     return () => timers.forEach(window.clearTimeout);
-  }, [order.id]);
+  }, [order.id, qc]);
 
   return (
     <div className="min-h-screen bg-[#fbfbfa] dark:bg-gray-950">

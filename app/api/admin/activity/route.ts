@@ -16,12 +16,12 @@ import { ok, Err } from "@/lib/api";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
-import { requireStaffSession } from "@/lib/require-permission";
+import { requirePermission } from "@/lib/require-permission";
 
 export async function GET(req: NextRequest) {
   await connection();
 
-  const denied = await requireStaffSession(req);
+  const denied = await requirePermission(req, { staff: ["view"] });
   if (denied) return denied;
 
   const { searchParams } = new URL(req.url);
@@ -62,6 +62,8 @@ export async function GET(req: NextRequest) {
       resourceId: log.resourceId,
       details: log.details,
       ipAddress: log.ipAddress,
+      userAgent: log.userAgent,
+      path: log.path,
       createdAt: log.createdAt,
       adminProfileId: log.adminProfileId,
       staffName: log.adminProfile.user.name,

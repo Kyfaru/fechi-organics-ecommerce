@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { connection } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -52,7 +52,9 @@ export async function POST(req: NextRequest) {
     await db.cart.delete({ where: { id: guestCart.id } });
 
     const summary = await getCartSummary(userCart.id);
-    return ok(summary);
+    const resp = NextResponse.json({ ok: true, data: summary });
+    resp.cookies.delete("fechi_cart");
+    return resp;
   } catch (e) {
     console.error("[cart/merge] POST error", e);
     return Err.internal(e);

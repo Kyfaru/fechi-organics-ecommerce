@@ -30,7 +30,7 @@ type Props = {
 const MODE_COPY: Record<DeliveryMode, { heading: string; description: string; icon: string }> = {
   DELIVERY: {
     heading: "Home Delivery Details",
-    description: "We'll bring your order straight to your door.",
+    description: "We'll bring your order straight to your location.",
     icon: "mdi:truck-delivery-outline",
   },
   PICKUP: {
@@ -191,13 +191,11 @@ export function DeliveryClient({ user }: Props) {
   const [firstName, setFirstName] = useState(initialName.firstName);
   const [lastName, setLastName] = useState(initialName.lastName);
   const [email, setEmail] = useState(user.email);
-  const [phone, setPhone] = useState<PhoneValue | undefined>(() => {
-    const p = user.phone;
-    if (!p) return undefined;
-    if (p.startsWith("+")) return p as PhoneValue;
-    if (p.startsWith("0")) return `+254${p.slice(1)}` as PhoneValue;
-    return p as PhoneValue;
-  });
+  // user.phone is already a properly combined E.164 value (phone + phoneCode
+  // joined server-side via lib/phone.ts combineLegacyPhone — see app/delivery/page.tsx).
+  const [phone, setPhone] = useState<PhoneValue | undefined>(
+    user.phone && user.phone.startsWith("+") ? (user.phone as PhoneValue) : undefined
+  );
 
   // Always default to Kenya — user's stored country may be a name not a code
   const [country, setCountry] = useState("KE");
@@ -276,6 +274,7 @@ export function DeliveryClient({ user }: Props) {
     queryKey: ["cart"],
     queryFn: () => fetch("/api/cart").then((r) => r.json()),
     staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const branchesQuery = useQuery<{ ok: boolean; data: { branches: Branch[] } }>({
@@ -318,7 +317,6 @@ export function DeliveryClient({ user }: Props) {
         if (!county) e.county = "Please select your county";
         else if (noZones) e.zone = "No delivery zones available for this county — contact the store or pick another county";
         else if (!zoneId) e.zone = "Please select a delivery zone";
-        if (!address.trim()) e.address = "Please enter your town, estate, or building";
       } else {
         if (!state && !stateText.trim()) e.state = "Please select or enter your state / province";
         if (!address.trim()) e.address = "Please enter your address";
@@ -582,9 +580,9 @@ export function DeliveryClient({ user }: Props) {
 
                   {/* Town / Estate / Building (Kenya) or Address (International) */}
                   {isKenya ? (
-                    <Field label="Town / Estate / Building" error={showErr("address")}>
+                    <Field label="Town / Estate / Building (Optional)">
                       <input
-                        className={inputCls(!!showErr("address"))}
+                        className={inputNormal}
                         value={address}
                         onChange={(e) => setAddress(e.target.value)}
                         placeholder={!zoneId ? "Select a delivery zone first" : "e.g. Westlands, The Mirage"}

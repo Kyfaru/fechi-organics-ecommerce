@@ -119,11 +119,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Never trust client-submitted prices — recompute from the DB.
-    const products = await db.product.findMany({
-      where: { id: { in: items.map((i) => i.productId) } },
-      select: { id: true, name: true, priceKes: true, isActive: true },
-    });
-    const productById = new Map(products.map((p) => [p.id, p]));
+    const products: { id: string; name: string; priceKes: number; isActive: boolean }[] =
+      await db.product.findMany({
+        where: { id: { in: items.map((i) => i.productId) } },
+        select: { id: true, name: true, priceKes: true, isActive: true },
+      });
+    const productById = new Map<string, { id: string; name: string; priceKes: number; isActive: boolean }>(
+      products.map((p) => [p.id, p])
+    );
     for (const item of items) {
       const product = productById.get(item.productId);
       if (!product || !product.isActive) {
@@ -237,7 +240,7 @@ export async function POST(req: NextRequest) {
         branch: {
           id: branch!.id,
           shortcode: branch!.shortcode,
-          invoiceNumber: invoiceCode ?? branch!.invoiceNumber,
+          invoiceNumber: invoiceCode,
           consumerKeyEnc: branch!.consumerKeyEnc,
           consumerSecretEnc: branch!.consumerSecretEnc,
           apiKeyEnc: branch!.apiKeyEnc ?? null,

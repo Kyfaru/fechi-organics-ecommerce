@@ -190,7 +190,7 @@ export function ShopClient({ categories }: Props) {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.3 }}
-                  className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 justify-items-center"
+                  className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 justify-items-center"
                 >
                   {allProducts.map((product, idx) => (
                     <motion.div
@@ -198,9 +198,9 @@ export function ShopClient({ categories }: Props) {
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.3, delay: (idx % 12) * 0.05 }}
-                      className="w-full max-w-[310px]"
+                      className="w-full lg:max-w-[310px]"
                     >
-                      <ProductCard product={product} />
+                      <ProductCard product={product} variant="compact" />
                     </motion.div>
                   ))}
                 </motion.div>

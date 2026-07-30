@@ -7,16 +7,21 @@
  *
  * Why it exists: both the STK-push callback and the C2B claim flow need the
  * exact same idempotency-guarded "mark paid, decrement stock, signal" logic,
- * so it lives here once instead of being duplicated across callers.
+ * so it lives here once instead of being duplicated across callers. Also
+ * fires the Zoho Sales Receipt push here (not at order creation) since a
+ * Sales Receipt represents an already-paid sale — see
+ * lib/payments/post-payment.ts for the online-order equivalent.
  */
 
-import type { Prisma } from "@prisma/client";
+import type { Prisma, InStoreProvider } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
 import { paymentChannel } from "@/lib/payment-channel";
 import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-invoice";
-import { pushSaleToZoho } from "@/lib/zoho/push-sale";
+import { pushSaleReceiptToZoho } from "@/lib/zoho/push-sale-receipt";
+import { pushInventoryAdjustmentToZoho } from "@/lib/zoho/push-adjustment";
 import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
+import { paymentModeForInStore } from "@/lib/zoho/payment-mode";
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
@@ -38,14 +43,16 @@ export async function markInStorePaymentSuccess(args: {
   transactionData: Prisma.inStoreTransactionUpdateInput;
 }): Promise<void> {
   let branchId: string | null = null;
+  let provider: InStoreProvider | null = null;
   let paidItems: Array<{ productId: string; name: string; priceKes: number; quantity: number }> = [];
 
   await db.$transaction(async (tx: TxClient) => {
     const transaction = await tx.inStoreTransaction.findUnique({
       where: { id: args.transactionId },
-      select: { status: true },
+      select: { status: true, provider: true },
     });
     if (!transaction || transaction.status !== "PENDING") return;
+    provider = transaction.provider;
 
     await tx.inStoreTransaction.update({
       where: { id: args.transactionId },
@@ -104,10 +111,10 @@ export async function markInStorePaymentSuccess(args: {
     console.error("[instore-post-payment] Redis set failed (success):", e);
   }
 
-  // Fire-and-forget: push this sale to Zoho as a Sales Order. Must never
+  // Fire-and-forget: push this sale to Zoho as a Sales Receipt. Must never
   // throw or block the payment-success path — same convention as the two
   // best-effort blocks above.
-  if (branchId && paidItems.length > 0) {
+  if (branchId && provider && paidItems.length > 0) {
     (async () => {
       try {
         const organizationId = await resolveZohoOrganizationId(branchId!);
@@ -115,22 +122,41 @@ export async function markInStorePaymentSuccess(args: {
 
         const order = await db.inStoreOrder.findUnique({
           where: { id: args.inStoreOrderId },
-          select: { customerName: true, customerEmail: true, discountKes: true },
+          select: { customerName: true, customerEmail: true, discountKes: true, orderNumber: true },
         });
 
-        await pushSaleToZoho({
+        await pushSaleReceiptToZoho({
           organizationId,
           branchId,
           referenceType: "inStoreOrder",
           referenceId: args.inStoreOrderId,
+          referenceNumber: order?.orderNumber,
           customerName: order?.customerName,
           customerEmail: order?.customerEmail,
+          paymentMode: paymentModeForInStore(provider!),
           items: paidItems,
           discountKes: order?.discountKes,
-          notes: `Fechi Organics in-store order ${args.inStoreOrderId}`,
+          notes: `Fechi Organics in-store order ${order?.orderNumber ?? args.inStoreOrderId}`,
         });
+
+        // Sales Receipts never move stock on their own — a separate
+        // Inventory Adjustment is what actually decrements Zoho's
+        // shelf-count. Own try/catch: a failed adjustment must never affect
+        // the already-successful Sales Receipt above.
+        try {
+          await pushInventoryAdjustmentToZoho({
+            organizationId,
+            branchId,
+            referenceType: "inStoreOrder",
+            referenceId: args.inStoreOrderId,
+            referenceNumber: order?.orderNumber,
+            items: paidItems.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+          });
+        } catch (e) {
+          console.error("[instore-post-payment] Zoho inventory adjustment failed:", e);
+        }
       } catch (e) {
-        console.error("[instore-post-payment] Zoho SO push failed:", e);
+        console.error("[instore-post-payment] Zoho sales receipt push failed:", e);
       }
     })();
   }

@@ -443,19 +443,21 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
             </Link>
           </Tooltip>
 
-          {/* Notifications bell */}
-          <Tooltip label="Inbox">
-            <Link
-              href="/account/inbox"
-              className="relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-              aria-label="Notifications"
-            >
-              <Icon icon="lucide:bell" width={20} className="text-[#1a1c1c] dark:text-white" />
-              {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
-              )}
-            </Link>
-          </Tooltip>
+          {/* Notifications bell — logged-in users only */}
+          {user && (
+            <Tooltip label="Inbox">
+              <Link
+                href="/account/inbox"
+                className="relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                aria-label="Notifications"
+              >
+                <Icon icon="lucide:bell" width={20} className="text-[#1a1c1c] dark:text-white" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+                )}
+              </Link>
+            </Tooltip>
+          )}
 
           {/* Dark mode toggle */}
           <Tooltip label={theme === "dark" ? "Light mode" : "Dark mode"}>
@@ -510,23 +512,14 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
               </span>
             )}
           </Link>
-          <Link href="/account/inbox" className="relative p-2" aria-label="Notifications">
-            <Icon icon="lucide:bell" width={20} className="text-[#1a1c1c] dark:text-white" />
-            {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-            )}
-          </Link>
-          <button
-            onClick={toggleTheme}
-            className="p-2"
-            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          >
-            <Icon
-              icon={theme === "dark" ? "iconamoon:mode-light" : "mdi:weather-night"}
-              width={20}
-              className="text-[#1a1c1c] dark:text-white"
-            />
-          </button>
+          {user && (
+            <Link href="/account/inbox" className="relative p-2" aria-label="Notifications">
+              <Icon icon="lucide:bell" width={20} className="text-[#1a1c1c] dark:text-white" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+              )}
+            </Link>
+          )}
           {user && (
             <Link
               href="/account"
@@ -556,98 +549,138 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
         </div>
       </nav>
 
-      {/* ── Mobile drawer ── */}
+      {/* ── Mobile menu: top-right anchored modal ── */}
       <AnimatePresence>
         {mobileOpen && (
-          <motion.div
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ type: "spring", stiffness: 300, damping: 35 }}
-            className="fixed inset-0 z-40 bg-white dark:bg-[#111] md:hidden flex flex-col pt-20 px-8"
-          >
-            <button
-              className="absolute top-4 right-4 p-2"
+          <>
+            {/* Dimmed backdrop */}
+            <motion.div
+              key="mobile-menu-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-[60] bg-black/30 md:hidden"
               onClick={() => setMobileOpen(false)}
-              aria-label="Close menu"
-            >
-              <Icon icon="mdi:close" width={26} className="text-[#1a1c1c] dark:text-white" />
-            </button>
+            />
 
-            {/* Logged-in user row at top of drawer */}
-            {user && (
-              <div className="mb-6 pb-6 border-b border-[#e2e2e2] dark:border-[#2a2a2a]">
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="w-10 h-10 rounded-full bg-[#27731e] text-white text-base font-bold flex items-center justify-center flex-shrink-0">
-                    {(
-                      (user.name ?? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() ?? "A")[0]
-                    ).toUpperCase()}
-                  </span>
-                  <div className="flex flex-col leading-tight min-w-0">
-                    <span className="text-[15px] font-bold text-[#1a1c1c] dark:text-white truncate">
-                      {user.name ?? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()}
-                    </span>
-                    {user.email && (
-                      <span className="text-[12px] text-[#a1a1a1] truncate">{user.email}</span>
-                    )}
+            <motion.div
+              key="mobile-menu-modal"
+              initial={{ opacity: 0, y: -8, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.97 }}
+              transition={{ duration: 0.18 }}
+              className="fixed top-16 right-4 z-[70] w-[300px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-5rem)] overflow-y-auto rounded-[24px] bg-white dark:bg-[#111] shadow-xl md:hidden"
+            >
+              {/* Search */}
+              <div className="p-4 pb-3 relative" data-search-area>
+                <form onSubmit={handleSearchSubmit} className="relative">
+                  <Icon icon="mdi:magnify" width={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1a1]" />
+                  <input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search products..."
+                    className="w-full h-11 pl-10 pr-4 border border-[#e2e2e2] dark:border-[#2a2a2a] rounded-full text-[14px] font-body outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] bg-white dark:bg-gray-900 dark:text-white"
+                  />
+                  <GlobalSearchModal
+                    query={searchQuery}
+                    results={searchResults}
+                    loading={searchLoading}
+                    onSelect={(result) => {
+                      setMobileOpen(false);
+                      handleSelectSearchResult(result);
+                    }}
+                  />
+                </form>
+              </div>
+
+              {/* Nav links */}
+              <div className="px-3 pb-2">
+                {NAV_LINKS.map((link) => {
+                  const active = pathname === link.href;
+                  return (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      onClick={() => {
+                        setMobileOpen(false);
+                        posthog.capture("nav_link_clicked", { link: link.label, href: link.href, source_path: pathname });
+                      }}
+                      className={[
+                        "flex items-center justify-between px-4 py-3 rounded-xl text-[15px] font-body transition-colors",
+                        active
+                          ? "bg-[#e8fce3] dark:bg-green-950/30 text-[#27731e] font-semibold"
+                          : "text-[#1a1c1c] dark:text-white hover:bg-gray-50 dark:hover:bg-gray-800",
+                      ].join(" ")}
+                    >
+                      {link.label}
+                      <Icon icon="mdi:chevron-right" width={16} className={active ? "text-[#27731e]" : "text-[#c4c4c4]"} />
+                    </Link>
+                  );
+                })}
+              </div>
+
+              {/* Appearance */}
+              <div className="mx-3 mb-2 flex items-center justify-between px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-900">
+                <div className="flex items-center gap-3">
+                  <Icon icon={theme === "dark" ? "mdi:weather-night" : "iconamoon:mode-light"} width={20} className="text-[#27731e]" />
+                  <div className="flex flex-col leading-tight">
+                    <span className="text-[14px] font-semibold text-[#1a1c1c] dark:text-white">Appearance</span>
+                    <span className="text-[12px] text-[#a1a1a1]">Toggle between modes</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <Link
-                    href="/account"
-                    onClick={() => setMobileOpen(false)}
-                    className="flex items-center gap-2 text-[#1a1c1c] dark:text-white text-sm font-body hover:text-[#27731e]"
-                  >
-                    <Icon icon="mdi:cog-outline" width={16} />
-                    Settings
-                  </Link>
+                <button
+                  onClick={toggleTheme}
+                  className="px-3 py-1.5 rounded-full border border-[#e2e2e2] dark:border-[#2a2a2a] text-[13px] font-body text-[#1a1c1c] dark:text-white bg-white dark:bg-gray-800"
+                >
+                  {theme === "dark" ? "Dark" : "Light"}
+                </button>
+              </div>
+
+              {/* Account section */}
+              {user ? (
+                <div className="mx-3 mb-3 pt-3 border-t border-[#e2e2e2] dark:border-[#2a2a2a]">
+                  <div className="flex items-center gap-3 px-1 mb-2">
+                    <span className="w-10 h-10 rounded-full bg-[#27731e] text-white text-base font-bold flex items-center justify-center flex-shrink-0">
+                      {((user.name ?? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()) || "A")[0].toUpperCase()}
+                    </span>
+                    <div className="flex flex-col leading-tight min-w-0">
+                      <span className="text-[15px] font-bold text-[#1a1c1c] dark:text-white truncate">
+                        {user.name ?? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()}
+                      </span>
+                      {user.email && (
+                        <span className="text-[12px] text-[#a1a1a1] truncate">{user.email}</span>
+                      )}
+                    </div>
+                  </div>
+                  <DropdownLink href="/account/orders" icon="mdi:receipt-outline" label="Orders" onClick={() => setMobileOpen(false)} />
+                  <DropdownLink href="/account/wishlist" icon="mdi:heart-outline" label="Favourites" onClick={() => setMobileOpen(false)} />
+                  <DropdownLink href="/account/settings" icon="mdi:cog-outline" label="Settings" onClick={() => setMobileOpen(false)} />
                   <button
                     onClick={() => {
                       setMobileOpen(false);
                       setLogoutModalOpen(true);
                     }}
-                    className="flex items-center gap-2 text-[#ef4444] text-sm font-body hover:underline"
+                    className="w-full flex items-center justify-center gap-2 mt-1 px-4 py-2.5 text-[14px] font-body font-medium text-[#ef4444] bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-950/40 rounded-xl transition-colors"
                   >
-                    <Icon icon="mdi:logout" width={16} />
+                    <Icon icon="mdi:logout" width={18} />
                     Log Out
                   </button>
                 </div>
-              </div>
-            )}
-
-            <ul className="flex flex-col gap-6 list-none m-0 p-0">
-              {NAV_LINKS.map((link) => (
-                <li key={link.href}>
+              ) : (
+                <div className="px-4 pb-4 pt-2">
                   <Link
-                    href={link.href}
-                    onClick={() => {
-                      setMobileOpen(false);
-                      posthog.capture("nav_link_clicked", { link: link.label, href: link.href, source_path: pathname });
-                    }}
-                    className={[
-                      "text-2xl font-heading tracking-tight",
-                      pathname === link.href
-                        ? "text-[#27731e]"
-                        : "text-[#1a1c1c] dark:text-white hover:text-[#27731e]",
-                    ].join(" ")}
+                    href="/login"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center justify-center gap-2 bg-[#27731e] text-white rounded-[40px] px-6 py-3.5 text-[15px] font-body"
                   >
-                    {link.label}
+                    Login to your account
+                    <Icon icon="mdi:login" width={18} />
                   </Link>
-                </li>
-              ))}
-            </ul>
-
-            {/* Show login button only when logged out */}
-            {!user && (
-              <Link
-                href="/login"
-                onClick={() => setMobileOpen(false)}
-                className="mt-8 flex items-center justify-center gap-2 bg-[#27731e] text-white rounded-[40px] px-6 py-3 text-lg font-body"
-              >
-                Log in <Icon icon="mdi:chevron-right" width={18} />
-              </Link>
-            )}
-          </motion.div>
+                </div>
+              )}
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 

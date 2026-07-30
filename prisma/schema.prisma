@@ -197,6 +197,8 @@ enum NotificationType {
   DELIVERY_ZONE_REQUEST
   ADMIN_ADDED
   SYSTEM_ALERT
+  APPROVAL_REQUESTED
+  APPROVAL_DECIDED
 
   @@schema("admin")
 }
@@ -477,7 +479,7 @@ model order {
   user         user?       @relation(fields: [userId], references: [id], onDelete: SetNull)
   guestEmail   String?
   status       OrderStatus @default(PENDING)
-  zohoSoId     String?     @unique
+  zohoSoId     String?     @unique // Zoho Books salesreceipt_id (name kept for historical/migration reasons)
   orderNumber  String?     @unique
   processingBy String?
   processedAt  DateTime?
@@ -543,7 +545,7 @@ model branch {
   lat               Float?
   lng               Float?
   mpesaType         MpesaType
-  shortcode         String
+  shortcode         String?
   invoiceNumber     String?       // KCB Buni invoice/account number (plaintext)
   consumerKeyEnc    String
   consumerSecretEnc String
@@ -554,14 +556,21 @@ model branch {
   apiKeyEnc         String?
   isMain            Boolean       @default(false)
   isActive          Boolean       @default(true)
-  // Zoho Inventory — a branch belongs to one of a small number of shared
-  // orgs (credentials live on zohoOrganization; several branches can point
-  // at the same org). zohoWarehouseId is this branch's Zoho warehouse/
-  // location id within that org's catalog, used to split stock per-branch
-  // when Zoho's per-warehouse breakdown is available (falls back to the
-  // org's aggregate quantity_available when unset — see lib/zoho-sync.ts).
+  // Zoho Books — a branch belongs to one of a small number of shared orgs
+  // (credentials live on zohoOrganization; several branches can point at the
+  // same org). zohoLocationId is this branch's Zoho Books Location id
+  // (Settings → Locations) within that org — tags every Sales Receipt this
+  // branch pushes with the correct physical location. Not used for stock
+  // splitting (every branch under an org shares the org's aggregate stock —
+  // see lib/zoho-sync.ts).
   zohoOrganizationId    String?
   zohoOrganization      zohoOrganization? @relation(fields: [zohoOrganizationId], references: [id])
+  zohoLocationId        String?
+  // Zoho Inventory (a separate product from Books) warehouse id for this
+  // branch — distinct from zohoLocationId above. Used to tag which warehouse
+  // an automatic Inventory Adjustment applies to (see
+  // lib/zoho/push-adjustment.ts). Optional — every branch under an org
+  // shares the same aggregate deduction target if unset.
   zohoWarehouseId       String?
   orders            order[]
   deliveryZones     DeliveryZone[]
@@ -619,9 +628,13 @@ model branchProductStock {
   @@schema("admin")
 }
 
-// One row per real-world Zoho Inventory organization. Several branches can
+// One row per real-world Zoho Books organization. Several branches can
 // share the same org (credentials + webhook secret live here once, not
 // duplicated per branch) — see branch.zohoOrganizationId.
+//
+// isActive: must be set false (deactivated) before the row can be deleted —
+// deactivation itself is blocked while any branch still points at this org
+// (branch.zohoOrganizationId), see app/api/admin/zoho/organizations/[id]/route.ts.
 model zohoOrganization {
   id               String    @id @default(cuid())
   name             String
@@ -630,6 +643,7 @@ model zohoOrganization {
   clientSecretEnc  String
   refreshTokenEnc  String
   webhookSecretEnc String?
+  isActive         Boolean   @default(true)
   connectedAt      DateTime?
   branches         branch[]
   productMappings  productZohoMapping[]
@@ -651,6 +665,12 @@ model productZohoMapping {
   organizationId String
   organization   zohoOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   zohoItemId     String
+  // Zoho Inventory's own item id for the same product (a separate product
+  // from Books — its item ids aren't guaranteed to match Books'). Nullable:
+  // lib/zoho/push-adjustment.ts reads `zohoInventoryItemId ?? zohoItemId`,
+  // so Inventory Adjustments work correctly whether this has been populated
+  // yet or the two products' ids happen to be identical.
+  zohoInventoryItemId String?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
@@ -662,6 +682,7 @@ model productZohoMapping {
 enum ZohoPushKind {
   SALES_ORDER
   INVENTORY_ADJUSTMENT
+  SALES_RECEIPT
 
   @@schema("admin")
 }
@@ -674,8 +695,8 @@ enum ZohoPushStatus {
   @@schema("admin")
 }
 
-// Durable record of every outbound push to Zoho (a sale or a manual stock
-// adjustment), written once after each attempt completes. Exists so a
+// Durable record of every outbound push to Zoho (a sales receipt), written
+// once after each attempt completes. Exists so a
 // failed push is discoverable in the admin panel instead of only ever
 // appearing in server logs — see lib/zoho/push-log.ts.
 model zohoPushLog {
@@ -762,6 +783,8 @@ model adminProfile {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   auditLogs       auditLog[]
+  requestedApprovals approvalRequest[] @relation("RequestedApprovals")
+  reviewedApprovals  approvalRequest[] @relation("ReviewedApprovals")
 
   @@index([branchId])
   @@schema("admin")
@@ -776,9 +799,44 @@ model auditLog {
   resourceId     String?
   details        Json?
   ipAddress      String?
+  userAgent      String?
+  path           String?
   createdAt      DateTime     @default(now())
 
   @@index([adminProfileId, createdAt])
+  @@schema("admin")
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@schema("admin")
+}
+
+// A sensitive action a non-admin/super_admin role attempted — queued instead
+// of executed until an admin/super_admin reviews it. See
+// lib/require-approval.ts for the gate that creates these, and
+// app/api/admin/approvals/[id]/decide/route.ts for what happens on approval
+// (the original action is re-run from `payload`).
+model approvalRequest {
+  id                    String         @id @default(uuid())
+  requestedByAdminProfileId String
+  requestedBy           adminProfile   @relation("RequestedApprovals", fields: [requestedByAdminProfileId], references: [id])
+  resource              String
+  action                String
+  resourceId            String?
+  payload               Json
+  status                ApprovalStatus @default(PENDING)
+  reviewedByAdminProfileId String?
+  reviewedBy            adminProfile?  @relation("ReviewedApprovals", fields: [reviewedByAdminProfileId], references: [id])
+  reviewNote             String?
+  reviewedAt             DateTime?
+  createdAt              DateTime      @default(now())
+
+  @@index([status, createdAt])
+  @@index([requestedByAdminProfileId])
   @@schema("admin")
 }
 
@@ -856,7 +914,10 @@ model supportTicket {
   userId          String
   user            user            @relation("TicketOwner", fields: [userId], references: [id])
   assignedAdminId String?
-  assignedAdmin   user?           @relation("TicketAssignee", fields: [assignedAdminId], references: [id])
+  // SetNull — deleting a staff member unassigns their tickets instead of
+  // being blocked by the FK; the ticket itself (id, history, owner) is
+  // untouched, it just goes back to unassigned.
+  assignedAdmin   user?           @relation("TicketAssignee", fields: [assignedAdminId], references: [id], onDelete: SetNull)
   subject         String
   status          TicketStatus    @default(OPEN)
   lastActivityAt  DateTime        @default(now())
@@ -1015,8 +1076,12 @@ model blogPost {
   category      String?
   tags          String[]
   status        PostStatus @default(DRAFT)
-  authorId      String
-  author        user       @relation(fields: [authorId], references: [id])
+  authorId      String?
+  // SetNull — deleting a staff member unattributes their posts instead of
+  // being blocked by the FK (same reasoning as supportTicket.assignedAdmin).
+  // Every read site already treats `author` as nullable (`post.author?.name
+  // ?? "Fechi Organics"`), so this doesn't change any consuming code.
+  author        user?      @relation(fields: [authorId], references: [id], onDelete: SetNull)
   authorIds     String[]   @default([])
   publishedAt   DateTime?
   seoTitle      String?

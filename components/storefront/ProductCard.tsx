@@ -19,9 +19,33 @@ type CartData = {
 
 type Props = {
   product: ProductCardType;
+  /** "compact" is ~40% smaller at mobile widths, uncapped width — used by the
+   *  Shop grid so 2 cards fit side by side. "default" is ~25% smaller on
+   *  mobile only, restoring today's sizes from `sm:` up (Best Deals etc). */
+  variant?: "default" | "compact";
 };
 
-export function ProductCard({ product }: Props) {
+const SIZES = {
+  default: {
+    card: "max-w-[310px]",
+    image: "h-[210px] sm:h-[280px]",
+    body: "px-5 pb-7 pt-1",
+    name: "text-[15px] sm:text-[18px]",
+    price: "text-[16px] sm:text-[20px]",
+    desc: "text-[12px] sm:text-[13px]",
+  },
+  compact: {
+    card: "max-w-none",
+    image: "h-[130px] sm:h-[170px] lg:h-[280px]",
+    body: "px-3 pb-3 pt-1 sm:px-5 sm:pb-7",
+    name: "text-[12px] sm:text-[14px] lg:text-[18px]",
+    price: "text-[13px] sm:text-[15px] lg:text-[20px]",
+    desc: "text-[11px] sm:text-[13px]",
+  },
+} as const;
+
+export function ProductCard({ product, variant = "default" }: Props) {
+  const sizes = SIZES[variant];
   const qc = useQueryClient();
   const { format } = useCurrency();
   const [justAdded, setJustAdded] = useState(false);
@@ -157,7 +181,7 @@ export function ProductCard({ product }: Props) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ duration: 0.4 }}
-      className="relative bg-white dark:bg-gray-900 rounded-[20px] shadow-[0px_4px_15.3px_0px_rgba(0,0,0,0.10)] w-full max-w-[310px] overflow-hidden group"
+      className={`relative bg-white dark:bg-gray-900 rounded-[20px] shadow-[0px_4px_15.3px_0px_rgba(0,0,0,0.10)] w-full overflow-hidden group ${sizes.card}`}
     >
       {/* Offer badge */}
       {hasDiscount && (
@@ -192,7 +216,7 @@ export function ProductCard({ product }: Props) {
 
       {/* Product image */}
       <Link href={`/shop/${product.slug}`}>
-        <div className="bg-[#f6f6f6] rounded-[20px] h-[280px] flex items-center justify-center overflow-hidden relative -top-6">
+        <div className={`bg-[#f6f6f6] rounded-[20px] flex items-center justify-center overflow-hidden relative -top-6 ${sizes.image}`}>
           <Image
             src={product.primaryImageUrl}
             alt={product.name}
@@ -204,20 +228,20 @@ export function ProductCard({ product }: Props) {
       </Link>
 
       {/* Card body */}
-      <div className="px-5 pb-7 pt-1">
+      <div className={sizes.body}>
         {/* Category */}
         <p className="text-[#27731e] text-[14px] font-body mb-1">{product.categoryName}</p>
 
         {/* Name */}
         <Link href={`/shop/${product.slug}`}>
-          <h3 className="text-[18px] font-body text-black dark:text-white leading-snug mb-1 hover:text-[#27731e] transition-colors">
+          <h3 className={`font-body text-black dark:text-white leading-snug mb-1 hover:text-[#27731e] transition-colors ${sizes.name}`}>
             {product.name}
           </h3>
         </Link>
 
         {/* Short description */}
         {product.shortDescription && (
-          <p className="text-[#a1a1a1] text-[13px] font-body mb-3 line-clamp-1 pr-6">
+          <p className={`text-[#a1a1a1] font-body mb-3 line-clamp-1 pr-6 ${sizes.desc}`}>
             {product.shortDescription}
           </p>
         )}
@@ -227,7 +251,7 @@ export function ProductCard({ product }: Props) {
           <div className="flex items-center justify-between">
             {/* Price */}
             <div className="flex flex-col">
-              <span className="text-[20px] font-body text-black dark:text-white leading-tight">
+              <span className={`font-body text-black dark:text-white leading-tight ${sizes.price}`}>
                 {format(product.priceKes)}
               </span>
               {hasDiscount && (
@@ -280,46 +304,45 @@ export function ProductCard({ product }: Props) {
             )}
           </div>
 
-          {/* Quantity input — own row, only when in cart */}
+          {/* Quantity input — own row, only when in cart — full width & pill
+              radius to match the Go to Cart button above it */}
           {showInCart && (
-            <div className="flex justify-center mt-3">
-              <div className="py-1.5 px-3 inline-flex bg-white dark:bg-gray-900 border border-[#c0cab8] dark:border-gray-600 rounded-[10px]">
-                <div className="flex items-center gap-x-2">
-                  <button
-                    type="button"
-                    onClick={() => handleQtyChange(displayQty - 1)}
-                    className="size-6 inline-flex justify-center items-center rounded-md border border-[#c0cab8] dark:border-gray-600 text-[#1a1c1c] dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none transition-colors"
-                    aria-label="Decrease"
-                  >
-                    <svg className="shrink-0 size-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M5 12h14"/>
-                    </svg>
-                  </button>
-                  <input
-                    className="p-0 w-7 bg-transparent border-0 text-[#1a1c1c] dark:text-neutral-200 text-center focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none font-body text-[14px] font-semibold"
-                    style={{ MozAppearance: "textfield" } as React.CSSProperties}
-                    type="number"
-                    value={displayQty}
-                    min={0}
-                    max={99}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      if (!isNaN(v) && v >= 0) handleQtyChange(v);
-                    }}
-                    aria-label="Cart quantity"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleQtyChange(displayQty + 1)}
-                    className="size-6 inline-flex justify-center items-center rounded-md border border-[#c0cab8] dark:border-gray-600 text-[#1a1c1c] dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none transition-colors"
-                    aria-label="Increase"
-                  >
-                    <svg className="shrink-0 size-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M5 12h14"/>
-                      <path d="M12 5v14"/>
-                    </svg>
-                  </button>
-                </div>
+            <div className="mt-3 w-full py-2 px-3 flex bg-white dark:bg-gray-900 border border-[#c0cab8] dark:border-gray-600 rounded-[40px]">
+              <div className="flex items-center justify-center gap-x-2 w-full">
+                <button
+                  type="button"
+                  onClick={() => handleQtyChange(displayQty - 1)}
+                  className="size-6 inline-flex justify-center items-center rounded-md border border-[#c0cab8] dark:border-gray-600 text-[#1a1c1c] dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none transition-colors"
+                  aria-label="Decrease"
+                >
+                  <svg className="shrink-0 size-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14"/>
+                  </svg>
+                </button>
+                <input
+                  className="p-0 w-7 bg-transparent border-0 text-[#1a1c1c] dark:text-neutral-200 text-center focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none font-body text-[14px] font-semibold"
+                  style={{ MozAppearance: "textfield" } as React.CSSProperties}
+                  type="number"
+                  value={displayQty}
+                  min={0}
+                  max={99}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (!isNaN(v) && v >= 0) handleQtyChange(v);
+                  }}
+                  aria-label="Cart quantity"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleQtyChange(displayQty + 1)}
+                  className="size-6 inline-flex justify-center items-center rounded-md border border-[#c0cab8] dark:border-gray-600 text-[#1a1c1c] dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none transition-colors"
+                  aria-label="Increase"
+                >
+                  <svg className="shrink-0 size-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14"/>
+                    <path d="M12 5v14"/>
+                  </svg>
+                </button>
               </div>
             </div>
           )}

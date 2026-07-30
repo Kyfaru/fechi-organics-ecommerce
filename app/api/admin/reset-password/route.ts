@@ -4,6 +4,7 @@ import { verifyResetToken } from "@/lib/password-reset";
 import { getRedis } from "@/lib/redis";
 import { Argon2id } from "oslo/password";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { checkPasswordChangeAllowed, ADMIN_COOLDOWN_DAYS } from "@/lib/password-policy";
 
 // POST /api/admin/reset-password — consume a reset credential and update the password.
 //
@@ -28,10 +29,13 @@ export async function POST(req: NextRequest) {
   let userId: string | null = null;
 
   if (typeof token === "string" && token) {
-    // Staff-invite / admin-action branch — unchanged JWT verification.
+    // Staff-invite / admin-action branch — JWT verification.
     const result = await verifyResetToken(token);
-    if (!result) {
-      return NextResponse.json({ ok: false, error: { message: "Reset link is invalid or expired" } }, { status: 400 });
+    if (!result.ok) {
+      const status = result.reason === "expired" ? 410 : 400;
+      const message =
+        result.reason === "expired" ? "This reset link has expired." : "This reset link is invalid.";
+      return NextResponse.json({ ok: false, error: { code: result.reason.toUpperCase(), message } }, { status });
     }
     userId = result.userId;
   } else if (typeof resetAuth === "string" && resetAuth) {
@@ -45,6 +49,20 @@ export async function POST(req: NextRequest) {
       );
     }
     userId = value;
+
+    // Cooldown only applies to self-service resets — a super admin forcing a
+    // reset via the token branch is an authorized override, not throttled.
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: { passwordChanges: true, lastPasswordChange: true, createdAt: true },
+    });
+    if (!user) {
+      return NextResponse.json({ ok: false, error: { message: "Account not found." } }, { status: 404 });
+    }
+    const check = checkPasswordChangeAllowed(user, ADMIN_COOLDOWN_DAYS);
+    if (!check.allowed) {
+      return NextResponse.json({ ok: false, error: { code: check.reason, ...check } }, { status: 429 });
+    }
   } else {
     return NextResponse.json({ ok: false, error: { message: "Invalid request" } }, { status: 400 });
   }
@@ -56,10 +74,11 @@ export async function POST(req: NextRequest) {
     data: { password: hashed },
   });
 
-  // Clear force-change flag if set
+  // Clear force-change flag, and record the change so future cooldown
+  // checks (either branch) have an accurate lastPasswordChange/count.
   await db.user.update({
     where: { id: userId },
-    data: { mustChangePassword: false },
+    data: { mustChangePassword: false, passwordChanges: { increment: 1 }, lastPasswordChange: new Date() },
   });
 
   return NextResponse.json({ ok: true });

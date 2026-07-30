@@ -26,51 +26,62 @@ const FEATURE_CARDS = [
   },
 ];
 
+type FeatureCardData = (typeof FEATURE_CARDS)[number];
+
+function FeatureCard({ card, idx }: { card: FeatureCardData; idx: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 30 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.4, delay: idx * 0.1 }}
+      className="relative rounded-[31px] overflow-hidden h-[270px] md:h-[290px] flex flex-col justify-between p-7"
+      style={{ backgroundColor: card.bg }}
+    >
+      {/* Top-right circle + chevron button */}
+      <div className="absolute top-5 right-5">
+        <Link
+          href={card.href}
+          className="flex items-center justify-center w-10 h-10 bg-white dark:bg-gray-900 rounded-full shadow-sm hover:scale-110 transition-transform"
+        >
+          <Icon icon="mdi:chevron-right" width={18} className="text-[#1a1c1c] dark:text-[#ffc800]" />
+        </Link>
+      </div>
+
+      {/* Icon */}
+      <div className="w-[88px] h-[88px] flex items-center justify-center">
+        <Icon icon={card.icon} width={56} className="text-[#1a1c1c]" />
+      </div>
+
+      {/* Text */}
+      <div>
+        <h3 className="font-body font-semibold text-[#1a1c1c] text-[26px] md:text-[30px] tracking-[-0.3px] leading-[1.03] whitespace-pre-line">
+          {card.title}
+        </h3>
+      </div>
+    </motion.div>
+  );
+}
+
 export function InfoGridSection() {
   return (
     <section className="py-16 px-4 md:px-8 bg-white dark:bg-gray-950">
       <div className="max-w-[1440px] mx-auto">
-        {/* Top row — 3 feature cards */}
+        {/* Top row — 3 feature cards. Mobile: first two share a 2-col grid,
+            third sits full-width below (not part of a grid). Desktop: all
+            three stay in the original uniform 3-col grid via md:contents. */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
-          {FEATURE_CARDS.map((card, idx) => (
-            <motion.div
-              key={card.title}
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.4, delay: idx * 0.1 }}
-              className="relative rounded-[31px] overflow-hidden h-[270px] md:h-[290px] flex flex-col justify-between p-7"
-              style={{ backgroundColor: card.bg }}
-            >
-              {/* Top-right circle + chevron button */}
-              <div className="absolute top-5 right-5">
-                <Link
-                  href={card.href}
-                  className="flex items-center justify-center w-10 h-10 bg-white dark:bg-gray-900 rounded-full shadow-sm hover:scale-110 transition-transform"
-                >
-                  <Icon icon="mdi:chevron-right" width={18} className="text-[#1a1c1c] dark:text-[#ffc800]" />
-                </Link>
-              </div>
-
-              {/* Icon */}
-              <div className="w-[88px] h-[88px] flex items-center justify-center">
-                <Icon icon={card.icon} width={56} className="text-[#1a1c1c]" />
-              </div>
-
-              {/* Text */}
-              <div>
-                <h3
-                  className="font-body font-semibold text-[#1a1c1c] text-[26px] md:text-[30px] tracking-[-0.3px] leading-[1.03] whitespace-pre-line"
-                >
-                  {card.title}
-                </h3>
-              </div>
-            </motion.div>
-          ))}
+          <div className="grid grid-cols-2 gap-5 md:contents">
+            {FEATURE_CARDS.slice(0, 2).map((card, idx) => (
+              <FeatureCard key={card.title} card={card} idx={idx} />
+            ))}
+          </div>
+          <FeatureCard card={FEATURE_CARDS[2]} idx={2} />
         </div>
 
-        {/* Bottom row — 2 big promo cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {/* Bottom row — 2 big promo cards. Hidden below 1200px (tablet);
+            desktop appearance is unchanged from the original design. */}
+        <div className="hidden tablet:grid tablet:grid-cols-2 gap-5">
           {/* Natural Tummy Tea card */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -82,7 +93,7 @@ export function InfoGridSection() {
             {/* Tea image — left side */}
             <div className="absolute left-0 bottom-0 w-[50%] h-full">
               <Image
-                src="http://localhost:3845/assets/4a7a0e057b6cdd25449179ea51546597b63a8e09.png"
+                src="/img/tummy-tea-detox.png"
                 alt="Natural Tummy Tea"
                 fill
                 className="object-contain object-bottom"

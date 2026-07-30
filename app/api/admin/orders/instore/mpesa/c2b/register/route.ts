@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        ShortCode: branch.shortcode,
+        ShortCode: branch.shortcode ?? null,
         ResponseType: "Completed",
         ConfirmationURL: `${appUrl}/api/payments/mpesa/c2b/confirmation`,
         ValidationURL: `${appUrl}/api/payments/mpesa/c2b/validation`,

@@ -11,10 +11,11 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-// Import the shared in-memory store from the send route
-import { otpStore } from "@/app/api/admin/otp/send/route";
+import { verifyOtp } from "@/lib/otp";
+import { getRedis } from "@/lib/redis";
 
 const MAX_ATTEMPTS = 5;
+const OTP_TTL_SECONDS = 10 * 60;
 
 const BodySchema = z.object({
   userId: z.string(),
@@ -36,29 +37,25 @@ export async function POST(req: NextRequest) {
     const { userId, otp } = parsed.data;
     if (userId !== session.user.id) return Err.forbidden();
 
-    const entry = otpStore.get(userId);
-    if (!entry) {
-      return Err.validation("No OTP found — request a new code");
-    }
+    const otpKey = `admin:2fa:otp:${userId}`;
+    const attemptsKey = `admin:2fa:otp:attempts:${userId}`;
+    const redis = getRedis();
 
-    if (Date.now() > entry.expires) {
-      otpStore.delete(userId);
-      return Err.validation("OTP has expired — request a new code");
-    }
-
-    entry.attempts += 1;
-
-    if (entry.attempts > MAX_ATTEMPTS) {
-      otpStore.delete(userId);
+    const attempts = await redis.incr(attemptsKey);
+    if (attempts === 1) await redis.expire(attemptsKey, OTP_TTL_SECONDS);
+    if (attempts > MAX_ATTEMPTS) {
+      await redis.del(otpKey);
       return Err.validation("Too many failed attempts — request a new code");
     }
 
-    if (otp !== entry.otp) {
-      return Err.validation(`Invalid code — ${MAX_ATTEMPTS - entry.attempts} attempts remaining`);
+    // verifyOtp does an atomic get-then-delete, so a code can only ever be
+    // consumed once and no expired/missing entry can match.
+    const valid = await verifyOtp(otpKey, otp);
+    if (!valid) {
+      return Err.validation(`Invalid code — ${MAX_ATTEMPTS - attempts} attempts remaining`);
     }
 
-    // Correct OTP — clear entry so it cannot be reused
-    otpStore.delete(userId);
+    await redis.del(attemptsKey);
 
     console.info("[admin/otp/verify] OTP verified for admin", userId);
     return ok({ verified: true });

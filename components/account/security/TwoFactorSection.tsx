@@ -22,7 +22,7 @@ function OtpInput({ value, onChange }: { value: string; onChange: (v: string) =>
 }
 
 // ── TOTP method (Authenticator App) ─────────────────────────────────────────
-function AuthAppMethod({ enabled }: { enabled: boolean }) {
+function AuthAppMethod({ enabled, isOAuthOnly, onRequirePasswordFirst }: { enabled: boolean; isOAuthOnly: boolean; onRequirePasswordFirst: () => void }) {
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<"idle" | "password" | "qr" | "verify" | "disable">("idle")
   const [enablePw, setEnablePw] = useState("")
@@ -73,7 +73,20 @@ function AuthAppMethod({ enabled }: { enabled: boolean }) {
       actionLabel={isEnabled ? "Manage" : "Set up"}
     >
       {!isEnabled && step === "idle" && (
-        <button onClick={() => setStep("password")} disabled={pending}
+        <button
+          onClick={() => {
+            // A Google-only account has no credential password to validate
+            // against — Better Auth's enable() would always reject with
+            // "Invalid password" no matter what's typed. Send them to set a
+            // real password first instead of showing an unwinnable prompt.
+            if (isOAuthOnly) {
+              onRequirePasswordFirst()
+              toast.error("Set up a password first", { description: "Two-factor authentication needs a password on your account — set one above, then come back." })
+              return
+            }
+            setStep("password")
+          }}
+          disabled={pending}
           className="px-4 py-2 rounded-lg bg-[#15803D] text-white text-sm font-semibold hover:bg-[#16A34A] disabled:opacity-50 flex items-center gap-2">
           {pending && <Icon icon="lucide:loader-2" width={13} className="animate-spin" />}
           Get started
@@ -317,7 +330,12 @@ function PhoneSMSMethod({ isEnabled: initialEnabled, userPhone }: { isEnabled: b
 }
 
 // ── Backup Codes method ──────────────────────────────────────────────────────
-function BackupCodesMethod({ totpEnabled }: { totpEnabled: boolean }) {
+// Note: totpEnabled can only ever be true for a user who already has a
+// credential password (enabling the authenticator app requires one — see
+// AuthAppMethod), so the isOAuthOnly branch below is unreachable in
+// practice. Kept for defense in depth rather than assuming that invariant
+// holds forever.
+function BackupCodesMethod({ totpEnabled, isOAuthOnly, onRequirePasswordFirst }: { totpEnabled: boolean; isOAuthOnly: boolean; onRequirePasswordFirst: () => void }) {
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<"idle" | "password" | "codes">("idle")
   const [password, setPassword] = useState("")
@@ -348,7 +366,7 @@ function BackupCodesMethod({ totpEnabled }: { totpEnabled: boolean }) {
       icon="lucide:key"
       title="Backup Codes"
       description="One-time codes for account recovery"
-      statusLabel={totpEnabled ? "Available" : "Requires authenticator app"}
+      statusLabel={totpEnabled ? "Available" : "TOTP Required"}
       isEnabled={false}
       open={open}
       onToggle={handleOpen}
@@ -364,7 +382,15 @@ function BackupCodesMethod({ totpEnabled }: { totpEnabled: boolean }) {
           <p className="text-sm text-neutral-600">
             Generate a fresh set of one-time recovery codes. This will invalidate any previously generated codes.
           </p>
-          <button onClick={() => setStep("password")}
+          <button
+            onClick={() => {
+              if (isOAuthOnly) {
+                onRequirePasswordFirst()
+                toast.error("Set up a password first", { description: "Backup codes need a password on your account — set one above, then come back." })
+                return
+              }
+              setStep("password")
+            }}
             className="px-4 py-2 rounded-lg bg-[#15803D] text-white text-sm font-semibold hover:bg-[#16A34A]">
             Generate backup codes
           </button>
@@ -462,12 +488,20 @@ export default function TwoFactorSection({
   twoFaPhone = false,
   userEmail,
   userPhone,
+  isOAuthOnly = false,
+  onRequirePasswordFirst = () => {},
 }: {
   enabled: boolean
   twoFaEmail?: boolean
   twoFaPhone?: boolean
   userEmail: string
   userPhone?: string | null
+  // True for a Google-only account with no credential password set.
+  isOAuthOnly?: boolean
+  // Called instead of proceeding when such a user tries to set up a
+  // password-gated method — lets a parent wrapper highlight the password
+  // form elsewhere on the page.
+  onRequirePasswordFirst?: () => void
 }) {
   const anyEnabled = enabled || twoFaEmail || twoFaPhone
 
@@ -497,10 +531,10 @@ export default function TwoFactorSection({
       <div>
         <p className="text-[11px] font-bold uppercase tracking-widest text-neutral-400 mb-3 px-1">Verification Methods</p>
         <div className="space-y-3">
-          <AuthAppMethod enabled={enabled} />
+          <AuthAppMethod enabled={enabled} isOAuthOnly={isOAuthOnly} onRequirePasswordFirst={onRequirePasswordFirst} />
           <EmailOTPMethod isEnabled={twoFaEmail} userEmail={userEmail} />
           <PhoneSMSMethod isEnabled={twoFaPhone} userPhone={userPhone ?? null} />
-          <BackupCodesMethod totpEnabled={enabled} />
+          <BackupCodesMethod totpEnabled={enabled} isOAuthOnly={isOAuthOnly} onRequirePasswordFirst={onRequirePasswordFirst} />
         </div>
       </div>
     </div>

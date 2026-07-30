@@ -102,6 +102,9 @@ export function HeroSection({ products }: Props) {
           <div className="relative z-10 flex flex-col lg:flex-row min-h-[480px] md:min-h-[640px] px-6 md:px-10 py-12 md:py-16 gap-8">
           {/* Left content */}
           <div className="flex flex-col justify-end pb-4 max-w-[360px] relative z-10">
+            <h1 className="lg:hidden font-stagnan font-bold text-white text-[40px] leading-[1.05] tracking-[0.5px] mb-3">
+              Look Your Best
+            </h1>
             <p className="text-white font-body text-[16px] leading-[1.55] tracking-[0.32px] mb-6 opacity-90">
               Pure botanicals, honest farming.
               <br />

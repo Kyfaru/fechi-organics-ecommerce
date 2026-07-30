@@ -6,20 +6,23 @@ import { ok, Err } from "@/lib/api";
 import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { assertBranchAccess } from "@/lib/branch-access";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { logActivity } from "@/lib/admin-activity";
 
-// Both fields optional so a partial update (e.g. only setting the warehouse
+// Both fields optional so a partial update (e.g. only setting the location
 // id after the org link is already made) doesn't require resending both.
 // zohoOrganizationId: "" explicitly unlinks the branch from its org.
 const PatchSchema = z.object({
   zohoOrganizationId: z.string().optional(),
-  zohoWarehouseId: z.string().optional(),
+  zohoLocationId: z.string().optional(),
 }).strict();
 
 /**
  * PATCH /api/admin/branches/[id]/zoho — link (or unlink) a branch to an
- * already-configured Zoho organization, and optionally set which Zoho
- * warehouse/location represents this branch's physical stock within that
- * org's catalog. Gated by branches:update plus branch ownership: admin/
+ * already-configured Zoho organization, and optionally set which Zoho Books
+ * Location represents this branch, so Sales Receipts pushed from it are
+ * tagged with the right physical location. Gated by branches:update plus branch ownership: admin/
  * super_admin may edit any branch, a branch-scoped manager only their own
  * (lib/branch-access.ts — requirePermission has no row-level concept).
  *
@@ -33,27 +36,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (originCheck) return originCheck;
   await connection();
 
-  const denied = await requirePermission(req, { branches: ["update"] });
-  if (denied) return denied;
-
-  const { id: branchId } = await params;
-
-  const ctx = await loadCallerContext();
-  if (ctx.denied) return ctx.denied === "auth" ? Err.authRequired() : Err.forbidden();
-  const forbidden = assertBranchAccess(ctx, branchId);
-  if (forbidden) return forbidden;
-
-  let body: unknown;
   try {
-    body = await req.json();
-  } catch {
-    return Err.validation("Invalid JSON body.");
-  }
-  const parsed = PatchSchema.safeParse(body);
-  if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
-  const { zohoOrganizationId, zohoWarehouseId } = parsed.data;
+    const denied = await requirePermission(req, { branches: ["update"] });
+    if (denied) return denied;
 
-  try {
+    const { id: branchId } = await params;
+
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return ctx.denied === "auth" ? Err.authRequired() : Err.forbidden();
+    const forbidden = assertBranchAccess(ctx, branchId);
+    if (forbidden) return forbidden;
+
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return Err.validation("Invalid JSON body.");
+    }
+    const parsed = PatchSchema.safeParse(body);
+    if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
+    const { zohoOrganizationId } = parsed.data;
+
     const branch = await db.branch.findUnique({ where: { id: branchId }, select: { id: true } });
     if (!branch) return Err.notFound("Branch");
 
@@ -62,14 +65,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (!org) return Err.validation("Zoho organization not found");
     }
 
-    const data: { zohoOrganizationId?: string | null; zohoWarehouseId?: string | null } = {};
-    if (zohoOrganizationId !== undefined) data.zohoOrganizationId = zohoOrganizationId || null;
-    if (zohoWarehouseId !== undefined) data.zohoWarehouseId = zohoWarehouseId || null;
+    const outcome = await requireApprovalOrProceed(ctx, "branches", "update", parsed.data, branchId);
+    if (!outcome.proceed) return Approval.queued(outcome.requestId);
 
-    if (Object.keys(data).length > 0) {
-      await db.branch.update({ where: { id: branchId }, data });
-    }
+    await approvalExecutors["branches:update"](parsed.data, branchId);
 
+    logActivity(ctx.id, "Updated branch Zoho link", "branch", branchId, req, parsed.data);
     return ok({ saved: true });
   } catch (e) {
     console.error("[admin/branches/[id]/zoho] PATCH error", e);

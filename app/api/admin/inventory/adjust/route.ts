@@ -7,8 +7,6 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { assertBranchAccess } from "@/lib/branch-access";
 import { LOW_STOCK_THRESHOLD } from "@/lib/inventory/constants";
-import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
-import { pushInventoryAdjustmentToZoho } from "@/lib/zoho/push-adjustment";
 
 /** POST /api/admin/inventory/adjust
  *  Body: { branchId, productId, type: "ADD"|"REMOVE"|"SET", quantity, reason, notes? }
@@ -91,26 +89,6 @@ export async function POST(req: NextRequest) {
         details: { branchId, type, quantity, previousStock, newStock, reason, notes },
       },
     }).catch((e) => console.error("[inventory/adjust] auditLog write failed", e));
-
-    // Fire-and-forget: push this correction to Zoho as an Inventory
-    // Adjustment (not a sale) — must never block the response. Skipped
-    // entirely when the applied delta is 0 (e.g. SET to the same value).
-    const delta = newStock - previousStock;
-    if (delta !== 0) {
-      (async () => {
-        const organizationId = await resolveZohoOrganizationId(branchId);
-        if (!organizationId) return;
-        await pushInventoryAdjustmentToZoho({
-          organizationId,
-          branchId,
-          productId,
-          quantityAdjusted: delta,
-          reason,
-          notes,
-          referenceNumber: `ADJ-${branchId.slice(0, 8)}-${Date.now()}`,
-        });
-      })().catch((e) => console.error("[inventory/adjust] Zoho adjustment push failed", e));
-    }
 
     return ok({
       id: product.id,

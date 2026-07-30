@@ -1,5 +1,5 @@
 /**
- * Zoho Inventory organization credential loader.
+ * Zoho Books organization credential loader.
  *
  * Credentials belong to a zohoOrganization, not a branch — several branches
  * can share one org (see prisma schema `zohoOrganization`/`branch` models).
@@ -19,7 +19,7 @@ export type ZohoCredentials = {
 };
 
 /**
- * Loads and decrypts a Zoho Inventory organization's OAuth credentials.
+ * Loads and decrypts a Zoho Books organization's OAuth credentials.
  * @param organizationId - the zohoOrganization whose credentials to load
  * @returns decrypted client id/secret/refresh token plus the plaintext org id
  * @throws when the organization doesn't exist — callers should surface this

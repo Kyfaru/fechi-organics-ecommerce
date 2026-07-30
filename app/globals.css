@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@source "../node_modules/preline/dist/*.js";
+@import "../node_modules/preline/variants.css";
 
 /* Enable class-based dark mode for Tailwind v4 dark: utilities */
 @variant dark (&:where(.dark, .dark *));
@@ -17,6 +19,11 @@
   /* Admin panel fonts (Google Fonts, loaded via next/font) */
   --font-syne:    var(--font-syne-var, "Syne", system-ui, sans-serif);
   --font-dm:      var(--font-dm-var, "DM Sans", system-ui, sans-serif);
+
+  /* Extra breakpoint — several account/landing sections switch layout at
+     1200px specifically, which doesn't line up with the stock lg(1024)/xl(1280)
+     scale. Gives access to `tablet:` (>=1200px) and `max-tablet:` (<1200px). */
+  --breakpoint-tablet: 1200px;
 
   /* Brand colours */
   --color-primary-green:   #27731e;

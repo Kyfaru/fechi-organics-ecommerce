@@ -363,7 +363,7 @@ export function AdminDeliveryZonesClient() {
       <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)} title={editing ? "Edit Delivery Zone" : "New Delivery Zone"} footer={
         <>
           <button onClick={() => setDrawerOpen(false)} className="h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px]">Cancel</button>
-          <button onClick={() => saveMutation.mutate()} disabled={!form.name.trim() || saveMutation.isPending} className="h-9 px-4 rounded-[8px] bg-(--green-800) text-white font-dm text-[13px] disabled:opacity-50">Save Zone</button>
+          <button onClick={() => saveMutation.mutate()} disabled={!form.name.trim() && !form.branchId || saveMutation.isPending} className="h-9 px-4 rounded-[8px] bg-(--green-800) text-white font-dm text-[13px] disabled:opacity-50">Save Zone</button>
         </>
       }>
         <div className="space-y-4">

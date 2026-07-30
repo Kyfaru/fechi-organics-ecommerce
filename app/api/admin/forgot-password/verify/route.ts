@@ -38,8 +38,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(GENERIC_ERROR, { status: 400 });
     }
 
-    const otpKey = `admin:pwreset:otp:email:${user.id}`;
-    const attemptsKey = `admin:pwreset:otp:attempts:email:${user.id}`;
+    const otpKey = `admin:pwreset:otp:${user.id}`;
+    const attemptsKey = `admin:pwreset:otp:attempts:${user.id}`;
     const redis = getRedis();
 
     const attempts = await redis.incr(attemptsKey);

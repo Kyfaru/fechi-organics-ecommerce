@@ -4,18 +4,22 @@ import { publishQstashJSON } from "@/lib/qstash";
 import { getRedis } from "@/lib/redis";
 import { paymentChannel } from "@/lib/payment-channel";
 import { generateOrderNumber, type TxClient } from "@/lib/orders/generate-order-number";
+import { pushSaleReceiptToZoho } from "@/lib/zoho/push-sale-receipt";
+import { pushInventoryAdjustmentToZoho } from "@/lib/zoho/push-adjustment";
+import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
+import { paymentModeForOnline } from "@/lib/zoho/payment-mode";
 
 export async function markPaymentSuccess(args: {
   transactionId: string;
   transactionData: Prisma.transactionUpdateInput;
   orderId: string;
 }) {
-  await db.$transaction(async (tx: TxClient) => {
+  const result = await db.$transaction(async (tx: TxClient) => {
     const transaction = await tx.transaction.findUnique({
       where: { id: args.transactionId },
-      select: { status: true },
+      select: { status: true, provider: true },
     });
-    if (!transaction || transaction.status !== "PENDING") return;
+    if (!transaction || transaction.status !== "PENDING") return null;
 
     // Orders created via mpesa/paystack initiate don't have an orderNumber yet
     // (it used to be assigned only on manual admin confirmation) — assign one
@@ -29,7 +33,7 @@ export async function markPaymentSuccess(args: {
     const order = await tx.order.update({
       where: { id: args.orderId },
       data: { paymentStatus: "PAID", status: "CONFIRMED", orderNumber },
-      include: { items: true, user: { select: { id: true } } },
+      include: { items: true, user: { select: { id: true, name: true, email: true } } },
     });
 
     await tx.transaction.update({
@@ -48,6 +52,8 @@ export async function markPaymentSuccess(args: {
       const cart = await tx.cart.findUnique({ where: { userId: order.userId } });
       if (cart) await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
     }
+
+    return { order, provider: transaction.provider };
   });
 
   await publishQstashJSON("/api/admin/workers/send-order-confirmation", { orderId: args.orderId });
@@ -65,6 +71,79 @@ export async function markPaymentSuccess(args: {
     );
   } catch (e) {
     console.error("[post-payment] Redis set failed (success):", e);
+  }
+
+  // Fire-and-forget: push this now-confirmed-paid sale to Zoho as a Sales
+  // Receipt. Guarded by `result` so a late/duplicate callback that hit the
+  // idempotency guard above (transaction already non-PENDING) doesn't push
+  // the same sale to Zoho twice. Online checkout (mpesa/kcb/paystack
+  // initiate routes) already resolves a real branch from the delivery
+  // address and stores it on order.branchId — use that directly, so the
+  // Sales Receipt's location matches where the order actually belongs
+  // instead of always attributing to one hardcoded "main" branch. Skip
+  // silently (rather than failing an otherwise-successful payment) if the
+  // order somehow has no branch, or that branch isn't linked to a Zoho org.
+  if (result) {
+    const { order, provider } = result;
+    (async () => {
+      try {
+        if (!order.branchId) {
+          console.warn("[post-payment] Order has no branchId — skipping Zoho sales receipt push for", order.id);
+          return;
+        }
+        const organizationId = await resolveZohoOrganizationId(order.branchId);
+        if (!organizationId) {
+          console.warn("[post-payment] Order's branch isn't linked to a Zoho organization — skipping push for", order.id);
+          return;
+        }
+
+        const { salesReceiptId } = await pushSaleReceiptToZoho({
+          organizationId,
+          branchId: order.branchId,
+          referenceType: "order",
+          referenceId: order.id,
+          referenceNumber: order.orderNumber,
+          customerName: order.user?.name,
+          customerEmail: order.user?.email,
+          paymentMode: paymentModeForOnline(provider),
+          items: order.items.map((item) => ({
+            productId: item.productId,
+            name: item.name,
+            quantity: item.quantity,
+            priceKes: item.priceKes,
+          })),
+          discountKes: order.discountKes,
+          shippingKes: order.deliveryKes,
+          notes: `Fechi Organics order ${order.orderNumber ?? order.id}`,
+        });
+
+        if (salesReceiptId) {
+          await db.order.update({
+            where: { id: order.id },
+            data: { zohoSoId: salesReceiptId },
+          });
+        }
+
+        // Sales Receipts never move stock on their own — a separate
+        // Inventory Adjustment is what actually decrements Zoho's
+        // shelf-count. Own try/catch: a failed adjustment must never affect
+        // the already-successful Sales Receipt above.
+        try {
+          await pushInventoryAdjustmentToZoho({
+            organizationId,
+            branchId: order.branchId,
+            referenceType: "order",
+            referenceId: order.id,
+            referenceNumber: order.orderNumber,
+            items: order.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+          });
+        } catch (e) {
+          console.error("[post-payment] Zoho inventory adjustment failed for order", order.id, e);
+        }
+      } catch (e) {
+        console.error("[post-payment] Zoho sales receipt push failed for order", order.id, e);
+      }
+    })();
   }
 }
 

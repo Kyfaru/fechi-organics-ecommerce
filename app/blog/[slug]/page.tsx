@@ -33,7 +33,7 @@ export async function generateMetadata({
       description,
       type: "article",
       publishedTime: post.publishedAt?.toISOString(),
-      authors: post.author.name ? [post.author.name] : undefined,
+      authors: post.author?.name ? [post.author.name] : undefined,
       images: imageUrl ? [{ url: imageUrl }] : undefined,
     },
     twitter: {
@@ -73,7 +73,7 @@ export default async function BlogPostPage({
     description: post.metaDesc ?? post.excerpt ?? undefined,
     image: imageUrl ? [imageUrl] : undefined,
     datePublished: post.publishedAt?.toISOString(),
-    author: { "@type": "Person", name: post.author.name ?? "Fechi Organics" },
+    author: { "@type": "Person", name: post.author?.name ?? "Fechi Organics" },
   };
 
   return (
@@ -119,7 +119,7 @@ export default async function BlogPostPage({
 
         {/* Author */}
         <p className="text-sm text-gray-500 mb-8">
-          By {post.author.name ?? "Fechi Organics"}
+          By {post.author?.name ?? "Fechi Organics"}
         </p>
 
         {/* Hero image */}

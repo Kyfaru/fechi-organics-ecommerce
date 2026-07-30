@@ -169,14 +169,15 @@ export function NotificationsClient() {
       />
 
       <div className="px-6 pb-8 space-y-4">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-4">
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search title, message…"
-            className="h-10 px-4 flex-1 min-w-[200px] rounded-lg border border-(--neutral-200) dark:border-(--dark-border) bg-white dark:bg-(--dark-surface) text-[14px] font-dm text-(--neutral-900) dark:text-(--dark-text) outline-none focus:border-(--green-500)"
+            className="h-10 px-4 flex-1 min-w-[300px] rounded-lg border border-(--neutral-200) dark:border-(--dark-border) bg-white dark:bg-(--dark-surface) text-[14px] font-dm text-(--neutral-900) dark:text-(--dark-text) outline-none focus:border-(--green-500)"
           />
+          <div className="inline-flex w-full max-w-[500px] gap-2">
           <PrelineSelect options={TYPE_OPTIONS} value={type} onChange={setType} placeholder="All types" className="w-auto min-w-[160px]" />
           <PrelineSelect options={SEVERITY_OPTIONS} value={severity} onChange={setSeverity} placeholder="All severities" className="w-auto min-w-[160px]" />
           {isGlobal && branches.length > 0 && (
@@ -188,6 +189,7 @@ export function NotificationsClient() {
               className="w-auto min-w-[160px]"
             />
           )}
+          </div>
         </div>
 
         <div className="flex items-center gap-1 border-b border-(--neutral-200) dark:border-(--dark-border)">

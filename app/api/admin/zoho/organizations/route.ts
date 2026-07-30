@@ -8,6 +8,7 @@ import { encrypt } from "@/lib/crypto";
 import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { isGlobalScope } from "@/lib/branch-access";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { zohoWebhookUrls } from "@/lib/zoho/webhook-events";
 
 const CreateSchema = z.object({
   name: z.string().min(1),
@@ -29,14 +30,15 @@ const CreateSchema = z.object({
  */
 export async function GET(req: NextRequest) {
   await connection();
-  const denied = await requirePermission(req, { branches: ["view"] });
-  if (denied) return denied;
 
   try {
+    const denied = await requirePermission(req, { branches: ["view"] });
+    if (denied) return denied;
+
     const orgs = await db.zohoOrganization.findMany({
       orderBy: { name: "asc" },
       select: {
-        id: true, name: true, zohoOrgId: true, connectedAt: true,
+        id: true, name: true, zohoOrgId: true, connectedAt: true, isActive: true,
         branches: { select: { id: true, name: true } },
       },
     });
@@ -52,25 +54,25 @@ export async function POST(req: NextRequest) {
   if (originCheck) return originCheck;
   await connection();
 
-  const denied = await requirePermission(req, { branches: ["update"] });
-  if (denied) return denied;
-
-  const caller = await loadCallerContext();
-  if (caller.denied) return caller.denied === "auth" ? Err.authRequired() : Err.forbidden();
-  if (!isGlobalScope(caller)) return Err.forbidden();
-
-  let body: unknown;
   try {
-    body = await req.json();
-  } catch {
-    return Err.validation("Invalid JSON body.");
-  }
-  const parsed = CreateSchema.safeParse(body);
-  if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
-  const { name, zohoOrgId, clientId, clientSecret, refreshToken } = parsed.data;
+    const denied = await requirePermission(req, { branches: ["update"] });
+    if (denied) return denied;
 
-  try {
-    const webhookSecret = randomBytes(32).toString("hex");
+    const caller = await loadCallerContext();
+    if (caller.denied) return caller.denied === "auth" ? Err.authRequired() : Err.forbidden();
+    if (!isGlobalScope(caller)) return Err.forbidden();
+
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return Err.validation("Invalid JSON body.");
+    }
+    const parsed = CreateSchema.safeParse(body);
+    if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
+    const { name, zohoOrgId, clientId, clientSecret, refreshToken } = parsed.data;
+
+    const webhookSecret = randomBytes(24).toString("hex");
 
     const org = await db.zohoOrganization.create({
       data: {
@@ -90,7 +92,9 @@ export async function POST(req: NextRequest) {
       name: org.name,
       // Only ever shown once — the one and only time.
       webhookSecret,
-      webhookUrl: `${appUrl}/api/zoho/webhook?organizationId=${org.id}`,
+      // One URL per event — Zoho Books needs a separate webhook config entry
+      // per event (see app/api/zoho/webhook/route.ts).
+      webhookUrls: zohoWebhookUrls(appUrl, org.id),
     });
   } catch (e) {
     console.error("[admin/zoho/organizations] POST error", e);

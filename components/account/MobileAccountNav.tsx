@@ -5,20 +5,24 @@ import { usePathname } from "next/navigation"
 import { Icon } from "@iconify/react"
 
 const TABS: Array<{ href: string; icon: string; label: string }> = [
-  { href: "/account/profile",  icon: "lucide:user",         label: "Profile"  },
-  { href: "/account/orders",   icon: "lucide:shopping-bag", label: "Orders"   },
-  { href: "/account/reviews",  icon: "lucide:star",         label: "Reviews"  },
+  { href: "/account/profile",  icon: "lucide:user",         label: "Profile"    },
+  { href: "/account/security", icon: "lucide:shield",       label: "Security"   },
+  { href: "/account/orders",   icon: "lucide:shopping-bag", label: "Orders"     },
+  { href: "/account/wishlist", icon: "lucide:heart",        label: "Favourites" },
   { href: "/account/messages", icon: "lucide:message-circle", label: "Messages" },
-  { href: "/account/settings", icon: "lucide:settings",     label: "Settings" },
-  { href: "/account/inbox",    icon: "lucide:inbox",        label: "Inbox"    },
-  { href: "/account/wishlist", icon: "lucide:heart",        label: "Wishlist" },
+  { href: "/account/inbox",    icon: "lucide:inbox",        label: "Inbox"      },
+  { href: "/account/settings", icon: "lucide:settings",     label: "Settings"   },
+  { href: "/account/reviews",  icon: "lucide:star",         label: "Reviews"    },
 ]
 
 export default function MobileAccountNav({ unreadCount = 0 }: { unreadCount?: number }) {
   const pathname = usePathname()
 
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-neutral-200 flex items-center justify-around px-2 py-2 pb-safe">
+    <nav
+      className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-neutral-200 flex items-center gap-1 px-2 py-2 pb-safe overflow-x-auto [&::-webkit-scrollbar]:hidden"
+      style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+    >
       {TABS.map((tab) => {
         const isActive = pathname === tab.href || pathname.startsWith(tab.href + "/")
         const isInbox = tab.href === "/account/inbox"
@@ -26,7 +30,7 @@ export default function MobileAccountNav({ unreadCount = 0 }: { unreadCount?: nu
           <Link
             key={tab.href}
             href={tab.href}
-            className="flex flex-col items-center gap-0.5 px-3 py-1 relative"
+            className="flex flex-col items-center gap-0.5 px-3 py-1 relative shrink-0"
           >
             <div className={`relative p-1.5 rounded-lg transition-colors ${isActive ? "bg-[#F0FDF4]" : ""}`}>
               <Icon

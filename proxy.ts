@@ -34,6 +34,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { DEV_ACCESS_COOKIE } from "@/lib/dev-access";
 
 /**
  * Routes anyone (guest or logged-in) can access without a session.
@@ -44,7 +45,10 @@ const PUBLIC_PATHS = [
   "/login",
   "/signup",
   "/admin/login",
+  "/admin/forgot-password",
+  "/admin/reset-password",
   "/forgot-password",
+  "/reset-password",
   "/api/auth",
   "/_next",
   "/favicon",
@@ -68,6 +72,10 @@ const PUBLIC_PATHS = [
   "/408",
   "/network-issue",
   "/coming-soon",
+  // Developer access toggle — must be reachable with zero session (that's
+  // the point); the page itself 404s on a missing/wrong key.
+  "/dev/access",
+  "/api/dev/access",
   // Public API namespaces
   "/api/storefront",
   "/api/cart",
@@ -79,6 +87,8 @@ const PUBLIC_PATHS = [
   "/api/zoho/webhook",
   "/api/countries",
   "/api/testimonials",
+  "/api/admin/forgot-password",
+  "/api/admin/reset-password",
   "/api/products/options",
   "/api/track",
   "/api/webhooks",
@@ -174,10 +184,18 @@ export function proxy(request: NextRequest): NextResponse {
   // wrong-portal sessions.
   const isAdminScopedPath = pathname.startsWith("/admin") || pathname.startsWith("/api/admin");
 
+  // Developer access bypass (see app/dev/access) — a cookie matching
+  // DEV_ACCESS_SECRET is treated as authenticated for admin-scoped routes
+  // only, no DB round-trip needed (env vars are readable at the edge).
+  const hasDevAccess =
+    isAdminScopedPath &&
+    !!process.env.DEV_ACCESS_SECRET &&
+    request.cookies.get(DEV_ACCESS_COOKIE)?.value === process.env.DEV_ACCESS_SECRET;
+
   // 3. Redirect unauthenticated users away from protected routes.
   //    Admin paths go to /admin/login; all other protected paths go to /login
   //    with a callbackUrl so the user lands back where they intended.
-  if (!isPublicPath && !hasSessionCookie) {
+  if (!isPublicPath && !hasSessionCookie && !hasDevAccess) {
     const loginDest = isAdminScopedPath ? "/admin/login" : "/login";
     const loginUrl = new URL(loginDest, request.url);
     if (!isAdminScopedPath) {

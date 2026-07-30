@@ -23,14 +23,14 @@ export async function updateProfile(data: {
 }) {
   const userId = await getAuthedUserId()
 
-  // Username change enforcement
+  let isNewUsername = false
   if (data.username !== undefined && data.username !== "") {
     const current = await db.user.findUnique({
       where: { id: userId },
       select: { username: true, usernameChanges: true, lastUsernameChange: true },
     })
 
-    const isNewUsername = current?.username !== data.username
+    isNewUsername = current?.username !== data.username
 
     if (isNewUsername) {
       if ((current?.usernameChanges ?? 0) >= 10) {
@@ -48,41 +48,33 @@ export async function updateProfile(data: {
       const taken = await db.user.findUnique({ where: { username: data.username } })
       if (taken && taken.id !== userId) throw new Error("Username already taken")
     }
-
-    await db.user.update({
-      where: { id: userId },
-      data: {
-        firstName: data.firstName,
-        lastName: data.lastName,
-        name: `${data.firstName} ${data.lastName}`.trim(),
-        phone: data.phone,
-        phoneCode: data.phoneCode,
-        country: data.country,
-        city: data.city,
-        ...(isNewUsername && {
-          username: data.username,
-          usernameChanges: { increment: 1 },
-          lastUsernameChange: new Date(),
-        }),
-      },
-    })
-  } else {
-    await db.user.update({
-      where: { id: userId },
-      data: {
-        firstName: data.firstName,
-        lastName: data.lastName,
-        name: `${data.firstName} ${data.lastName}`.trim(),
-        phone: data.phone,
-        phoneCode: data.phoneCode,
-        country: data.country,
-        city: data.city,
-      },
-    })
   }
 
+  const updated = await db.user.update({
+    where: { id: userId },
+    data: {
+      firstName: data.firstName,
+      lastName: data.lastName,
+      name: `${data.firstName} ${data.lastName}`.trim(),
+      phone: data.phone,
+      phoneCode: data.phoneCode,
+      country: data.country,
+      city: data.city,
+      ...(isNewUsername && {
+        username: data.username,
+        usernameChanges: { increment: 1 },
+        lastUsernameChange: new Date(),
+      }),
+    },
+    select: {
+      name: true, firstName: true, lastName: true, username: true,
+      phone: true, phoneCode: true, country: true, city: true,
+      usernameChanges: true, lastUsernameChange: true,
+    },
+  })
+
   revalidatePath("/account/profile", "layout")
-  return { ok: true }
+  return { ok: true, user: updated }
 }
 
 export async function updateNotifications(data: {

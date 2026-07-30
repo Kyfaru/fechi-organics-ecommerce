@@ -11,7 +11,7 @@ export type BlogPostCard = {
   category: string | null;
   tags: string[];
   publishedAt: Date | null;
-  author: { name: string | null };
+  author: { name: string | null } | null;
   views: number;
   likeCount: number;
   commentCount: number;

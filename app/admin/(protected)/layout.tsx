@@ -1,19 +1,22 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { AdminHeader } from "@/components/admin/AdminHeader";
 import { AdminFooter } from "@/components/admin/AdminFooter";
+import { AdminSessionGuard } from "@/components/admin/AdminSessionGuard";
 import { Admin403 } from "@/components/admin/Admin403";
 import { Spinner } from "@/components/ui/spinner";
 import { checkPermissionPage } from "@/lib/require-permission";
-import { resourceForPath } from "@/lib/admin-nav";
+import { resourceForPath, isNoResourcePath } from "@/lib/admin-nav";
+import { DEV_ACCESS_COOKIE } from "@/lib/dev-access";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="admin-shell min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
+      <AdminSessionGuard />
       <AdminSidebar />
       <main className="md:ml-[var(--sidebar-w,264px)] min-h-screen flex flex-col transition-all duration-200">
         <AdminHeader />
@@ -36,6 +39,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
 async function AdminGuard({ children }: { children: React.ReactNode }) {
   if (process.env.ADMIN_DEV_BYPASS === "true") return <>{children}</>;
+
+  const devSecret = process.env.DEV_ACCESS_SECRET;
+  if (devSecret && (await cookies()).get(DEV_ACCESS_COOKIE)?.value === devSecret) {
+    return <>{children}</>;
+  }
+
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) redirect("/admin/login");
 
@@ -54,6 +63,11 @@ async function AdminGuard({ children }: { children: React.ReactNode }) {
       if (access.reason === "forbidden") return <Admin403 />;
       redirect(access.reason === "auth" ? "/admin/login" : "/admin");
     }
+  } else if (!isNoResourcePath(pathname)) {
+    // Fail closed — a page under /admin/* that isn't explicitly registered
+    // (in NAV_GROUPS, UNLISTED_RESOURCE_PATHS, or NO_RESOURCE_REQUIRED_PATHS)
+    // is denied by default rather than silently allowed.
+    return <Admin403 />;
   }
 
   return <>{children}</>;

@@ -3,10 +3,11 @@ import { connection } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { invalidateProductCache } from "@/lib/cache-tags";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { createNotification } from "@/lib/notify";
-import { requirePermission } from "@/lib/require-permission";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { logActivity } from "@/lib/admin-activity";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/products
@@ -78,41 +79,17 @@ export async function POST(req: NextRequest) {
     const parsed = CreateSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
-    const { imageObjectKeys, ...productData } = parsed.data;
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return Err.forbidden();
 
-    const product = await db.product.create({
-      data: {
-        ...productData,
-        ...(imageObjectKeys?.length
-          ? {
-              images: {
-                create: imageObjectKeys.map((objectKey, idx) => ({
-                  objectKey,
-                  isPrimary: idx === 0,
-                  sortOrder: idx,
-                })),
-              },
-            }
-          : {}),
-      },
-      include: {
-        category: { select: { id: true, name: true, slug: true } },
-        images: {
-          orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }],
-          select: { objectKey: true, isPrimary: true },
-        },
-      },
-    });
+    const outcome = await requireApprovalOrProceed(ctx, "products", "create", parsed.data);
+    if (!outcome.proceed) return Approval.queued(outcome.requestId);
+
+    const product = await approvalExecutors["products:create"](parsed.data, null) as
+      Awaited<ReturnType<typeof db.product.create>>;
 
     console.info("[admin/products] POST — created product", product.id, product.slug);
-    invalidateProductCache(product.slug);
-    // Notify admin inbox about new product
-    createNotification({
-      type: "PRODUCT_ADDED",
-      title: `New product added: ${product.name}`,
-      body: `"${product.name}" has been published to the store.`,
-      link: `/admin/products`,
-    }).catch((e) => console.error("[admin/products] notification create failed:", e));
+    logActivity(ctx.id, `Created product "${product.name}"`, "product", product.id, req);
     return ok({ product });
   } catch (e: unknown) {
     console.error("[admin/products] POST error", e);
@@ -165,33 +142,19 @@ export async function PATCH(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const parsed = UpdateSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
+    const { id } = parsed.data;
 
-    const { id, imageObjectKeys, ...data } = parsed.data;
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return Err.forbidden();
 
-    const existing = await db.product.findUnique({ where: { id }, select: { slug: true } });
+    const outcome = await requireApprovalOrProceed(ctx, "products", "update", parsed.data, id);
+    if (!outcome.proceed) return Approval.queued(outcome.requestId);
 
-    const product = await db.product.update({
-      where: { id },
-      data,
-    });
-
-    // If imageObjectKeys provided, replace all images for this product
-    if (imageObjectKeys !== undefined) {
-      await db.productImage.deleteMany({ where: { productId: id } });
-      if (imageObjectKeys.length > 0) {
-        await db.productImage.createMany({
-          data: imageObjectKeys.map((objectKey, idx) => ({
-            productId: id,
-            objectKey,
-            isPrimary: idx === 0,
-            sortOrder: idx,
-          })),
-        });
-      }
-    }
+    const product = await approvalExecutors["products:update"](parsed.data, id) as
+      Awaited<ReturnType<typeof db.product.update>>;
 
     console.info("[admin/products] PATCH — updated product", id);
-    invalidateProductCache(existing?.slug, product.slug);
+    logActivity(ctx.id, `Updated product "${product.name}"`, "product", id, req);
     return ok({ product });
   } catch (e: unknown) {
     console.error("[admin/products] PATCH error", e);

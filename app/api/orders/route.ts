@@ -6,8 +6,6 @@ import { ok, Err } from "@/lib/api";
 import { r2PublicUrl } from "@/lib/r2";
 import { resolvePromo as resolvePromoBase, recordCouponRedemption } from "@/lib/promo";
 import { createNotification } from "@/lib/notify";
-import { pushSaleToZoho } from "@/lib/zoho/push-sale";
-import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { generateOrderNumber, type TxClient } from "@/lib/orders/generate-order-number";
 
@@ -91,8 +89,10 @@ async function resolvePromo(
 // POST /api/orders — authenticated users only
 // Creates an order from the current cart and clears cart.
 // Validates a real coupon code if provided, records redemption in transaction.
-// Stock is decremented only after a payment callback confirms PAID.
-// Fire-and-forgets a Zoho Sales Order after commit.
+// Stock is decremented only after a payment callback confirms PAID — the
+// Zoho Sales Receipt push also happens there (lib/payments/post-payment.ts),
+// not here, since a Sales Receipt represents an already-paid sale and this
+// order isn't paid yet at creation time.
 // ---------------------------------------------------------------------------
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
@@ -193,63 +193,6 @@ export async function POST(req: NextRequest) {
 
       return newOrder;
     });
-
-    // 8. Fire-and-forget: push Sales Order to Zoho. An online order has no
-    // branch of its own yet (that's chosen later, at fulfillment) — default
-    // to the main branch's org. Known limitation, not fixed here: this
-    // always posts to whichever org the main branch belongs to, even if the
-    // order later ships from a different org's branch. Skip silently if the
-    // main branch isn't linked to a Zoho org, rather than failing an
-    // otherwise-successful checkout.
-    (async () => {
-      try {
-        const mainBranch = await db.branch.findFirst({
-          where: { isMain: true, isActive: true },
-          select: { id: true },
-        });
-        if (!mainBranch) {
-          console.warn("[orders] No main branch configured — skipping Zoho sales order push for", order.id);
-          return;
-        }
-        const organizationId = await resolveZohoOrganizationId(mainBranch.id);
-        if (!organizationId) {
-          console.warn("[orders] Main branch isn't linked to a Zoho organization — skipping push for", order.id);
-          return;
-        }
-
-        const user = await db.user.findUnique({
-          where: { id: userId },
-          select: { name: true, email: true },
-        });
-
-        const { salesorderId } = await pushSaleToZoho({
-          organizationId,
-          branchId: mainBranch.id,
-          referenceType: "order",
-          referenceId: order.id,
-          customerName: user?.name,
-          customerEmail: user?.email,
-          items: cart.items.map((ci: (typeof cart.items)[number]) => ({
-            productId: ci.productId,
-            name: ci.product.name,
-            quantity: ci.quantity,
-            priceKes: ci.product.priceKes,
-          })),
-          discountKes,
-          shippingKes: resolvedDeliveryKes,
-          notes: `Fechi Organics order ${order.id}`,
-        });
-
-        if (salesorderId) {
-          await db.order.update({
-            where: { id: order.id },
-            data: { zohoSoId: salesorderId },
-          });
-        }
-      } catch (e) {
-        console.error("[orders] Zoho SO push failed for order", order.id, e);
-      }
-    })();
 
     console.info("[orders] Created order", order.id, "orderNumber", order.orderNumber, "for user", userId);
 

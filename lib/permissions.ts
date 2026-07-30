@@ -42,6 +42,7 @@ export const statements = {
   reviews:           ["view", "update", "delete"],
   contact_messages:  ["view", "update"],
   transactions:      ["view"],
+  approvals:         ["view", "decide"],
 } as const
 
 export const ac = createAccessControl(statements)
@@ -71,7 +72,7 @@ export const roles = {
     delivery: ["view", "create", "update", "delete"], branches: ["view", "create", "update", "delete"],
     staff: ["view", "invite", "update", "deactivate", "delete", "assign_roles"], settings: ["view", "update"],
     notifications: ["view", "manage"], tickets: ["view", "update", "reply"], reviews: ["view", "update", "delete"],
-    contact_messages: ["view", "update"], transactions: ["view"],
+    contact_messages: ["view", "update"], transactions: ["view"], approvals: ["view", "decide"],
     user: adminDefaultStatements.user, session: adminDefaultStatements.session,
   }),
 
@@ -87,7 +88,7 @@ export const roles = {
     delivery: ["view", "create", "update", "delete"], branches: ["view", "create", "update", "delete"],
     staff: ["view", "invite", "update", "deactivate", "delete", "assign_roles"], settings: ["view", "update"],
     notifications: ["view", "manage"], tickets: ["view", "update", "reply"], reviews: ["view", "update", "delete"],
-    contact_messages: ["view", "update"], transactions: ["view"],
+    contact_messages: ["view", "update"], transactions: ["view"], approvals: ["view", "decide"],
     user: adminDefaultStatements.user, session: adminDefaultStatements.session,
   }),
 

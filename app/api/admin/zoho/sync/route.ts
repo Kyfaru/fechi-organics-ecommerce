@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { getRedis } from "@/lib/redis";
 import { ok, Err } from "@/lib/api";
-import { syncAllItems } from "@/lib/zoho-sync";
+import { syncAllItems, syncInventoryIds } from "@/lib/zoho-sync";
 import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission, loadCallerContext } from "@/lib/require-permission";
@@ -58,7 +58,18 @@ export async function POST(req: NextRequest) {
     const result = await syncAllItems(organizationId);
     console.info("[admin/zoho/sync] Sync complete for organization", organizationId, result);
 
-    return ok(result);
+    // Additive — backfills the Inventory item id used for automatic stock
+    // deduction (see lib/zoho/push-adjustment.ts). Must never fail the
+    // Books catalog sync above, which already succeeded.
+    let inventoryIdSync: { matched: number; unmatched: number } | null = null;
+    try {
+      inventoryIdSync = await syncInventoryIds(organizationId);
+      console.info("[admin/zoho/sync] Inventory item-id sync complete for organization", organizationId, inventoryIdSync);
+    } catch (e) {
+      console.error("[admin/zoho/sync] Inventory item-id sync failed for organization", organizationId, e);
+    }
+
+    return ok({ ...result, inventoryIdSync });
   } catch (e) {
     console.error("[admin/zoho/sync] POST error", e);
     return Err.internal(e);

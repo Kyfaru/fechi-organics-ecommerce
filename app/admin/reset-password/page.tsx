@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, FormEvent, Suspense } from "react";
+import { useState, useEffect, FormEvent, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowLeft, Link2Off } from "lucide-react";
+import { ArrowLeft, Link2Off, Clock } from "lucide-react";
 import PasswordInput from "@/components/auth/PasswordInput";
 import PasswordChecklist, { checkRequirements } from "@/components/auth/PasswordChecklist";
 import { Spinner } from "@/components/ui/spinner";
@@ -17,10 +17,15 @@ import { toast } from "@/lib/toast";
  * White left panel + gold right panel, matching admin login styling.
  *
  * Reads ?token= from URL via useSearchParams (must be inside Suspense).
+ * Pre-checks the token via GET /api/admin/reset-password/verify before
+ * rendering the form, so an expired/invalid link shows a distinct state
+ * instead of a blank form that only fails on submit.
  * API: POST /api/admin/reset-password  { token, newPassword, confirmPassword }
  *   - success: { ok: true }  → toast.success + router.push("/admin/login")
  *   - failure: { error: { message: string } }  → toast.error
  */
+
+type LinkState = "checking" | "valid" | "expired" | "invalid";
 
 // ---------------------------------------------------------------------------
 // Inner component — uses useSearchParams so it must live in a Suspense boundary
@@ -29,6 +34,9 @@ function AdminResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token") ?? "";
+
+  const [linkState, setLinkState] = useState<LinkState>("checking");
+  const [adminName, setAdminName] = useState<string | undefined>(undefined);
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -39,6 +47,29 @@ function AdminResetPasswordForm() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/reset-password/verify?token=${encodeURIComponent(token)}`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !data.ok) {
+          setLinkState(data?.error?.code === "EXPIRED" ? "expired" : "invalid");
+          return;
+        }
+        setAdminName(data.name);
+        setLinkState("valid");
+      } catch {
+        if (!cancelled) setLinkState("invalid");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   // ---------------------------------------------------------------------------
   // No-token guard
@@ -67,11 +98,58 @@ function AdminResetPasswordForm() {
           </p>
         </div>
         <Link
-          href="/admin/forgot-password"
+          href="/admin/login"
           className="w-full py-3.5 rounded-full font-bold text-sm tracking-wide text-center text-[#1a1c1c] transition-all duration-150 hover:brightness-95 active:scale-[0.98]"
           style={{ backgroundColor: "#FFC800" }}
         >
-          Request new link
+          Back to Admin Login
+        </Link>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Checking / expired / invalid states
+  // ---------------------------------------------------------------------------
+  if (linkState === "checking") {
+    return (
+      <div className="h-48 flex items-center justify-center">
+        <Spinner size={24} />
+      </div>
+    );
+  }
+
+  if (linkState === "expired" || linkState === "invalid") {
+    const expired = linkState === "expired";
+    return (
+      <div
+        role="alert"
+        className="flex flex-col gap-5 p-6 rounded-2xl bg-red-50 dark:bg-[#2e1a1a] border border-red-200 dark:border-red-900"
+      >
+        <div className="flex justify-center">
+          <span
+            className="flex items-center justify-center w-14 h-14 rounded-full"
+            style={{ backgroundColor: "rgba(239,68,68,0.12)" }}
+          >
+            {expired ? <Clock size={28} color="#ef4444" /> : <Link2Off size={28} color="#ef4444" />}
+          </span>
+        </div>
+        <div className="text-center">
+          <p className="font-semibold text-[#1a1c1c] dark:text-white mb-1">
+            {expired ? "This reset link has expired" : "This reset link is invalid"}
+          </p>
+          <p className="text-sm text-[#40493c] dark:text-gray-400 leading-relaxed">
+            {expired
+              ? "Reset links are valid for 12 hours. Ask your super admin to send a new one."
+              : "This link could not be verified. Ask your super admin to send a new one."}
+          </p>
+        </div>
+        <Link
+          href="/admin/login"
+          className="w-full py-3.5 rounded-full font-bold text-sm tracking-wide text-center text-[#1a1c1c] transition-all duration-150 hover:brightness-95 active:scale-[0.98]"
+          style={{ backgroundColor: "#FFC800" }}
+        >
+          Back to Admin Login
         </Link>
       </div>
     );
@@ -145,6 +223,11 @@ function AdminResetPasswordForm() {
   // ---------------------------------------------------------------------------
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-5">
+      {adminName && (
+        <p className="text-sm text-[#40493c] dark:text-gray-400 -mt-2">
+          Hi {adminName}, enter your new admin password below.
+        </p>
+      )}
       <div className="flex flex-col gap-1">
         <PasswordInput
           label="New Password"

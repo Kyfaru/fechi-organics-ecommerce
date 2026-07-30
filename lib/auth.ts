@@ -2,7 +2,8 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { emailOTP, admin, twoFactor } from "better-auth/plugins";
 import { db } from "@/lib/db";
-import { sendOTPEmail, sendWelcomeEmail } from "@/lib/email";
+import { sendOTPEmail, sendWelcomeEmail, sendChangeEmailVerification } from "@/lib/email";
+import { splitName } from "@/lib/name";
 import { Argon2id } from "oslo/password";
 import { ac, roles } from "@/lib/permissions";
 
@@ -53,16 +54,48 @@ export const auth = betterAuth({
         input: true,
       },
     },
+
+    // -------------------------------------------------------------------------
+    // Email changes — off by default in Better Auth. Google/Facebook sign-in
+    // is matched by the linked account's provider id (see accountLinking),
+    // not by email, so changing email here never revokes social sign-in.
+    // -------------------------------------------------------------------------
+    changeEmail: {
+      enabled: true,
+      // Most users here aren't email-verified (OTP sign-in / social sign-in
+      // don't set it), so let them change email immediately for that case...
+      updateEmailWithoutVerification: true,
+      // ...but if the current email IS verified, require a confirmation
+      // click on the OLD address first, before the change takes effect.
+      sendChangeEmailConfirmation: async ({ user, newEmail, url }) => {
+        await sendChangeEmailVerification(user.email, url, user.name, newEmail);
+      },
+    },
+  },
+
+  // Sent for the "verify your new email" link after an unverified user's
+  // email is changed immediately above (updateEmailWithoutVerification).
+  emailVerification: {
+    sendVerificationEmail: async ({ user, url }) => {
+      await sendChangeEmailVerification(user.email, url, user.name);
+    },
   },
 
   socialProviders: {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      mapProfileToUser: (profile) => ({
+        firstName: profile.given_name,
+        lastName: profile.family_name,
+      }),
     },
     facebook: {
       clientId: process.env.FACEBOOK_CLIENT_ID!,
       clientSecret: process.env.FACEBOOK_CLIENT_SECRET!,
+      // Facebook's default profile fields don't include first/last name
+      // separately — split the display name instead of requesting more scope.
+      mapProfileToUser: (profile) => splitName(profile.name),
     },
   },
 
@@ -183,6 +216,7 @@ export const auth = betterAuth({
 
   trustedOrigins: [
     process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
+    "https://www.fechiorganics.shop",
   ],
 });
 

@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, Grid, List, ChevronDown, Star, MoreHorizontal,
   Pencil, Copy, ExternalLink, Trash2, Check, X, ImagePlus,
-  GripVertical, Tag, RefreshCw,
+  GripVertical, Tag, RefreshCw, AlertTriangle,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
@@ -21,6 +21,7 @@ import { ScreenLoader } from "@/components/admin/ui/ScreenLoader";
 import Switch from "@/components/ui/Switch";
 import CircularProgress from "@/components/ui/CircularProgress";
 import { useAdminMe } from "@/hooks/use-can";
+import { Can } from "@/components/admin/Can";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -252,11 +253,13 @@ function CardMenu({
   onEdit,
   onDuplicate,
   onDelete,
+  onPermanentDelete,
 }: {
   product: AdminProduct;
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onPermanentDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -289,18 +292,22 @@ function CardMenu({
             className="absolute right-0 bottom-full mb-1 w-44 bg-white rounded-[10px] shadow-(--e3) border border-(--neutral-200) z-50 overflow-hidden py-1"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              onClick={() => { setOpen(false); onEdit(); }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
-            >
-              <Pencil size={14} /> Edit
-            </button>
-            <button
-              onClick={() => { setOpen(false); onDuplicate(); }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
-            >
-              <Copy size={14} /> Duplicate
-            </button>
+            <Can permissions={{ products: ["update"] }}>
+              <button
+                onClick={() => { setOpen(false); onEdit(); }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+              >
+                <Pencil size={14} /> Edit
+              </button>
+            </Can>
+            <Can permissions={{ products: ["create"] }}>
+              <button
+                onClick={() => { setOpen(false); onDuplicate(); }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+              >
+                <Copy size={14} /> Duplicate
+              </button>
+            </Can>
             <a
               href={`/shop/${product.slug}`}
               target="_blank"
@@ -310,13 +317,23 @@ function CardMenu({
             >
               <ExternalLink size={14} /> View on Store
             </a>
-            <div className="h-px bg-(--neutral-200) mx-2 my-1" />
-            <button
-              onClick={() => { setOpen(false); onDelete(); }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
-            >
-              <Trash2 size={14} /> Delete
-            </button>
+            <Can permissions={{ products: ["delete"] }}>
+              <div className="h-px bg-(--neutral-200) mx-2 my-1" />
+              <button
+                onClick={() => { setOpen(false); onDelete(); }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
+              >
+                <Trash2 size={14} /> Delete
+              </button>
+              {!product.isActive && (
+                <button
+                  onClick={() => { setOpen(false); onPermanentDelete(); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
+                >
+                  <Trash2 size={14} /> Permanently Delete
+                </button>
+              )}
+            </Can>
           </motion.div>
         )}
       </AnimatePresence>
@@ -332,11 +349,13 @@ function ProductGridCard({
   onEdit,
   onDuplicate,
   onDelete,
+  onPermanentDelete,
 }: {
   product: AdminProduct;
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onPermanentDelete: () => void;
 }) {
   const imgSrc = getPrimaryImage(product.images);
   const savePct =
@@ -397,6 +416,7 @@ function ProductGridCard({
                 onEdit={onEdit}
                 onDuplicate={onDuplicate}
                 onDelete={onDelete}
+                onPermanentDelete={onPermanentDelete}
               />
             </div>
           </div>
@@ -1327,6 +1347,14 @@ export function AdminProductsClient() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
+  // Permanent delete flow: confirm -> order-history check -> blocked message
+  // OR slug-confirm -> real delete.
+  const [permanentConfirmTarget, setPermanentConfirmTarget] = useState<AdminProduct | null>(null);
+  const [permanentCheckLoading, setPermanentCheckLoading] = useState(false);
+  const [permanentBlockedTarget, setPermanentBlockedTarget] = useState<AdminProduct | null>(null);
+  const [permanentSlugTarget, setPermanentSlugTarget] = useState<AdminProduct | null>(null);
+  const [permanentSlugInput, setPermanentSlugInput] = useState("");
+
   // Caller profile — determines whether Zoho sync targets the caller's own
   // branch automatically, or needs a branch picker (global tier).
   const { data: me } = useAdminMe();
@@ -1472,6 +1500,44 @@ export function AdminProductsClient() {
       setDeleteTarget(null);
     },
     onError: () => toast.error("Could not delete product"),
+  });
+
+  async function handleConfirmPermanentDelete() {
+    if (!permanentConfirmTarget) return;
+    const target = permanentConfirmTarget;
+    setPermanentCheckLoading(true);
+    try {
+      const res = await fetch(`/api/admin/products/${target.id}/permanent`);
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error?.message ?? "Could not check order history");
+      setPermanentConfirmTarget(null);
+      if (json.data.hasOrders) {
+        setPermanentBlockedTarget(target);
+      } else {
+        setPermanentSlugInput("");
+        setPermanentSlugTarget(target);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not check order history");
+    } finally {
+      setPermanentCheckLoading(false);
+    }
+  }
+
+  const permanentDeleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/admin/products/${id}/permanent`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error?.message ?? "Could not delete product");
+      return json;
+    },
+    onSuccess: () => {
+      toast.success("Product permanently deleted");
+      qc.invalidateQueries({ queryKey: ["admin-products"] });
+      setPermanentSlugTarget(null);
+      setPermanentSlugInput("");
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Could not delete product"),
   });
 
   const bulkMutation = useMutation({
@@ -1690,6 +1756,7 @@ export function AdminProductsClient() {
               onEdit={() => openEdit(p)}
               onDuplicate={() => handleDuplicate(p)}
               onDelete={() => setDeleteTarget(p.id)}
+              onPermanentDelete={() => setPermanentConfirmTarget(p)}
             />
           </div>
         );
@@ -1728,13 +1795,15 @@ export function AdminProductsClient() {
         <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
         {syncing ? "Syncing…" : "Sync with Zoho"}
       </button>
-      <button
-        onClick={openCreate}
-        className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
-      >
-        <Plus size={16} />
-        Add Product
-      </button>
+      <Can permissions={{ products: ["create"] }}>
+        <button
+          onClick={openCreate}
+          className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+        >
+          <Plus size={16} />
+          Add Product
+        </button>
+      </Can>
       
       <button
         onClick={() => router.push('/admin/products/reviews')}
@@ -1875,6 +1944,7 @@ export function AdminProductsClient() {
                   onEdit={() => openEdit(p)}
                   onDuplicate={() => handleDuplicate(p)}
                   onDelete={() => setDeleteTarget(p.id)}
+                  onPermanentDelete={() => setPermanentConfirmTarget(p)}
                 />
               ))}
             </div>
@@ -1930,6 +2000,82 @@ export function AdminProductsClient() {
         danger
         loading={bulkMutation.isPending}
       />
+
+      {/* ── Permanently delete: confirm ── */}
+      <ConfirmModal
+        open={!!permanentConfirmTarget}
+        onClose={() => setPermanentConfirmTarget(null)}
+        onConfirm={handleConfirmPermanentDelete}
+        title="Permanently delete product?"
+        description="This removes the product and its data for good. This can't be undone."
+        confirmLabel="Continue"
+        danger
+        loading={permanentCheckLoading}
+      />
+
+      {/* ── Permanently delete: blocked (has order history) ── */}
+      {permanentBlockedTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-(--danger-bg)">
+                <AlertTriangle size={18} className="text-(--danger)" />
+              </div>
+              <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
+                Can&apos;t permanently delete
+              </h3>
+            </div>
+            <p className="font-dm text-[14px] text-(--neutral-600) dark:text-(--dark-muted)">
+              &quot;{permanentBlockedTarget.name}&quot; has order history and can&apos;t be permanently deleted.
+              It will remain deactivated to preserve order records.
+            </p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setPermanentBlockedTarget(null)}
+                className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] hover:bg-(--green-900)"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Permanently delete: type-slug-to-confirm ── */}
+      {permanentSlugTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
+              Confirm permanent delete
+            </h3>
+            <p className="font-dm text-[14px] text-(--neutral-600) dark:text-(--dark-muted)">
+              Type <span className="font-semibold text-(--neutral-900) dark:text-(--dark-text)">{permanentSlugTarget.slug}</span> to confirm.
+            </p>
+            <input
+              type="text"
+              value={permanentSlugInput}
+              onChange={(e) => setPermanentSlugInput(e.target.value)}
+              placeholder={permanentSlugTarget.slug}
+              className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--danger)"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => { setPermanentSlugTarget(null); setPermanentSlugInput(""); }}
+                className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => permanentDeleteMutation.mutate(permanentSlugTarget.id)}
+                disabled={permanentSlugInput !== permanentSlugTarget.slug || permanentDeleteMutation.isPending}
+                className="px-4 py-2 rounded-xl bg-(--danger) text-white font-dm text-[14px] disabled:opacity-50"
+              >
+                {permanentDeleteMutation.isPending ? "Deleting…" : "Delete Permanently"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Bulk action bar ── */}
       <BulkBar

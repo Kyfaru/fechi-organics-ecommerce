@@ -41,6 +41,7 @@ vi.mock("@/lib/cache-tags", () => ({
 // mock db, so tx.X and db.X share one set of assertable mocks.
 // ---------------------------------------------------------------------------
 const mockProductFindUnique = vi.fn();
+const mockProductFindFirst = vi.fn();
 const mockProductCreate = vi.fn();
 const mockProductUpdate = vi.fn();
 const mockCategoryFindFirst = vi.fn();
@@ -48,6 +49,7 @@ const mockCategoryFindUnique = vi.fn();
 const mockMappingFindUnique = vi.fn();
 const mockMappingCreate = vi.fn();
 const mockMappingFindMany = vi.fn();
+const mockMappingUpdateMany = vi.fn();
 const mockStockFindUnique = vi.fn();
 const mockStockUpsert = vi.fn();
 const mockStockUpdateMany = vi.fn();
@@ -58,6 +60,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     product: {
       findUnique: (...args: unknown[]) => mockProductFindUnique(...args),
+      findFirst: (...args: unknown[]) => mockProductFindFirst(...args),
       create: (...args: unknown[]) => mockProductCreate(...args),
       update: (...args: unknown[]) => mockProductUpdate(...args),
     },
@@ -69,6 +72,7 @@ vi.mock("@/lib/db", () => ({
       findUnique: (...args: unknown[]) => mockMappingFindUnique(...args),
       create: (...args: unknown[]) => mockMappingCreate(...args),
       findMany: (...args: unknown[]) => mockMappingFindMany(...args),
+      updateMany: (...args: unknown[]) => mockMappingUpdateMany(...args),
     },
     branchProductStock: {
       findUnique: (...args: unknown[]) => mockStockFindUnique(...args),
@@ -82,11 +86,11 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { syncItemToProduct, syncAllItems, slugify } from "@/lib/zoho-sync";
+import { syncItemToProduct, syncAllItems, syncInventoryIds, slugify } from "@/lib/zoho-sync";
 
 const MOCK_CATEGORY = { id: "cat-1", name: "Face Care", isActive: true };
 const UNCATEGORIZED = { id: "cat-uncategorized", key: "UNCATEGORIZED" };
-const ORG_BRANCHES = [{ id: TEST_BRANCH_ID, zohoWarehouseId: null }];
+const ORG_BRANCHES = [{ id: TEST_BRANCH_ID }];
 
 const makeItem = (overrides = {}) => ({
   item_id: "ZI-001",
@@ -94,7 +98,7 @@ const makeItem = (overrides = {}) => ({
   status: "active",
   description: "Great cream",
   rate: 1500,
-  quantity_available: 10,
+  stock_on_hand: 10,
   category_name: "Face Care",
   ...overrides,
 });
@@ -118,6 +122,8 @@ beforeEach(() => {
   mockStockUpdateMany.mockResolvedValue({ count: 0 });
   mockMappingFindMany.mockResolvedValue([]);
   mockBranchFindMany.mockResolvedValue(ORG_BRANCHES);
+  mockProductFindFirst.mockResolvedValue(null);
+  mockMappingUpdateMany.mockResolvedValue({ count: 0 });
   // db.$transaction(fn) just invokes fn with a tx exposing the same mocks
   // used for the non-transactional (db.*) calls above.
   mockTransaction.mockImplementation((fn: (tx: unknown) => unknown) =>
@@ -233,7 +239,7 @@ describe("syncItemToProduct", () => {
   });
 
   it("upserts branch-specific stock keyed on (branchId, productId), not the shared product row", async () => {
-    await syncItemToProduct(TEST_ORG_ID, makeItem({ quantity_available: 42 }), ORG_BRANCHES);
+    await syncItemToProduct(TEST_ORG_ID, makeItem({ stock_on_hand: 42 }), ORG_BRANCHES);
 
     expect(mockStockUpsert).toHaveBeenCalledOnce();
     const upsertCall = mockStockUpsert.mock.calls[0][0];
@@ -244,34 +250,21 @@ describe("syncItemToProduct", () => {
 
   it("splits stock across every branch in orgBranches", async () => {
     const branches = [
-      { id: "branch-a", zohoWarehouseId: null },
-      { id: "branch-b", zohoWarehouseId: null },
+      { id: "branch-a" },
+      { id: "branch-b" },
     ];
 
-    await syncItemToProduct(TEST_ORG_ID, makeItem({ quantity_available: 7 }), branches);
+    await syncItemToProduct(TEST_ORG_ID, makeItem({ stock_on_hand: 7 }), branches);
 
     expect(mockStockUpsert).toHaveBeenCalledTimes(2);
     expect(mockStockUpsert.mock.calls[0][0].where.branchId_productId.branchId).toBe("branch-a");
     expect(mockStockUpsert.mock.calls[1][0].where.branchId_productId.branchId).toBe("branch-b");
   });
 
-  it("uses a matching warehouse entry's stock over the aggregate when the branch has a zohoWarehouseId", async () => {
-    const branches = [{ id: TEST_BRANCH_ID, zohoWarehouseId: "wh-1" }];
-    const item = makeItem({
-      quantity_available: 100,
-      warehouses: [{ warehouse_id: "wh-1", warehouse_available_stock: 6 }],
-    });
-
-    await syncItemToProduct(TEST_ORG_ID, item, branches);
-
-    const upsertCall = mockStockUpsert.mock.calls[0][0];
-    expect(upsertCall.create.stock).toBe(6);
-  });
-
   it("fires a LOW_STOCK notification on a crossing-edge drop below threshold", async () => {
     mockStockFindUnique.mockResolvedValue({ stock: 15 }); // was above the 10-unit threshold
 
-    await syncItemToProduct(TEST_ORG_ID, makeItem({ quantity_available: 5 }), ORG_BRANCHES);
+    await syncItemToProduct(TEST_ORG_ID, makeItem({ stock_on_hand: 5 }), ORG_BRANCHES);
 
     expect(mockCreateNotification).toHaveBeenCalledOnce();
     const call = mockCreateNotification.mock.calls[0][0];
@@ -282,7 +275,7 @@ describe("syncItemToProduct", () => {
   it("does not re-fire when stock was already below threshold (no new crossing)", async () => {
     mockStockFindUnique.mockResolvedValue({ stock: 4 }); // already low
 
-    await syncItemToProduct(TEST_ORG_ID, makeItem({ quantity_available: 3 }), ORG_BRANCHES);
+    await syncItemToProduct(TEST_ORG_ID, makeItem({ stock_on_hand: 3 }), ORG_BRANCHES);
 
     expect(mockCreateNotification).not.toHaveBeenCalled();
   });
@@ -348,5 +341,91 @@ describe("syncAllItems", () => {
     expect(updateCall.where.productId).toEqual({ in: ["stale-prod-1", "stale-prod-2"] });
     expect(updateCall.data.stock).toBe(0);
     expect(result.deactivated).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// syncInventoryIds
+// ---------------------------------------------------------------------------
+describe("syncInventoryIds", () => {
+  it("matches an Inventory item to an existing product by SKU and backfills zohoInventoryItemId onto its Books-sourced mapping", async () => {
+    mockZohoGet.mockResolvedValueOnce({
+      items: [makeItem({ item_id: "INV-001", sku: "FECHI-CREAM-50" })],
+      page_context: { has_more_page: false, page: 1 },
+    });
+    mockProductFindFirst.mockResolvedValue({ id: "prod-1" });
+    mockMappingUpdateMany.mockResolvedValue({ count: 1 });
+
+    const result = await syncInventoryIds(TEST_ORG_ID);
+
+    expect(mockZohoGet).toHaveBeenCalledWith(
+      TEST_ORG_ID,
+      "/items",
+      expect.objectContaining({ page: "1" }),
+      "inventory",
+    );
+    expect(mockProductFindFirst).toHaveBeenCalledWith({ where: { zohoSku: "FECHI-CREAM-50" }, select: { id: true } });
+    expect(mockMappingUpdateMany).toHaveBeenCalledWith({
+      where: { productId: "prod-1", organizationId: TEST_ORG_ID },
+      data: { zohoInventoryItemId: "INV-001" },
+    });
+    expect(result).toEqual({ matched: 1, unmatched: 0 });
+  });
+
+  it("counts as unmatched when no product has that SKU", async () => {
+    mockZohoGet.mockResolvedValueOnce({
+      items: [makeItem({ item_id: "INV-002", sku: "UNKNOWN-SKU" })],
+      page_context: { has_more_page: false, page: 1 },
+    });
+    mockProductFindFirst.mockResolvedValue(null);
+
+    const result = await syncInventoryIds(TEST_ORG_ID);
+
+    expect(mockMappingUpdateMany).not.toHaveBeenCalled();
+    expect(result).toEqual({ matched: 0, unmatched: 1 });
+  });
+
+  it("counts as unmatched when the product exists but has no Books-sourced mapping for this org yet", async () => {
+    mockZohoGet.mockResolvedValueOnce({
+      items: [makeItem({ item_id: "INV-003", sku: "FECHI-CREAM-50" })],
+      page_context: { has_more_page: false, page: 1 },
+    });
+    mockProductFindFirst.mockResolvedValue({ id: "prod-1" });
+    mockMappingUpdateMany.mockResolvedValue({ count: 0 }); // matched a product, but no mapping row to update
+
+    const result = await syncInventoryIds(TEST_ORG_ID);
+
+    expect(result).toEqual({ matched: 0, unmatched: 1 });
+  });
+
+  it("counts as unmatched when an item has no sku at all", async () => {
+    mockZohoGet.mockResolvedValueOnce({
+      items: [makeItem({ item_id: "INV-004", sku: undefined })],
+      page_context: { has_more_page: false, page: 1 },
+    });
+
+    const result = await syncInventoryIds(TEST_ORG_ID);
+
+    expect(mockProductFindFirst).not.toHaveBeenCalled();
+    expect(result).toEqual({ matched: 0, unmatched: 1 });
+  });
+
+  it("paginates across multiple pages", async () => {
+    mockZohoGet
+      .mockResolvedValueOnce({
+        items: [makeItem({ item_id: "INV-001", sku: "SKU-A" })],
+        page_context: { has_more_page: true, page: 1 },
+      })
+      .mockResolvedValueOnce({
+        items: [makeItem({ item_id: "INV-002", sku: "SKU-B" })],
+        page_context: { has_more_page: false, page: 2 },
+      });
+    mockProductFindFirst.mockResolvedValue({ id: "prod-1" });
+    mockMappingUpdateMany.mockResolvedValue({ count: 1 });
+
+    const result = await syncInventoryIds(TEST_ORG_ID);
+
+    expect(mockZohoGet).toHaveBeenCalledTimes(2);
+    expect(result.matched).toBe(2);
   });
 });

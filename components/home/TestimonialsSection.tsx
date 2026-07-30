@@ -83,7 +83,7 @@ export function TestimonialsSection({ testimonials }: Props) {
 
         {/* Testimonials scroller — short, 5-item preview; see /testimonials for the full list */}
         <div
-          className="flex overflow-x-auto gap-8 pb-2 snap-x snap-proximity [&::-webkit-scrollbar]:hidden"
+          className="flex overflow-x-auto gap-8 pb-2 snap-x snap-proximity touch-pan-x [&::-webkit-scrollbar]:hidden"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
           {items.map((t, idx) => (

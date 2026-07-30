@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MessageSquare, Send, Plus, X, Paperclip, FileText } from "lucide-react";
+import { MessageSquare, Send, Plus, X, Paperclip, FileText, ArrowLeft } from "lucide-react";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { useTicketStream } from "@/hooks/use-ticket-stream";
 
@@ -319,9 +319,10 @@ export function MessagesClient() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [activeTicket?.messages?.length]);
 
-  // Auto-select first ticket
+  // Auto-select first ticket — desktop only, so mobile always lands on the
+  // WhatsApp-style list view first instead of jumping straight into a thread.
   useEffect(() => {
-    if (!activeTicketId && tickets.length > 0) {
+    if (!activeTicketId && tickets.length > 0 && window.matchMedia("(min-width: 768px)").matches) {
       setActiveTicketId(tickets[0].id);
     }
   }, [tickets.length]);
@@ -411,17 +412,17 @@ export function MessagesClient() {
         {/* ---------------------------------------------------------------- */}
         {/* Column 1 — Ticket list (280px)                                   */}
         {/* ---------------------------------------------------------------- */}
-        <div className="w-[280px] shrink-0 border-r border-(--neutral-200) flex flex-col">
+        <div className={`${activeTicketId ? "hidden md:flex" : "flex"} w-full md:w-[280px] shrink-0 md:border-r border-(--neutral-200) flex-col`}>
           {/* Header */}
           <div className="h-14 flex items-center justify-between px-4 border-b border-(--neutral-200)">
             <span className="font-syne text-[16px] font-semibold text-(--neutral-900)">Messages</span>
-            <button
+            {/*<button
               onClick={() => setShowNewModal(true)}
               className="w-8 h-8 flex items-center justify-center rounded-[6px] bg-(--green-800) text-white hover:opacity-90 transition-opacity"
               title="New ticket"
             >
               <Plus size={16} />
-            </button>
+            </button>*/}
           </div>
 
           {/* List */}
@@ -485,7 +486,7 @@ export function MessagesClient() {
         {/* ---------------------------------------------------------------- */}
         {/* Column 2 — Thread view (flex-1)                                  */}
         {/* ---------------------------------------------------------------- */}
-        <div className="flex-1 flex flex-col min-w-0 bg-[#f7f8f7]">
+        <div className={`${activeTicketId ? "flex" : "hidden md:flex"} flex-1 flex-col min-w-0 bg-[#f7f8f7]`}>
           {!activeTicket && !detailLoading ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-4">
               <MessageSquare size={48} className="text-(--neutral-300)" />
@@ -503,6 +504,13 @@ export function MessagesClient() {
             <>
               {/* Thread header */}
               <div className="h-14 shrink-0 flex items-center px-4 bg-white border-b border-(--neutral-200) gap-3">
+                <button
+                  onClick={() => setActiveTicketId(null)}
+                  className="md:hidden -ml-1 w-8 h-8 flex items-center justify-center rounded-full hover:bg-(--neutral-100) transition-colors shrink-0"
+                  aria-label="Back to messages"
+                >
+                  <ArrowLeft size={18} className="text-(--neutral-700)" />
+                </button>
                 {detailLoading ? (
                   <div className="h-5 w-48 bg-(--neutral-100) rounded animate-pulse" />
                 ) : activeTicket ? (
@@ -588,7 +596,7 @@ export function MessagesClient() {
                         onChange={(e) => setReplyText(e.target.value)}
                         onKeyDown={handleKeyDown}
                         placeholder="Type a message... (Ctrl+Enter to send)"
-                        rows={2}
+                        rows={1}
                         className="flex-1 resize-none rounded-[10px] border border-(--neutral-200) bg-(--neutral-50) px-3 py-2 font-dm text-[14px] text-(--neutral-900) placeholder:text-(--neutral-400) min-h-[40px] max-h-[120px] focus:border-(--green-800) focus:outline-none transition-colors"
                       />
                       <button

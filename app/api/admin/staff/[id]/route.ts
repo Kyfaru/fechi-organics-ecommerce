@@ -4,9 +4,12 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
-import { requirePermission } from "@/lib/require-permission";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { roles, appResources, grantsFor, type RoleName } from "@/lib/permissions";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { logActivity } from "@/lib/admin-activity";
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -39,11 +42,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     typeof body.permissions === "object" &&
     body.permissions !== null &&
     Array.isArray((body.permissions as { deny?: unknown }).deny);
+  const isDetailsChange =
+    typeof body.name === "string" || typeof body.email === "string" || typeof body.phone === "string";
 
-  if (!isBanChange && !isRoleChange && !isPermissionChange) {
+  if (!isBanChange && !isRoleChange && !isPermissionChange && !isDetailsChange) {
     return Err.validation("No valid fields to update.");
   }
-  if (isBanChange) {
+  if (isBanChange || isDetailsChange) {
     const denied = await requirePermission(req, { staff: ["update"] });
     if (denied) return denied;
   }
@@ -62,10 +67,28 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // Ban/unban
   if (typeof body.banned === "boolean") {
     userUpdate.banned = body.banned;
-    if (!body.banned) userUpdate.banReason = null;
+    if (!body.banned) {
+      userUpdate.banReason = null;
+      // Unbanning re-admits a previously-locked-out account — force a fresh
+      // password before they can reach the admin area again.
+      userUpdate.mustChangePassword = true;
+    }
   }
   if (typeof body.banReason === "string") {
     userUpdate.banReason = body.banReason || null;
+  }
+
+  // Basic details — name / email / phone
+  if (typeof body.name === "string") {
+    if (!body.name.trim()) return Err.validation("Name cannot be empty.");
+    userUpdate.name = body.name.trim();
+  }
+  if (typeof body.email === "string") {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) return Err.validation("Enter a valid email address.");
+    userUpdate.email = body.email.trim().toLowerCase();
+  }
+  if (typeof body.phone === "string") {
+    userUpdate.phone = body.phone.trim() || null;
   }
 
   // Role change — promoting a target to super_admin requires the caller to
@@ -95,30 +118,54 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 
   try {
-    const updated = await db.user.update({
-      where: { id },
-      data: {
-        ...userUpdate,
-        ...(Object.keys(profileUpdate).length > 0
-          ? { adminProfile: { update: profileUpdate } }
-          : {}),
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        banned: true,
-        banReason: true,
-        createdAt: true,
-        updatedAt: true,
-        adminProfile: {
-          select: { id: true, fullName: true, department: true, permissions: true, isSuperAdmin: true, isActive: true },
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return Err.forbidden();
+
+    if (isRoleChange || isPermissionChange) {
+      const outcome = await requireApprovalOrProceed(ctx, "staff", "assign_roles", { role: body.role, permissions: body.permissions }, id);
+      if (!outcome.proceed) return Approval.queued(outcome.requestId);
+    }
+
+    let updated;
+    if (isRoleChange || isPermissionChange) {
+      // Same profileUpdate this route already built — reuse the shared
+      // executor so the approval-decide path performs the identical mutation.
+      await approvalExecutors["staff:assign_roles"]({ role: profileUpdate.role, permissions: profileUpdate.permissions }, id);
+      updated = await db.user.update({
+        where: { id },
+        data: userUpdate,
+        select: {
+          id: true, name: true, email: true, phone: true, role: true, banned: true, banReason: true,
+          createdAt: true, updatedAt: true,
+          adminProfile: { select: { id: true, fullName: true, department: true, permissions: true, isSuperAdmin: true, isActive: true } },
         },
-      },
-    });
+      });
+    } else {
+      updated = await db.user.update({
+        where: { id },
+        data: {
+          ...userUpdate,
+          ...(Object.keys(profileUpdate).length > 0 ? { adminProfile: { update: profileUpdate } } : {}),
+        },
+        select: {
+          id: true, name: true, email: true, phone: true, role: true, banned: true, banReason: true,
+          createdAt: true, updatedAt: true,
+          adminProfile: { select: { id: true, fullName: true, department: true, permissions: true, isSuperAdmin: true, isActive: true } },
+        },
+      });
+    }
+
+    if (isBanChange) {
+      logActivity(ctx.id, typeof body.banned === "boolean" ? (body.banned ? "Deactivated staff member" : "Reactivated staff member") : "Updated ban reason", "staff", id, req);
+    }
+    if (isDetailsChange) logActivity(ctx.id, "Updated staff details", "staff", id, req);
+    if (isRoleChange || isPermissionChange) logActivity(ctx.id, "Changed staff role/permissions", "staff", id, req, { role: body.role, permissions: body.permissions });
+
     return ok({ user: updated });
-  } catch (err) {
+  } catch (err: unknown) {
+    if ((err as { code?: string }).code === "P2002") {
+      return Err.validation("A staff member with this email already exists.");
+    }
     console.error("[PATCH /api/admin/staff/[id]]", err);
     return Err.internal(err);
   }
@@ -150,6 +197,28 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     return Err.validation("Deactivate the user before deleting.");
   }
 
-  await db.user.delete({ where: { id } }); // cascades to adminProfile, session, account
+  const ctx = await loadCallerContext();
+  if (ctx.denied) return Err.forbidden();
+
+  // Effectively always "proceed" today — staff:delete is hard-restricted to
+  // isSuperAdmin above, and super_admin always skips the queue — but wired
+  // in case staff:delete permission is ever extended to another role.
+  const outcome = await requireApprovalOrProceed(ctx, "staff", "delete", {}, id);
+  if (!outcome.proceed) return Approval.queued(outcome.requestId);
+
+  try {
+    await approvalExecutors["staff:delete"]({}, id); // cascades to adminProfile, session, account
+  } catch (e: unknown) {
+    // P2003: still-referenced by a Restrict relation we haven't nulled out
+    // (e.g. authored blog posts) — name it instead of a bare 500.
+    if ((e as { code?: string }).code === "P2003") {
+      return Err.validation(
+        "This staff member is still referenced elsewhere (e.g. authored content) and can't be deleted yet."
+      );
+    }
+    console.error("[DELETE /api/admin/staff/[id]]", e);
+    return Err.internal(e);
+  }
+  logActivity(ctx.id, "Deleted staff member", "staff", id, req);
   return ok({ deleted: id });
 }

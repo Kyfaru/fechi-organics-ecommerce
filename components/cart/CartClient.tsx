@@ -40,6 +40,7 @@ export function CartClient() {
     queryKey: ["cart"],
     queryFn: () => fetch("/api/cart").then((r) => r.json()),
     staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const cart = data?.data;
@@ -183,7 +184,8 @@ export function CartClient() {
   }
 
   const deliveryKes = freeShipping ? 0 : DELIVERY_KES;
-  const totalKes = subtotalKes + deliveryKes - promoDiscount;
+  //const totalKesDelivery = subtotalKes + deliveryKes - promoDiscount;
+  const totalKes = subtotalKes - promoDiscount;
 
   function handleStartDelivery() {
     if (!items.length) return;
@@ -360,11 +362,11 @@ export function CartClient() {
                   label={`Subtotal (${cart?.itemCount ?? 0} ${(cart?.itemCount ?? 0) === 1 ? "item" : "items"})`}
                   value={format(subtotalKes)}
                 />
-                <SummaryRow
+                {/*<SummaryRow
                   label="Delivery"
                   value={freeShipping ? "FREE" : format(DELIVERY_KES)}
                   green={freeShipping}
-                />
+                />*/}
                 {appliedPromo && (
                   <SummaryRow
                     label="Discount"

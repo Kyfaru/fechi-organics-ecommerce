@@ -6,7 +6,8 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { Argon2id } from "oslo/password";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { requirePermission } from "@/lib/require-permission";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
+import { logActivity } from "@/lib/admin-activity";
 
 // POST /api/admin/staff/set-password — directly set a new password for a staff member.
 // Caller must have already verified their own password via /api/admin/verify-password
@@ -35,6 +36,9 @@ export async function POST(req: NextRequest) {
 
   // Force the user to change on next login
   await db.user.update({ where: { id: userId }, data: { mustChangePassword: true } });
+
+  const ctx = await loadCallerContext();
+  if (!ctx.denied) logActivity(ctx.id, "Set a new password for staff member", "staff", userId, req);
 
   return ok({ updated: true });
 }

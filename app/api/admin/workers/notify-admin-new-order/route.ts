@@ -35,9 +35,10 @@ export async function POST(req: NextRequest) {
         ${emailIconCircle("chart")}
         <h1 style="margin:0 0 20px;text-align:center;font-family:${FONT_HEADING};font-size:24px;font-weight:700;color:${EMAIL_BRAND.textDark};">New Paid Order</h1>
         <p style="margin:0 0 8px;font-size:14px;color:${EMAIL_BRAND.textBody};">
-          <strong>${order.user?.name ?? "Customer"}</strong> — ${order.user?.email ?? order.guestEmail ?? ""} — ${order.deliveryPhone ?? order.user?.phone ?? ""}
+        <h3 style="margin:0 0 10px;font-size:18px;color:${EMAIL_BRAND.textDark};">Customer Details</h3>
+          <strong>Name:${order.user?.name ?? "Customer"}</strong> </br> Email: ${order.user?.email ?? order.guestEmail ?? ""} </br>  Phone Number: ${order.deliveryPhone ?? order.user?.phone ?? ""}
         </p>
-        <div style="margin:20px 0;">
+        <div style="margin:20px 0; fotn-size:18px;">
           ${order.items.map((i) => emailLineItem(i.name, undefined, `Qty: ${i.quantity}`)).join("")}
         </div>
         ${emailTotalRow("Total", kes(order.totalKes), true)}
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
 
     await sendAdminNotificationEmail({
       to: [...new Set(recipients)],
-      subject: `New paid order #${order.id.slice(0, 8).toUpperCase()}`,
+      subject: `New paid order #${order.orderNumber?.slice(0, 6).toUpperCase()}`,
       html: emailShell({ title: "New Paid Order", sectionsHtml: sections }),
     });
   }

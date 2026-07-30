@@ -204,7 +204,6 @@ export async function POST(req: NextRequest) {
       email: userEmail,
       amount: totalCents,
       reference,
-      subaccount: branch.paystackSubaccount ?? undefined,
       callback_url: `${baseUrl}/api/payments/paystack/verify?reference=${reference}`,
       metadata: { orderId: order.id, userId },
     });
