@@ -86,7 +86,17 @@ export default function PasswordForm({
     if (score < 3) { toast.error("Password is too weak"); return }
 
     start(async () => {
-      const res = await authClient.changePassword({ currentPassword: isOAuthOnly ? "" : current, newPassword: newPw, revokeOtherSessions: false })
+      // A Google-only account has no existing credential account for
+      // changePassword to verify currentPassword against — it always fails
+      // with CREDENTIAL_ACCOUNT_NOT_FOUND regardless of what's passed. Use
+      // setPassword instead: no currentPassword required, and it links a
+      // fresh credential account rather than updating one that doesn't exist.
+      // Cast needed the same way authClient.twoFactor is cast elsewhere in
+      // this codebase — Better Auth's client type inference doesn't surface
+      // this base endpoint even though the server exposes it.
+      const res = isOAuthOnly
+        ? await (authClient as any).setPassword({ newPassword: newPw })
+        : await authClient.changePassword({ currentPassword: current, newPassword: newPw, revokeOtherSessions: false })
       if (res.error) { toast.error(res.error.message ?? "Failed to update password"); return }
       toast.success("Password updated")
       setCurrent(""); setNewPw(""); setConfirm("")

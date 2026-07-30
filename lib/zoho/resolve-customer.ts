@@ -20,9 +20,10 @@ type ZohoContactResponse = { contact?: ZohoContact };
  *
  * Never resolves to "not found": falls back to creating a contact with
  * whatever name/email is available, since a Sales Receipt cannot be created
- * without one. Real Zoho API errors propagate to the caller — same
- * error contract as resolve-org.ts — so the caller's existing
- * recordZohoPush FAILED path handles them.
+ * without one. Unlike resolve-org.ts (a plain DB lookup that never throws,
+ * returning null instead), this function's Zoho API calls can genuinely
+ * fail — real errors propagate to the caller so the existing recordZohoPush
+ * FAILED path in push-sale-receipt.ts handles them.
  */
 export async function resolveZohoCustomer(
   organizationId: string,

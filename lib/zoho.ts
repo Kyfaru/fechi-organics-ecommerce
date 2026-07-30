@@ -1,10 +1,12 @@
 /**
- * Zoho Books API client
+ * Zoho API client — Books and Inventory
  *
  * Handles OAuth token refresh (with Redis cache), and provides typed helpers
- * for GET/POST requests to the Zoho Books v3 API. Every call is scoped to
- * a single Zoho organization — several branches can share one org (see
- * lib/zoho-credentials.ts and prisma schema `zohoOrganization`).
+ * for GET/POST requests to either the Zoho Books v3 API or the Zoho
+ * Inventory v1 API (a separate product, same account — see BASE_URLS
+ * below). Every call is scoped to a single Zoho organization — several
+ * branches can share one org (see lib/zoho-credentials.ts and prisma schema
+ * `zohoOrganization`).
  */
 
 import { getRedis } from "@/lib/redis";
@@ -18,7 +20,17 @@ import { getZohoCredentials } from "@/lib/zoho-credentials";
 // global env var rather than moving into lib/zoho-credentials.ts.
 const ACCOUNTS_URL = () =>
   process.env.ZOHO_ACCOUNTS_URL ?? "https://accounts.zoho.com";
-const BASE_URL = "https://www.zohoapis.com/books/v3";
+// Assumes Books and Inventory share the same organization_id for a given
+// Zoho account (how enabling Inventory on an existing Books subscription
+// normally works — extends the same org rather than creating a second one).
+// If that turns out not to hold for a given org, this needs a second
+// org-id column on zohoOrganization, mirrored the same way
+// productZohoMapping.zohoInventoryItemId mirrors zohoItemId.
+const BASE_URLS = {
+  books: "https://www.zohoapis.com/books/v3",
+  inventory: "https://www.zohoapis.com/inventory/v1",
+} as const;
+type ZohoProduct = keyof typeof BASE_URLS;
 const TOKEN_CACHE_KEY = (organizationId: string) => `zoho:access_token:${organizationId}`;
 const TOKEN_TTL = 3300; // 55 minutes (Zoho tokens expire after 60 min)
 
@@ -86,6 +98,19 @@ export type ZohoSalesReceiptPayload = {
   location_id?: string;
   reference_number?: string;
   notes?: string;
+};
+
+export type ZohoInventoryAdjustmentPayload = {
+  date: string; // YYYY-MM-DD
+  reason: string;
+  reference_number?: string;
+  adjustment_type: "quantity";
+  line_items: Array<{
+    item_id: string;
+    quantity_adjusted: number; // signed delta — negative for a sale
+    warehouse_id?: string;
+  }>;
+  description?: string;
 };
 
 // Internal token response shape from Zoho accounts
@@ -156,16 +181,24 @@ export async function getAccessToken(
 // ---------------------------------------------------------------------------
 // HTTP helpers
 // ---------------------------------------------------------------------------
+/**
+ * @param product - which Zoho product's base URL to call — "books" (default,
+ *   every existing call site relies on this) or "inventory". Passing the
+ *   wrong one silently routes the request to the other product's API rather
+ *   than erroring, since both accept the same organization_id/token shape —
+ *   double-check this argument on any new call site.
+ */
 export async function zohoGet<T>(
   organizationId: string,
   path: string,
-  params?: Record<string, string>
+  params?: Record<string, string>,
+  product: ZohoProduct = "books"
 ): Promise<T> {
   const creds = await getZohoCredentials(organizationId);
   const token = await getAccessToken(organizationId, creds);
   const { orgId } = creds;
 
-  const url = new URL(`${BASE_URL}${path}`);
+  const url = new URL(`${BASE_URLS[product]}${path}`);
   url.searchParams.set("organization_id", orgId);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
@@ -192,16 +225,18 @@ export async function zohoGet<T>(
   return res.json() as Promise<T>;
 }
 
+/** @param product - see zohoGet's `product` param — same caveat applies. */
 export async function zohoPost<T>(
   organizationId: string,
   path: string,
-  body: unknown
+  body: unknown,
+  product: ZohoProduct = "books"
 ): Promise<T> {
   const creds = await getZohoCredentials(organizationId);
   const token = await getAccessToken(organizationId, creds);
   const { orgId } = creds;
 
-  const url = new URL(`${BASE_URL}${path}`);
+  const url = new URL(`${BASE_URLS[product]}${path}`);
   url.searchParams.set("organization_id", orgId);
 
   const res = await fetch(url.toString(), {

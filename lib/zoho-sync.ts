@@ -104,6 +104,15 @@ async function upsertBranchStocks(
   orgBranches: OrgBranch[],
 ): Promise<Array<{ branchId: string; previousStock: number | null; newStock: number }>> {
   const results: Array<{ branchId: string; previousStock: number | null; newStock: number }> = [];
+  // item.stock_on_hand is itself an UNVERIFIED field name (see lib/zoho.ts) —
+  // distinguish "Zoho didn't return this field at all" (likely the wrong
+  // field name, worth investigating) from "Zoho returned a real 0" (item is
+  // genuinely out of stock), since both currently write the same 0 below.
+  if (item.stock_on_hand === undefined) {
+    console.warn(
+      `[zoho-sync] item ${item.item_id} ("${item.name}") has no stock_on_hand field in the Books response — writing 0 stock. If this fires for every item, stock_on_hand is likely the wrong field name (see the UNVERIFIED comment on ZohoItem in lib/zoho.ts).`,
+    );
+  }
   const stock = item.stock_on_hand ?? 0;
 
   for (const branch of orgBranches) {
@@ -337,4 +346,70 @@ export async function syncAllItems(organizationId: string): Promise<{
     upserted: seenZohoIds.length,
     deactivated,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Inventory item-id sync — additive, doesn't touch the Books-sourced sync
+// above (that stays the source of truth for catalog fields and the Sales
+// Receipt item id). This just backfills productZohoMapping.zohoInventoryItemId
+// so lib/zoho/push-adjustment.ts's automatic stock deduction can target the
+// right Inventory item — falls back to the Books item id when a product
+// hasn't been matched yet (or never needs to be, if the two products'
+// item ids happen to coincide for this account).
+// ---------------------------------------------------------------------------
+/**
+ * Paginates Zoho Inventory's catalog (a separate product from Books, same
+ * account) and matches each item to an existing product by SKU — the two
+ * products' item ids are independent/opaque, but the same physical product
+ * is expected to carry the same SKU in both catalogs. Only updates products
+ * that already have a Books-sourced productZohoMapping row (via
+ * syncAllItems/syncItemToProduct) — this sync attaches an Inventory id to an
+ * existing mapping, it doesn't create products or mappings on its own.
+ */
+export async function syncInventoryIds(organizationId: string): Promise<{
+  matched: number;
+  unmatched: number;
+}> {
+  let page = 1;
+  let hasMore = true;
+  let matched = 0;
+  let unmatched = 0;
+
+  while (hasMore) {
+    const response = await zohoGet<ZohoItemsResponse>(
+      organizationId,
+      "/items",
+      { page: String(page), page_size: "200" },
+      "inventory",
+    );
+    const items = response.items ?? [];
+
+    for (const item of items) {
+      if (!item.item_id || !item.sku) {
+        unmatched++;
+        continue;
+      }
+
+      const product = await db.product.findFirst({
+        where: { zohoSku: item.sku },
+        select: { id: true },
+      });
+      if (!product) {
+        unmatched++;
+        continue;
+      }
+
+      const result = await db.productZohoMapping.updateMany({
+        where: { productId: product.id, organizationId },
+        data: { zohoInventoryItemId: item.item_id },
+      });
+      if (result.count > 0) matched++;
+      else unmatched++; // no Books-sourced mapping exists yet for this product/org
+    }
+
+    hasMore = response.page_context?.has_more_page ?? false;
+    page++;
+  }
+
+  return { matched, unmatched };
 }

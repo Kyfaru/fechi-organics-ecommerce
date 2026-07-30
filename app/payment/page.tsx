@@ -70,6 +70,7 @@ export default function PaymentPage() {
     queryKey: ["cart"],
     queryFn: () => fetch("/api/cart").then((r) => r.json()),
     staleTime: 0,
+    refetchOnMount: "always",
   });
 
   useEffect(() => {

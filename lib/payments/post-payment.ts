@@ -5,6 +5,7 @@ import { getRedis } from "@/lib/redis";
 import { paymentChannel } from "@/lib/payment-channel";
 import { generateOrderNumber, type TxClient } from "@/lib/orders/generate-order-number";
 import { pushSaleReceiptToZoho } from "@/lib/zoho/push-sale-receipt";
+import { pushInventoryAdjustmentToZoho } from "@/lib/zoho/push-adjustment";
 import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { paymentModeForOnline } from "@/lib/zoho/payment-mode";
 
@@ -121,6 +122,23 @@ export async function markPaymentSuccess(args: {
             where: { id: order.id },
             data: { zohoSoId: salesReceiptId },
           });
+        }
+
+        // Sales Receipts never move stock on their own — a separate
+        // Inventory Adjustment is what actually decrements Zoho's
+        // shelf-count. Own try/catch: a failed adjustment must never affect
+        // the already-successful Sales Receipt above.
+        try {
+          await pushInventoryAdjustmentToZoho({
+            organizationId,
+            branchId: order.branchId,
+            referenceType: "order",
+            referenceId: order.id,
+            referenceNumber: order.orderNumber,
+            items: order.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+          });
+        } catch (e) {
+          console.error("[post-payment] Zoho inventory adjustment failed for order", order.id, e);
         }
       } catch (e) {
         console.error("[post-payment] Zoho sales receipt push failed for order", order.id, e);

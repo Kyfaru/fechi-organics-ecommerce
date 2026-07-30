@@ -40,6 +40,7 @@ export function CartClient() {
     queryKey: ["cart"],
     queryFn: () => fetch("/api/cart").then((r) => r.json()),
     staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const cart = data?.data;

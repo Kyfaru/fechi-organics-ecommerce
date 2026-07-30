@@ -276,6 +276,7 @@ export function DeliveryClient({ user }: Props) {
     queryKey: ["cart"],
     queryFn: () => fetch("/api/cart").then((r) => r.json()),
     staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const branchesQuery = useQuery<{ ok: boolean; data: { branches: Branch[] } }>({

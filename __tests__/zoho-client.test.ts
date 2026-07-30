@@ -150,4 +150,18 @@ describe("zohoGet", () => {
 
     await expect(zohoGet(TEST_ORG_ID, "/items")).rejects.toBeInstanceOf(ZohoApiError);
   });
+
+  it("hits the Inventory base URL when product is 'inventory', leaving the default 'books' unaffected", async () => {
+    mockRedis.get.mockResolvedValue("my-token");
+
+    const fetchSpy = vi.spyOn(global, "fetch").mockImplementationOnce(() =>
+      makeFetchResponse({ items: [] })
+    );
+
+    await zohoGet(TEST_ORG_ID, "/items", undefined, "inventory");
+
+    const [url] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/inventory/v1/items");
+    expect(url).not.toContain("/books/v3");
+  });
 });
