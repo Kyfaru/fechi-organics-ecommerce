@@ -108,7 +108,13 @@ export type ZohoInventoryAdjustmentPayload = {
   line_items: Array<{
     item_id: string;
     quantity_adjusted: number; // signed delta — negative for a sale
-    warehouse_id?: string;
+    // CONFIRMED via Zoho's Item Adjustments API docs (zoho.com/inventory/api/v1/itemadjustments)
+    // after a live 400 "Invalid Element warehouse_id" — Zoho Inventory's
+    // field is location_id; warehouse_id is a Zoho POS field, a different
+    // product. Set per line item (not at the transaction root) to match
+    // this account's item-level location tracking, confirmed by the
+    // analogous Sales Receipt error (see ZohoSalesReceiptPayload above).
+    location_id?: string;
   }>;
   description?: string;
 };
