@@ -43,7 +43,6 @@ enum MessageType {
   @@schema("public")
 }
 
-
 enum TestimonialSource {
   facebook
   manual
@@ -208,55 +207,55 @@ enum NotificationType {
 // ============================================================================
 
 model user {
-  id               String    @id @default(uuid())
-  name             String
-  firstName        String?
-  lastName         String?
-  username         String?   @unique
-  phone            String?
-  country          String?
-  city             String?
-  companyId        String?
-  email            String    @unique
-  emailVerified    Boolean   @default(false)
-  image            String?
-  role             UserRole  @default(client)
-  loginCount       Int       @default(0)
-  banned           Boolean   @default(false)
-  banReason        String?
-  banExpires       DateTime?
-  twoFactorEnabled    Boolean   @default(false)
-  twoFaEmail          Boolean   @default(false)
-  twoFaPhone          Boolean   @default(false)
-  mustChangePassword  Boolean   @default(false)
-  usernameChanges      Int       @default(0)
-  lastUsernameChange   DateTime?
-  passwordChanges      Int       @default(0)
-  lastPasswordChange   DateTime?
-  phoneCode            String?
-  langPreference       String    @default("en-GB")
-  currencyDisplay      String    @default("KES")
-  notifBotanicalUpdates Boolean  @default(true)
-  notifOrderTracking    Boolean  @default(true)
-  notifPersonalized     Boolean  @default(true)
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  sessions         session[]
-  accounts         account[]
-  cart             cart?
-  favorites        favorite[]
-  orders           order[]
-  adminProfile     adminProfile?
-  clientProfile    clientProfile?
-  twoFactors       twoFactor[]
-  supportTickets   supportTicket[] @relation("TicketOwner")
-  assignedTickets  supportTicket[] @relation("TicketAssignee")
-  blogPosts        blogPost[]
-  loyaltyPoints    loyaltyPoints?
-  inboxMessages    inboxMessage[]
-  wishlistItems    wishlistItem[]
-  blogReactions    blogReaction[]
-  blogComments     blogComment[]
+  id                    String          @id @default(uuid())
+  name                  String
+  firstName             String?
+  lastName              String?
+  username              String?         @unique
+  phone                 String?
+  country               String?
+  city                  String?
+  companyId             String?
+  email                 String          @unique
+  emailVerified         Boolean         @default(false)
+  image                 String?
+  role                  UserRole        @default(client)
+  loginCount            Int             @default(0)
+  banned                Boolean         @default(false)
+  banReason             String?
+  banExpires            DateTime?
+  twoFactorEnabled      Boolean         @default(false)
+  twoFaEmail            Boolean         @default(false)
+  twoFaPhone            Boolean         @default(false)
+  mustChangePassword    Boolean         @default(false)
+  usernameChanges       Int             @default(0)
+  lastUsernameChange    DateTime?
+  passwordChanges       Int             @default(0)
+  lastPasswordChange    DateTime?
+  phoneCode             String?
+  langPreference        String          @default("en-GB")
+  currencyDisplay       String          @default("KES")
+  notifBotanicalUpdates Boolean         @default(true)
+  notifOrderTracking    Boolean         @default(true)
+  notifPersonalized     Boolean         @default(true)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  sessions              session[]
+  accounts              account[]
+  cart                  cart?
+  favorites             favorite[]
+  orders                order[]
+  adminProfile          adminProfile?
+  clientProfile         clientProfile?
+  twoFactors            twoFactor[]
+  supportTickets        supportTicket[] @relation("TicketOwner")
+  assignedTickets       supportTicket[] @relation("TicketAssignee")
+  blogPosts             blogPost[]
+  loyaltyPoints         loyaltyPoints?
+  inboxMessages         inboxMessage[]
+  wishlistItems         wishlistItem[]
+  blogReactions         blogReaction[]
+  blogComments          blogComment[]
 
   @@index([role])
   @@schema("public")
@@ -307,12 +306,12 @@ model verification {
 }
 
 model twoFactor {
-  id          String @id
+  id          String  @id
   secret      String
   backupCodes String
   verified    Boolean @default(false)
   userId      String
-  user        user   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        user    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@schema("public")
 }
@@ -322,48 +321,61 @@ model twoFactor {
 // ============================================================================
 
 model category {
-  id        String   @id @default(uuid())
-  key       String   @unique
+  id        String    @id @default(uuid())
+  key       String    @unique
   name      String
-  slug      String      @unique
+  slug      String    @unique
   imageKey  String
-  sortOrder Int         @default(0)
-  isActive  Boolean     @default(true)
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
   products  product[]
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@index([isActive, sortOrder])
   @@schema("public")
 }
 
 model product {
-  id                String         @id @default(uuid())
-  name              String
-  slug              String         @unique
+  id                  String               @id @default(uuid())
+  name                String
+  slug                String               @unique
   /// Nullable because it's Zoho-sourced — a sync with no description for this
   /// item nulls it out rather than leaving stale/default text (see zoho-sync.ts).
-  description       String?
-  shortDescription  String?
-  categoryId        String
-  category          category       @relation(fields: [categoryId], references: [id])
-  priceKes          Int
-  compareAtPriceKes Int?
-  variantLabel      String?
-  sizes             String[]       @default([])
-  howToUse          String?
-  ingredients       String?
-  bestSeller        Boolean        @default(false)
-  isActive          Boolean        @default(true)
+  description         String?
+  shortDescription    String?
+  categoryId          String
+  category            category             @relation(fields: [categoryId], references: [id])
+  priceKes            Int
+  compareAtPriceKes   Int?
+  variantLabel        String?
+  sizes               String[]             @default([])
+  /// "sizes" (default, uses `sizes` above) or "variants" (uses the
+  /// `variants` relation below) — controls which selector the admin edit
+  /// form and storefront product page render. Two independent mechanisms
+  /// kept deliberately separate rather than merged, since sizes are plain
+  /// strings with no photo, and variants are always photo-backed.
+  variantMode         String               @default("sizes")
+  /// Heading shown above the variant options on the storefront, e.g. "Color".
+  variantGroupLabel   String?
+  /// Amazon-style toggle: when true, images tied to a variant are hidden
+  /// from the storefront gallery until that variant is clicked; when false
+  /// (default) every image — variant-linked or not — always shows.
+  variantImagesHidden Boolean              @default(false)
+  variants            productVariant[]
+  howToUse            String?
+  ingredients         String?
+  bestSeller          Boolean              @default(false)
+  isActive            Boolean              @default(true)
   /// DEPRECATED — superseded by branchProductStock (stock is now per-branch).
   /// No longer read by checkout or admin inventory; the public storefront
   /// never gates on stock at all. Left in place for historic data only.
-  stock             Int            @default(0)
+  stock               Int                  @default(0)
   /// Manual admin override — the storefront's only stock gate. Independent
   /// of the deprecated `stock` field and per-branch Zoho stock.
-  outOfStock        Boolean        @default(false)
-  ratingAvg         Float          @default(0)
-  ratingCount       Int            @default(0)
+  outOfStock          Boolean              @default(false)
+  ratingAvg           Float                @default(0)
+  ratingCount         Int                  @default(0)
   // Zoho catalog fields — populated (or nulled, if absent from Zoho) on every
   // sync. Which Zoho item this maps to per organization now lives in
   // productZohoMapping (each of the two orgs assigns its own opaque item id
@@ -379,14 +391,14 @@ model product {
   /// instead of silently disappearing (categoryId itself is left untouched).
   zohoCategoryNameRaw String?
   lastZohoSyncedAt    DateTime?
-  images            productImage[]
-  cartItems         cartItem[]
-  favorites         favorite[]
-  orderItems        orderItem[]
-  branchStocks      branchProductStock[]
-  zohoMappings      productZohoMapping[]
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  images              productImage[]
+  cartItems           cartItem[]
+  favorites           favorite[]
+  orderItems          orderItem[]
+  branchStocks        branchProductStock[]
+  zohoMappings        productZohoMapping[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@index([categoryId, isActive])
   @@index([isActive, bestSeller])
@@ -396,14 +408,36 @@ model product {
 }
 
 model productImage {
-  id        String   @id @default(uuid())
+  id        String           @id @default(uuid())
   productId String
-  product   product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product   product          @relation(fields: [productId], references: [id], onDelete: Cascade)
   objectKey String
-  alt       String   @default("")
-  sortOrder Int      @default(0)
-  isPrimary Boolean  @default(false)
-  createdAt DateTime @default(now())
+  alt       String           @default("")
+  sortOrder Int              @default(0)
+  isPrimary Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  variants  productVariant[]
+
+  @@index([productId, sortOrder])
+  @@schema("public")
+}
+
+// A color/flavour/etc. option for a product in "variants" mode (see
+// product.variantMode). Only affects the storefront/orders — never synced
+// to or read by the Zoho integration (lib/zoho-sync.ts,
+// lib/zoho/push-sale-receipt.ts, lib/zoho/push-adjustment.ts all key off
+// productId only, so this is invisible to Zoho by construction).
+model productVariant {
+  id         String        @id @default(cuid())
+  productId  String
+  product    product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  label      String
+  imageId    String?
+  image      productImage? @relation(fields: [imageId], references: [id], onDelete: SetNull)
+  sortOrder  Int           @default(0)
+  cartItems  cartItem[]
+  orderItems orderItem[]
+  createdAt  DateTime      @default(now())
 
   @@index([productId, sortOrder])
   @@schema("public")
@@ -423,16 +457,27 @@ model cart {
 }
 
 model cartItem {
-  id        String   @id @default(uuid())
-  cartId    String
-  cart      cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  productId String
-  product   product  @relation(fields: [productId], references: [id])
-  quantity  Int      @default(1)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String          @id @default(uuid())
+  cartId       String
+  cart         cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId    String
+  product      product         @relation(fields: [productId], references: [id])
+  /// Selected variant (product.variantMode === "variants") — never touched
+  /// by Zoho. SetNull so removing a variant later doesn't break the cart.
+  variantId    String?
+  variant      productVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  variantLabel String?
+  quantity     Int             @default(1)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 
-  @@unique([cartId, productId])
+  // Includes variantId so the same product can sit in the cart once per
+  // variant. Postgres treats NULLs as distinct in unique indexes, so a
+  // sizes-mode/no-variant product (variantId always null) could in theory
+  // get two rows — the cart API (lib/cart.ts) is responsible for looking up
+  // by (cartId, productId, variantId) before inserting rather than relying
+  // on this constraint alone to dedupe the null case.
+  @@unique([cartId, productId, variantId])
   @@schema("public")
 }
 
@@ -450,71 +495,71 @@ model favorite {
 }
 
 model testimonial {
-  id            String            @id @default(uuid())
-  authorName    String
-  location      String?
-  quote         String
-  rating        Int               @default(5)
-  title         String?
-  orderId       String?
-  userId        String?
-  beforeKey     String?
-  afterKey      String?
-  source        TestimonialSource @default(manual)
-  approved      Boolean           @default(false)
-  sortOrder     Int               @default(0)
-  productIds    String[]          @default([])
-  contactEmail  String?
-  contactPhone  String?
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  id           String            @id @default(uuid())
+  authorName   String
+  location     String?
+  quote        String
+  rating       Int               @default(5)
+  title        String?
+  orderId      String?
+  userId       String?
+  beforeKey    String?
+  afterKey     String?
+  source       TestimonialSource @default(manual)
+  approved     Boolean           @default(false)
+  sortOrder    Int               @default(0)
+  productIds   String[]          @default([])
+  contactEmail String?
+  contactPhone String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
 
   @@index([approved, sortOrder])
   @@schema("public")
 }
 
 model order {
-  id           String      @id @default(uuid())
-  userId       String?
-  user         user?       @relation(fields: [userId], references: [id], onDelete: SetNull)
-  guestEmail   String?
-  status       OrderStatus @default(PENDING)
-  zohoSoId     String?     @unique // Zoho Books salesreceipt_id (name kept for historical/migration reasons)
-  orderNumber  String?     @unique
-  processingBy String?
-  processedAt  DateTime?
-  confirmedBy  String?
-  confirmedAt  DateTime?
-  shippedAt    DateTime?
-  subtotalKes  Int
-  deliveryKes  Int         @default(35000)
-  discountKes  Int         @default(0)
-  totalKes     Int
-  promoCode    String?
-  items             orderItem[]
-  branchId          String?
-  branch            branch?       @relation(fields: [branchId], references: [id])
-  transactions      transaction[]
-  deliveryAddress   String?
-  deliveryCity      String?
-  deliveryCounty    String?
-  deliveryZone      String?
-  deliveryPhone     String?
-  deliveryType          DeliveryType  @default(DELIVERY)
-  isInternational       Boolean       @default(false)
-  paymentStatus         PaymentStatus @default(PENDING)
-  receiptSent           Boolean       @default(false)
-  pickupCode            String?
-  pickupCodeExpiresAt   DateTime?
-  pickedUpAt            DateTime?
+  id                        String             @id @default(uuid())
+  userId                    String?
+  user                      user?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  guestEmail                String?
+  status                    OrderStatus        @default(PENDING)
+  zohoSoId                  String?            @unique // Zoho Books salesreceipt_id (name kept for historical/migration reasons)
+  orderNumber               String?            @unique
+  processingBy              String?
+  processedAt               DateTime?
+  confirmedBy               String?
+  confirmedAt               DateTime?
+  shippedAt                 DateTime?
+  subtotalKes               Int
+  deliveryKes               Int                @default(35000)
+  discountKes               Int                @default(0)
+  totalKes                  Int
+  promoCode                 String?
+  items                     orderItem[]
+  branchId                  String?
+  branch                    branch?            @relation(fields: [branchId], references: [id])
+  transactions              transaction[]
+  deliveryAddress           String?
+  deliveryCity              String?
+  deliveryCounty            String?
+  deliveryZone              String?
+  deliveryPhone             String?
+  deliveryType              DeliveryType       @default(DELIVERY)
+  isInternational           Boolean            @default(false)
+  paymentStatus             PaymentStatus      @default(PENDING)
+  receiptSent               Boolean            @default(false)
+  pickupCode                String?
+  pickupCodeExpiresAt       DateTime?
+  pickedUpAt                DateTime?
   customerPickupConfirmedAt DateTime?
   staffPickupConfirmedAt    DateTime?
-  reviewedAt            DateTime?
-  invoiceNumber         String?       @unique
-  invoicePdfKey         String?
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
-  statusEvents          orderStatusEvent[]
+  reviewedAt                DateTime?
+  invoiceNumber             String?            @unique
+  invoicePdfKey             String?
+  createdAt                 DateTime           @default(now())
+  updatedAt                 DateTime           @updatedAt
+  statusEvents              orderStatusEvent[]
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
@@ -522,40 +567,46 @@ model order {
 }
 
 model orderItem {
-  id         String   @id @default(uuid())
-  orderId    String
-  order      order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId  String
-  product    product  @relation(fields: [productId], references: [id])
-  name       String
-  priceKes   Int
-  quantity   Int
+  id           String          @id @default(uuid())
+  orderId      String
+  order        order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId    String
+  product      product         @relation(fields: [productId], references: [id])
+  name         String
+  priceKes     Int
+  quantity     Int
+  /// Selected variant, denormalized the same way `name`/`priceKes` already
+  /// snapshot the product at order time. SetNull so deleting a variant later
+  /// never breaks historical orders. Never sent to Zoho.
+  variantId    String?
+  variant      productVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  variantLabel String?
 
   @@index([orderId])
   @@schema("public")
 }
 
 model branch {
-  id                String        @id @default(uuid())
-  name              String
-  county            String
-  address           String?
-  phone             String?
-  slug              String?
-  lat               Float?
-  lng               Float?
-  mpesaType         MpesaType
-  shortcode         String?
-  invoiceNumber     String?       // KCB Buni invoice/account number (plaintext)
-  consumerKeyEnc    String
-  consumerSecretEnc String
-  passkeyEnc        String?
-  mpesaGateway      MpesaGateway  @default(DARAJA)
-  paystackSubaccount String?
-  cardEligible      Boolean       @default(false)
-  apiKeyEnc         String?
-  isMain            Boolean       @default(false)
-  isActive          Boolean       @default(true)
+  id                   String                @id @default(uuid())
+  name                 String
+  county               String
+  address              String?
+  phone                String?
+  slug                 String?
+  lat                  Float?
+  lng                  Float?
+  mpesaType            MpesaType
+  shortcode            String?
+  invoiceNumber        String? // KCB Buni invoice/account number (plaintext)
+  consumerKeyEnc       String
+  consumerSecretEnc    String
+  passkeyEnc           String?
+  mpesaGateway         MpesaGateway          @default(DARAJA)
+  paystackSubaccount   String?
+  cardEligible         Boolean               @default(false)
+  apiKeyEnc            String?
+  isMain               Boolean               @default(false)
+  isActive             Boolean               @default(true)
   // Zoho Books — a branch belongs to one of a small number of shared orgs
   // (credentials live on zohoOrganization; several branches can point at the
   // same org). zohoLocationId is this branch's Zoho Books Location id
@@ -563,26 +614,26 @@ model branch {
   // branch pushes with the correct physical location. Not used for stock
   // splitting (every branch under an org shares the org's aggregate stock —
   // see lib/zoho-sync.ts).
-  zohoOrganizationId    String?
-  zohoOrganization      zohoOrganization? @relation(fields: [zohoOrganizationId], references: [id])
-  zohoLocationId        String?
+  zohoOrganizationId   String?
+  zohoOrganization     zohoOrganization?     @relation(fields: [zohoOrganizationId], references: [id])
+  zohoLocationId       String?
   // Zoho Inventory (a separate product from Books) warehouse id for this
   // branch — distinct from zohoLocationId above. Used to tag which warehouse
   // an automatic Inventory Adjustment applies to (see
   // lib/zoho/push-adjustment.ts). Optional — every branch under an org
   // shares the same aggregate deduction target if unset.
-  zohoWarehouseId       String?
-  orders            order[]
-  deliveryZones     DeliveryZone[]
-  adminProfiles     adminProfile[]
-  transactions      transaction[]
-  inStoreOrders          inStoreOrder[]
-  mpesaC2bTransactions   mpesaC2bTransaction[]
-  notifications          notification[]
-  branchProductStocks    branchProductStock[]
-  zohoPushLogs           zohoPushLog[]
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  zohoWarehouseId      String?
+  orders               order[]
+  deliveryZones        DeliveryZone[]
+  adminProfiles        adminProfile[]
+  transactions         transaction[]
+  inStoreOrders        inStoreOrder[]
+  mpesaC2bTransactions mpesaC2bTransaction[]
+  notifications        notification[]
+  branchProductStocks  branchProductStock[]
+  zohoPushLogs         zohoPushLog[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
   @@index([county, isActive])
   @@index([zohoOrganizationId])
@@ -636,20 +687,20 @@ model branchProductStock {
 // deactivation itself is blocked while any branch still points at this org
 // (branch.zohoOrganizationId), see app/api/admin/zoho/organizations/[id]/route.ts.
 model zohoOrganization {
-  id               String    @id @default(cuid())
+  id               String               @id @default(cuid())
   name             String
-  zohoOrgId        String    @unique
+  zohoOrgId        String               @unique
   clientIdEnc      String
   clientSecretEnc  String
   refreshTokenEnc  String
   webhookSecretEnc String?
-  isActive         Boolean   @default(true)
+  isActive         Boolean              @default(true)
   connectedAt      DateTime?
   branches         branch[]
   productMappings  productZohoMapping[]
   pushLogs         zohoPushLog[]
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   @@schema("admin")
 }
@@ -659,20 +710,20 @@ model zohoOrganization {
 // the same physical product has a different zohoItemId under Org A than
 // under Org B. Both directions are direct unique-index lookups.
 model productZohoMapping {
-  id             String           @id @default(cuid())
-  productId      String
-  product        product          @relation(fields: [productId], references: [id], onDelete: Cascade)
-  organizationId String
-  organization   zohoOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  zohoItemId     String
+  id                  String           @id @default(cuid())
+  productId           String
+  product             product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  organizationId      String
+  organization        zohoOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  zohoItemId          String
   // Zoho Inventory's own item id for the same product (a separate product
   // from Books — its item ids aren't guaranteed to match Books'). Nullable:
   // lib/zoho/push-adjustment.ts reads `zohoInventoryItemId ?? zohoItemId`,
   // so Inventory Adjustments work correctly whether this has been populated
   // yet or the two products' ids happen to be identical.
   zohoInventoryItemId String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
   @@unique([productId, organizationId])
   @@unique([organizationId, zohoItemId])
@@ -708,7 +759,7 @@ model zohoPushLog {
   branchId       String?
   branch         branch?           @relation(fields: [branchId], references: [id])
   productId      String?
-  referenceType  String?           // "order" | "inStoreOrder" | "inventoryAdjustment"
+  referenceType  String? // "order" | "inStoreOrder" | "inventoryAdjustment"
   referenceId    String?
   zohoRecordId   String?
   errorMessage   String?
@@ -720,27 +771,27 @@ model zohoPushLog {
 }
 
 model transaction {
-  id                   String          @id @default(uuid())
-  orderId              String
-  order                order           @relation(fields: [orderId], references: [id])
-  branchId             String?
-  branch               branch?         @relation(fields: [branchId], references: [id])
-  provider             PaymentProvider
-  checkoutRequestId    String?         @unique
-  paystackReference    String?         @unique
-  amount               Int
-  status               TxStatus        @default(PENDING)
+  id                 String          @id @default(uuid())
+  orderId            String
+  order              order           @relation(fields: [orderId], references: [id])
+  branchId           String?
+  branch             branch?         @relation(fields: [branchId], references: [id])
+  provider           PaymentProvider
+  checkoutRequestId  String?         @unique
+  paystackReference  String?         @unique
+  amount             Int
+  status             TxStatus        @default(PENDING)
   // Which gateway actually handled this M-Pesa payment — null for non-M-Pesa
   // providers. Recorded from the dispatch result, not inferred from
   // branch.mpesaGateway, since a fallback can route a payment through the
   // other gateway than the branch's configured default.
-  mpesaGatewayUsed     MpesaGateway?
-  rawRequestPayload    Json?
-  rawCallbackPayload   Json?
-  mpesaReceiptNumber   String?
-  failureReason        String?
-  createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @updatedAt
+  mpesaGatewayUsed   MpesaGateway?
+  rawRequestPayload  Json?
+  rawCallbackPayload Json?
+  mpesaReceiptNumber String?
+  failureReason      String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
 
   @@index([orderId])
   @@index([checkoutRequestId])
@@ -767,22 +818,22 @@ model contactMessage {
 // ============================================================================
 
 model adminProfile {
-  id          String     @id @default(uuid())
-  userId      String     @unique
-  user        user       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  branchId    String?
-  branch      branch?    @relation(fields: [branchId], references: [id])
-  fullName        String
-  permissions     Json       @default("{}")
-  department      String?
-  role            String     @default("viewer")
-  twoFaMethod     String     @default("totp")
-  isSuperAdmin    Boolean    @default(false)
-  isActive        Boolean    @default(true)
-  accessExpiresAt DateTime?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-  auditLogs       auditLog[]
+  id                 String            @id @default(uuid())
+  userId             String            @unique
+  user               user              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branchId           String?
+  branch             branch?           @relation(fields: [branchId], references: [id])
+  fullName           String
+  permissions        Json              @default("{}")
+  department         String?
+  role               String            @default("viewer")
+  twoFaMethod        String            @default("totp")
+  isSuperAdmin       Boolean           @default(false)
+  isActive           Boolean           @default(true)
+  accessExpiresAt    DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  auditLogs          auditLog[]
   requestedApprovals approvalRequest[] @relation("RequestedApprovals")
   reviewedApprovals  approvalRequest[] @relation("ReviewedApprovals")
 
@@ -821,19 +872,19 @@ enum ApprovalStatus {
 // app/api/admin/approvals/[id]/decide/route.ts for what happens on approval
 // (the original action is re-run from `payload`).
 model approvalRequest {
-  id                    String         @id @default(uuid())
+  id                        String         @id @default(uuid())
   requestedByAdminProfileId String
-  requestedBy           adminProfile   @relation("RequestedApprovals", fields: [requestedByAdminProfileId], references: [id])
-  resource              String
-  action                String
-  resourceId            String?
-  payload               Json
-  status                ApprovalStatus @default(PENDING)
-  reviewedByAdminProfileId String?
-  reviewedBy            adminProfile?  @relation("ReviewedApprovals", fields: [reviewedByAdminProfileId], references: [id])
-  reviewNote             String?
-  reviewedAt             DateTime?
-  createdAt              DateTime      @default(now())
+  requestedBy               adminProfile   @relation("RequestedApprovals", fields: [requestedByAdminProfileId], references: [id])
+  resource                  String
+  action                    String
+  resourceId                String?
+  payload                   Json
+  status                    ApprovalStatus @default(PENDING)
+  reviewedByAdminProfileId  String?
+  reviewedBy                adminProfile?  @relation("ReviewedApprovals", fields: [reviewedByAdminProfileId], references: [id])
+  reviewNote                String?
+  reviewedAt                DateTime?
+  createdAt                 DateTime       @default(now())
 
   @@index([status, createdAt])
   @@index([requestedByAdminProfileId])
@@ -897,7 +948,7 @@ model clientProfile {
   companyId   String?  @unique
   companyName String?
   loginCount  Int      @default(0)
-  source      String?  // null for normal signups, "IN_STORE" for walk-ins created via admin in-store order flow
+  source      String? // null for normal signups, "IN_STORE" for walk-ins created via admin in-store order flow
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -983,21 +1034,21 @@ model couponRedemption {
 // ============================================================================
 
 model campaign {
-  id                   String         @id @default(cuid())
-  name                 String
-  type                 CampaignType
-  audienceType         String         @default("ALL")
-  subject              String?
-  heading              String?
-  previewText          String?
-  content              String?        @db.Text
-  audienceCustomerIds  String[]       @default([])
-  status               CampaignStatus @default(DRAFT)
-  scheduledAt          DateTime?
-  sentAt               DateTime?
-  sentCount            Int            @default(0)
-  lastError            String?        @db.Text
-  createdAt            DateTime       @default(now())
+  id                  String         @id @default(cuid())
+  name                String
+  type                CampaignType
+  audienceType        String         @default("ALL")
+  subject             String?
+  heading             String?
+  previewText         String?
+  content             String?        @db.Text
+  audienceCustomerIds String[]       @default([])
+  status              CampaignStatus @default(DRAFT)
+  scheduledAt         DateTime?
+  sentAt              DateTime?
+  sentCount           Int            @default(0)
+  lastError           String?        @db.Text
+  createdAt           DateTime       @default(now())
 
   @@schema("admin")
 }
@@ -1089,14 +1140,14 @@ model blogPost {
   views         Int        @default(0)
   createdAt     DateTime   @default(now())
 
-  likeCount     Int        @default(0)
-  dislikeCount  Int        @default(0)
-  commentCount  Int        @default(0)
-  isFeatured    Boolean    @default(false)
+  likeCount    Int     @default(0)
+  dislikeCount Int     @default(0)
+  commentCount Int     @default(0)
+  isFeatured   Boolean @default(false)
 
-  viewEvents    blogView[]
-  reactions     blogReaction[]
-  comments      blogComment[]
+  viewEvents blogView[]
+  reactions  blogReaction[]
+  comments   blogComment[]
 
   @@schema("admin")
 }
@@ -1297,10 +1348,10 @@ model wishlistItem {
 // ============================================================================
 
 model inStoreOrder {
-  id                 String                    @id @default(cuid())
-  orderNumber        String?                   @unique
+  id                 String                   @id @default(cuid())
+  orderNumber        String?                  @unique
   branchId           String
-  branch             branch                    @relation(fields: [branchId], references: [id])
+  branch             branch                   @relation(fields: [branchId], references: [id])
   createdByAdminId   String
   createdByAdminName String
   customerUserId     String?
@@ -1309,19 +1360,19 @@ model inStoreOrder {
   customerEmail      String?
   items              inStoreOrderItem[]
   subtotalKes        Int
-  discountKes        Int                       @default(0)
+  discountKes        Int                      @default(0)
   promoCode          String?
   totalKes           Int
-  fulfillmentStatus  InStoreFulfillmentStatus  @default(CONFIRMED)
-  paymentStatus      PaymentStatus             @default(PENDING)
+  fulfillmentStatus  InStoreFulfillmentStatus @default(CONFIRMED)
+  paymentStatus      PaymentStatus            @default(PENDING)
   transactions       inStoreTransaction[]
-  invoiceNumber      String?                   @unique
+  invoiceNumber      String?                  @unique
   invoicePdfKey      String?
-  receiptSentEmail   Boolean                   @default(false)
-  receiptSentSms     Boolean                   @default(false)
+  receiptSentEmail   Boolean                  @default(false)
+  receiptSentSms     Boolean                  @default(false)
   pickedUpAt         DateTime?
-  createdAt          DateTime                  @default(now())
-  updatedAt          DateTime                  @updatedAt
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
 
   @@index([branchId, createdAt])
   @@index([branchId, fulfillmentStatus])
@@ -1371,21 +1422,21 @@ model inStoreTransaction {
 // unenforced pointer maintained by application code when a row is claimed —
 // see schema notes in the migration report for why this side has no FK.
 model mpesaC2bTransaction {
-  id                           String               @id @default(cuid())
-  branchId                     String
-  branch                       branch               @relation(fields: [branchId], references: [id])
-  transId                      String               @unique
-  transAmount                  Int
-  msisdn                       String
-  firstName                    String?
-  middleName                   String?
-  lastName                     String?
-  transactionTime              DateTime
-  billRefNumber                String?
-  matchedInStoreTransactionId  String?
-  inStoreTransaction           inStoreTransaction?
-  rawPayload                   Json
-  createdAt                    DateTime             @default(now())
+  id                          String              @id @default(cuid())
+  branchId                    String
+  branch                      branch              @relation(fields: [branchId], references: [id])
+  transId                     String              @unique
+  transAmount                 Int
+  msisdn                      String
+  firstName                   String?
+  middleName                  String?
+  lastName                    String?
+  transactionTime             DateTime
+  billRefNumber               String?
+  matchedInStoreTransactionId String?
+  inStoreTransaction          inStoreTransaction?
+  rawPayload                  Json
+  createdAt                   DateTime            @default(now())
 
   @@index([branchId, transAmount, createdAt])
   @@schema("admin")

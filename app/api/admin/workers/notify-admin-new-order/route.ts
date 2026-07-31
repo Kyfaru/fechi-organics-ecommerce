@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
 
     await sendAdminNotificationEmail({
       to: [...new Set(recipients)],
-      subject: `New paid order #${order.orderNumber?.slice(0, 6).toUpperCase()}`,
+      subject: `New paid order #${order.orderNumber?.slice(6, -1).toUpperCase()}`,
       html: emailShell({ title: "New Paid Order", sectionsHtml: sections }),
     });
   }

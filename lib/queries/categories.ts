@@ -20,7 +20,7 @@ export async function getCategories(): Promise<CategoryItem[]> {
   cacheLife("hours");
 
   const rows = await db.category.findMany({
-    where: { isActive: true },
+    where: { isActive: true, products: { some: { isActive: true } } },
     orderBy: { sortOrder: "asc" },
   });
 

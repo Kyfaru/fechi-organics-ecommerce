@@ -16,6 +16,7 @@ import { logActivity } from "@/lib/admin-activity";
 const PatchSchema = z.object({
   zohoOrganizationId: z.string().optional(),
   zohoLocationId: z.string().optional(),
+  zohoWarehouseId: z.string().optional(),
 }).strict();
 
 /**

@@ -165,6 +165,8 @@ export async function POST(req: NextRequest) {
             name: item.product.name,
             priceKes: item.product.priceKes,
             quantity: item.quantity,
+            variantId: item.variantId,
+            variantLabel: item.variantLabel,
           })),
         },
       },

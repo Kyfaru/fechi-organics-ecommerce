@@ -24,6 +24,7 @@ const STATUS_COLORS: Record<string, string> = {
 interface OrderItem {
   id: string
   name: string
+  variantLabel: string | null
   priceKes: number
   quantity: number
   imageUrl: string | null
@@ -144,6 +145,9 @@ export default function OrderDetailContent({ order }: { order: Order }) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-medium text-neutral-900 truncate">{item.name}</p>
+                    {item.variantLabel && (
+                      <p className="text-[12px] text-neutral-500">{item.variantLabel}</p>
+                    )}
                     <p className="text-[12px] text-neutral-400">Qty: {item.quantity}</p>
                   </div>
                   <p className="text-[13px] font-semibold text-neutral-900 shrink-0">

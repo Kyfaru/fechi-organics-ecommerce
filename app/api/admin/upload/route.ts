@@ -5,7 +5,7 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requireStaffSession } from "@/lib/require-permission";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
-const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     // Validate size
     if (file.size > MAX_SIZE) {
       return NextResponse.json(
-        { error: "File must be smaller than 5 MB" },
+        { error: "File must be smaller than 10 MB" },
         { status: 400 }
       );
     }

@@ -288,6 +288,11 @@ export function CartClient() {
                             {item.variantLabel}
                           </p>
                         )}
+                        {item.selectedVariantLabel && (
+                          <p className="font-body text-[#40493c] dark:text-gray-300 text-[13px] mt-0.5">
+                            Option: {item.selectedVariantLabel}
+                          </p>
+                        )}
 
                         <div className="flex items-center justify-between mt-3 flex-wrap gap-3">
                           {/* Quantity stepper */}

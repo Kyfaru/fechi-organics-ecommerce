@@ -17,6 +17,7 @@ import { createNotification } from "@/lib/notify";
 import { publishQstashJSON } from "@/lib/qstash";
 import { runCampaignSend, markCampaignFailed } from "@/lib/campaigns/send-campaign";
 import type { CampaignStatus } from "@prisma/client";
+import { syncProductVariants, type VariantInput } from "@/lib/products/sync-variants";
 
 type Executor = (payload: Record<string, unknown>, resourceId: string | null) => Promise<unknown>;
 
@@ -26,7 +27,8 @@ type Executor = (payload: Record<string, unknown>, resourceId: string | null) =>
 // decide/route.ts calls once an admin approves a queued request.
 export const approvalExecutors: Record<string, Executor> = {
   "products:create": async (payload) => {
-    const { imageObjectKeys, ...productData } = payload as { imageObjectKeys?: string[] } & Record<string, unknown>;
+    const { imageObjectKeys, variants, ...productData } = payload as
+      { imageObjectKeys?: string[]; variants?: VariantInput[] } & Record<string, unknown>;
     const product = await db.product.create({
       data: {
         ...(productData as Prisma.productCreateInput),
@@ -39,6 +41,7 @@ export const approvalExecutors: Record<string, Executor> = {
         images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], select: { objectKey: true, isPrimary: true } },
       },
     });
+    await syncProductVariants(product.id, variants);
     invalidateProductCache(product.slug);
     createNotification({
       type: "PRODUCT_ADDED",
@@ -51,7 +54,8 @@ export const approvalExecutors: Record<string, Executor> = {
 
   "products:update": async (payload, resourceId) => {
     if (!resourceId) return null;
-    const { imageObjectKeys, id: _id, ...data } = payload as { imageObjectKeys?: string[]; id?: string } & Record<string, unknown>;
+    const { imageObjectKeys, variants, id: _id, ...data } = payload as
+      { imageObjectKeys?: string[]; variants?: VariantInput[]; id?: string } & Record<string, unknown>;
     const existing = await db.product.findUnique({ where: { id: resourceId }, select: { slug: true } });
     const product = await db.product.update({ where: { id: resourceId }, data: data as Prisma.productUpdateInput });
     if (imageObjectKeys !== undefined) {
@@ -62,6 +66,7 @@ export const approvalExecutors: Record<string, Executor> = {
         });
       }
     }
+    await syncProductVariants(resourceId, variants);
     invalidateProductCache(existing?.slug, product.slug);
     return product;
   },
@@ -79,12 +84,13 @@ export const approvalExecutors: Record<string, Executor> = {
 
   "branches:update": async (payload, resourceId) => {
     if (!resourceId) return null;
-    const { zohoOrganizationId, zohoLocationId } = payload as {
-      zohoOrganizationId?: string; zohoLocationId?: string;
+    const { zohoOrganizationId, zohoLocationId, zohoWarehouseId } = payload as {
+      zohoOrganizationId?: string; zohoLocationId?: string; zohoWarehouseId?: string;
     };
-    const data: { zohoOrganizationId?: string | null; zohoLocationId?: string | null } = {};
+    const data: { zohoOrganizationId?: string | null; zohoLocationId?: string | null; zohoWarehouseId?: string | null } = {};
     if (zohoOrganizationId !== undefined) data.zohoOrganizationId = zohoOrganizationId || null;
     if (zohoLocationId !== undefined) data.zohoLocationId = zohoLocationId || null;
+    if (zohoWarehouseId !== undefined) data.zohoWarehouseId = zohoWarehouseId || null;
     if (Object.keys(data).length > 0) {
       await db.branch.update({ where: { id: resourceId }, data });
     }

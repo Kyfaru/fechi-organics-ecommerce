@@ -28,6 +28,10 @@ export async function GET(req: NextRequest) {
           orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }],
           select: { id: true, objectKey: true, isPrimary: true, sortOrder: true, alt: true },
         },
+        variants: {
+          orderBy: { sortOrder: "asc" },
+          select: { id: true, label: true, sortOrder: true, image: { select: { objectKey: true } } },
+        },
       },
     });
 
@@ -64,6 +68,13 @@ const CreateSchema = z.object({
   ingredients: z.string().nullable().optional(),
   // imageObjectKeys: ordered array; index 0 = primary.
   imageObjectKeys: z.array(z.string()).optional(),
+  variantMode: z.enum(["sizes", "variants"]).optional(),
+  variantGroupLabel: z.string().nullable().optional(),
+  variantImagesHidden: z.boolean().optional(),
+  variants: z.array(z.object({
+    label: z.string().min(1),
+    imageObjectKey: z.string().optional(),
+  })).optional(),
 }).strict();
 
 export async function POST(req: NextRequest) {
@@ -128,6 +139,14 @@ const UpdateSchema = z.object({
   // imageObjectKeys: ordered array; index 0 = primary.
   // Passing this replaces all existing images with the new set.
   imageObjectKeys: z.array(z.string()).optional(),
+  variantMode: z.enum(["sizes", "variants"]).optional(),
+  variantGroupLabel: z.string().nullable().optional(),
+  variantImagesHidden: z.boolean().optional(),
+  // Passing this replaces all existing variants with the new set.
+  variants: z.array(z.object({
+    label: z.string().min(1),
+    imageObjectKey: z.string().optional(),
+  })).optional(),
 }).strict();
 
 export async function PATCH(req: NextRequest) {

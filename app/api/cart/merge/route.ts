@@ -39,13 +39,27 @@ export async function POST(req: NextRequest) {
 
     const userCart = await db.cart.upsert({ where: { userId }, update: {}, create: { userId } });
 
-    // Merge each guest item into the user cart (increment if already exists)
+    // Merge each guest item into the user cart (increment if already exists).
+    // findFirst + create/update, not upsert — Prisma's compound-unique
+    // where-input doesn't accept `null` for the nullable variantId member.
     for (const item of guestCart.items) {
-      await db.cartItem.upsert({
-        where: { cartId_productId: { cartId: userCart.id, productId: item.productId } },
-        create: { cartId: userCart.id, productId: item.productId, quantity: item.quantity },
-        update: { quantity: { increment: item.quantity } },
+      const existingItem = await db.cartItem.findFirst({
+        where: { cartId: userCart.id, productId: item.productId, variantId: item.variantId },
+        select: { id: true },
       });
+      if (existingItem) {
+        await db.cartItem.update({ where: { id: existingItem.id }, data: { quantity: { increment: item.quantity } } });
+      } else {
+        await db.cartItem.create({
+          data: {
+            cartId: userCart.id,
+            productId: item.productId,
+            quantity: item.quantity,
+            variantId: item.variantId,
+            variantLabel: item.variantLabel,
+          },
+        });
+      }
     }
 
     // Delete guest cart

@@ -123,7 +123,7 @@ export async function PATCH(
   }
 }
 
-/** DELETE /api/admin/blog/[id] — archive post */
+/** DELETE /api/admin/blog/[id] — permanently delete post */
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -138,12 +138,11 @@ export async function DELETE(
   const { id } = await params;
 
   try {
-    const post = await db.blogPost.update({
-      where: { id },
-      data: { status: "ARCHIVED" },
-    });
-    console.info(`[blog/DELETE] Archived post: ${id}`);
-    return ok({ id: post.id, status: "ARCHIVED" });
+    // blogView/blogReaction/blogComment all cascade on their post relation
+    // (prisma/schema.prisma) — no orphaned rows left behind.
+    await db.blogPost.delete({ where: { id } });
+    console.info(`[blog/DELETE] Permanently deleted post: ${id}`);
+    return ok({ id, deleted: true });
   } catch (e) {
     console.error("[blog/DELETE]", e);
     return Err.internal(e);

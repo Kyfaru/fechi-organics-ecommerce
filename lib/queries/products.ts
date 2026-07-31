@@ -25,6 +25,10 @@ export type ProductCard = {
 export type ProductDetail = ProductCard & {
   description: string;
   sizes: string[];
+  variantMode: string;
+  variantGroupLabel: string | null;
+  variantImagesHidden: boolean;
+  variants: { id: string; label: string; imageUrl: string | null }[];
   howToUse: string | null;
   ingredients: string | null;
   images: { url: string; alt: string; isPrimary: boolean }[];
@@ -148,6 +152,10 @@ export async function getProductBySlug(slug: string): Promise<ProductDetail | nu
     include: {
       images: { orderBy: { sortOrder: "asc" } },
       category: { select: { name: true, slug: true } },
+      variants: {
+        orderBy: { sortOrder: "asc" },
+        select: { id: true, label: true, image: { select: { objectKey: true } } },
+      },
     },
   });
   if (!p) return null;
@@ -159,6 +167,14 @@ export async function getProductBySlug(slug: string): Promise<ProductDetail | nu
     // distinction, so it just reads as empty here.
     description: p.description ?? "",
     sizes: p.sizes,
+    variantMode: p.variantMode,
+    variantGroupLabel: p.variantGroupLabel,
+    variantImagesHidden: p.variantImagesHidden,
+    variants: p.variants.map((v) => ({
+      id: v.id,
+      label: v.label,
+      imageUrl: v.image ? r2PublicUrl(v.image.objectKey) : null,
+    })),
     howToUse: p.howToUse,
     ingredients: p.ingredients,
     images: p.images.map((i) => ({

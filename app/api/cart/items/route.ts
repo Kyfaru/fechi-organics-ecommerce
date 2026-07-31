@@ -10,6 +10,8 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 const AddSchema = z.object({
   productId: z.string().uuid(),
   quantity: z.number().int().min(1).max(99).default(1),
+  variantId: z.string().optional(),
+  variantLabel: z.string().optional(),
 }).strict();
 
 export async function POST(req: NextRequest) {
@@ -21,7 +23,7 @@ export async function POST(req: NextRequest) {
     const parsed = AddSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
-    const { productId, quantity } = parsed.data;
+    const { productId, quantity, variantId, variantLabel } = parsed.data;
 
     // Verify product exists and is in stock
     const product = await db.product.findUnique({ where: { id: productId, isActive: true } });
@@ -32,12 +34,18 @@ export async function POST(req: NextRequest) {
 
     const { cartId, isNew } = await resolveCart(userId);
 
-    // Upsert: increment quantity if already in cart
-    await db.cartItem.upsert({
-      where: { cartId_productId: { cartId, productId } },
-      create: { cartId, productId, quantity },
-      update: { quantity: { increment: quantity } },
+    // Prisma's compound-unique where-input doesn't accept `null` for a
+    // nullable member field, so a null variantId (sizes-mode/no-variant
+    // products) needs a plain findFirst + create/update instead of upsert.
+    const existingItem = await db.cartItem.findFirst({
+      where: { cartId, productId, variantId: variantId ?? null },
+      select: { id: true },
     });
+    if (existingItem) {
+      await db.cartItem.update({ where: { id: existingItem.id }, data: { quantity: { increment: quantity } } });
+    } else {
+      await db.cartItem.create({ data: { cartId, productId, quantity, variantId, variantLabel } });
+    }
 
     await db.cart.update({ where: { id: cartId }, data: { updatedAt: new Date() } });
 
