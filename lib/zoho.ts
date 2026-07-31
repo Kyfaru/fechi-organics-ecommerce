@@ -89,13 +89,13 @@ export type ZohoSalesReceiptPayload = {
     name?: string;
     quantity: number;
     rate: number;
+    // CONFIRMED via a live 400 from a real order push: this org has Zoho
+    // Books' "Item-Level Location" tracking enabled, which rejects a
+    // transaction-level location_id outright — error 27520 "You cannot
+    // associate an Item-Level location at a transaction level." Location
+    // must be set per line item instead.
+    location_id?: string;
   }>;
-  // UNVERIFIED — not listed on the generic Sales Receipt docs page, but
-  // Zoho Books' Locations feature (Settings → Locations, confirmed via
-  // GET /locations) is expected to extend most transaction types with this
-  // field once enabled for the org. Confirm against a live payload; Zoho
-  // will simply ignore an unrecognized field if this guess is wrong.
-  location_id?: string;
   reference_number?: string;
   notes?: string;
 };

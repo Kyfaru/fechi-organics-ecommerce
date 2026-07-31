@@ -66,8 +66,10 @@ export async function pushSaleReceiptToZoho(args: {
         name: item.name,
         quantity: item.quantity,
         rate: item.priceKes / 100,
+        // Set per line item, not at the transaction level — see the
+        // CONFIRMED note on ZohoSalesReceiptPayload.line_items in lib/zoho.ts.
+        location_id: branch?.zohoLocationId ?? undefined,
       })),
-      location_id: branch?.zohoLocationId ?? undefined,
       reference_number: args.referenceNumber ?? undefined,
       notes,
     };
