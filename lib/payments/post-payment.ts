@@ -5,7 +5,6 @@ import { getRedis } from "@/lib/redis";
 import { paymentChannel } from "@/lib/payment-channel";
 import { generateOrderNumber, type TxClient } from "@/lib/orders/generate-order-number";
 import { pushSaleReceiptToZoho } from "@/lib/zoho/push-sale-receipt";
-import { pushInventoryAdjustmentToZoho } from "@/lib/zoho/push-adjustment";
 import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { paymentModeForOnline } from "@/lib/zoho/payment-mode";
 
@@ -124,22 +123,16 @@ export async function markPaymentSuccess(args: {
           });
         }
 
-        // Sales Receipts never move stock on their own — a separate
-        // Inventory Adjustment is what actually decrements Zoho's
-        // shelf-count. Own try/catch: a failed adjustment must never affect
-        // the already-successful Sales Receipt above.
-        try {
-          await pushInventoryAdjustmentToZoho({
-            organizationId,
-            branchId: order.branchId,
-            referenceType: "order",
-            referenceId: order.id,
-            referenceNumber: order.orderNumber,
-            items: order.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
-          });
-        } catch (e) {
-          console.error("[post-payment] Zoho inventory adjustment failed for order", order.id, e);
-        }
+        // NOTE: no separate Inventory Adjustment call here anymore.
+        // Confirmed via a live productZohoMapping check (zohoInventoryItemId
+        // was null, falling back to the same zohoItemId the Sales Receipt
+        // above already used) plus the item-level location_id requirement
+        // (error 27520) that this org's Sales Receipts already move real
+        // stock on their own — this account has full Zoho Inventory wired
+        // in, not just plain Books. Calling pushInventoryAdjustmentToZoho
+        // here was double-decrementing the same item. See
+        // lib/zoho/push-adjustment.ts's own docstring for the manual-only
+        // use case that function still serves.
       } catch (e) {
         console.error("[post-payment] Zoho sales receipt push failed for order", order.id, e);
       }

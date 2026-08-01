@@ -13,11 +13,6 @@ vi.mock("@/lib/zoho/push-sale-receipt", () => ({
   pushSaleReceiptToZoho: (...args: unknown[]) => mockPushSaleReceiptToZoho(...args),
 }));
 
-const mockPushInventoryAdjustmentToZoho = vi.fn();
-vi.mock("@/lib/zoho/push-adjustment", () => ({
-  pushInventoryAdjustmentToZoho: (...args: unknown[]) => mockPushInventoryAdjustmentToZoho(...args),
-}));
-
 const mockResolveZohoOrganizationId = vi.fn();
 vi.mock("@/lib/zoho/resolve-org", () => ({
   resolveZohoOrganizationId: (...args: unknown[]) => mockResolveZohoOrganizationId(...args),
@@ -79,7 +74,6 @@ beforeEach(() => {
   db.order.update.mockResolvedValue(ORDER);
   mockResolveZohoOrganizationId.mockResolvedValue("org-a");
   mockPushSaleReceiptToZoho.mockResolvedValue({ salesReceiptId: "SR-1" });
-  mockPushInventoryAdjustmentToZoho.mockResolvedValue({ adjustmentId: "IA-1" });
 });
 
 describe("markPaymentSuccess — Zoho branch attribution", () => {
@@ -98,9 +92,6 @@ describe("markPaymentSuccess — Zoho branch attribution", () => {
     expect(mockPushSaleReceiptToZoho).toHaveBeenCalledWith(
       expect.objectContaining({ branchId: NAKURU_BRANCH_ID, organizationId: "org-a" }),
     );
-    expect(mockPushInventoryAdjustmentToZoho).toHaveBeenCalledWith(
-      expect.objectContaining({ branchId: NAKURU_BRANCH_ID, organizationId: "org-a" }),
-    );
   });
 
   it("skips the Zoho push without touching branch.findFirst when the order has no branchId", async () => {
@@ -114,21 +105,6 @@ describe("markPaymentSuccess — Zoho branch attribution", () => {
     await new Promise((r) => setTimeout(r, 0));
 
     expect(mockPushSaleReceiptToZoho).not.toHaveBeenCalled();
-    expect(mockPushInventoryAdjustmentToZoho).not.toHaveBeenCalled();
     expect(db.branch.findFirst).not.toHaveBeenCalled();
-  });
-
-  it("still pushes the Sales Receipt and completes successfully even when the inventory adjustment fails", async () => {
-    mockPushInventoryAdjustmentToZoho.mockRejectedValue(new Error("Zoho Inventory down"));
-
-    await markPaymentSuccess({
-      transactionId: "tx-1",
-      orderId: "order-1",
-      transactionData: {},
-    });
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(mockPushSaleReceiptToZoho).toHaveBeenCalledOnce();
-    expect(mockPushInventoryAdjustmentToZoho).toHaveBeenCalledOnce();
   });
 });

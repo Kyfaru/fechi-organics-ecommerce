@@ -19,7 +19,6 @@ import { getRedis } from "@/lib/redis";
 import { paymentChannel } from "@/lib/payment-channel";
 import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-invoice";
 import { pushSaleReceiptToZoho } from "@/lib/zoho/push-sale-receipt";
-import { pushInventoryAdjustmentToZoho } from "@/lib/zoho/push-adjustment";
 import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { paymentModeForInStore } from "@/lib/zoho/payment-mode";
 
@@ -139,22 +138,9 @@ export async function markInStorePaymentSuccess(args: {
           notes: `Fechi Organics in-store order ${order?.orderNumber ?? args.inStoreOrderId}`,
         });
 
-        // Sales Receipts never move stock on their own — a separate
-        // Inventory Adjustment is what actually decrements Zoho's
-        // shelf-count. Own try/catch: a failed adjustment must never affect
-        // the already-successful Sales Receipt above.
-        try {
-          await pushInventoryAdjustmentToZoho({
-            organizationId,
-            branchId,
-            referenceType: "inStoreOrder",
-            referenceId: args.inStoreOrderId,
-            referenceNumber: order?.orderNumber,
-            items: paidItems.map((item) => ({ productId: item.productId, quantity: item.quantity })),
-          });
-        } catch (e) {
-          console.error("[instore-post-payment] Zoho inventory adjustment failed:", e);
-        }
+        // NOTE: no separate Inventory Adjustment call here anymore — see
+        // lib/payments/post-payment.ts for why. This org's Sales Receipts
+        // already move real stock; the extra call was double-decrementing.
       } catch (e) {
         console.error("[instore-post-payment] Zoho sales receipt push failed:", e);
       }
