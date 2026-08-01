@@ -274,7 +274,8 @@ export function ProductCard({ product, variant = "default" }: Props) {
                     onClick={handleAddToCart}
                     disabled={cartMutation.isPending || product.outOfStock}
                     className={[
-                      "flex items-center gap-1 border rounded-[40px] px-3 py-2 text-[13px] font-body transition-all",
+                      "flex items-center gap-1 border rounded-[40px] px-3 py-2 whitespace-nowrap font-body transition-all",
+                      variant === "compact" ? "text-[11px] sm:text-[13px]" : "text-[13px]",
                       justAdded
                         ? "bg-[#27731e] text-white border-[#27731e]"
                         : "border-black dark:border-gray-600 text-black dark:text-gray-200 hover:bg-[#27731e] hover:text-white hover:border-[#27731e]",
@@ -285,7 +286,17 @@ export function ProductCard({ product, variant = "default" }: Props) {
                     {justAdded ? (
                       <><Icon icon="mdi:check" width={14} />Added</>
                     ) : (
-                      <>{cartMutation.isPending ? <Spinner size={14} invert /> : <Icon icon="mdi:cart-plus" width={14} />}Add to Cart</>
+                      <>
+                        {cartMutation.isPending ? <Spinner size={14} invert /> : <Icon icon="mdi:cart-plus" width={14} />}
+                        {variant === "compact" ? (
+                          <>
+                            <span className="sm:hidden">Shop now</span>
+                            <span className="hidden sm:inline">Add to Cart</span>
+                          </>
+                        ) : (
+                          "Add to Cart"
+                        )}
+                      </>
                     )}
                   </motion.button>
                 </AnimatePresence>
@@ -293,13 +304,23 @@ export function ProductCard({ product, variant = "default" }: Props) {
             ) : (
               <Link
                 href="/cart"
-                className="flex items-center gap-1.5 rounded-[40px] px-3 py-2 text-[13px] font-body font-semibold transition-all shadow-sm"
+                className={[
+                  "flex items-center gap-1.5 rounded-[40px] px-3 py-2 whitespace-nowrap font-body font-semibold transition-all shadow-sm",
+                  variant === "compact" ? "text-[11px] sm:text-[13px]" : "text-[13px]",
+                ].join(" ")}
                 style={{ background: "#fec700", color: "#1a1c1c" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "#e5b600"; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "#fec700"; }}
               >
                 <Icon icon="mdi:cart-check" width={14} />
-                Go to Cart
+                {variant === "compact" ? (
+                  <>
+                    <span className="sm:hidden">See Cart</span>
+                    <span className="hidden sm:inline">Go to Cart</span>
+                  </>
+                ) : (
+                  "Go to Cart"
+                )}
               </Link>
             )}
           </div>

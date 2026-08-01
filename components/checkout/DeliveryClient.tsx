@@ -13,6 +13,7 @@ import PhoneInput from "@/components/ui/PhoneInput";
 import { KENYA_COUNTIES } from "@/lib/kenya-counties";
 import { toast } from "@/lib/toast";
 import { useCurrency } from "@/app/providers";
+import { CHECKOUT_FLOW_FLAG_KEY } from "@/lib/checkout-flow";
 
 type DeliveryMode = "DELIVERY" | "PICKUP";
 type Country = { code: string; name: string; flag: string };
@@ -186,6 +187,20 @@ function SelectDropdown({
 export function DeliveryClient({ user }: Props) {
   const router = useRouter();
   const { format } = useCurrency();
+
+  // Only reachable via the cart's "Place Order" button (which sets this
+  // flag) — typing/bookmarking /delivery directly sends you back to /cart.
+  const [flowChecked, setFlowChecked] = useState(false);
+  useEffect(() => {
+    window.setTimeout(() => {
+      if (!sessionStorage.getItem(CHECKOUT_FLOW_FLAG_KEY)) {
+        router.replace("/cart");
+        return;
+      }
+      setFlowChecked(true);
+    }, 0);
+  }, [router]);
+
   const initialName = splitName(user.fullName);
   const [mode, setMode] = useState<DeliveryMode>("DELIVERY");
   const [firstName, setFirstName] = useState(initialName.firstName);
@@ -446,6 +461,14 @@ export function DeliveryClient({ user }: Props) {
   // ---------------------------------------------------------------------------
   // JSX
   // ---------------------------------------------------------------------------
+  if (!flowChecked) {
+    return (
+      <div className="min-h-screen bg-[#f8f8f7] dark:bg-gray-950 flex items-center justify-center">
+        <Icon icon="mdi:loading" width={30} className="animate-spin text-[#27731e]" />
+      </div>
+    );
+  }
+
   return (
     <>
     <Navbar />

@@ -96,6 +96,7 @@ export async function getProducts(opts: {
   sort?: "newest" | "price_asc" | "price_desc" | "best";
   cursor?: string;
   limit?: number;
+  search?: string;
 }): Promise<{ items: ProductCard[]; nextCursor: string | null }> {
   "use cache";
   cacheTag("products");
@@ -116,8 +117,18 @@ export async function getProducts(opts: {
     ? { category: { slug: opts.category } }
     : {};
 
+  const search = opts.search?.trim();
+  const searchFilter = search
+    ? {
+        OR: [
+          { name: { contains: search, mode: "insensitive" as const } },
+          { shortDescription: { contains: search, mode: "insensitive" as const } },
+        ],
+      }
+    : {};
+
   const rows = await db.product.findMany({
-    where: { isActive: true, ...categoryFilter },
+    where: { isActive: true, ...categoryFilter, ...searchFilter },
     orderBy,
     take: limit + 1,
     ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
