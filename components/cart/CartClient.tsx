@@ -13,6 +13,7 @@ import { useCurrency } from "@/app/providers";
 import type { CartLine } from "@/lib/cart";
 import { posthog } from "@/lib/posthog";
 import { StepIndicator } from "@/components/checkout/StepIndicator";
+import { CHECKOUT_FLOW_FLAG_KEY } from "@/lib/checkout-flow";
 
 const DELIVERY_KES = 35000; // 350 × 100 cents
 
@@ -194,6 +195,7 @@ export function CartClient() {
     } else {
       sessionStorage.removeItem("fechi_promo");
     }
+    sessionStorage.setItem(CHECKOUT_FLOW_FLAG_KEY, "1");
 
     posthog.capture("checkout_started", {
       step: "cart",
@@ -232,7 +234,7 @@ export function CartClient() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="flex flex-col items-center justify-center py-20 text-center"
-        >
+        >solar:cart-large-4-linear
           <Icon icon="mdi:cart-outline" width={80} className="text-[#c0cab8] mb-6" />
           <h2 className="font-heading text-[#1a1c1c] dark:text-white text-[28px] mb-3">Your cart is empty</h2>
           <p className="font-body text-[#40493c] dark:text-gray-300 text-[16px] mb-8">

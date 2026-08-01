@@ -3,12 +3,13 @@
 import { usePathname } from "next/navigation";
 import { Icon } from "@iconify/react";
 import { posthog } from "@/lib/posthog";
-
-const WHATSAPP_NUMBER = "254768151505";
-const WHATSAPP_URL = `https://wa.me/${WHATSAPP_NUMBER}`;
+import { WHATSAPP_URL, whatsappInNavbar } from "@/lib/whatsapp";
 
 export function WhatsAppButton() {
   const pathname = usePathname();
+  // NEXT_PUBLIC_WHATSAPP_BUTTON_POSITION=navbar (default) moves this into
+  // Navbar.tsx / Home-Navbar.tsx instead — see NavbarWhatsAppButton.tsx.
+  if (whatsappInNavbar) return null;
   // Admin has its own WhatsApp entry point in the header — see AdminHeader.tsx
   if (pathname?.startsWith("/admin")) return null;
   // Removed entirely from the account area per product decision
