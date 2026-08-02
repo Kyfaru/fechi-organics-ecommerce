@@ -39,7 +39,7 @@ const SIZES = {
     image: "h-[130px] sm:h-[170px] lg:h-[280px]",
     body: "px-3 pb-3 pt-1 sm:px-5 sm:pb-7",
     name: "text-[12px] sm:text-[14px] lg:text-[18px]",
-    price: "text-[13px] sm:text-[15px] lg:text-[20px]",
+    price: "text-[16px] sm:text-[18px] lg:text-[22px]",
     desc: "text-[11px] sm:text-[13px]",
   },
 } as const;
@@ -229,8 +229,24 @@ export function ProductCard({ product, variant = "default" }: Props) {
 
       {/* Card body */}
       <div className={sizes.body}>
-        {/* Category */}
-        <p className="text-[#27731e] text-[14px] font-body mb-1">{product.categoryName}</p>
+        {/* Category — compact cards also carry the price on this line,
+            pinned to the right margin, so the CTA below gets its own
+            full-width row instead of splitting space with the price. */}
+        <div className={variant === "compact" ? "flex items-center justify-between gap-2 mb-1" : "mb-1"}>
+          <p className="text-[#27731e] text-[14px] font-body truncate">{product.categoryName}</p>
+          {variant === "compact" && (
+            <div className="flex items-baseline gap-1.5 shrink-0">
+              <span className={`font-body text-black dark:text-white leading-tight ${sizes.price}`}>
+                {format(product.priceKes)}
+              </span>
+              {hasDiscount && (
+                <span className="text-[11px] text-[#c4c4c4] line-through font-body">
+                  {format(product.compareAtPriceKes!)}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Name */}
         <Link href={`/shop/${product.slug}`}>
@@ -246,24 +262,27 @@ export function ProductCard({ product, variant = "default" }: Props) {
           </p>
         )}
 
-        {/* Price + CTA */}
+        {/* Price + CTA — compact cards already showed the price up next to
+            the category above, so this row is CTA-only and full width. */}
         <div className="mt-2">
-          <div className="flex items-center justify-between">
-            {/* Price */}
-            <div className="flex flex-col">
-              <span className={`font-body text-black dark:text-white leading-tight ${sizes.price}`}>
-                {format(product.priceKes)}
-              </span>
-              {hasDiscount && (
-                <span className="text-[12px] text-[#c4c4c4] line-through font-body">
-                  {format(product.compareAtPriceKes!)}
+          <div className={variant === "compact" ? "flex" : "flex items-center justify-between"}>
+            {/* Price — default variant only; compact shows it by the category */}
+            {variant === "default" && (
+              <div className="flex flex-col">
+                <span className={`font-body text-black dark:text-white leading-tight ${sizes.price}`}>
+                  {format(product.priceKes)}
                 </span>
-              )}
-            </div>
+                {hasDiscount && (
+                  <span className="text-[12px] text-[#c4c4c4] line-through font-body">
+                    {format(product.compareAtPriceKes!)}
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* CTA — Add to Cart OR Go to Cart */}
             {!showInCart ? (
-              <Tooltip label="Add to cart">
+              <Tooltip label="Add to cart" className={variant === "compact" ? "w-full" : undefined}>
                 <AnimatePresence mode="wait">
                   <motion.button
                     key={justAdded ? "added" : "add"}
@@ -275,7 +294,7 @@ export function ProductCard({ product, variant = "default" }: Props) {
                     disabled={cartMutation.isPending || product.outOfStock}
                     className={[
                       "flex items-center gap-1 border rounded-[40px] px-3 py-2 whitespace-nowrap font-body transition-all",
-                      variant === "compact" ? "text-[11px] sm:text-[13px]" : "text-[13px]",
+                      variant === "compact" ? "w-full justify-center text-[11px] sm:text-[13px]" : "text-[13px]",
                       justAdded
                         ? "bg-[#27731e] text-white border-[#27731e]"
                         : "border-black dark:border-gray-600 text-black dark:text-gray-200 hover:bg-[#27731e] hover:text-white hover:border-[#27731e]",
@@ -306,7 +325,7 @@ export function ProductCard({ product, variant = "default" }: Props) {
                 href="/cart"
                 className={[
                   "flex items-center gap-1.5 rounded-[40px] px-3 py-2 whitespace-nowrap font-body font-semibold transition-all shadow-sm",
-                  variant === "compact" ? "text-[11px] sm:text-[13px]" : "text-[13px]",
+                  variant === "compact" ? "w-full justify-center text-[11px] sm:text-[13px]" : "text-[13px]",
                 ].join(" ")}
                 style={{ background: "#fec700", color: "#1a1c1c" }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.background = "#e5b600"; }}
