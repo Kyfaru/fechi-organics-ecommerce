@@ -5,6 +5,7 @@ import { getRedis } from "@/lib/redis";
 import { Argon2id } from "oslo/password";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { checkPasswordChangeAllowed, ADMIN_COOLDOWN_DAYS } from "@/lib/password-policy";
+import { reportError } from "@/lib/observability";
 
 // POST /api/admin/reset-password — consume a reset credential and update the password.
 //
@@ -20,66 +21,73 @@ import { checkPasswordChangeAllowed, ADMIN_COOLDOWN_DAYS } from "@/lib/password-
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
-  const { token, resetAuth, newPassword } = await req.json().catch(() => ({}));
 
-  if (!newPassword || typeof newPassword !== "string" || newPassword.length < 8) {
-    return NextResponse.json({ ok: false, error: { message: "Invalid request" } }, { status: 400 });
-  }
+  try {
+    const { token, resetAuth, newPassword } = await req.json().catch(() => ({}));
 
-  let userId: string | null = null;
-
-  if (typeof token === "string" && token) {
-    // Staff-invite / admin-action branch — JWT verification.
-    const result = await verifyResetToken(token);
-    if (!result.ok) {
-      const status = result.reason === "expired" ? 410 : 400;
-      const message =
-        result.reason === "expired" ? "This reset link has expired." : "This reset link is invalid.";
-      return NextResponse.json({ ok: false, error: { code: result.reason.toUpperCase(), message } }, { status });
+    if (!newPassword || typeof newPassword !== "string" || newPassword.length < 8) {
+      return NextResponse.json({ ok: false, error: { message: "Invalid request" } }, { status: 400 });
     }
-    userId = result.userId;
-  } else if (typeof resetAuth === "string" && resetAuth) {
-    // Self-service OTP branch — single-use, atomic consume via getdel.
-    const redis = getRedis();
-    const value = await redis.getdel(`admin:pwreset:auth:${resetAuth}`);
-    if (!value || typeof value !== "string") {
-      return NextResponse.json(
-        { ok: false, error: { message: "Reset session expired or already used. Please start over." } },
-        { status: 400 }
-      );
-    }
-    userId = value;
 
-    // Cooldown only applies to self-service resets — a super admin forcing a
-    // reset via the token branch is an authorized override, not throttled.
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { passwordChanges: true, lastPasswordChange: true, createdAt: true },
+    let userId: string | null = null;
+
+    if (typeof token === "string" && token) {
+      // Staff-invite / admin-action branch — JWT verification.
+      const result = await verifyResetToken(token);
+      if (!result.ok) {
+        const status = result.reason === "expired" ? 410 : 400;
+        const message =
+          result.reason === "expired" ? "This reset link has expired." : "This reset link is invalid.";
+        return NextResponse.json({ ok: false, error: { code: result.reason.toUpperCase(), message } }, { status });
+      }
+      userId = result.userId;
+    } else if (typeof resetAuth === "string" && resetAuth) {
+      // Self-service OTP branch — single-use, atomic consume via getdel.
+      const redis = getRedis();
+      const value = await redis.getdel(`admin:pwreset:auth:${resetAuth}`);
+      if (!value || typeof value !== "string") {
+        return NextResponse.json(
+          { ok: false, error: { message: "Reset session expired or already used. Please start over." } },
+          { status: 400 }
+        );
+      }
+      userId = value;
+
+      // Cooldown only applies to self-service resets — a super admin forcing a
+      // reset via the token branch is an authorized override, not throttled.
+      const user = await db.user.findUnique({
+        where: { id: userId },
+        select: { passwordChanges: true, lastPasswordChange: true, createdAt: true },
+      });
+      if (!user) {
+        return NextResponse.json({ ok: false, error: { message: "Account not found." } }, { status: 404 });
+      }
+      const check = checkPasswordChangeAllowed(user, ADMIN_COOLDOWN_DAYS);
+      if (!check.allowed) {
+        return NextResponse.json({ ok: false, error: { code: check.reason, ...check } }, { status: 429 });
+      }
+    } else {
+      return NextResponse.json({ ok: false, error: { message: "Invalid request" } }, { status: 400 });
+    }
+
+    const hashed = await new Argon2id().hash(newPassword);
+
+    await db.account.updateMany({
+      where: { userId, providerId: "credential" },
+      data: { password: hashed },
     });
-    if (!user) {
-      return NextResponse.json({ ok: false, error: { message: "Account not found." } }, { status: 404 });
-    }
-    const check = checkPasswordChangeAllowed(user, ADMIN_COOLDOWN_DAYS);
-    if (!check.allowed) {
-      return NextResponse.json({ ok: false, error: { code: check.reason, ...check } }, { status: 429 });
-    }
-  } else {
-    return NextResponse.json({ ok: false, error: { message: "Invalid request" } }, { status: 400 });
+
+    // Clear force-change flag, and record the change so future cooldown
+    // checks (either branch) have an accurate lastPasswordChange/count.
+    await db.user.update({
+      where: { id: userId },
+      data: { mustChangePassword: false, passwordChanges: { increment: 1 }, lastPasswordChange: new Date() },
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("[admin/reset-password]", err);
+    reportError(err, { route: "POST /api/admin/reset-password", tags: { flow: "admin-reset-password" } });
+    return NextResponse.json({ ok: false, error: { message: "Something went wrong" } }, { status: 500 });
   }
-
-  const hashed = await new Argon2id().hash(newPassword);
-
-  await db.account.updateMany({
-    where: { userId, providerId: "credential" },
-    data: { password: hashed },
-  });
-
-  // Clear force-change flag, and record the change so future cooldown
-  // checks (either branch) have an accurate lastPasswordChange/count.
-  await db.user.update({
-    where: { id: userId },
-    data: { mustChangePassword: false, passwordChanges: { increment: 1 }, lastPasswordChange: new Date() },
-  });
-
-  return NextResponse.json({ ok: true });
 }

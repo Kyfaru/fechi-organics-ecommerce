@@ -10,6 +10,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { markPaymentFailed } from "@/lib/payments/post-payment";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ orderId: string }> },
@@ -36,7 +37,13 @@ export async function DELETE(
 
     return ok({ deleted: true });
   } catch (e) {
+    reportError(e, {
+      route: "DELETE /api/payments/status/[orderId]",
+      userId: session.user.id,
+      tags: { stage: "handler" },
+      extra: { orderId },
+    });
     console.error("[payments/status] DELETE error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

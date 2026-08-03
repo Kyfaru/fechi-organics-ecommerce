@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { verifyOtp } from "@/lib/otp";
 import { getRedis } from "@/lib/redis";
 import { randomBytes } from "crypto";
+import { reportError } from "@/lib/observability";
 
 // After 5 wrong guesses the OTP is burned and the user must request a new
 // one — caps the brute-force search space on a 6-digit code (1e6 possibilities)
@@ -82,6 +83,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, resetAuth });
   } catch (err) {
     console.error("[forgot-password/verify]", err);
+    reportError(err, { route: "POST /api/auth/forgot-password/verify", tags: { flow: "forgot-password" } });
     return NextResponse.json({ ok: false, error: { message: "Something went wrong" } }, { status: 500 });
   }
 }

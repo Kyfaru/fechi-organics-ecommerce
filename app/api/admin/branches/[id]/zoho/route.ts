@@ -9,6 +9,7 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
 import { approvalExecutors } from "@/lib/approval-executors";
 import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 // Both fields optional so a partial update (e.g. only setting the location
 // id after the org link is already made) doesn't require resending both.
@@ -51,7 +52,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     let body: unknown;
     try {
       body = await req.json();
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "PATCH /api/admin/branches/[id]/zoho", tags: { domain: "branches" } });
       return Err.validation("Invalid JSON body.");
     }
     const parsed = PatchSchema.safeParse(body);
@@ -74,7 +76,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     logActivity(ctx.id, "Updated branch Zoho link", "branch", branchId, req, parsed.data);
     return ok({ saved: true });
   } catch (e) {
+    reportError(e, { route: "PATCH /api/admin/branches/[id]/zoho", tags: { domain: "branches" } });
     console.error("[admin/branches/[id]/zoho] PATCH error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

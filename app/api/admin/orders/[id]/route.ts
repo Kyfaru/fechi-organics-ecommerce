@@ -8,6 +8,7 @@ import { sendSms, hasSmsConfig } from "@/lib/sms";
 import { combineLegacyPhone } from "@/lib/phone";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 const STATUS_MESSAGES: Record<string, string> = {
   CONFIRMED:  "has been confirmed",
@@ -37,11 +38,17 @@ function notifyOrderStatusChange(
         data: { userId, type: "SYSTEM", title: `Order ${orderRef} — ${status}`, body, orderId },
       });
     } catch (e) {
+      reportError(e, { route: "PATCH /api/admin/orders/[id]", tags: { domain: "orders", stage: "notify-inbox" } });
       console.error("[notify] inbox failed:", e);
     }
     const smsPhone = phone ? combineLegacyPhone(phone, phoneCode ?? null) : null;
     if (hasSmsConfig() && smsPhone) {
-      try { await sendSms(smsPhone, body); } catch (e) { console.error("[notify] SMS failed:", e); }
+      try {
+        await sendSms(smsPhone, body);
+      } catch (e) {
+        reportError(e, { route: "PATCH /api/admin/orders/[id]", tags: { domain: "orders", stage: "notify-sms" } });
+        console.error("[notify] SMS failed:", e);
+      }
     }
   });
 }
@@ -107,8 +114,9 @@ export async function GET(
     console.info("[admin/orders/[id]] GET —", id);
     return ok({ order });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/orders/[id]", tags: { domain: "orders" } });
     console.error("[admin/orders/[id]] GET error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }
 
@@ -174,8 +182,9 @@ export async function PATCH(
     console.info("[admin/orders/[id]] PATCH (legacy) —", id, "→", parsed.data.status);
     return ok({ order: updated });
   } catch (e) {
+    reportError(e, { route: "PATCH /api/admin/orders/[id]", tags: { domain: "orders" } });
     console.error("[admin/orders/[id]] PATCH error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }
 
@@ -341,7 +350,10 @@ async function handleFulfillmentAction(
             await db.inboxMessage.create({
               data: { userId: order.userId!, type: "SYSTEM", title: `Order ${orderRef} — Ready for Pickup`, body: readyMsg, orderId },
             });
-          } catch (e) { console.error("[notify] inbox failed:", e); }
+          } catch (e) {
+            reportError(e, { route: "PATCH /api/admin/orders/[id]", tags: { domain: "orders", stage: "notify-ready-inbox" } });
+            console.error("[notify] inbox failed:", e);
+          }
         });
       }
       return ok({ order: updated });

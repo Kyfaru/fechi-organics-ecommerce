@@ -4,6 +4,7 @@ import { connection } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { ok, Err } from "@/lib/api"
+import { reportError } from "@/lib/observability"
 
 // POST /api/orders/[id]/delivered
 // Allows the authenticated customer to mark their own SHIPPED order as DELIVERED.
@@ -61,6 +62,7 @@ export async function POST(
     return ok({ order: updated })
   } catch (e) {
     console.error("[orders/[id]/delivered] POST error", e)
-    return Err.internal(e)
+    reportError(e, { route: "POST /api/orders/[id]/delivered" })
+    return Err.internal()
   }
 }

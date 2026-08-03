@@ -6,6 +6,7 @@ import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 /** GET /api/admin/blog */
 export async function GET(req: NextRequest) {
@@ -22,7 +23,8 @@ export async function GET(req: NextRequest) {
     return ok(posts);
   } catch (e) {
     console.error("[blog/GET]", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/blog" });
+    return Err.internal();
   }
 }
 
@@ -101,6 +103,7 @@ export async function POST(req: NextRequest) {
       return Err.validation("A post with this slug already exists. Please choose a different title or slug.");
     }
     console.error("[blog/POST]", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/blog" });
+    return Err.internal();
   }
 }

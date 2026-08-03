@@ -9,6 +9,7 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
 import { approvalExecutors } from "@/lib/approval-executors";
 import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 /** GET /api/admin/blog/[id] — single post */
 export async function GET(
@@ -31,7 +32,8 @@ export async function GET(
     return ok(post);
   } catch (e) {
     console.error("[blog/GET/id]", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/blog/[id]", extra: { postId: id } });
+    return Err.internal();
   }
 }
 
@@ -119,7 +121,8 @@ export async function PATCH(
     return ok(post);
   } catch (e) {
     console.error("[blog/PATCH]", e);
-    return Err.internal(e);
+    reportError(e, { route: "PATCH /api/admin/blog/[id]", extra: { postId: id } });
+    return Err.internal();
   }
 }
 
@@ -145,6 +148,7 @@ export async function DELETE(
     return ok({ id, deleted: true });
   } catch (e) {
     console.error("[blog/DELETE]", e);
-    return Err.internal(e);
+    reportError(e, { route: "DELETE /api/admin/blog/[id]", extra: { postId: id } });
+    return Err.internal();
   }
 }

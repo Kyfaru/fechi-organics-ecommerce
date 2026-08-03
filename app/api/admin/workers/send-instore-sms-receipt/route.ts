@@ -9,6 +9,7 @@ import { verifyQstashRequest } from "@/lib/qstash";
 import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-invoice";
 import { createInstoreInvoiceToken } from "@/lib/invoice-token";
 import { sendSms } from "@/lib/sms";
+import { reportError, trackServerEvent } from "@/lib/observability";
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
@@ -16,25 +17,32 @@ export async function POST(req: NextRequest) {
   if (!isValid) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
 
   const { inStoreOrderId } = JSON.parse(rawBody) as { inStoreOrderId: string };
-  const order = await db.inStoreOrder.findUnique({ where: { id: inStoreOrderId } });
-  if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
-  // Idempotency — Qstash can redeliver, and there's nothing to do if the
-  // customer never gave a phone number.
-  if (order.receiptSentSms || !order.customerPhone) {
-    return NextResponse.json({ ok: true, skipped: true });
+  try {
+    const order = await db.inStoreOrder.findUnique({ where: { id: inStoreOrderId } });
+    if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
+
+    // Idempotency — Qstash can redeliver, and there's nothing to do if the
+    // customer never gave a phone number.
+    if (order.receiptSentSms || !order.customerPhone) {
+      return NextResponse.json({ ok: true, skipped: true });
+    }
+
+    const invoice = await getOrCreateInStoreInvoice(inStoreOrderId);
+    if (!invoice) return NextResponse.json({ error: "Order not found" }, { status: 404 });
+
+    const token = await createInstoreInvoiceToken(inStoreOrderId);
+    const url = `${process.env.NEXT_PUBLIC_APP_URL}/api/invoices/instore/${token}`;
+    await sendSms(
+      order.customerPhone,
+      `Fechi Organics — your invoice ${invoice.invoiceNumber} for order ${order.orderNumber} is ready: ${url}`,
+    );
+
+    await db.inStoreOrder.update({ where: { id: inStoreOrderId }, data: { receiptSentSms: true } });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    reportError(error, { route: "POST /api/admin/workers/send-instore-sms-receipt", extra: { inStoreOrderId } });
+    trackServerEvent("system", "send_instore_sms_receipt_worker_failed", { inStoreOrderId });
+    return NextResponse.json({ error: "Worker failed" }, { status: 500 });
   }
-
-  const invoice = await getOrCreateInStoreInvoice(inStoreOrderId);
-  if (!invoice) return NextResponse.json({ error: "Order not found" }, { status: 404 });
-
-  const token = await createInstoreInvoiceToken(inStoreOrderId);
-  const url = `${process.env.NEXT_PUBLIC_APP_URL}/api/invoices/instore/${token}`;
-  await sendSms(
-    order.customerPhone,
-    `Fechi Organics — your invoice ${invoice.invoiceNumber} for order ${order.orderNumber} is ready: ${url}`,
-  );
-
-  await db.inStoreOrder.update({ where: { id: inStoreOrderId }, data: { receiptSentSms: true } });
-  return NextResponse.json({ ok: true });
 }

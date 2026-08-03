@@ -9,6 +9,7 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { generateTicketNumber } from "@/lib/tickets/generate-ticket-number";
 import { assignTicketToAdmin } from "@/lib/tickets/assign-admin";
 import { createNotification } from "@/lib/notify";
+import { reportError, trackServerEvent } from "@/lib/observability";
 
 async function requireUser() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -59,7 +60,8 @@ export async function GET() {
     return ok({ tickets });
   } catch (e) {
     console.error("[tickets] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/tickets" });
+    return Err.internal();
   }
 }
 
@@ -110,6 +112,7 @@ export async function POST(req: NextRequest) {
     });
 
     console.info("[tickets] POST — created ticket", ticketNumber, "for user", user.id);
+    trackServerEvent(user.id, "ticket_created", { ticketId: ticket.id, ticketNumber });
     createNotification({
       type: "TICKET_NEW",
       title: `New ticket: ${parsed.data.subject}`,
@@ -120,6 +123,7 @@ export async function POST(req: NextRequest) {
     return created({ ticket });
   } catch (e) {
     console.error("[tickets] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/tickets" });
+    return Err.internal();
   }
 }

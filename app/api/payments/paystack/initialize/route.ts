@@ -14,6 +14,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
+import { reportError } from "@/lib/observability";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
 import { isCardEligible } from "@/lib/payments/card-eligibility";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
@@ -46,7 +47,8 @@ export async function POST(req: NextRequest) {
   try {
     const raw = await req.json();
     parsed = bodySchema.parse(raw);
-  } catch {
+  } catch (bodyErr) {
+    reportError(bodyErr, { route: "POST /api/payments/paystack/initialize", tags: { stage: "body_validation" } });
     return Err.validation("Invalid request body");
   }
 
@@ -103,7 +105,8 @@ export async function POST(req: NextRequest) {
         discountCents = r.discountKes;
         if (r.deliveryFree) deliveryCents = 0;
         resolvedPromoId = r.promo.id;
-      } catch {
+      } catch (promoErr) {
+        reportError(promoErr, { route: "POST /api/payments/paystack/initialize", tags: { stage: "promo_resolution" } });
         /* invalid/expired — discount stays 0 */
       }
     }
@@ -230,7 +233,8 @@ export async function POST(req: NextRequest) {
       orderId: order.id,
     });
   } catch (e) {
+    reportError(e, { route: "POST /api/payments/paystack/initialize", tags: { stage: "handler" }, extra: { userId } });
     console.error("[paystack/initialize] POST error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

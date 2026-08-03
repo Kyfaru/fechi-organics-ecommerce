@@ -15,6 +15,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
 import { useOtpResend } from "@/hooks/use-otp-resend";
 import { PWRESET_COMPLETION_FLAG_KEY, PWRESET_PAGE_WINDOW_MS } from "@/lib/pwreset-flag";
+import { reportError } from "@/lib/observability";
 
 type Channel = "email" | "phone";
 type Step = "request" | "otp" | "set-password" | "success";
@@ -127,7 +128,8 @@ export default function ForgotPasswordPage() {
       await sendCode();
       resendState.reset();
       setStep("otp");
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "forgot-password", tags: { step: "request" } });
       toast.error("Could not send code. Please try again.");
     } finally {
       setIsRequesting(false);
@@ -157,7 +159,8 @@ export default function ForgotPasswordPage() {
 
       setResetAuth(data.resetAuth);
       setStep("set-password");
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "forgot-password", tags: { step: "otp-verify" } });
       setOtpError("Something went wrong. Please try again.");
       setPinResetSignal((n) => n + 1);
     } finally {
@@ -215,7 +218,8 @@ export default function ForgotPasswordPage() {
       window.history.replaceState(null, "", window.location.href);
       confetti({ particleCount: 120, spread: 80, colors: ["#27731e", "#fec700", "#a4f690"], origin: { y: 0.42 } });
       setStep("success");
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "forgot-password", tags: { step: "set-password" } });
       toast.error("Failed to update password. Please try again.");
     } finally {
       setIsSubmittingPassword(false);

@@ -13,6 +13,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { reportError } from "@/lib/observability";
 
 const RETENTION_DAYS = 45;
 
@@ -22,19 +23,24 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  try {
+    const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
 
-  const { count } = await db.notification.deleteMany({
-    where: {
-      createdAt: { lt: cutoff },
-      severity: { not: "CRITICAL" },
-      recipientStates: {
-        some: { readAt: { not: null } },
-        none: { readAt: null },
+    const { count } = await db.notification.deleteMany({
+      where: {
+        createdAt: { lt: cutoff },
+        severity: { not: "CRITICAL" },
+        recipientStates: {
+          some: { readAt: { not: null } },
+          none: { readAt: null },
+        },
       },
-    },
-  });
+    });
 
-  console.info("[cleanup-notifications] deleted", count, "notifications older than", cutoff.toISOString());
-  return NextResponse.json({ ok: true, deleted: count });
+    console.info("[cleanup-notifications] deleted", count, "notifications older than", cutoff.toISOString());
+    return NextResponse.json({ ok: true, deleted: count });
+  } catch (error) {
+    reportError(error, { route: "GET /api/admin/workers/cleanup-notifications" });
+    return NextResponse.json({ error: "Cleanup failed" }, { status: 500 });
+  }
 }

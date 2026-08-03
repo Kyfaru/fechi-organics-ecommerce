@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { connection } from "next/server";
 import { ok, Err } from "@/lib/api";
 import { NextRequest } from "next/server";
+import { reportError } from "@/lib/observability";
 
 async function requireUser() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -41,6 +42,7 @@ export async function GET(
     return ok({ ticket });
   } catch (e) {
     console.error("[tickets/[id]] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/tickets/[id]" });
+    return Err.internal();
   }
 }

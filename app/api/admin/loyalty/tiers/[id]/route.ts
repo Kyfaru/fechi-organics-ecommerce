@@ -3,6 +3,7 @@ import { ok, Err } from "@/lib/api";
 import { connection, NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 /** PATCH /api/admin/loyalty/tiers/[id] */
 export async function PATCH(
@@ -39,7 +40,8 @@ export async function PATCH(
     console.info(`[loyalty/tiers/PATCH] Updated tier: ${id}`);
     return ok(tier);
   } catch (e) {
+    reportError(e, { route: "PATCH /api/admin/loyalty/tiers/[id]", tags: { domain: "loyalty" } });
     console.error("[loyalty/tiers/PATCH]", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

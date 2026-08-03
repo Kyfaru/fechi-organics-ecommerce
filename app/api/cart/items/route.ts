@@ -6,6 +6,7 @@ import { resolveCart, getCartSummary } from "@/lib/cart";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 const AddSchema = z.object({
   productId: z.string().uuid(),
@@ -67,6 +68,7 @@ export async function POST(req: NextRequest) {
     return resp;
   } catch (e) {
     console.error("[cart/items] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/cart/items" });
+    return Err.internal();
   }
 }

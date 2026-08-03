@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { generateOtp, storeOtp } from "@/lib/otp"
 import { sendOTPEmail } from "@/lib/email"
+import { reportError } from "@/lib/observability"
 
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
@@ -20,6 +21,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   } catch (e) {
     console.error("[2fa/email/send] error", e)
+    reportError(e, { route: "POST /api/account/2fa/email/send", tags: { flow: "account-2fa" } })
     return NextResponse.json({ ok: false, error: { message: "Failed to send verification code" } }, { status: 500 })
   }
 }

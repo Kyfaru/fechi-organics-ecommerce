@@ -18,6 +18,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
 import { SignupLoader } from "@/components/ui/signup-loader";
 import { posthog } from "@/lib/posthog";
+import { reportError } from "@/lib/observability";
 
 // Isolated component so useSearchParams is inside a Suspense boundary.
 // Better Auth redirects OAuth errors (e.g. a banned user) back here as
@@ -191,7 +192,8 @@ export default function SignupPage() {
 
       // Successful signup — show animated loader then redirect
       setShowSignupLoader(true);
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "signup", tags: { step: "submit" } });
       toast.error("An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
@@ -205,7 +207,8 @@ export default function SignupPage() {
     setIsLoading(true);
     try {
       await authClient.signIn.social({ provider: "google", callbackURL: "/", errorCallbackURL: "/signup" });
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "signup", tags: { step: "google-signin" } });
       toast.error("Google sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
@@ -216,7 +219,8 @@ export default function SignupPage() {
     setIsLoading(true);
     try {
       await authClient.signIn.social({ provider: "facebook", callbackURL: "/", errorCallbackURL: "/signup" });
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "signup", tags: { step: "facebook-signin" } });
       toast.error("Facebook sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);

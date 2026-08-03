@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { qstashReceiver } from "@/lib/qstash";
 import { db } from "@/lib/db";
 import { runCampaignSend, markCampaignFailed } from "@/lib/campaigns/send-campaign";
+import { reportError, trackServerEvent } from "@/lib/observability";
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
@@ -25,9 +26,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await runCampaignSend(campaignId, campaign);
+    trackServerEvent("system", "worker_send_campaign_completed", { campaignId });
     return NextResponse.json(result);
   } catch (err) {
     await markCampaignFailed(campaignId, err);
+    reportError(err, { route: "/api/admin/workers/send-campaign", tags: { campaignId } });
+    trackServerEvent("system", "worker_send_campaign_failed", { campaignId });
     return NextResponse.json({ error: "Campaign send failed" }, { status: 500 });
   }
 }

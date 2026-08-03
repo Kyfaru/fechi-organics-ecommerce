@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 import { ok, Err } from "@/lib/api";
 import { getPeriodChange } from "@/lib/stats";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -151,7 +152,8 @@ export async function GET(req: NextRequest) {
       ordersByStatus,
     });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/dashboard", tags: { domain: "dashboard" } });
     console.error("[admin/dashboard] GET error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

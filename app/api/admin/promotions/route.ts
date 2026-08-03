@@ -6,6 +6,7 @@ import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
 import { approvalExecutors } from "@/lib/approval-executors";
 import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 /** GET /api/admin/promotions */
 export async function GET(req: NextRequest) {
@@ -21,7 +22,8 @@ export async function GET(req: NextRequest) {
     return ok(promotions);
   } catch (e) {
     console.error("[promotions/GET]", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/promotions" });
+    return Err.internal();
   }
 }
 
@@ -71,6 +73,7 @@ export async function POST(req: NextRequest) {
     return created(promotion);
   } catch (e) {
     console.error("[promotions/POST]", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/promotions" });
+    return Err.internal();
   }
 }

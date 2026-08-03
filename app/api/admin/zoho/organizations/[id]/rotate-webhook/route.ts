@@ -8,6 +8,7 @@ import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { isGlobalScope } from "@/lib/branch-access";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { zohoWebhookUrls } from "@/lib/zoho/webhook-events";
+import { reportError } from "@/lib/observability";
 
 /**
  * POST /api/admin/zoho/organizations/[id]/rotate-webhook — generate a fresh
@@ -51,6 +52,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
   } catch (e) {
     console.error("[admin/zoho/organizations/[id]/rotate-webhook] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/zoho/organizations/[id]/rotate-webhook", userId: caller.id });
+    return Err.internal();
   }
 }

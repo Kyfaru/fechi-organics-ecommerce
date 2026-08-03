@@ -16,6 +16,7 @@ import { db } from "@/lib/db";
 import { Err } from "@/lib/api";
 import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
@@ -85,7 +86,8 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (e) {
+    reportError(e, { route: "POST /api/admin/finance/export", userId: session.user.id, tags: { domain: "finance" } });
     console.error("[admin/finance/export] POST error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

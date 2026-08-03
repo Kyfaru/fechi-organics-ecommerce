@@ -6,6 +6,7 @@ import { ok, created, Err } from "@/lib/api";
 import { invalidateCategoryCache } from "@/lib/cache-tags";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // Derive a URL-safe slug/key from a human-readable category name.
@@ -41,7 +42,8 @@ export async function GET(req: NextRequest) {
     return ok({ categories });
   } catch (e) {
     console.error("[admin/products/categories] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/products/categories" });
+    return Err.internal();
   }
 }
 
@@ -92,6 +94,7 @@ export async function POST(req: NextRequest) {
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("A category with this name already exists");
     }
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/products/categories" });
+    return Err.internal();
   }
 }

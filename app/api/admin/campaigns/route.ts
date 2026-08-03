@@ -7,6 +7,7 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
 import { approvalExecutors } from "@/lib/approval-executors";
 import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 /** GET /api/admin/campaigns */
 export async function GET(req: NextRequest) {
@@ -36,8 +37,9 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/campaigns", tags: { domain: "campaigns" } });
     console.error("[campaigns/GET]", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }
 
@@ -85,7 +87,8 @@ export async function POST(req: NextRequest) {
     logActivity(ctx.id, `Created campaign "${campaign.name}"`, "campaign", campaign.id, req);
     return created(campaign);
   } catch (e) {
+    reportError(e, { route: "POST /api/admin/campaigns", tags: { domain: "campaigns" } });
     console.error("[campaigns/POST]", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

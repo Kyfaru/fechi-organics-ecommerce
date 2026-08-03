@@ -8,6 +8,7 @@ import { ok, Err } from "@/lib/api";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -64,6 +65,7 @@ export async function GET(req: NextRequest) {
     return ok({ staff: shaped });
   } catch (err) {
     console.error("[GET /api/admin/staff]", err);
-    return Err.internal(err);
+    reportError(err, { route: "GET /api/admin/staff" });
+    return Err.internal();
   }
 }

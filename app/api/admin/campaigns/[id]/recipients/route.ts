@@ -1,8 +1,9 @@
 import { db } from "@/lib/db";
-import { ok } from "@/lib/api";
+import { ok, Err } from "@/lib/api";
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 /** GET /api/admin/campaigns/[id]/recipients — per-recipient delivery status + aggregate counts. */
 export async function GET(
@@ -15,38 +16,44 @@ export async function GET(
 
   const { id } = await params;
 
-  const recipients = await db.campaignRecipient.findMany({
-    where: { campaignId: id },
-    orderBy: { createdAt: "desc" },
-    take: 500,
-  });
+  try {
+    const recipients = await db.campaignRecipient.findMany({
+      where: { campaignId: id },
+      orderBy: { createdAt: "desc" },
+      take: 500,
+    });
 
-  const userIds = [...new Set(recipients.map((r) => r.userId))];
-  const users = await db.user.findMany({
-    where: { id: { in: userIds } },
-    select: { id: true, name: true, email: true },
-  });
-  const userMap = new Map(users.map((u) => [u.id, u]));
+    const userIds = [...new Set(recipients.map((r) => r.userId))];
+    const users = await db.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, email: true },
+    });
+    const userMap = new Map(users.map((u) => [u.id, u]));
 
-  const counts: Record<string, number> = {};
-  for (const r of recipients) counts[r.status] = (counts[r.status] ?? 0) + 1;
+    const counts: Record<string, number> = {};
+    for (const r of recipients) counts[r.status] = (counts[r.status] ?? 0) + 1;
 
-  return ok({
-    counts,
-    total: recipients.length,
-    recipients: recipients.map((r) => ({
-      id: r.id,
-      userId: r.userId,
-      name: userMap.get(r.userId)?.name ?? "Unknown",
-      email: userMap.get(r.userId)?.email ?? "",
-      channel: r.channel,
-      status: r.status,
-      errorMessage: r.errorMessage,
-      sentAt: r.sentAt,
-      deliveredAt: r.deliveredAt,
-      openedAt: r.openedAt,
-      clickedAt: r.clickedAt,
-      failedAt: r.failedAt,
-    })),
-  });
+    return ok({
+      counts,
+      total: recipients.length,
+      recipients: recipients.map((r) => ({
+        id: r.id,
+        userId: r.userId,
+        name: userMap.get(r.userId)?.name ?? "Unknown",
+        email: userMap.get(r.userId)?.email ?? "",
+        channel: r.channel,
+        status: r.status,
+        errorMessage: r.errorMessage,
+        sentAt: r.sentAt,
+        deliveredAt: r.deliveredAt,
+        openedAt: r.openedAt,
+        clickedAt: r.clickedAt,
+        failedAt: r.failedAt,
+      })),
+    });
+  } catch (e) {
+    console.error("[admin/campaigns/[id]/recipients] GET error", e);
+    reportError(e, { route: "GET /api/admin/campaigns/[id]/recipients", extra: { campaignId: id } });
+    return Err.internal();
+  }
 }

@@ -5,6 +5,7 @@ import { z } from "zod"
 import { db } from "@/lib/db"
 import { ok, Err } from "@/lib/api"
 import { requirePermission } from "@/lib/require-permission"
+import { reportError } from "@/lib/observability"
 
 const PatchSchema = z.object({
   name: z.string().min(1).optional(),
@@ -35,7 +36,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const branch = await db.branch.update({ where: { id }, data: data as any })
     return ok({ branch })
   } catch (e) {
+    reportError(e, { route: "PATCH /api/admin/branches/[id]", tags: { domain: "branches" } })
     console.error("[admin/branches/[id]] PATCH error", e)
-    return Err.internal(e)
+    return Err.internal()
   }
 }

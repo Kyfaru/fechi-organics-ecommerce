@@ -3,6 +3,7 @@ import { ok, Err } from "@/lib/api";
 import { connection, NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 /** PATCH /api/admin/suppliers/[id] — update supplier */
 export async function PATCH(
@@ -43,8 +44,9 @@ export async function PATCH(
     console.info(`[suppliers/PATCH] Updated supplier: ${id}`);
     return ok(supplier);
   } catch (e) {
+    reportError(e, { route: "PATCH /api/admin/suppliers/[id]", tags: { domain: "suppliers" } });
     console.error("[suppliers/PATCH]", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }
 
@@ -70,7 +72,8 @@ export async function DELETE(
     console.info(`[suppliers/DELETE] Soft-deleted supplier: ${id}`);
     return ok({ id: supplier.id, status: "inactive" });
   } catch (e) {
+    reportError(e, { route: "DELETE /api/admin/suppliers/[id]", tags: { domain: "suppliers" } });
     console.error("[suppliers/DELETE]", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

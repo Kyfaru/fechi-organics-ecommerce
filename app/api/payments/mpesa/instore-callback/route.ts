@@ -37,6 +37,7 @@ import {
   markInStorePaymentFailed,
   markInStorePaymentSuccess,
 } from "@/lib/payments/instore-post-payment";
+import { reportError, trackServerEvent } from "@/lib/observability";
 
 function safaricomOk() {
   return Response.json({ ResultCode: 0, ResultDesc: "Accepted" }, { status: 200 });
@@ -94,7 +95,8 @@ export async function POST(req: NextRequest) {
   let body: unknown;
   try {
     body = await req.json();
-  } catch {
+  } catch (parseErr) {
+    reportError(parseErr, { route: "POST /api/payments/mpesa/instore-callback", tags: { stage: "body_parse" } });
     // Malformed JSON — still return 200 so the provider doesn't retry
     return safaricomOk();
   }
@@ -117,7 +119,9 @@ export async function POST(req: NextRequest) {
         id: true,
         inStoreOrderId: true,
         status: true,
-        inStoreOrder: { select: { branch: { select: { mpesaGateway: true } } } },
+        inStoreOrder: {
+          select: { branch: { select: { mpesaGateway: true } }, customerUserId: true },
+        },
       },
     });
 
@@ -143,16 +147,31 @@ export async function POST(req: NextRequest) {
       rawCallbackPayload: body as unknown as import("@prisma/client").Prisma.InputJsonValue,
     } as const;
 
+    // Walk-in customers aren't authenticated — fall back to "system" when the
+    // in-store order has no linked customerUserId.
+    const distinctId = transaction.inStoreOrder.customerUserId ?? "system";
+
     if (isSuccess) {
       await markInStorePaymentSuccess({
         transactionId: transaction.id,
         inStoreOrderId: transaction.inStoreOrderId,
         transactionData,
       });
+      trackServerEvent(distinctId, "payment_succeeded", {
+        provider: "mpesa_instore",
+        inStoreOrderId: transaction.inStoreOrderId,
+        transactionId: transaction.id,
+      });
     } else {
       await markInStorePaymentFailed({
         transactionId: transaction.id,
         inStoreOrderId: transaction.inStoreOrderId,
+        reason: `${resultCode}:${resultDesc}`,
+      });
+      trackServerEvent(distinctId, "payment_failed", {
+        provider: "mpesa_instore",
+        inStoreOrderId: transaction.inStoreOrderId,
+        transactionId: transaction.id,
         reason: `${resultCode}:${resultDesc}`,
       });
     }
@@ -161,6 +180,7 @@ export async function POST(req: NextRequest) {
       `[mpesa/instore-callback] Processed — tx=${transaction.id} gateway=${transaction.inStoreOrder.branch.mpesaGateway} success=${isSuccess} receipt=${receiptNumber ?? "N/A"}`,
     );
   } catch (e) {
+    reportError(e, { route: "POST /api/payments/mpesa/instore-callback", tags: { stage: "handler" } });
     // Log but do NOT return a non-200 — neither provider should retry
     console.error("[mpesa/instore-callback] Processing error", e);
   }

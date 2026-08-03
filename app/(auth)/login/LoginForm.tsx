@@ -15,6 +15,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
 import { posthog } from "@/lib/posthog";
 import { checkPortalMatch } from "@/lib/portal-check";
+import { reportError } from "@/lib/observability";
 
 interface LoginErrors {
   email?: string;
@@ -118,7 +119,8 @@ export default function LoginForm() {
         type: "sign-in",
       });
       setShowOTP(true);
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "login", tags: { step: "send-otp" } });
       toast.error("Failed to send verification code. Please try again.");
     } finally {
       setIsLoading(false);
@@ -132,7 +134,8 @@ export default function LoginForm() {
     setIsLoading(true);
     try {
       await authClient.signIn.social({ provider: "google", callbackURL: "/", errorCallbackURL: "/login" });
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "login", tags: { step: "google-signin" } });
       toast.error("Google sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
@@ -143,7 +146,8 @@ export default function LoginForm() {
     setIsLoading(true);
     try {
       await authClient.signIn.social({ provider: "facebook", callbackURL: "/", errorCallbackURL: "/login" });
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "login", tags: { step: "facebook-signin" } });
       toast.error("Facebook sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
@@ -193,7 +197,8 @@ export default function LoginForm() {
       }
 
       return { success: true };
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "login", tags: { step: "verify-otp" } });
       return { success: false, error: "Verification failed. Please try again." };
     }
   }

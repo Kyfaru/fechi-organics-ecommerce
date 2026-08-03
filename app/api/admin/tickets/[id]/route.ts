@@ -5,6 +5,7 @@ import { z } from "zod";
 import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/tickets/[id]
@@ -49,7 +50,8 @@ export async function GET(
     return ok({ ticket });
   } catch (e) {
     console.error("[admin/tickets/[id]] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/tickets/[id]" });
+    return Err.internal();
   }
 }
 
@@ -98,6 +100,7 @@ export async function PATCH(
     return ok({ ticket });
   } catch (e) {
     console.error("[admin/tickets/[id]] PATCH error", e);
-    return Err.internal(e);
+    reportError(e, { route: "PATCH /api/admin/tickets/[id]" });
+    return Err.internal();
   }
 }

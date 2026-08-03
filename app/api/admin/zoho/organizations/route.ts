@@ -9,6 +9,7 @@ import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { isGlobalScope } from "@/lib/branch-access";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { zohoWebhookUrls } from "@/lib/zoho/webhook-events";
+import { reportError } from "@/lib/observability";
 
 const CreateSchema = z.object({
   name: z.string().min(1),
@@ -45,7 +46,8 @@ export async function GET(req: NextRequest) {
     return ok({ organizations: orgs });
   } catch (e) {
     console.error("[admin/zoho/organizations] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/zoho/organizations" });
+    return Err.internal();
   }
 }
 
@@ -98,6 +100,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (e) {
     console.error("[admin/zoho/organizations] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/zoho/organizations" });
+    return Err.internal();
   }
 }

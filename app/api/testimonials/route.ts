@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
 import { created, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 /**
  * POST /api/testimonials — public create-testimony submission. No auth
@@ -67,6 +68,7 @@ export async function POST(req: NextRequest) {
     return created({ id: testimonial.id });
   } catch (e) {
     console.error("[testimonials] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/testimonials" });
+    return Err.internal();
   }
 }

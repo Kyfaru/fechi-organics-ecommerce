@@ -9,6 +9,7 @@ import PasswordInput from "@/components/auth/PasswordInput";
 import PasswordChecklist, { checkRequirements } from "@/components/auth/PasswordChecklist";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
+import { reportError } from "@/lib/observability";
 
 /**
  * Admin Reset Password page.
@@ -62,7 +63,8 @@ function AdminResetPasswordForm() {
         }
         setAdminName(data.name);
         setLinkState("valid");
-      } catch {
+      } catch (err) {
+        reportError(err, { route: "admin-reset-password", tags: { step: "verify-token" } });
         if (!cancelled) setLinkState("invalid");
       }
     })();
@@ -211,7 +213,8 @@ function AdminResetPasswordForm() {
 
       toast.success("Password updated. Please log in.");
       router.push("/admin/login");
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "admin-reset-password", tags: { step: "submit" } });
       toast.error("Failed to update password. Please try again.");
     } finally {
       setIsLoading(false);

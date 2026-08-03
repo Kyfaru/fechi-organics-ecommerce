@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 const StatusSchema = z.object({ status: z.enum(["VISIBLE", "HIDDEN", "FLAGGED"]) }).strict();
 
@@ -32,6 +33,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     return ok(comment);
   } catch (e) {
     console.error("[admin blog comments] PATCH error", e);
-    return Err.internal(e);
+    reportError(e, { route: "PATCH /api/admin/blog/comments/[commentId]", extra: { commentId } });
+    return Err.internal();
   }
 }

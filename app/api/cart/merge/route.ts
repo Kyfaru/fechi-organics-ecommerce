@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getCartSummary } from "@/lib/cart";
 import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 /** Merge a guest cart into the logged-in user's cart after sign-in. */
 export async function POST(req: NextRequest) {
@@ -71,6 +72,7 @@ export async function POST(req: NextRequest) {
     return resp;
   } catch (e) {
     console.error("[cart/merge] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/cart/merge" });
+    return Err.internal();
   }
 }

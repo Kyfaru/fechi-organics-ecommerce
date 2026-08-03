@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { connection, NextRequest } from "next/server";
 import { ok, Err } from "@/lib/api";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/loyalty
@@ -33,7 +34,8 @@ export async function GET(req: NextRequest) {
 
     return ok({ tiers, topCustomers });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/loyalty", tags: { domain: "loyalty" } });
     console.error("[admin/loyalty] GET error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

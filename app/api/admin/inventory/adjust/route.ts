@@ -7,6 +7,7 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { assertBranchAccess } from "@/lib/branch-access";
 import { LOW_STOCK_THRESHOLD } from "@/lib/inventory/constants";
+import { reportError } from "@/lib/observability";
 
 /** POST /api/admin/inventory/adjust
  *  Body: { branchId, productId, type: "ADD"|"REMOVE"|"SET", quantity, reason, notes? }
@@ -99,7 +100,8 @@ export async function POST(req: NextRequest) {
         newStock === 0 ? "out_of_stock" : newStock < LOW_STOCK_THRESHOLD ? "low_stock" : "in_stock",
     });
   } catch (e) {
+    reportError(e, { route: "POST /api/admin/inventory/adjust", userId: caller.id, tags: { domain: "inventory" } });
     console.error("[inventory/adjust/POST]", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

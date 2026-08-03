@@ -5,6 +5,7 @@ import { sendSms, hasSmsConfig } from "@/lib/sms"
 import { combineLegacyPhone } from "@/lib/phone"
 import { emailShell, emailSection, emailButton, emailIconCircle, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template"
 import { Resend } from "resend";
+import { reportError, trackServerEvent } from "@/lib/observability"
 
 let _resend: Resend | null = null;
 function getResend(): Resend {
@@ -22,6 +23,7 @@ export async function POST(req: NextRequest) {
     if (!valid) return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
 
     const { orderId, userId } = JSON.parse(body) as { orderId: string; userId: string }
+    const distinctId = userId ?? "system"
 
     const order = await db.order.findFirst({
       where: { id: orderId, userId },
@@ -73,8 +75,10 @@ export async function POST(req: NextRequest) {
       }).catch((e) => console.error("[review-reminder] email failed:", e))
     }
 
+    trackServerEvent(distinctId, "review_reminder_sent", { orderId })
     return NextResponse.json({ ok: true })
   } catch (e) {
+    reportError(e, { route: "POST /api/workers/review-reminder", tags: { stage: "handler" } })
     console.error("[review-reminder] error", e)
     return NextResponse.json({ error: "Internal error" }, { status: 500 })
   }

@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { searchAdminPages } from "@/lib/search/admin-pages";
 import { requireStaffSession } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 const RESULT_LIMIT = 5;
 
@@ -58,7 +59,8 @@ export async function GET(req: NextRequest) {
 
     return ok({ results });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/search", tags: { domain: "search" } });
     console.error("[admin/search] GET error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

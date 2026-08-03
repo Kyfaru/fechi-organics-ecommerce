@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { getAccountUser } from "@/lib/account/get-account-user";
 import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/users/me — fetch the authenticated user's account profile fresh
@@ -25,7 +26,8 @@ export async function GET(req: NextRequest) {
     return ok(user);
   } catch (e) {
     console.error("[users/me] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/users/me" });
+    return Err.internal();
   }
 }
 
@@ -82,6 +84,7 @@ export async function PATCH(req: NextRequest) {
     return ok({ updated: true });
   } catch (e) {
     console.error("[users/me] PATCH error", e);
-    return Err.internal(e);
+    reportError(e, { route: "PATCH /api/users/me" });
+    return Err.internal();
   }
 }

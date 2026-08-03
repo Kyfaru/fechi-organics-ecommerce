@@ -7,6 +7,7 @@ import { sendSms, hasSmsConfig } from "@/lib/sms";
 import { combineLegacyPhone } from "@/lib/phone";
 import { Ratelimit } from "@upstash/ratelimit";
 import { makeRatelimit } from "@/lib/ratelimit";
+import { reportError } from "@/lib/observability";
 
 // 6 sends per 10 minutes per (channel, identifier) — 1 initial send + the
 // client's 5 allowed resend clicks (15s/30s/60s/90s/90s backoff, hard cap 5
@@ -77,6 +78,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[forgot-password]", err);
+    reportError(err, { route: "POST /api/auth/forgot-password", tags: { flow: "forgot-password" } });
     // Never reveal errors — always return 200.
     return NextResponse.json({ ok: true });
   }
