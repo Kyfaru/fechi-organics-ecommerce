@@ -7,6 +7,7 @@ import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
 import { approvalExecutors } from "@/lib/approval-executors";
 import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/products/[id]/permanent
@@ -28,7 +29,8 @@ export async function GET(
     return ok({ hasOrders: orderCount > 0 });
   } catch (e) {
     console.error("[admin/products/[id]/permanent] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/products/[id]/permanent" });
+    return Err.internal();
   }
 }
 
@@ -76,6 +78,7 @@ export async function DELETE(
     return ok({ id });
   } catch (e) {
     console.error("[admin/products/[id]/permanent] DELETE error", e);
-    return Err.internal(e);
+    reportError(e, { route: "DELETE /api/admin/products/[id]/permanent" });
+    return Err.internal();
   }
 }

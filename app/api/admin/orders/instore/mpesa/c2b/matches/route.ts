@@ -16,6 +16,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 const MATCH_WINDOW_MS = 10 * 60 * 1000;
 
@@ -72,7 +73,12 @@ export async function GET(req: NextRequest) {
       })),
     });
   } catch (e) {
+    reportError(e, {
+      route: "GET /api/admin/orders/instore/mpesa/c2b/matches",
+      userId: admin.id,
+      tags: { stage: "handler" },
+    });
     console.error("[instore/mpesa/c2b/matches] GET error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

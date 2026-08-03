@@ -10,6 +10,7 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { getRedis } from "@/lib/redis";
 import { ticketChannel } from "@/lib/ticket-channel";
 import { uploadTicketAttachment, AttachmentValidationError, type TicketAttachment } from "@/lib/tickets/upload-attachment";
+import { reportError } from "@/lib/observability";
 
 async function requireUser() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -137,6 +138,7 @@ export async function POST(
     return ok({ message });
   } catch (e) {
     console.error("[tickets/[id]/reply] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/tickets/[id]/reply" });
+    return Err.internal();
   }
 }

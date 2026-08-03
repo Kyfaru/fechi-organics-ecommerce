@@ -8,6 +8,7 @@ import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
 import { approvalExecutors } from "@/lib/approval-executors";
 import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/products
@@ -39,7 +40,8 @@ export async function GET(req: NextRequest) {
     return ok({ products });
   } catch (e) {
     console.error("[admin/products] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/products" });
+    return Err.internal();
   }
 }
 
@@ -107,7 +109,8 @@ export async function POST(req: NextRequest) {
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("A product with this slug already exists");
     }
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/products" });
+    return Err.internal();
   }
 }
 
@@ -180,6 +183,7 @@ export async function PATCH(req: NextRequest) {
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("A product with this slug already exists");
     }
-    return Err.internal(e);
+    reportError(e, { route: "PATCH /api/admin/products" });
+    return Err.internal();
   }
 }

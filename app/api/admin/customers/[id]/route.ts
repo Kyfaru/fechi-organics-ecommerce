@@ -7,6 +7,7 @@ import { z } from "zod";
 import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/customers/[id]
@@ -50,8 +51,9 @@ export async function GET(
 
     return ok({ user });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/customers/[id]", tags: { domain: "customers" } });
     console.error("[admin/customers/[id]] GET error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }
 
@@ -96,7 +98,8 @@ export async function PATCH(
     console.info("[admin/customers/[id]] PATCH — updated", user.id);
     return ok({ user });
   } catch (e) {
+    reportError(e, { route: "PATCH /api/admin/customers/[id]", tags: { domain: "customers" } });
     console.error("[admin/customers/[id]] PATCH error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

@@ -7,6 +7,7 @@ import { connection } from "next/server";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -45,7 +46,8 @@ export async function GET(req: NextRequest) {
 
     return ok({ requests: shaped });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/approvals", tags: { domain: "approvals" } });
     console.error("[admin/approvals] GET error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

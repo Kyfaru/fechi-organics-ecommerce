@@ -8,6 +8,7 @@ import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
 import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 const DeliverySchema = z.object({
   fullName: z.string().min(1),
@@ -91,7 +92,10 @@ export async function POST(req: NextRequest) {
         discountKes = r.discountKes;
         if (r.deliveryFree) deliveryFeeKes = 0;
         resolvedPromoId = r.promo.id;
-      } catch { /* invalid/expired — discount stays 0 */ }
+      } catch (promoErr) {
+        reportError(promoErr, { route: "POST /api/payments/mock/checkout", tags: { stage: "promo_resolution" } });
+        /* invalid/expired — discount stays 0 */
+      }
     }
     const totalKes = Math.max(0, subtotalKes + deliveryFeeKes - discountKes);
 
@@ -162,7 +166,12 @@ export async function POST(req: NextRequest) {
 
     return ok({ orderId: order.id, paymentStatus: order.paymentStatus });
   } catch (e) {
+    reportError(e, {
+      route: "POST /api/payments/mock/checkout",
+      userId: session.user.id,
+      tags: { stage: "handler" },
+    });
     console.error("[mock-checkout] POST error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

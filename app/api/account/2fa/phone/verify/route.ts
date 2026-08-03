@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { verifyOtp } from "@/lib/otp"
+import { reportError } from "@/lib/observability"
 
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
@@ -31,6 +32,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   } catch (e) {
     console.error("[2fa/phone/verify] error", e)
+    reportError(e, { route: "POST /api/account/2fa/phone/verify", tags: { flow: "account-2fa" } })
     return NextResponse.json({ ok: false, error: { message: "Verification failed" } }, { status: 500 })
   }
 }

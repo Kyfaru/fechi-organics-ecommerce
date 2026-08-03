@@ -8,6 +8,7 @@ import { resolvePromo as resolvePromoBase, recordCouponRedemption } from "@/lib/
 import { createNotification } from "@/lib/notify";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { generateOrderNumber, type TxClient } from "@/lib/orders/generate-order-number";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/orders — return all orders for the authenticated user
@@ -66,7 +67,8 @@ export async function GET(req: NextRequest) {
     return ok({ orders: shaped });
   } catch (e) {
     console.error("[orders] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/orders" });
+    return Err.internal();
   }
 }
 
@@ -207,6 +209,7 @@ export async function POST(req: NextRequest) {
     return ok({ orderId: order.id });
   } catch (e) {
     console.error("[orders] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/orders" });
+    return Err.internal();
   }
 }

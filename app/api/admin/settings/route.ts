@@ -14,6 +14,7 @@ import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
 import { approvalExecutors } from "@/lib/approval-executors";
 import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 // Settings keys sensitive enough to require admin approval before a
 // non-admin role's change takes effect — currently just the password
@@ -38,8 +39,9 @@ export async function GET(req: NextRequest) {
 
     return ok({ settings });
   } catch (err) {
+    reportError(err, { route: "GET /api/admin/settings", tags: { domain: "settings" } });
     console.error("[GET /api/admin/settings]", err);
-    return Err.internal(err);
+    return Err.internal();
   }
 }
 
@@ -89,7 +91,8 @@ export async function PATCH(req: NextRequest) {
 
     return ok({ setting: updated });
   } catch (err) {
+    reportError(err, { route: "PATCH /api/admin/settings", tags: { domain: "settings" } });
     console.error("[PATCH /api/admin/settings]", err);
-    return Err.internal(err);
+    return Err.internal();
   }
 }

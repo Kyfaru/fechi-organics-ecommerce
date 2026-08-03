@@ -6,6 +6,7 @@ import { NextRequest } from "next/server";
 import { invalidateTestimonialCache } from "@/lib/cache-tags";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // DELETE /api/admin/testimonials/[id]
@@ -34,7 +35,8 @@ export async function DELETE(
     // Prisma throws P2025 when the record does not exist
     if ((e as { code?: string }).code === "P2025") return Err.notFound("Testimonial");
     console.error("[admin/testimonials] DELETE error", e);
-    return Err.internal(e);
+    reportError(e, { route: "DELETE /api/admin/testimonials/[id]" });
+    return Err.internal();
   }
 }
 
@@ -76,6 +78,7 @@ export async function PATCH(
   } catch (e) {
     if ((e as { code?: string }).code === "P2025") return Err.notFound("Testimonial");
     console.error("[admin/testimonials] PATCH error", e);
-    return Err.internal(e);
+    reportError(e, { route: "PATCH /api/admin/testimonials/[id]" });
+    return Err.internal();
   }
 }

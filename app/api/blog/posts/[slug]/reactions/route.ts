@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { makeRatelimit } from "@/lib/ratelimit";
+import { reportError } from "@/lib/observability";
 
 const ratelimit = makeRatelimit(Ratelimit.slidingWindow(20, "1 m"), "blog_reaction");
 
@@ -79,6 +80,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     return ok(result);
   } catch (e) {
     console.error("[blog reactions] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/blog/posts/[slug]/reactions" });
+    return Err.internal();
   }
 }

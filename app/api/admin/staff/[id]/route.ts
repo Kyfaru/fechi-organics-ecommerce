@@ -10,6 +10,7 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
 import { approvalExecutors } from "@/lib/approval-executors";
 import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 interface Params { params: Promise<{ id: string }> }
 
@@ -33,7 +34,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const { id } = await params;
 
   let body: Record<string, unknown>;
-  try { body = await req.json(); } catch { return Err.validation("Invalid JSON body."); }
+  try {
+    body = await req.json();
+  } catch (parseErr) {
+    reportError(parseErr, { route: "PATCH /api/admin/staff/[id]" });
+    return Err.validation("Invalid JSON body.");
+  }
 
   const isBanChange = typeof body.banned === "boolean" || typeof body.banReason === "string";
   const isRoleChange = typeof body.role === "string" && body.role in roles;
@@ -156,10 +162,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
 
     if (isBanChange) {
-      logActivity(ctx.id, typeof body.banned === "boolean" ? (body.banned ? "Deactivated staff member" : "Reactivated staff member") : "Updated ban reason", "staff", id, req);
+      await logActivity(ctx.id, typeof body.banned === "boolean" ? (body.banned ? "Deactivated staff member" : "Reactivated staff member") : "Updated ban reason", "staff", id, req);
     }
-    if (isDetailsChange) logActivity(ctx.id, "Updated staff details", "staff", id, req);
-    if (isRoleChange || isPermissionChange) logActivity(ctx.id, "Changed staff role/permissions", "staff", id, req, { role: body.role, permissions: body.permissions });
+    if (isDetailsChange) await logActivity(ctx.id, "Updated staff details", "staff", id, req);
+    if (isRoleChange || isPermissionChange) await logActivity(ctx.id, "Changed staff role/permissions", "staff", id, req, { role: body.role, permissions: body.permissions });
 
     return ok({ user: updated });
   } catch (err: unknown) {
@@ -167,7 +173,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return Err.validation("A staff member with this email already exists.");
     }
     console.error("[PATCH /api/admin/staff/[id]]", err);
-    return Err.internal(err);
+    reportError(err, { route: "PATCH /api/admin/staff/[id]" });
+    return Err.internal();
   }
 }
 
@@ -217,8 +224,9 @@ export async function DELETE(req: NextRequest, { params }: Params) {
       );
     }
     console.error("[DELETE /api/admin/staff/[id]]", e);
-    return Err.internal(e);
+    reportError(e, { route: "DELETE /api/admin/staff/[id]" });
+    return Err.internal();
   }
-  logActivity(ctx.id, "Deleted staff member", "staff", id, req);
+  await logActivity(ctx.id, "Deleted staff member", "staff", id, req);
   return ok({ deleted: id });
 }

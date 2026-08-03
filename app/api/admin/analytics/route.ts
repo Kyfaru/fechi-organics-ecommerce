@@ -11,6 +11,7 @@ import { connection } from "next/server";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // Helper: bucket a list of orders by day into ordersChart shape
@@ -424,7 +425,8 @@ export async function GET(req: NextRequest) {
 
     return Err.validation(`Unknown tab: ${tab}`);
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/analytics", tags: { domain: "analytics" } });
     console.error("[admin/analytics] GET error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

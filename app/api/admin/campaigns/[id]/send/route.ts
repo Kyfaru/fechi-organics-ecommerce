@@ -7,6 +7,7 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
 import { approvalExecutors } from "@/lib/approval-executors";
 import { logActivity } from "@/lib/admin-activity";
+import { reportError, trackServerEvent } from "@/lib/observability";
 
 type SendMode = "now" | "schedule" | "later";
 
@@ -58,9 +59,11 @@ export async function POST(
 
     console.info(`[campaigns/send] Campaign ${id} (${campaign.name}) enqueued (mode=${mode})`);
     logActivity(ctx.id, `Sent campaign "${campaign.name}" (mode=${mode})`, "campaign", id, req);
+    trackServerEvent(ctx.id, "campaign_send_queued", { campaignId: id, mode });
     return ok({ queued: true, campaign: updated });
   } catch (e) {
     console.error("[campaigns/send/POST]", e);
-    return Err.internal("Failed to enqueue campaign");
+    reportError(e, { route: "POST /api/admin/campaigns/[id]/send", extra: { campaignId: id } });
+    return Err.internal();
   }
 }

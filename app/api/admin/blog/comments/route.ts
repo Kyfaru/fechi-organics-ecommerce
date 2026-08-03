@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 /**
  * GET /api/admin/blog/comments — all comments across every post, newest
@@ -42,6 +43,7 @@ export async function GET(req: NextRequest) {
     return ok({ comments });
   } catch (e) {
     console.error("[admin blog/comments] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/blog/comments" });
+    return Err.internal();
   }
 }

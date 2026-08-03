@@ -14,6 +14,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
+import { reportError } from "@/lib/observability";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
 import { getDarajaToken } from "@/lib/payments/mpesa/daraja-client";
 import { initiateSTKPush } from "@/lib/payments/mpesa/stk-push";
@@ -49,7 +50,8 @@ export async function POST(req: NextRequest) {
   try {
     const raw = await req.json();
     parsed = bodySchema.parse(raw);
-  } catch {
+  } catch (bodyErr) {
+    reportError(bodyErr, { route: "POST /api/payments/mpesa/initiate", tags: { stage: "body_validation" } });
     return Err.validation("Invalid request body");
   }
 
@@ -107,7 +109,8 @@ export async function POST(req: NextRequest) {
         discountCents = r.discountKes;
         if (r.deliveryFree) deliveryCents = 0;
         resolvedPromoId = r.promo.id;
-      } catch {
+      } catch (promoErr) {
+        reportError(promoErr, { route: "POST /api/payments/mpesa/initiate", tags: { stage: "promo_resolution" } });
         /* invalid/expired — discount stays 0 */
       }
     }
@@ -193,19 +196,22 @@ export async function POST(req: NextRequest) {
     // once if the primary attempt throws.
     async function dispatchKcb(): Promise<string> {
       const { initiateKcbStkPush } = await import("@/lib/payments/kcb/kcb-client");
-      if (!branch!.invoiceNumber) {
-        throw new Error(`Branch ${branch!.id} has no invoiceNumber configured for KCB Buni`);
-      }
+      const { resolveKcbBranch, originBranchTag } = await import("@/lib/payments/kcb/resolve-kcb-branch");
+      // Falls back to the head office KCB Buni paybill when this branch has
+      // no KCB account of its own (Eldoret/Kitengela/Mwea). order.branchId
+      // stays the customer's real branch either way — only these credentials
+      // and the invoice tag below change.
+      const kcbBranch = await resolveKcbBranch(branch!);
       const formatOrderNumber = order.orderNumber?.slice(4, -1);
-      const invoiceCode = `${branch!.invoiceNumber}-${formatOrderNumber}`;
+      const invoiceCode = `${kcbBranch.invoiceNumber}-${originBranchTag(branch!)}-${formatOrderNumber}`;
       const kcbRes = await initiateKcbStkPush({
         branch: {
-          id: branch!.id,
-          shortcode: branch!.shortcode,
+          id: kcbBranch.id,
+          shortcode: kcbBranch.shortcode,
           invoiceNumber: invoiceCode,
-          consumerKeyEnc: branch!.consumerKeyEnc,
-          consumerSecretEnc: branch!.consumerSecretEnc,
-          apiKeyEnc: branch!.apiKeyEnc ?? null,
+          consumerKeyEnc: kcbBranch.consumerKeyEnc,
+          consumerSecretEnc: kcbBranch.consumerSecretEnc,
+          apiKeyEnc: kcbBranch.apiKeyEnc ?? null,
         },
         phone,
         amountKes: totalCents,
@@ -242,11 +248,13 @@ export async function POST(req: NextRequest) {
     try {
       checkoutRequestId = await dispatch(primaryGateway);
     } catch (primaryErr) {
+      reportError(primaryErr, { route: "POST /api/payments/mpesa/initiate", tags: { stage: "gateway_dispatch", gateway: primaryGateway } });
       console.error(`[mpesa/initiate] ${primaryGateway} dispatch failed, falling back to ${fallbackGateway}`, primaryErr);
       try {
         checkoutRequestId = await dispatch(fallbackGateway);
         gatewayUsed = fallbackGateway;
       } catch (fallbackErr) {
+        reportError(fallbackErr, { route: "POST /api/payments/mpesa/initiate", tags: { stage: "gateway_dispatch_fallback", gateway: fallbackGateway } });
         console.error(`[mpesa/initiate] ${fallbackGateway} fallback also failed`, fallbackErr);
         await markPaymentFailed({
           transactionId: transaction.id,
@@ -278,7 +286,8 @@ export async function POST(req: NextRequest) {
 
     return ok({ orderId: order.id });
   } catch (e) {
+    reportError(e, { route: "POST /api/payments/mpesa/initiate", tags: { stage: "handler" }, extra: { userId } });
     console.error("[mpesa/initiate] POST error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

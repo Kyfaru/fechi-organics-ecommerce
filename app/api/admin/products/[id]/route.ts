@@ -8,6 +8,7 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { createNotification } from "@/lib/notify";
 import { requirePermission } from "@/lib/require-permission";
 import { syncProductVariants } from "@/lib/products/sync-variants";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/products/[id]
@@ -45,7 +46,8 @@ export async function GET(
     return ok({ product });
   } catch (e) {
     console.error("[admin/products/[id]] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/products/[id]" });
+    return Err.internal();
   }
 }
 
@@ -160,7 +162,8 @@ export async function PATCH(
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("A product with this slug already exists");
     }
-    return Err.internal(e);
+    reportError(e, { route: "PATCH /api/admin/products/[id]" });
+    return Err.internal();
   }
 }
 
@@ -198,6 +201,7 @@ export async function DELETE(
     return ok({ id });
   } catch (e) {
     console.error("[admin/products/[id]] DELETE error", e);
-    return Err.internal(e);
+    reportError(e, { route: "DELETE /api/admin/products/[id]" });
+    return Err.internal();
   }
 }

@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -30,8 +31,9 @@ export async function GET(req: NextRequest) {
     const items = messages.slice(0, limit);
     return ok({ items, nextCursor: hasMore ? items[items.length - 1].id : null });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/contact-messages", tags: { domain: "contact-messages" } });
     console.error("[admin/contact-messages] GET error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }
 
@@ -59,7 +61,8 @@ export async function PATCH(req: NextRequest) {
     });
     return ok(updated);
   } catch (e) {
+    reportError(e, { route: "PATCH /api/admin/contact-messages", tags: { domain: "contact-messages" } });
     console.error("[admin/contact-messages] PATCH error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

@@ -17,6 +17,7 @@ import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -72,7 +73,8 @@ export async function GET(req: NextRequest) {
 
     return ok({ logs: shaped });
   } catch (err) {
+    reportError(err, { route: "GET /api/admin/activity", tags: { domain: "activity" } });
     console.error("[GET /api/admin/activity]", err);
-    return Err.internal(err);
+    return Err.internal();
   }
 }

@@ -13,6 +13,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "@/lib/toast";
 import { checkPortalMatch } from "@/lib/portal-check";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // State machine for the admin login flow:
@@ -220,7 +221,9 @@ export default function AdminLoginPage() {
 
       setIsNewUser(!hasTwoFactor);
       setStep("method-choice");
-    } catch {
+    } catch (err) {
+      console.error("[admin-login] handleCredentialsSubmit failed:", err);
+      reportError(err, { route: "admin-login", tags: { step: "credentials" } });
       toast.error("Sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
@@ -271,7 +274,8 @@ export default function AdminLoginPage() {
       setPassword("");
       setAdminMe(null);
       setStep("credentials");
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "admin-login", tags: { step: "password-change" } });
       toast.error("Failed to update password. Please try again.");
     } finally {
       setIsLoading(false);
@@ -334,6 +338,7 @@ export default function AdminLoginPage() {
       setResendCountdown(60);
       setStep("otp-verify");
     } catch (e) {
+      reportError(e, { route: "admin-login", tags: { step: "method-choice" } });
       toast.error(e instanceof Error ? e.message : "Something went wrong. Please try again.");
     } finally {
       setMethodChoiceLoading(null);
@@ -364,7 +369,8 @@ export default function AdminLoginPage() {
       }
 
       router.push("/admin");
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "admin-login", tags: { step: "totp-verify" } });
       setErrors({ code: "Verification failed. Please try again." });
     } finally {
       setIsLoading(false);
@@ -395,7 +401,8 @@ export default function AdminLoginPage() {
       }
 
       router.push("/admin");
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "admin-login", tags: { step: "totp-setup" } });
       setErrors({ code: "Verification failed. Please try again." });
     } finally {
       setIsLoading(false);
@@ -429,7 +436,8 @@ export default function AdminLoginPage() {
       }
 
       router.push("/admin");
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "admin-login", tags: { step: "otp-verify" } });
       setErrors({ code: "Verification failed. Please try again." });
     } finally {
       setIsLoading(false);
@@ -465,6 +473,7 @@ export default function AdminLoginPage() {
       setResendCountdown(60);
       toast.success("New code sent");
     } catch (e) {
+      reportError(e, { route: "admin-login", tags: { step: "otp-resend" } });
       toast.error(e instanceof Error ? e.message : "Failed to resend code");
     }
   }

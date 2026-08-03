@@ -9,6 +9,7 @@
 
 import { verifyInstoreInvoiceToken } from "@/lib/invoice-token";
 import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-invoice";
+import { reportError } from "@/lib/observability";
 
 export async function GET(
   _req: Request,
@@ -19,13 +20,19 @@ export async function GET(
   const verified = await verifyInstoreInvoiceToken(token);
   if (!verified) return new Response("Not found", { status: 404 });
 
-  const invoice = await getOrCreateInStoreInvoice(verified.inStoreOrderId);
-  if (!invoice) return new Response("Not found", { status: 404 });
+  try {
+    const invoice = await getOrCreateInStoreInvoice(verified.inStoreOrderId);
+    if (!invoice) return new Response("Not found", { status: 404 });
 
-  return new Response(new Uint8Array(invoice.buffer), {
-    headers: {
-      "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="${invoice.invoiceNumber}.pdf"`,
-    },
-  });
+    return new Response(new Uint8Array(invoice.buffer), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="${invoice.invoiceNumber}.pdf"`,
+      },
+    });
+  } catch (e) {
+    reportError(e, { route: "GET /api/invoices/instore/[token]", extra: { inStoreOrderId: verified.inStoreOrderId } });
+    console.error("[invoices/instore/[token]] GET error", e);
+    return new Response("Internal error", { status: 500 });
+  }
 }

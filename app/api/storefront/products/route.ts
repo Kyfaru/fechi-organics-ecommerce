@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { getProducts } from "@/lib/queries/products";
 import { ok, Err } from "@/lib/api";
+import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -17,6 +18,7 @@ export async function GET(req: NextRequest) {
     return ok(result);
   } catch (e) {
     console.error("[products] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/storefront/products" });
+    return Err.internal();
   }
 }

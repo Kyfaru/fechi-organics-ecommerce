@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { verifyOtp } from "@/lib/otp";
 import { getRedis } from "@/lib/redis";
 import { randomBytes } from "crypto";
+import { reportError } from "@/lib/observability";
 
 const MAX_VERIFY_ATTEMPTS = 5;
 const OTP_TTL_SECONDS = 5 * 60;
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, resetAuth });
   } catch (err) {
     console.error("[admin/forgot-password/verify]", err);
+    reportError(err, { route: "POST /api/admin/forgot-password/verify", tags: { flow: "admin-forgot-password" } });
     return NextResponse.json({ ok: false, error: { message: "Something went wrong" } }, { status: 500 });
   }
 }

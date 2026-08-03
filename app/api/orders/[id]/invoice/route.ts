@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Err } from "@/lib/api";
 import { getOrCreateInvoice } from "@/lib/invoice/get-or-create-invoice";
+import { reportError } from "@/lib/observability";
 
 // GET /api/orders/[id]/invoice — redirects to the customer's cached invoice
 // PDF in R2, generating it on demand if the background job hasn't run yet.
@@ -30,6 +31,7 @@ export async function GET(
     return NextResponse.redirect(invoice.url);
   } catch (e) {
     console.error("[orders/[id]/invoice] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/orders/[id]/invoice" });
+    return Err.internal();
   }
 }

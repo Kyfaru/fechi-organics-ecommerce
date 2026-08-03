@@ -13,6 +13,7 @@ import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { verifyOtp } from "@/lib/otp";
 import { getRedis } from "@/lib/redis";
+import { reportError } from "@/lib/observability";
 
 const MAX_ATTEMPTS = 5;
 const OTP_TTL_SECONDS = 10 * 60;
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest) {
     return ok({ verified: true });
   } catch (e) {
     console.error("[admin/otp/verify] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/otp/verify", tags: { flow: "admin-2fa-otp" } });
+    return Err.internal();
   }
 }

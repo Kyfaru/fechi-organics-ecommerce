@@ -22,6 +22,7 @@ import { requireStaffSession } from "@/lib/require-permission";
 import { generateOtp, storeOtp } from "@/lib/otp";
 import { getRedis } from "@/lib/redis";
 import { makeRatelimit } from "@/lib/ratelimit";
+import { reportError } from "@/lib/observability";
 
 const ratelimit = makeRatelimit(Ratelimit.slidingWindow(3, "10 m"), "admin_2fa_otp_send");
 const OTP_TTL_SECONDS = 10 * 60;
@@ -87,6 +88,7 @@ export async function POST(req: NextRequest) {
     return ok({ sent: true });
   } catch (e) {
     console.error("[admin/otp/send] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/otp/send", tags: { flow: "admin-2fa-otp" } });
+    return Err.internal();
   }
 }

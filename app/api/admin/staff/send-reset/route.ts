@@ -7,6 +7,7 @@ import { TimeSpan } from "oslo";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission } from "@/lib/require-permission";
 import { emailShell, emailSection, emailButton, emailInfoBox, emailIconCircle, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template";
+import { reportError } from "@/lib/observability";
 
 // POST /api/admin/staff/send-reset — send a 45-min reset link to a staff member.
 // Caller must have already verified their own password via /api/admin/verify-password
@@ -19,7 +20,10 @@ export async function POST(req: NextRequest) {
   const denied = await requirePermission(req, { staff: ["update"] });
   if (denied) return denied;
 
-  const { userId } = await req.json().catch(() => ({}));
+  const { userId } = await req.json().catch((parseErr) => {
+    reportError(parseErr, { route: "POST /api/admin/staff/send-reset" });
+    return {};
+  });
   if (!userId) return Err.validation("userId required");
 
   const target = await db.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });

@@ -12,6 +12,7 @@ import OtpPinInput from "@/components/auth/OtpPinInput";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
 import { useOtpResend } from "@/hooks/use-otp-resend";
+import { reportError } from "@/lib/observability";
 
 type Step = "request" | "channel" | "otp" | "set-password";
 
@@ -119,7 +120,8 @@ export default function AdminForgotPasswordPage() {
       await sendCode("email");
       resendState.reset();
       setStep("otp");
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "admin-forgot-password", tags: { step: "request" } });
       toast.error("Could not send code. Please try again.");
     } finally {
       setIsRequesting(false);
@@ -132,7 +134,8 @@ export default function AdminForgotPasswordPage() {
       await sendCode(channel);
       resendState.reset();
       setStep("otp");
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "admin-forgot-password", tags: { step: "channel" } });
       toast.error("Could not send code. Please try again.");
     } finally {
       setIsRequesting(false);
@@ -162,7 +165,8 @@ export default function AdminForgotPasswordPage() {
 
       setResetAuth(data.resetAuth);
       setStep("set-password");
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "admin-forgot-password", tags: { step: "otp-verify" } });
       setOtpError("Something went wrong. Please try again.");
       setPinResetSignal((n) => n + 1);
     } finally {
@@ -234,7 +238,8 @@ export default function AdminForgotPasswordPage() {
 
       toast.success("Password updated. Please log in.");
       router.push("/admin/login");
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "admin-forgot-password", tags: { step: "set-password" } });
       toast.error("Failed to update password. Please try again.");
     } finally {
       setIsSubmittingPassword(false);

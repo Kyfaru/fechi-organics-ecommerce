@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { getRedis } from "@/lib/redis";
 import { ok } from "@/lib/api";
+import { reportError } from "@/lib/observability";
 
 type StateOption = { code: string; name: string };
 
@@ -35,6 +36,7 @@ export async function GET(req: NextRequest) {
     await redis.set(cacheKey, states, { ex: 86400 });
     return ok({ states, fallback: false });
   } catch (e) {
+    reportError(e, { route: "GET /api/country-states" });
     console.error("[country-states] GET fallback", e);
     return ok({ states: [] as StateOption[], fallback: true });
   }

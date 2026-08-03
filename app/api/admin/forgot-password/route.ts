@@ -7,6 +7,7 @@ import { sendSms, hasSmsConfig } from "@/lib/sms";
 import { combineLegacyPhone } from "@/lib/phone";
 import { Ratelimit } from "@upstash/ratelimit";
 import { makeRatelimit } from "@/lib/ratelimit";
+import { reportError } from "@/lib/observability";
 
 // Separate prefix from the customer flow's 'pwreset_send' — admin and
 // customer resend attempts are tracked in independent buckets. 6 = 1 initial
@@ -72,6 +73,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[admin/forgot-password]", err);
+    reportError(err, { route: "POST /api/admin/forgot-password", tags: { flow: "admin-forgot-password" } });
     return NextResponse.json({ ok: true });
   }
 }

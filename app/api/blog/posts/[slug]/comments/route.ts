@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { makeRatelimit } from "@/lib/ratelimit";
+import { reportError } from "@/lib/observability";
 
 const ratelimit = makeRatelimit(Ratelimit.slidingWindow(5, "1 m"), "blog_comment");
 
@@ -36,7 +37,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     return ok({ comments });
   } catch (e) {
     console.error("[blog comments] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/blog/posts/[slug]/comments" });
+    return Err.internal();
   }
 }
 
@@ -81,6 +83,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     return created({ comment });
   } catch (e) {
     console.error("[blog comments] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/blog/posts/[slug]/comments" });
+    return Err.internal();
   }
 }

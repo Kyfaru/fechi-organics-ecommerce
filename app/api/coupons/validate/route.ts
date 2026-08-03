@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { resolvePromo } from "@/lib/promo";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/coupons/validate?code=PROMO10&subtotal=250000
@@ -61,6 +62,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (e) {
     console.error("[coupons/validate] error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/coupons/validate" });
+    return Err.internal();
   }
 }

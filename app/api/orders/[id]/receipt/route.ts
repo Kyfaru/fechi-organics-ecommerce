@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { publishQstashJSON } from "@/lib/qstash";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 export async function POST(
   req: NextRequest,
@@ -33,6 +34,7 @@ export async function POST(
     return ok({ queued: !order.receiptSent });
   } catch (e) {
     console.error("[orders/:id/receipt] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/orders/[id]/receipt" });
+    return Err.internal();
   }
 }

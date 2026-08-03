@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Err } from "@/lib/api";
 import { getOrCreateInvoice } from "@/lib/invoice/get-or-create-invoice";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 // GET /api/admin/orders/[id]/invoice — redirects to the order's cached
 // invoice PDF in R2, generating it on demand if the background job hasn't
@@ -21,6 +22,7 @@ export async function GET(
     return NextResponse.redirect(invoice.url);
   } catch (e) {
     console.error("[admin/orders/[id]/invoice] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/orders/[id]/invoice" });
+    return Err.internal();
   }
 }

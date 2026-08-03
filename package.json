@@ -69,6 +69,7 @@
     "oslo": "^1.2.1",
     "pg": "^8.21.0",
     "posthog-js": "^1.384.3",
+    "posthog-node": "^5.47.3",
     "preline": "^4.2.0",
     "qrcode.react": "^4.2.0",
     "radix-ui": "^1.6.0",

@@ -255,9 +255,12 @@ export function ProductCard({ product, variant = "default" }: Props) {
           </h3>
         </Link>
 
-        {/* Short description */}
+        {/* Short description — clamped to 2 lines with a native ellipsis.
+            CSS has no fractional line-clamp; forcing the box shorter than
+            2 full lines clips glyphs mid-character and hides the ellipsis
+            entirely, so this reserves the full 2 lines instead. */}
         {product.shortDescription && (
-          <p className={`text-[#a1a1a1] font-body mb-3 line-clamp-1 pr-6 ${sizes.desc}`}>
+          <p className={`text-[#a1a1a1] font-body mb-3 line-clamp-2 leading-snug min-h-[2.75em] pr-6 ${sizes.desc}`}>
             {product.shortDescription}
           </p>
         )}

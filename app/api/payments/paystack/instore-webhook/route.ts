@@ -19,6 +19,7 @@ import { NextRequest } from "next/server";
 import { createHmac } from "crypto";
 import { db } from "@/lib/db";
 import { markInStorePaymentSuccess } from "@/lib/payments/instore-post-payment";
+import { reportError } from "@/lib/observability";
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
@@ -34,7 +35,8 @@ export async function POST(req: NextRequest) {
   let event: { event: string; data: { reference: string; status: string; gateway_response: string } };
   try {
     event = JSON.parse(rawBody) as typeof event;
-  } catch {
+  } catch (parseErr) {
+    reportError(parseErr, { route: "POST /api/payments/paystack/instore-webhook", tags: { stage: "body_parse" } });
     return Response.json({ ok: true }); // always 200
   }
 
@@ -62,6 +64,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (e) {
+    reportError(e, { route: "POST /api/payments/paystack/instore-webhook", tags: { stage: "handler" } });
     console.error("[paystack/instore-webhook] error", e);
     // still return 200 to Paystack
   }

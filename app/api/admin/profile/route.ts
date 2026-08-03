@@ -14,6 +14,7 @@ import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requireStaffSession } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -21,18 +22,24 @@ export async function GET(req: NextRequest) {
   const denied = await requireStaffSession(req);
   if (denied) return denied;
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) return Err.authRequired();
 
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    include: { adminProfile: true },
-  });
-  if (!user) return Err.authRequired();
+    const user = await db.user.findUnique({
+      where: { id: session.user.id },
+      include: { adminProfile: true },
+    });
+    if (!user) return Err.authRequired();
 
-  // Strip sensitive fields before returning
-  const { ...safeUser } = user;
-  return ok({ user: safeUser });
+    // Strip sensitive fields before returning
+    const { ...safeUser } = user;
+    return ok({ user: safeUser });
+  } catch (err) {
+    reportError(err, { route: "GET /api/admin/profile", tags: { domain: "profile" } });
+    console.error("[GET /api/admin/profile]", err);
+    return Err.internal();
+  }
 }
 
 export async function PATCH(req: NextRequest) {
@@ -99,7 +106,8 @@ export async function PATCH(req: NextRequest) {
 
     return ok({ user: updated });
   } catch (err) {
+    reportError(err, { route: "PATCH /api/admin/profile", userId: user.id, tags: { domain: "profile" } });
     console.error("[PATCH /api/admin/profile]", err);
-    return Err.internal(err);
+    return Err.internal();
   }
 }

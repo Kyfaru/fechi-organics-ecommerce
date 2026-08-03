@@ -15,6 +15,7 @@ import { ok, created, Err } from "@/lib/api";
 import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { roles, type RoleName } from "@/lib/permissions";
+import { reportError } from "@/lib/observability";
 
 function isEligibleAuthor(banned: boolean, role: string | undefined, isSuperAdmin: boolean | undefined): boolean {
   if (banned) return false;
@@ -54,7 +55,8 @@ export async function GET(req: NextRequest) {
     return ok({ authors });
   } catch (e) {
     console.error("[admin/blog/authors] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/blog/authors" });
+    return Err.internal();
   }
 }
 
@@ -113,6 +115,7 @@ export async function POST(req: NextRequest) {
     return created({ author: { id: userId, name: displayName, email: syntheticEmail, adminProfile: { role: "customer_care" } } });
   } catch (e) {
     console.error("[admin/blog/authors] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/blog/authors" });
+    return Err.internal();
   }
 }

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { verifyQstashRequest } from "@/lib/qstash";
 import { sendOrderConfirmationEmail } from "@/lib/email";
 import { emailShell, emailSection, emailIconCircle, emailLineItem, emailTotalRow, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template";
+import { reportError, trackServerEvent } from "@/lib/observability";
 
 function kes(cents: number) {
   return `KES ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;
@@ -31,16 +32,23 @@ export async function POST(req: NextRequest) {
   if (!isValid) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
 
   const { orderId } = JSON.parse(rawBody) as { orderId: string };
-  const order = await db.order.findUnique({
-    where: { id: orderId },
-    include: { items: true, user: { select: { email: true } } },
-  });
-  if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
-  const email = order.user?.email ?? order.guestEmail;
-  if (email) {
-    await sendOrderConfirmationEmail({ email, orderId: order.id, html: buildConfirmationHtml(order) });
+  try {
+    const order = await db.order.findUnique({
+      where: { id: orderId },
+      include: { items: true, user: { select: { email: true } } },
+    });
+    if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
+
+    const email = order.user?.email ?? order.guestEmail;
+    if (email) {
+      await sendOrderConfirmationEmail({ email, orderId: order.id, html: buildConfirmationHtml(order) });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    reportError(error, { route: "POST /api/admin/workers/send-order-confirmation", extra: { orderId } });
+    trackServerEvent("system", "send_order_confirmation_worker_failed", { orderId });
+    return NextResponse.json({ error: "Worker failed" }, { status: 500 });
   }
-
-  return NextResponse.json({ ok: true });
 }

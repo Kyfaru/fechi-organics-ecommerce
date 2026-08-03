@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/orders/[id] — authenticated user, owns the order
@@ -38,6 +39,7 @@ export async function GET(
     return ok({ order });
   } catch (e) {
     console.error("[orders/[id]] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/orders/[id]" });
+    return Err.internal();
   }
 }

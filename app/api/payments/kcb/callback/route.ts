@@ -10,6 +10,7 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { markPaymentSuccess, markPaymentFailed } from "@/lib/payments/post-payment";
+import { reportError, trackServerEvent } from "@/lib/observability";
 
 export async function POST(req: NextRequest) {
   let body: {
@@ -30,7 +31,8 @@ export async function POST(req: NextRequest) {
     rawText = await req.text();
     console.log("[kcb/callback] raw body:", rawText);
     body = JSON.parse(rawText) as typeof body;
-  } catch {
+  } catch (parseErr) {
+    reportError(parseErr, { route: "POST /api/payments/kcb/callback", tags: { stage: "body_parse" } });
     console.error("[kcb/callback] failed to parse body:", rawText);
     return Response.json({ ResultCode: 0, ResultDesc: "Accepted" });
   }
@@ -46,13 +48,14 @@ export async function POST(req: NextRequest) {
   try {
     const tx = await db.transaction.findFirst({
       where: { checkoutRequestId },
-      select: { id: true, orderId: true, status: true },
+      select: { id: true, orderId: true, status: true, order: { select: { userId: true } } },
     });
 
     if (!tx) return Response.json({ ResultCode: 0, ResultDesc: "Accepted" });
     if (tx.status !== "PENDING") return Response.json({ ResultCode: 0, ResultDesc: "Accepted" });
 
     const orderId = tx.orderId;
+    const distinctId = tx.order?.userId ?? "system";
 
     if (resultCode === 0) {
       const items = callback.CallbackMetadata?.Item ?? [];
@@ -69,14 +72,22 @@ export async function POST(req: NextRequest) {
           rawCallbackPayload: body as unknown as import("@prisma/client").Prisma.InputJsonValue,
         },
       });
+      trackServerEvent(distinctId, "payment_succeeded", { provider: "kcb", orderId, transactionId: tx.id });
     } else {
       await markPaymentFailed({
         transactionId: tx.id,
         orderId,
         reason: `${resultCode}:${callback.ResultDesc ?? 'Payment failed'}`,
       });
+      trackServerEvent(distinctId, "payment_failed", {
+        provider: "kcb",
+        orderId,
+        transactionId: tx.id,
+        reason: `${resultCode}:${callback.ResultDesc ?? 'Payment failed'}`,
+      });
     }
   } catch (e) {
+    reportError(e, { route: "POST /api/payments/kcb/callback", tags: { stage: "handler" } });
     console.error("[kcb/callback] error", e);
   }
 

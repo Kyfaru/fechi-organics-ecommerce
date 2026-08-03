@@ -8,6 +8,7 @@ import { Argon2id } from "oslo/password";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 // POST /api/admin/staff/set-password — directly set a new password for a staff member.
 // Caller must have already verified their own password via /api/admin/verify-password
@@ -23,7 +24,10 @@ export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
 
-  const { userId, newPassword } = await req.json().catch(() => ({}));
+  const { userId, newPassword } = await req.json().catch((parseErr) => {
+    reportError(parseErr, { route: "POST /api/admin/staff/set-password" });
+    return {};
+  });
   if (!userId || !newPassword || newPassword.length < 8) return Err.validation("userId and newPassword (min 8 chars) required");
   if (userId === session.user.id) return Err.validation("Use the profile page to change your own password");
 

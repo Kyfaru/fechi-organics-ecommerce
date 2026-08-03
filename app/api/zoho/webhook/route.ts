@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 import { Err } from "@/lib/api";
 import { syncItemToProduct } from "@/lib/zoho-sync";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // POST /api/zoho/webhook?organizationId=<id>&event=<event>  — public, no auth
@@ -57,6 +58,7 @@ function verifySignature(rawBody: string, secret: string, signatureHeader: strin
     }
     return crypto.timingSafeEqual(a, b);
   } catch (e) {
+    reportError(e, { route: "POST /api/zoho/webhook", tags: { domain: "zoho-webhook" } });
     console.error("[zoho/webhook] Signature comparison failed", e);
     return false;
   }
@@ -124,6 +126,7 @@ export async function POST(req: NextRequest) {
   try {
     secret = decrypt(org.webhookSecretEnc);
   } catch (e) {
+    reportError(e, { route: "POST /api/zoho/webhook", tags: { domain: "zoho-webhook" }, extra: { organizationId } });
     console.error("[zoho/webhook] Failed to decrypt webhook secret for org:", organizationId, e);
     return Err.forbidden();
   }
@@ -158,6 +161,7 @@ export async function POST(req: NextRequest) {
     }
   } catch (e) {
     // Log but don't surface — Zoho expects 200
+    reportError(e, { route: "POST /api/zoho/webhook", tags: { domain: "zoho-webhook" }, extra: { organizationId, eventType } });
     console.error("[zoho/webhook] Handler error for event:", eventType, e);
   }
 
