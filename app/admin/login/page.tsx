@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { Smartphone, Mail, MessageSquare } from "lucide-react";
 import FormInput from "@/components/auth/FormInput";
 import PasswordInput from "@/components/auth/PasswordInput";
+import Turnstile, { TurnstileHandle } from "@/components/auth/Turnstile";
 import { authClient, signOut, useSession } from "@/lib/auth-client";
 import { clearPersistedQueryCache } from "@/app/providers";
 import { Spinner } from "@/components/ui/spinner";
@@ -82,6 +83,8 @@ export default function AdminLoginPage() {
 
   const [errors, setErrors] = useState<AdminLoginErrors>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileHandle>(null);
 
   const { data: sessionData, isPending: sessionPending } = useSession();
 
@@ -164,9 +167,12 @@ export default function AdminLoginPage() {
       setErrors(validationErrors);
       return;
     }
+    if (!captchaToken) return;
 
     setErrors({});
     setIsLoading(true);
+    const tokenForThisAttempt = captchaToken;
+    setCaptchaToken(null);
 
     try {
       // Reject a client's email before ever calling signIn — no session is
@@ -181,7 +187,10 @@ export default function AdminLoginPage() {
       // browser itself drops it the moment the browser (not just this tab)
       // closes. A different browser/device is unaffected — cookies are
       // already scoped per browser instance.
-      const result = await authClient.signIn.email({ email, password, rememberMe: false });
+      const result = await authClient.signIn.email(
+        { email, password, rememberMe: false },
+        { headers: { "x-captcha-response": tokenForThisAttempt } }
+      );
 
       if (result?.error) {
         toast.error("Invalid email or password.");
@@ -233,6 +242,7 @@ export default function AdminLoginPage() {
       toast.error("Sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
+      turnstileRef.current?.reset();
     }
   }
 
@@ -529,9 +539,16 @@ export default function AdminLoginPage() {
           </div>
         </div>
 
+        <Turnstile
+          ref={turnstileRef}
+          onVerify={setCaptchaToken}
+          onExpire={() => setCaptchaToken(null)}
+          className="flex justify-center"
+        />
+
         <button
           type="submit"
-          disabled={isLoading}
+          disabled={isLoading || !captchaToken}
           className="w-full py-3.5 rounded-full font-bold text-sm tracking-wide text-[#1a1c1c] transition-all duration-150 hover:brightness-95 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed mt-1"
           style={{ backgroundColor: "#FFC800" }}
         >

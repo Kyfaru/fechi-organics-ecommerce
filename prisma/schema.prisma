@@ -262,15 +262,16 @@ model user {
 }
 
 model session {
-  id        String   @id
-  userId    String
-  token     String   @unique
-  expiresAt DateTime
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String    @id
+  userId            String
+  token             String    @unique
+  expiresAt         DateTime
+  ipAddress         String?
+  userAgent         String?
+  captchaVerifiedAt DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  user              user      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@schema("public")
 }

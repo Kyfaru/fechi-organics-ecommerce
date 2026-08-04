@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { emailOTP, admin, twoFactor } from "better-auth/plugins";
+import { emailOTP, admin, twoFactor, captcha } from "better-auth/plugins";
 import { db } from "@/lib/db";
 import { sendOTPEmail, sendWelcomeEmail, sendChangeEmailVerification } from "@/lib/email";
 import { splitName } from "@/lib/name";
@@ -122,18 +122,37 @@ export const auth = betterAuth({
   databaseHooks: {
     session: {
       create: {
-        before: async (session) => {
+        before: async (session, context) => {
           const user = await db.user.findUnique({
             where: { id: session.userId },
             select: { role: true },
           });
+
+          // captchaVerifiedAt: set when this request itself carried a
+          // validated x-captcha-response header (signIn.email / signUp.email,
+          // where the session is created in the same request the captcha
+          // plugin gated), or when this session comes from /sign-in/email-otp
+          // — that endpoint is never captcha-gated directly (the token is
+          // single-use and already spent sending the OTP), but it's only
+          // reachable after a successful /email-otp/send-verification-otp,
+          // which IS gated, so trusting it here is safe.
+          const path = context?.path ?? "";
+          const hadCaptchaHeader = !!context?.request?.headers?.get("x-captcha-response");
+          const captchaVerifiedAt =
+            hadCaptchaHeader || path.includes("/sign-in/email-otp")
+              ? new Date()
+              : undefined;
+
           // Admin sessions expire after 8 hours; client sessions use the
           // default 7-day expiry set in the session config above.
-          if (user?.role === "admin") {
+          if (user?.role === "admin" || captchaVerifiedAt) {
             return {
               data: {
                 ...session,
-                expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000),
+                ...(user?.role === "admin" && {
+                  expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000),
+                }),
+                ...(captchaVerifiedAt && { captchaVerifiedAt }),
               },
             };
           }
@@ -211,6 +230,15 @@ export const auth = betterAuth({
         period: 30,
         digits: 6,
       },
+    }),
+    // Bot protection on the credential forms — signup, admin login, and the
+    // customer email-OTP login's send/resend step (its subsequent
+    // /sign-in/email-otp call is deliberately not listed here; see the
+    // captchaVerifiedAt comment in databaseHooks above).
+    captcha({
+      provider: "cloudflare-turnstile",
+      secretKey: process.env.TURNSTILE_SECRET_KEY!,
+      endpoints: ["/sign-up/email", "/sign-in/email", "/email-otp/send-verification-otp"],
     }),
   ],
 
