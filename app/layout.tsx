@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import Script from "next/script";
 import "./globals.css";
 import { Syne, DM_Sans } from "next/font/google";
 import { vastago, stagnan, realHead } from "@/lib/fonts";
@@ -52,6 +53,15 @@ export default function RootLayout({
       className={`h-full antialiased ${syne.variable} ${dmSans.variable} ${vastago.variable} ${stagnan.variable} ${realHead.variable}`}
     >
       <body className="min-h-full flex flex-col">
+        <Script async src="https://www.googletagmanager.com/gtag/js?id=G-5F8X2RNZMJ" strategy="afterInteractive" />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-5F8X2RNZMJ');
+          `}
+        </Script>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
