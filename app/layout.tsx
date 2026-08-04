@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import Script from "next/script";
 import "./globals.css";
 import { Syne, DM_Sans } from "next/font/google";
 import { vastago, stagnan, realHead } from "@/lib/fonts";
@@ -9,6 +8,7 @@ import { SessionProvider } from "@/components/providers/session-provider";
 import { Toaster } from "sonner";
 import { WhatsAppButton } from "@/components/ui/WhatsAppButton";
 import { ScrollToSearchMatch } from "@/components/search/ScrollToSearchMatch";
+import { ConsentGate } from "@/components/consent/ConsentGate";
 import { SITE_URL } from "@/lib/site";
 
 const syne = Syne({ subsets: ["latin"], variable: "--font-syne-var", weight: ["600", "700"] });
@@ -53,15 +53,12 @@ export default function RootLayout({
       className={`h-full antialiased ${syne.variable} ${dmSans.variable} ${vastago.variable} ${stagnan.variable} ${realHead.variable}`}
     >
       <body className="min-h-full flex flex-col">
-        <Script async src="https://www.googletagmanager.com/gtag/js?id=G-5F8X2RNZMJ" strategy="afterInteractive" />
-        <Script id="google-analytics" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', 'G-5F8X2RNZMJ');
-          `}
-        </Script>
+        {/* Suspense boundary — ConsentGate reads the consent cookie, which
+            makes that subtree dynamic under cacheComponents; wrapping it
+            keeps the rest of the shell prerenderable. */}
+        <Suspense fallback={null}>
+          <ConsentGate />
+        </Suspense>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}

@@ -79,6 +79,7 @@ const PUBLIC_PATHS = [
   // Public API namespaces
   "/api/storefront",
   "/api/cart",
+  "/api/cookie-consent",
   "/api/favorites",
   "/api/blog",
   "/api/currency",

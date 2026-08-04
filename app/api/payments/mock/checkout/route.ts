@@ -121,6 +121,8 @@ export async function POST(req: NextRequest) {
           deliveryCity: deliveryData.city ?? deliveryData.state ?? null,
           deliveryCounty: deliveryData.county || deliveryData.country,
           deliveryZone: deliveryData.deliveryZone ?? pricing.label,
+          deliveryPostalCode: deliveryData.postalCode ?? null,
+          deliveryCountry: deliveryData.countryName ?? null,
           branchId: branch?.id ?? null,
           items: {
             create: activeItems.map((item) => ({
