@@ -7,7 +7,8 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
 import { approvalExecutors } from "@/lib/approval-executors";
 import { logActivity } from "@/lib/admin-activity";
-import { reportError, trackServerEvent } from "@/lib/observability";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 type SendMode = "now" | "schedule" | "later";
 

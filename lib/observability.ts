@@ -1,5 +1,4 @@
 import * as Sentry from "@sentry/nextjs";
-import { getPostHogServer } from "@/lib/posthog-server";
 
 interface ErrorContext {
   route?: string;
@@ -8,7 +7,12 @@ interface ErrorContext {
   extra?: Record<string, unknown>;
 }
 
-/** Sentry.captureException with route/user/tag context attached, for use in route-handler catch blocks. */
+/**
+ * Sentry.captureException with route/user/tag context attached, for use in
+ * route-handler and client-page catch blocks. Safe to import from client
+ * components — unlike trackServerEvent (lib/observability-server.ts), this
+ * has no posthog-node/node:fs dependency to break the browser bundle.
+ */
 export function reportError(error: unknown, context: ErrorContext = {}) {
   const { route, userId, tags, extra } = context;
   Sentry.captureException(error, {
@@ -16,13 +20,4 @@ export function reportError(error: unknown, context: ErrorContext = {}) {
     user: userId ? { id: userId } : undefined,
     extra,
   });
-}
-
-/** Server-side PostHog capture (webhooks, workers, anything not running in the browser). */
-export function trackServerEvent(
-  distinctId: string,
-  event: string,
-  properties?: Record<string, unknown>
-) {
-  getPostHogServer().capture({ distinctId, event, properties });
 }

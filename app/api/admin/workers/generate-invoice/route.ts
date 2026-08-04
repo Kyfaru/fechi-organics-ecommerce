@@ -9,7 +9,8 @@ import { verifyQstashRequest } from "@/lib/qstash";
 import { getOrCreateInvoice } from "@/lib/invoice/get-or-create-invoice";
 import { sendInvoiceEmail } from "@/lib/email";
 import { emailShell, emailSection, emailButton, emailIconCircle, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template";
-import { reportError, trackServerEvent } from "@/lib/observability";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 function kes(cents: number) {
   return `KES ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;

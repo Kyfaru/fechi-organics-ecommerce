@@ -9,7 +9,8 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { generateTicketNumber } from "@/lib/tickets/generate-ticket-number";
 import { assignTicketToAdmin } from "@/lib/tickets/assign-admin";
 import { createNotification } from "@/lib/notify";
-import { reportError, trackServerEvent } from "@/lib/observability";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 async function requireUser() {
   const session = await auth.api.getSession({ headers: await headers() });

@@ -7,7 +7,8 @@ import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { assertBranchAccess } from "@/lib/branch-access";
-import { reportError, trackServerEvent } from "@/lib/observability";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 // ---------------------------------------------------------------------------
 // POST /api/admin/zoho/sync  — RBAC-gated, rate-limited to 1 call per 60s per

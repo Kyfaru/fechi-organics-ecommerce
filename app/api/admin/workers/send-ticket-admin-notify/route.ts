@@ -3,7 +3,8 @@ import { Resend } from "resend";
 import { qstashReceiver } from "@/lib/qstash";
 import { db } from "@/lib/db";
 import { emailShell, emailSection, emailButton, emailIconCircle, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template";
-import { reportError, trackServerEvent } from "@/lib/observability";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 let _resend: Resend | null = null;
 function getResend(): Resend {

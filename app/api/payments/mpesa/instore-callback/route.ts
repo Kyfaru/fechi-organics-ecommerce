@@ -37,7 +37,8 @@ import {
   markInStorePaymentFailed,
   markInStorePaymentSuccess,
 } from "@/lib/payments/instore-post-payment";
-import { reportError, trackServerEvent } from "@/lib/observability";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 function safaricomOk() {
   return Response.json({ ResultCode: 0, ResultDesc: "Accepted" }, { status: 200 });

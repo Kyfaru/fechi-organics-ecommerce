@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { qstashReceiver } from "@/lib/qstash";
 import { db } from "@/lib/db";
 import { runCampaignSend, markCampaignFailed } from "@/lib/campaigns/send-campaign";
-import { reportError, trackServerEvent } from "@/lib/observability";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();

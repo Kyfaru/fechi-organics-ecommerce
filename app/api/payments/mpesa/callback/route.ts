@@ -12,7 +12,8 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { markPaymentFailed, markPaymentSuccess } from "@/lib/payments/post-payment";
-import { reportError, trackServerEvent } from "@/lib/observability";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 function safaricomOk() {
   return Response.json({ ResultCode: 0, ResultDesc: "Accepted" }, { status: 200 });

@@ -11,7 +11,8 @@ import { sendAdminNotificationEmail } from "@/lib/email";
 import { emailShell, emailSection, emailInfoBox, emailIconCircle, emailLineItem, emailTotalRow, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template";
 import { markPaymentFailed } from "@/lib/payments/post-payment";
 import { createNotification } from "@/lib/notify";
-import { reportError, trackServerEvent } from "@/lib/observability";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 function kes(cents: number) {
   return `KES ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;

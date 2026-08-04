@@ -5,7 +5,8 @@ import { sendSms, hasSmsConfig } from "@/lib/sms"
 import { combineLegacyPhone } from "@/lib/phone"
 import { emailShell, emailSection, emailButton, emailIconCircle, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template"
 import { Resend } from "resend";
-import { reportError, trackServerEvent } from "@/lib/observability"
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 let _resend: Resend | null = null;
 function getResend(): Resend {

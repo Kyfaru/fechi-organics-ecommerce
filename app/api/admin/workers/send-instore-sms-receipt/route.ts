@@ -9,7 +9,8 @@ import { verifyQstashRequest } from "@/lib/qstash";
 import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-invoice";
 import { createInstoreInvoiceToken } from "@/lib/invoice-token";
 import { sendSms } from "@/lib/sms";
-import { reportError, trackServerEvent } from "@/lib/observability";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();

@@ -10,7 +10,8 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { markPaymentSuccess, markPaymentFailed } from "@/lib/payments/post-payment";
-import { reportError, trackServerEvent } from "@/lib/observability";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 export async function POST(req: NextRequest) {
   let body: {

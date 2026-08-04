@@ -10,7 +10,8 @@ import { NextRequest } from "next/server";
 import { createHmac } from "crypto";
 import { db } from "@/lib/db";
 import { markPaymentSuccess } from "@/lib/payments/post-payment";
-import { reportError, trackServerEvent } from "@/lib/observability";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
