@@ -243,6 +243,7 @@ model user {
   sessions              session[]
   accounts              account[]
   cart                  cart?
+  cookieConsent         cookieConsent?
   favorites             favorite[]
   orders                order[]
   adminProfile          adminProfile?
@@ -457,6 +458,18 @@ model cart {
   @@schema("public")
 }
 
+model cookieConsent {
+  id           String   @id @default(uuid())
+  userId       String?  @unique
+  user         user?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token        String?  @unique
+  consentToken String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@schema("public")
+}
+
 model cartItem {
   id           String          @id @default(uuid())
   cartId       String
@@ -546,6 +559,11 @@ model order {
   deliveryCounty            String?
   deliveryZone              String?
   deliveryPhone             String?
+  // International orders only — deliveryCity already carries state/province
+  // (see app/api/payments/*/initiate routes), these two were previously
+  // collected on the checkout form but never persisted.
+  deliveryPostalCode        String?
+  deliveryCountry           String?
   deliveryType              DeliveryType       @default(DELIVERY)
   isInternational           Boolean            @default(false)
   paymentStatus             PaymentStatus      @default(PENDING)

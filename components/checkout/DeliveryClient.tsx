@@ -597,6 +597,7 @@ export function DeliveryClient({ user }: Props) {
                         disabled={!county || noZones}
                         loading={zonesQuery.isLoading && Boolean(county)}
                         hasError={!!showErr("zone")}
+                        searchable
                       />
                     </Field>
                   )}

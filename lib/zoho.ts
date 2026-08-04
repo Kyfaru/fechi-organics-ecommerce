@@ -98,6 +98,14 @@ export type ZohoSalesReceiptPayload = {
   }>;
   reference_number?: string;
   notes?: string;
+  // Per-transaction "Bill To" override — doesn't touch the shared Contact
+  // record (see resolve-customer.ts), just this receipt's display block.
+  // attention carries "name, +254712345678" so the phone shows without a
+  // dedicated contact field.
+  billing_address?: {
+    attention?: string;
+    phone?: string;
+  };
 };
 
 export type ZohoInventoryAdjustmentPayload = {

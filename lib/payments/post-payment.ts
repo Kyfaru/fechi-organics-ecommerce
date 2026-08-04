@@ -35,9 +35,10 @@ export async function markPaymentSuccess(args: {
       include: { items: true, user: { select: { id: true, name: true, email: true } } },
     });
 
-    await tx.transaction.update({
+    const updatedTransaction = await tx.transaction.update({
       where: { id: args.transactionId },
       data: args.transactionData,
+      select: { mpesaReceiptNumber: true },
     });
 
     for (const item of order.items) {
@@ -52,7 +53,7 @@ export async function markPaymentSuccess(args: {
       if (cart) await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
     }
 
-    return { order, provider: transaction.provider };
+    return { order, provider: transaction.provider, mpesaReceiptNumber: updatedTransaction?.mpesaReceiptNumber ?? null };
   });
 
   await publishQstashJSON("/api/admin/workers/send-order-confirmation", { orderId: args.orderId });
@@ -83,7 +84,7 @@ export async function markPaymentSuccess(args: {
   // silently (rather than failing an otherwise-successful payment) if the
   // order somehow has no branch, or that branch isn't linked to a Zoho org.
   if (result) {
-    const { order, provider } = result;
+    const { order, provider, mpesaReceiptNumber } = result;
     (async () => {
       try {
         if (!order.branchId) {
@@ -104,6 +105,7 @@ export async function markPaymentSuccess(args: {
           referenceNumber: order.orderNumber,
           customerName: order.user?.name,
           customerEmail: order.user?.email,
+          customerPhone: order.deliveryPhone,
           paymentMode: paymentModeForOnline(provider),
           items: order.items.map((item) => ({
             productId: item.productId,
@@ -113,6 +115,10 @@ export async function markPaymentSuccess(args: {
           })),
           discountKes: order.discountKes,
           shippingKes: order.deliveryKes,
+          deliveryTown: order.deliveryAddress,
+          deliveryZoneLabel: order.deliveryZone,
+          deliveryCounty: order.deliveryCounty,
+          paymentReference: mpesaReceiptNumber,
           notes: `Fechi Organics order ${order.orderNumber ?? order.id}`,
         });
 
