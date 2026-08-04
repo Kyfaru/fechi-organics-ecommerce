@@ -206,7 +206,15 @@ export async function POST(req: NextRequest) {
     });
 
     // 8. Initialize Paystack transaction
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.MPESA_CALLBACK_BASE_URL ?? "";
+    // Derived from the incoming request's own origin rather than
+    // NEXT_PUBLIC_APP_URL — that's inlined at build time, so a production
+    // image built without it passed through as a Docker build arg silently
+    // ships whatever it defaulted to (e.g. "http://localhost:3000"), sending
+    // customers back to a URL that only resolves on a developer's machine.
+    // req.nextUrl.origin reflects whatever domain the customer's browser is
+    // actually on right now — the same source verify/route.ts's redirects
+    // already rely on downstream.
+    const baseUrl = req.nextUrl.origin;
     const paystackRes = await initializeTransaction({
       email: userEmail,
       amount: totalCents,

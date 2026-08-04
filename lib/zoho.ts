@@ -105,6 +105,12 @@ export type ZohoSalesReceiptPayload = {
   billing_address?: {
     attention?: string;
     phone?: string;
+    // International orders only — Kenya orders cover their delivery location
+    // via the line-item title instead (see push-sale-receipt.ts).
+    address?: string;
+    state?: string;
+    zip?: string;
+    country?: string;
   };
 };
 

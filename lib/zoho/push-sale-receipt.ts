@@ -115,6 +115,14 @@ export async function pushSaleReceiptToZoho(args: {
           ? {
               attention: [args.customerName, args.customerPhone].filter(Boolean).join(", ") || undefined,
               phone: args.customerPhone ?? undefined,
+              ...(args.isInternational
+                ? {
+                    address: args.deliveryTown ?? undefined,
+                    state: args.deliveryState ?? undefined,
+                    zip: args.deliveryPostalCode ?? undefined,
+                    country: args.deliveryCountryName ?? undefined,
+                  }
+                : {}),
             }
           : undefined,
     };

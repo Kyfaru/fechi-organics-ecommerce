@@ -38,7 +38,7 @@ export async function markPaymentSuccess(args: {
     const updatedTransaction = await tx.transaction.update({
       where: { id: args.transactionId },
       data: args.transactionData,
-      select: { mpesaReceiptNumber: true },
+      select: { mpesaReceiptNumber: true, paystackReference: true },
     });
 
     for (const item of order.items) {
@@ -53,7 +53,12 @@ export async function markPaymentSuccess(args: {
       if (cart) await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
     }
 
-    return { order, provider: transaction.provider, mpesaReceiptNumber: updatedTransaction?.mpesaReceiptNumber ?? null };
+    return {
+      order,
+      provider: transaction.provider,
+      mpesaReceiptNumber: updatedTransaction?.mpesaReceiptNumber ?? null,
+      paystackReference: updatedTransaction?.paystackReference ?? null,
+    };
   });
 
   await publishQstashJSON("/api/admin/workers/send-order-confirmation", { orderId: args.orderId });
@@ -84,7 +89,11 @@ export async function markPaymentSuccess(args: {
   // silently (rather than failing an otherwise-successful payment) if the
   // order somehow has no branch, or that branch isn't linked to a Zoho org.
   if (result) {
-    const { order, provider, mpesaReceiptNumber } = result;
+    const { order, provider, mpesaReceiptNumber, paystackReference } = result;
+    // Card payments settle through Paystack, not M-Pesa — the receipt's
+    // reference should read as just the Paystack reference rather than
+    // "orderNumber / mpesaRef" (there is no M-Pesa ref for a card sale).
+    const isCard = provider === "PAYSTACK";
     (async () => {
       try {
         if (!order.branchId) {
@@ -102,7 +111,7 @@ export async function markPaymentSuccess(args: {
           branchId: order.branchId,
           referenceType: "order",
           referenceId: order.id,
-          referenceNumber: order.orderNumber,
+          referenceNumber: isCard ? undefined : order.orderNumber,
           customerName: order.user?.name,
           customerEmail: order.user?.email,
           customerPhone: order.deliveryPhone,
@@ -118,7 +127,11 @@ export async function markPaymentSuccess(args: {
           deliveryTown: order.deliveryAddress,
           deliveryZoneLabel: order.deliveryZone,
           deliveryCounty: order.deliveryCounty,
-          paymentReference: mpesaReceiptNumber,
+          isInternational: order.isInternational,
+          deliveryState: order.deliveryCity,
+          deliveryPostalCode: order.deliveryPostalCode,
+          deliveryCountryName: order.deliveryCountry,
+          paymentReference: isCard ? paystackReference : mpesaReceiptNumber,
           notes: `Fechi Organics order ${order.orderNumber ?? order.id}`,
         });
 
