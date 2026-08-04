@@ -197,9 +197,15 @@ export default function AdminLoginPage() {
         return;
       }
 
-      // Fetch admin profile — determines forced password-change and 2FA state
+      // Fetch admin profile — determines forced password-change and 2FA state.
+      // meRes.redirected catches the case where the session cookie from the
+      // signIn.email() call above hasn't propagated to this request yet:
+      // proxy.ts redirects the unauthenticated request to /admin/login, fetch
+      // follows it transparently, and the HTML login page comes back as a
+      // plain 200 — meRes.ok alone would miss that and meRes.json() would
+      // throw on the HTML body.
       const meRes = await fetch("/api/admin/me");
-      if (!meRes.ok) {
+      if (!meRes.ok || meRes.redirected) {
         await authClient.signOut();
         toast.error("Sign in failed.");
         return;
