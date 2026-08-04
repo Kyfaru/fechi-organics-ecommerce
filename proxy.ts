@@ -96,6 +96,10 @@ const PUBLIC_PATHS = [
   // inside each handler) — never carry a session cookie, so they'd otherwise
   // 307-redirect before the handler's own auth check ever runs.
   "/api/admin/workers",
+  // Docker/Coolify healthcheck — hit with no session cookie by design, so it
+  // would otherwise get the new 401-for-unauthenticated-/api/* response below
+  // and fail every deploy's healthcheck.
+  "/api/health",
 ];
 
 /**
