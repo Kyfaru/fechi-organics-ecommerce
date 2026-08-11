@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, Grid, List, ChevronDown, Star, MoreHorizontal,
   Pencil, Copy, ExternalLink, Trash2, Check, X, ImagePlus,
-  GripVertical, Tag, RefreshCw, AlertTriangle,
+  GripVertical, Tag, RefreshCw, AlertTriangle, ListChecks, Archive,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
@@ -2012,6 +2012,23 @@ export function AdminProductsClient() {
       >
         <Star size={16} />
         View Reviews
+      </button>
+
+      {/* Zoho staging review queue — new Zoho items land here instead of
+          auto-creating live products. See AdminZohoStagedItemsClient. */}
+      <button
+        onClick={() => router.push('/admin/products/zoho')}
+        className="h-10 px-5 rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+      >
+        <ListChecks size={16} />
+        Zoho Products
+      </button>
+      <button
+        onClick={() => router.push('/admin/products/zoho/expelled')}
+        className="h-10 px-5 rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+      >
+        <Archive size={16} />
+        Expelled Zoho Products
       </button>
     </div>
   );

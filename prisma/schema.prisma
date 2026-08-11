@@ -718,6 +718,7 @@ model zohoOrganization {
   branches         branch[]
   productMappings  productZohoMapping[]
   pushLogs         zohoPushLog[]
+  stagedItems      zohoStagedItem[]
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 
@@ -746,6 +747,49 @@ model productZohoMapping {
 
   @@unique([productId, organizationId])
   @@unique([organizationId, zohoItemId])
+  @@schema("admin")
+}
+
+enum ZohoStagedItemStatus {
+  PENDING
+  EXCLUDED
+
+  @@schema("admin")
+}
+
+// A Zoho item pulled in during sync that has no product mapping yet. Lands
+// here instead of auto-creating a live `product` row — an admin reviews it
+// and either approves it (creating the product + productZohoMapping) or
+// excludes it (status EXCLUDED, so it stops resurfacing in the review queue
+// on every sync). rawPayload keeps the full Zoho item response so the review
+// UI isn't limited to the flattened fields below.
+model zohoStagedItem {
+  id                String               @id @default(cuid())
+  organizationId    String
+  organization      zohoOrganization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  zohoItemId        String
+  status            ZohoStagedItemStatus @default(PENDING)
+  name              String
+  description       String?
+  sku               String?
+  productType       String?
+  zohoStatus        String?
+  unit              String?
+  brand             String?
+  rateKes           Int?
+  purchaseRateKes   Int?
+  categoryNameRaw   String?
+  stockOnHand       Int?
+  rawPayload        Json
+  firstSeenAt       DateTime             @default(now())
+  lastSeenAt        DateTime             @updatedAt
+  excludedAt        DateTime?
+  excludedByUserId  String?
+  reenabledAt       DateTime?
+  reenabledByUserId String?
+
+  @@unique([organizationId, zohoItemId])
+  @@index([organizationId, status])
   @@schema("admin")
 }
 

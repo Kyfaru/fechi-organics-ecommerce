@@ -3,9 +3,27 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { emailOTP, admin, twoFactor, captcha } from "better-auth/plugins";
 import { db } from "@/lib/db";
 import { sendOTPEmail, sendWelcomeEmail, sendChangeEmailVerification } from "@/lib/email";
+import { sendSms } from "@/lib/sms";
+import { combineLegacyPhone } from "@/lib/phone";
 import { splitName } from "@/lib/name";
 import { Argon2id } from "oslo/password";
 import { ac, roles } from "@/lib/permissions";
+
+// ---------------------------------------------------------------------------
+// Admin sessions are anchored to the next midnight in Africa/Nairobi (EAT,
+// UTC+3, no DST) rather than a rolling window — see databaseHooks.session
+// below. Kept as a plain fixed offset rather than an Intl/timezone library
+// call since EAT never observes DST, so the offset is always exactly +3h.
+// ---------------------------------------------------------------------------
+function nextMidnightNairobi(): Date {
+  const now = new Date();
+  const nairobiOffsetMs = 3 * 60 * 60 * 1000;
+  const nairobiNow = new Date(now.getTime() + nairobiOffsetMs);
+  const next = new Date(Date.UTC(
+    nairobiNow.getUTCFullYear(), nairobiNow.getUTCMonth(), nairobiNow.getUTCDate() + 1
+  ));
+  return new Date(next.getTime() - nairobiOffsetMs);
+}
 
 export const auth = betterAuth({
   database: prismaAdapter(db, {

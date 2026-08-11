@@ -31,15 +31,15 @@ export async function POST(
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
 
-  const denied = await requirePermission(req, { orders: ["cancel"] });
-  if (denied) return denied;
-
-  const admin = await requireAdmin(req);
-  if (!admin) return Err.forbidden();
-
-  const { id } = await params;
-
   try {
+    const denied = await requirePermission(req, { orders: ["cancel"] });
+    if (denied) return denied;
+
+    const admin = await requireAdmin(req);
+    if (!admin) return Err.forbidden();
+
+    const { id } = await params;
+
     const tx = await db.inStoreTransaction.findFirst({
       where: { inStoreOrderId: id, status: "PENDING" },
       orderBy: { createdAt: "desc" },

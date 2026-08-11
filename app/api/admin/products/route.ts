@@ -21,7 +21,14 @@ export async function GET(req: NextRequest) {
   if (denied) return denied;
 
   try {
+    // activeOnly=true scopes results to storefront-eligible products — used
+    // by pickers (e.g. the in-store order product picker) that must not
+    // offer inactive products for sale. Omitted entirely for the general
+    // product-management page, which needs to see and edit inactive products too.
+    const activeOnly = req.nextUrl.searchParams.get("activeOnly") === "true";
+
     const products = await db.product.findMany({
+      where: activeOnly ? { isActive: true } : undefined,
       orderBy: { createdAt: "desc" },
       include: {
         category: { select: { id: true, name: true, slug: true } },
