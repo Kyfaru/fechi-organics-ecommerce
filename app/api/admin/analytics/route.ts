@@ -97,7 +97,6 @@ export async function GET(req: NextRequest) {
     if (tab === "overview") {
       const [
         revenueAgg,
-        ordersCount,
         newCustomers,
         paidOrders,
         topProductsRaw,
@@ -105,7 +104,6 @@ export async function GET(req: NextRequest) {
         revenueChartOrders,
         ordersForChart,
         inStoreRevenueAgg,
-        inStoreOrdersCount,
         inStorePaidOrders,
         inStoreTopProductsRaw,
         inStoreTopCustomersRaw,
@@ -116,7 +114,6 @@ export async function GET(req: NextRequest) {
           _sum: { totalKes: true },
           where: { paymentStatus: "PAID", createdAt: dateFilter },
         }),
-        db.order.count({ where: { createdAt: dateFilter } }),
         db.user.count({ where: { role: "client", createdAt: dateFilter } }),
         db.order.count({ where: { paymentStatus: "PAID", createdAt: dateFilter } }),
         // Top 5 products by number of order items
@@ -151,7 +148,6 @@ export async function GET(req: NextRequest) {
           _sum: { totalKes: true },
           where: { paymentStatus: "PAID", createdAt: dateFilter },
         }),
-        db.inStoreOrder.count({ where: { createdAt: dateFilter } }),
         db.inStoreOrder.count({ where: { paymentStatus: "PAID", createdAt: dateFilter } }),
         db.inStoreOrderItem.groupBy({
           by: ["productId", "name"],
@@ -190,7 +186,6 @@ export async function GET(req: NextRequest) {
       }
 
       const totalRevenue = (revenueAgg._sum.totalKes ?? 0) + (inStoreRevenueAgg._sum.totalKes ?? 0);
-      const combinedOrders = ordersCount + inStoreOrdersCount;
       const combinedPaidOrders = paidOrders + inStorePaidOrders;
       const aov = combinedPaidOrders > 0 ? Math.round(totalRevenue / combinedPaidOrders) : 0;
 
@@ -270,7 +265,7 @@ export async function GET(req: NextRequest) {
         tab: "overview",
         stats: {
           revenue: totalRevenue,
-          orders: combinedOrders,
+          orders: combinedPaidOrders,
           aov,
           conversionRate: 3.2, // placeholder
           newCustomers,

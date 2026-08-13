@@ -1,6 +1,7 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { NextRequest } from "next/server";
+import type { NotificationType } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Err } from "@/lib/api";
@@ -24,6 +25,7 @@ export type CallerContext =
       isSuperAdmin: boolean;
       branchId: string | null;
       deny: Set<string>;
+      mutedNotificationTypes: NotificationType[];
     };
 
 export async function loadCallerContext(): Promise<CallerContext> {
@@ -35,7 +37,7 @@ export async function loadCallerContext(): Promise<CallerContext> {
   if (devSecret) {
     const jar = await cookies();
     if (jar.get(DEV_ACCESS_COOKIE)?.value === devSecret) {
-      return { id: "dev-access", role: "super_admin", isSuperAdmin: true, branchId: null, deny: new Set() };
+      return { id: "dev-access", role: "super_admin", isSuperAdmin: true, branchId: null, deny: new Set(), mutedNotificationTypes: [] };
     }
   }
 
@@ -44,7 +46,7 @@ export async function loadCallerContext(): Promise<CallerContext> {
 
   const profile = await db.adminProfile.findUnique({
     where: { userId: session.user.id },
-    select: { id: true, role: true, isSuperAdmin: true, isActive: true, accessExpiresAt: true, branchId: true, permissions: true },
+    select: { id: true, role: true, isSuperAdmin: true, isActive: true, accessExpiresAt: true, branchId: true, permissions: true, mutedNotificationTypes: true },
   });
   if (!profile?.isActive) return { denied: "inactive" };
   if (profile.accessExpiresAt && profile.accessExpiresAt < new Date()) return { denied: "expired" };
@@ -56,6 +58,7 @@ export async function loadCallerContext(): Promise<CallerContext> {
     isSuperAdmin: profile.isSuperAdmin,
     branchId: profile.branchId,
     deny: new Set(override?.deny ?? []),
+    mutedNotificationTypes: profile.mutedNotificationTypes,
   };
 }
 

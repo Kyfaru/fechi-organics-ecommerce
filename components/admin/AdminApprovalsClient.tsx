@@ -9,8 +9,9 @@
  */
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ClipboardCheck, Check, X } from "lucide-react";
+import { ClipboardCheck, Check, X, ExternalLink, ChevronDown } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { EmptyState } from "@/components/admin/ui/EmptyState";
@@ -22,6 +23,7 @@ interface ApprovalRequestRow {
   resource: string;
   action: string;
   resourceId: string | null;
+  payload: unknown;
   requestedByName: string;
   requestedByEmail: string;
   createdAt: string;
@@ -32,6 +34,57 @@ function formatTimestamp(iso: string): string {
     year: "numeric", month: "short", day: "numeric",
     hour: "2-digit", minute: "2-digit", hour12: false,
   });
+}
+
+// ---------------------------------------------------------------------------
+// resourceLink — maps a pending request's resource/action to the admin page
+// where the underlying record can be reviewed. None of these resources have
+// per-id detail pages (only blog posts do, via /admin/content/blog/[id]/edit
+// for the "publish" action) so everything else points at its list page —
+// still useful context, just not a deep link to the exact row.
+// ---------------------------------------------------------------------------
+function resourceLink(resource: string, action: string, resourceId: string | null): string | null {
+  if (!resourceId) return null;
+  switch (resource) {
+    case "products": return "/admin/products";
+    case "staff": return "/admin/staff";
+    case "campaigns": return "/admin/marketing";
+    case "branches": return "/admin/branches";
+    case "content":
+      return action === "publish" ? `/admin/content/blog/${resourceId}/edit` : "/admin/content/testimonials";
+    default: return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PayloadPreview — expandable disclosure of the stored payload for `create`
+// requests, which have no resourceId (nothing exists yet to link to).
+// ---------------------------------------------------------------------------
+function PayloadPreview({ payload }: { payload: unknown }) {
+  const [open, setOpen] = useState(false);
+  const entries = payload && typeof payload === "object" ? Object.entries(payload as Record<string, unknown>) : [];
+  if (entries.length === 0) return <span className="font-dm text-[12px] text-(--neutral-400)">—</span>;
+
+  return (
+    <details open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary className="flex items-center gap-1 cursor-pointer select-none font-dm text-[12px] font-medium text-(--green-800) dark:text-(--dark-accent) list-none">
+        <ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        Preview details
+      </summary>
+      <div className="mt-2 flex flex-col gap-1 rounded-[8px] border border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg) p-2.5 max-w-xs">
+        {entries.map(([key, value]) => (
+          <div key={key} className="flex gap-1.5 font-dm text-[12px]">
+            <span className="text-(--neutral-400) shrink-0">{key}:</span>
+            <span className="text-(--neutral-700) dark:text-(--dark-text) break-all">
+              {typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+                ? String(value)
+                : JSON.stringify(value)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
 }
 
 export function AdminApprovalsClient() {
@@ -87,6 +140,24 @@ export function AdminApprovalsClient() {
       render: (_: unknown, row: Record<string, unknown>) => {
         const r = row as unknown as ApprovalRequestRow;
         return <span className="font-dm text-[13px] text-(--neutral-700) dark:text-(--dark-text)">{r.resource}:{r.action}</span>;
+      },
+    },
+    {
+      key: "resourceId",
+      label: "Record",
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const r = row as unknown as ApprovalRequestRow;
+        if (r.action === "create") return <PayloadPreview payload={r.payload} />;
+        const href = resourceLink(r.resource, r.action, r.resourceId);
+        if (!href) return <span className="font-dm text-[12px] text-(--neutral-400)">—</span>;
+        return (
+          <Link
+            href={href}
+            className="inline-flex items-center gap-1 font-dm text-[12px] font-medium text-(--green-800) dark:text-(--dark-accent) hover:underline"
+          >
+            View <ExternalLink size={12} />
+          </Link>
+        );
       },
     },
     {

@@ -99,10 +99,11 @@ export const approvalExecutors: Record<string, Executor> = {
 
   "staff:assign_roles": async (payload, resourceId) => {
     if (!resourceId) return null;
-    const { role, permissions } = payload as { role?: string; permissions?: { deny?: string[] } };
+    const { role, permissions, isSuperAdmin } = payload as { role?: string; permissions?: { deny?: string[] }; isSuperAdmin?: boolean };
     const profileUpdate: Record<string, unknown> = {};
     if (role) profileUpdate.role = role;
     if (permissions) profileUpdate.permissions = permissions;
+    if (typeof isSuperAdmin === "boolean") profileUpdate.isSuperAdmin = isSuperAdmin;
     if (Object.keys(profileUpdate).length > 0) {
       return db.user.update({ where: { id: resourceId }, data: { adminProfile: { update: profileUpdate } } });
     }
@@ -204,6 +205,29 @@ export const approvalExecutors: Record<string, Executor> = {
       return db.faq.create({ data: { question, answer, group, order, status } as unknown as Prisma.faqCreateInput });
     }
     return null;
+  },
+
+  "content:update": async (payload, resourceId) => {
+    if (!resourceId) return null;
+    const { kind, ...data } = payload as { kind?: string } & Record<string, unknown>;
+    if (kind === "faq") {
+      return db.faq.update({ where: { id: resourceId }, data: data as Prisma.faqUpdateInput });
+    }
+    const t = await db.testimonial.update({ where: { id: resourceId }, data: data as Prisma.testimonialUpdateInput });
+    invalidateTestimonialCache();
+    return t;
+  },
+
+  "content:delete": async (payload, resourceId) => {
+    if (!resourceId) return null;
+    const kind = (payload as { kind?: string }).kind;
+    if (kind === "faq") {
+      await db.faq.delete({ where: { id: resourceId } });
+      return { id: resourceId };
+    }
+    await db.testimonial.delete({ where: { id: resourceId } });
+    invalidateTestimonialCache();
+    return { id: resourceId };
   },
 
   // Mirrors POST /api/admin/promotions' shaping (app/api/admin/promotions/route.ts).

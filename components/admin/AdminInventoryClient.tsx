@@ -9,6 +9,7 @@ import { StatsCard } from "@/components/ui/stats-card";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
+import { Can } from "@/components/admin/Can";
 import { useAdminMe } from "@/hooks/use-can";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -268,15 +269,17 @@ export function AdminInventoryClient() {
       key: "id",
       label: "Actions",
       render: (_: unknown, row: Record<string, unknown>) => (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            openAdjust(row as unknown as InventoryItem);
-          }}
-          className="h-8 px-3 rounded-[6px] font-dm text-[13px] font-medium bg-(--neutral-100) hover:bg-(--neutral-200) text-(--neutral-700) transition-colors"
-        >
-          Adjust
-        </button>
+        <Can permissions={{ inventory: ["adjust"] }}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              openAdjust(row as unknown as InventoryItem);
+            }}
+            className="h-8 px-3 rounded-[6px] font-dm text-[13px] font-medium bg-(--neutral-100) hover:bg-(--neutral-200) text-(--neutral-700) transition-colors"
+          >
+            Adjust
+          </button>
+        </Can>
       ),
     },
   ];

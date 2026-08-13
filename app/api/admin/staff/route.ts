@@ -62,7 +62,11 @@ export async function GET(req: NextRequest) {
       lastActiveAt: u.sessions[0]?.updatedAt ?? null,
     }));
 
-    return ok({ staff: shaped });
+    const activeSessions = await db.session.count({
+      where: { userId: { in: staff.map((u) => u.id) }, expiresAt: { gt: new Date() } },
+    });
+
+    return ok({ staff: shaped, stats: { activeSessions } });
   } catch (err) {
     console.error("[GET /api/admin/staff]", err);
     reportError(err, { route: "GET /api/admin/staff" });

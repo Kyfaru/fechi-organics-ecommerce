@@ -891,6 +891,7 @@ model adminProfile {
   department         String?
   role               String            @default("viewer")
   twoFaMethod        String            @default("totp")
+  mutedNotificationTypes NotificationType[] @default([])
   isSuperAdmin       Boolean           @default(false)
   isActive           Boolean           @default(true)
   accessExpiresAt    DateTime?

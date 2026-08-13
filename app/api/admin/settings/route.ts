@@ -29,6 +29,10 @@ export async function GET(req: NextRequest) {
   if (denied) return denied;
 
   try {
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return Err.forbidden();
+    const canEdit = ctx.role === "admin" || ctx.role === "super_admin";
+
     const rows = await db.systemConfig.findMany({ orderBy: { key: "asc" } });
 
     // Convert rows to a flat Record<string, unknown> for easy client consumption
@@ -37,7 +41,7 @@ export async function GET(req: NextRequest) {
       settings[row.key] = row.value;
     }
 
-    return ok({ settings });
+    return ok({ settings, canEdit });
   } catch (err) {
     reportError(err, { route: "GET /api/admin/settings", tags: { domain: "settings" } });
     console.error("[GET /api/admin/settings]", err);

@@ -2,7 +2,7 @@ import { NextRequest, connection } from "next/server";
 import { db } from "@/lib/db";
 import { Err, ok } from "@/lib/api";
 import { loadCallerContext, requirePermission } from "@/lib/require-permission";
-import { allowedNotificationTypes, resolveNotificationScope, buildNotificationWhere } from "@/lib/notifications/scope";
+import { visibleNotificationTypes, resolveNotificationScope, buildNotificationWhere } from "@/lib/notifications/scope";
 import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 
     const ctx = await loadCallerContext();
     if (ctx.denied) return ctx.denied === "auth" ? Err.authRequired() : Err.forbidden();
-    const allowedTypes = allowedNotificationTypes(ctx.role, ctx.isSuperAdmin, ctx.deny);
+    const allowedTypes = visibleNotificationTypes(ctx.role, ctx.isSuperAdmin, ctx.deny, ctx.mutedNotificationTypes);
 
     const count = await db.notification.count({
       where: {

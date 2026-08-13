@@ -114,6 +114,15 @@ export async function markInStorePaymentSuccess(args: {
   // throw or block the payment-success path — same convention as the two
   // best-effort blocks above.
   if (branchId && provider && paidItems.length > 0) {
+    // Both known callers (mpesa instore-callback, paystack instore-webhook)
+    // pass their gateway reference directly as a plain scalar on
+    // transactionData — read it from there instead of a second DB round-trip.
+    const mpesaReceiptNumber =
+      typeof args.transactionData.mpesaReceiptNumber === "string" ? args.transactionData.mpesaReceiptNumber : null;
+    const paystackReference =
+      typeof args.transactionData.paystackReference === "string" ? args.transactionData.paystackReference : null;
+    const paymentReference = provider === "PAYSTACK" ? paystackReference : mpesaReceiptNumber;
+
     (async () => {
       try {
         const organizationId = await resolveZohoOrganizationId(branchId!);
@@ -121,8 +130,18 @@ export async function markInStorePaymentSuccess(args: {
 
         const order = await db.inStoreOrder.findUnique({
           where: { id: args.inStoreOrderId },
-          select: { customerName: true, customerEmail: true, discountKes: true, orderNumber: true },
+          select: {
+            customerName: true,
+            customerEmail: true,
+            customerPhone: true,
+            discountKes: true,
+            orderNumber: true,
+          },
         });
+
+        console.info(
+          `[instore-post-payment] Pushing Zoho sales receipt — order=${order?.orderNumber ?? args.inStoreOrderId}`,
+        );
 
         await pushSaleReceiptToZoho({
           organizationId,
@@ -132,11 +151,17 @@ export async function markInStorePaymentSuccess(args: {
           referenceNumber: order?.orderNumber,
           customerName: order?.customerName,
           customerEmail: order?.customerEmail,
+          customerPhone: order?.customerPhone,
           paymentMode: paymentModeForInStore(provider!),
           items: paidItems,
           discountKes: order?.discountKes,
+          paymentReference,
           notes: `Fechi Organics in-store order ${order?.orderNumber ?? args.inStoreOrderId}`,
         });
+
+        console.info(
+          `[instore-post-payment] Zoho sales receipt push succeeded — order=${order?.orderNumber ?? args.inStoreOrderId}`,
+        );
 
         // NOTE: no separate Inventory Adjustment call here anymore — see
         // lib/payments/post-payment.ts for why. This org's Sales Receipts

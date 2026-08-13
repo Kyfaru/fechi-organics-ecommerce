@@ -28,6 +28,10 @@ import { requirePermission } from "@/lib/require-permission";
 import { reportError } from "@/lib/observability";
 import { publishQstashJSON } from "@/lib/qstash";
 
+// Gives the client's 60s AbortSignal.timeout room to fire before the
+// serverless function itself gets cut off mid-dispatch.
+export const maxDuration = 60;
+
 const PAYMENT_TIMEOUT_SECONDS = 15 * 60; // abandon unpaid in-store orders 15 minutes after STK push
 
 const bodySchema = z
@@ -293,8 +297,12 @@ export async function POST(req: NextRequest) {
     const fallbackGateway = otherGateway(primaryGateway);
     let checkoutRequestId: string;
     let gatewayUsed: MpesaGateway = primaryGateway;
+    console.info(`[instore/mpesa/initiate] Dispatching STK via ${primaryGateway} — order=${order.orderNumber}`);
     try {
       checkoutRequestId = await dispatch(primaryGateway);
+      console.info(
+        `[instore/mpesa/initiate] ${primaryGateway} dispatch succeeded — order=${order.orderNumber} checkout=${checkoutRequestId}`,
+      );
     } catch (primaryErr) {
       reportError(primaryErr, {
         route: "POST /api/admin/orders/instore/mpesa/initiate",
@@ -302,9 +310,13 @@ export async function POST(req: NextRequest) {
         tags: { stage: "gateway_dispatch", gateway: primaryGateway },
       });
       console.error(`[instore/mpesa/initiate] ${primaryGateway} dispatch failed, falling back to ${fallbackGateway}`, primaryErr);
+      console.info(`[instore/mpesa/initiate] Dispatching STK via fallback ${fallbackGateway} — order=${order.orderNumber}`);
       try {
         checkoutRequestId = await dispatch(fallbackGateway);
         gatewayUsed = fallbackGateway;
+        console.info(
+          `[instore/mpesa/initiate] ${fallbackGateway} fallback dispatch succeeded — order=${order.orderNumber} checkout=${checkoutRequestId}`,
+        );
       } catch (fallbackErr) {
         reportError(fallbackErr, {
           route: "POST /api/admin/orders/instore/mpesa/initiate",
@@ -347,6 +359,14 @@ export async function POST(req: NextRequest) {
       tags: { stage: "handler" },
     });
     console.error("[instore/mpesa/initiate] POST error", e);
+
+    const prismaCode = (e as { code?: string })?.code;
+    if (typeof prismaCode === "string" && prismaCode.startsWith("P")) {
+      return err("DB_ERROR", `Database operation failed (${prismaCode})`, 500);
+    }
+    if (e instanceof Error && /daraja|stk-push|kcb/i.test(e.message)) {
+      return err("MPESA_GATEWAY_ERROR", e.message, 502);
+    }
     return Err.internal();
   }
 }

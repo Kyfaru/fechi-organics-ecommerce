@@ -25,6 +25,10 @@ import { requirePermission } from "@/lib/require-permission";
 import { reportError } from "@/lib/observability";
 import { publishQstashJSON } from "@/lib/qstash";
 
+// Gives the client's 60s AbortSignal.timeout room to fire before the
+// serverless function itself gets cut off mid-request.
+export const maxDuration = 60;
+
 const PAYMENT_TIMEOUT_SECONDS = 15 * 60; // abandon unpaid in-store orders 15 minutes after checkout init
 
 const bodySchema = z
@@ -244,12 +248,14 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    console.info(`[instore/paystack/initialize] Calling Paystack initialize — order=${order.orderNumber} reference=${reference}`);
     const paystackRes = await initializeTransaction({
       email: customerEmail || "walkin@fechiorganics.com",
       amount: totalKes,
       reference,
       metadata: { inStoreOrderId: order.id, adminId: admin.id },
     });
+    console.info(`[instore/paystack/initialize] Paystack initialize succeeded — order=${order.orderNumber} reference=${reference}`);
 
     // Schedule a timeout: if the walk-in customer abandons the card charge
     // and no webhook arrives within 15 minutes, flip the order to FAILED.
@@ -276,6 +282,14 @@ export async function POST(req: NextRequest) {
       tags: { stage: "handler" },
     });
     console.error("[instore/paystack/initialize] POST error", e);
+
+    const prismaCode = (e as { code?: string })?.code;
+    if (typeof prismaCode === "string" && prismaCode.startsWith("P")) {
+      return err("DB_ERROR", `Database operation failed (${prismaCode})`, 500);
+    }
+    if (e instanceof Error && e.message.startsWith("Paystack")) {
+      return err("PAYSTACK_ERROR", e.message, 502);
+    }
     return Err.internal();
   }
 }
