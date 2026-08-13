@@ -22,6 +22,7 @@ import Switch from "@/components/ui/Switch";
 import CircularProgress from "@/components/ui/CircularProgress";
 import { useAdminMe } from "@/hooks/use-can";
 import { Can } from "@/components/admin/Can";
+import { usePersistedFilter } from "@/hooks/use-persisted-filters";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1522,10 +1523,10 @@ export function AdminProductsClient() {
     }
     return "list";
   });
-  const [search, setSearch] = useState("");
-  const [filterCategory, setFilterCategory] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"" | "active" | "inactive">("");
-  const [sort, setSort] = useState<SortOption>("newest");
+  const [search, setSearch] = usePersistedFilter("products:search", "");
+  const [filterCategory, setFilterCategory] = usePersistedFilter("products:category", "");
+  const [filterStatus, setFilterStatus] = usePersistedFilter<"" | "active" | "inactive">("products:status", "");
+  const [sort, setSort] = usePersistedFilter<SortOption>("products:sort", "newest");
 
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);

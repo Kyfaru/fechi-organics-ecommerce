@@ -11,6 +11,7 @@ import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { Can } from "@/components/admin/Can";
 import { useAdminMe } from "@/hooks/use-can";
+import { usePersistedFilter } from "@/hooks/use-persisted-filters";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,9 +63,9 @@ export function AdminInventoryClient() {
   const qc = useQueryClient();
 
   // Filters
-  const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = usePersistedFilter("inventory:search", "");
+  const [categoryFilter, setCategoryFilter] = usePersistedFilter("inventory:category", "all");
+  const [statusFilter, setStatusFilter] = usePersistedFilter("inventory:status", "all");
 
   // Caller profile — determines whether Zoho sync targets the caller's own
   // branch automatically, or needs a branch picker (global tier).

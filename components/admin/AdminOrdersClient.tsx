@@ -21,6 +21,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import CheckboxGreen from "@/components/ui/CheckboxGreen";
 import { PrelineSelect } from "@/components/admin/ui/PrelineSelect";
 import { PrelineDatePicker } from "@/components/admin/ui/PrelineDatePicker";
+import { usePersistedFilter } from "@/hooks/use-persisted-filters";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1040,13 +1041,16 @@ function OrderDetailDrawer({
 // ---------------------------------------------------------------------------
 export function AdminOrdersClient() {
   const router = useRouter();
-  const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"" | OrderStatus>("");
-  const [filterPayment, setFilterPayment] = useState<"" | PaymentStatus>("");
-  const [dateFilter, setDateFilter] = useState<"" | "today" | "week" | "month" | "custom">("");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
-  const [branchFilter, setBranchFilter] = useState("");
+  const [search, setSearch] = usePersistedFilter("orders:search", "");
+  const [filterStatus, setFilterStatus] = usePersistedFilter<"" | OrderStatus>("orders:status", "");
+  const [filterPayment, setFilterPayment] = usePersistedFilter<"" | PaymentStatus>("orders:payment", "");
+  const [dateFilter, setDateFilter] = usePersistedFilter<"" | "today" | "week" | "month" | "custom">(
+    "orders:date",
+    ""
+  );
+  const [customFrom, setCustomFrom] = usePersistedFilter("orders:date-from", "");
+  const [customTo, setCustomTo] = usePersistedFilter("orders:date-to", "");
+  const [branchFilter, setBranchFilter] = usePersistedFilter("orders:branch", "");
   const [selectedOrder, setSelectedOrder] = useState<AdminOrderRow | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 

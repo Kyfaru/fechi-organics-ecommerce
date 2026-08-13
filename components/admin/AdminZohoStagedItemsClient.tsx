@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Plus, Trash2 } from "lucide-react";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown, Plus, Trash2, Search } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
@@ -10,6 +10,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import Switch from "@/components/ui/Switch";
 import { Can } from "@/components/admin/Can";
 import { useAdminMe } from "@/hooks/use-can";
+import { usePersistedFilter } from "@/hooks/use-persisted-filters";
 import { toast } from "@/lib/toast";
 
 // ---------------------------------------------------------------------------
@@ -36,12 +37,17 @@ interface ZohoStagedItem {
   lastSeenAt: string;
   excludedAt: string | null;
   reenabledAt: string | null;
+  // Tagged in client-side when merging results across multiple toggled
+  // branches — not part of the API response itself.
+  branchName?: string;
 }
 
 interface Branch {
   id: string;
   name: string;
 }
+
+type SortKey = "name" | "price" | "stock";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -76,23 +82,69 @@ export function AdminZohoStagedItemsClient({ status }: { status: StagedStatus })
   });
   const branches: Branch[] = branchesData?.data?.branches ?? [];
 
-  // Empty string means "not explicitly chosen yet" — falls back to the first
-  // loaded branch below, without needing a setState-in-effect to seed it.
-  const [selectedBranchId, setSelectedBranchId] = useState("");
-  const branchId = isGlobalTier ? selectedBranchId || branches[0]?.id || "" : me?.branchId ?? "";
+  // Toggled branches (global tier only) — persisted per user. Empty means
+  // "no explicit selection yet", which defaults to every branch toggled on.
+  const [toggledBranchIds, setToggledBranchIds] = usePersistedFilter<string[]>(
+    `zoho-staged-items:${status}:branches`,
+    []
+  );
+  const selectedBranchIds = isGlobalTier
+    ? toggledBranchIds.length > 0
+      ? toggledBranchIds
+      : branches.map((b) => b.id)
+    : me?.branchId
+      ? [me.branchId]
+      : [];
+
+  function toggleBranch(id: string) {
+    const base = toggledBranchIds.length > 0 ? toggledBranchIds : branches.map((b) => b.id);
+    const next = base.includes(id) ? base.filter((b) => b !== id) : [...base, id];
+    setToggledBranchIds(next);
+  }
 
   // ── Data fetch ────────────────────────────────────────────────────────────
   // GET /api/admin/zoho/staged-items?branchId=...&status=PENDING|EXCLUDED
-  const { data, isLoading } = useQuery({
-    queryKey: ["admin-zoho-staged-items", status, branchId],
-    queryFn: () =>
-      fetch(`/api/admin/zoho/staged-items?branchId=${encodeURIComponent(branchId)}&status=${status}`).then((r) =>
-        r.json()
-      ),
-    enabled: !!branchId,
+  // Each branch runs its own independent Zoho org, so a multi-branch toggle
+  // means one query per selected branch, merged client-side.
+  const branchQueries = useQueries({
+    queries: selectedBranchIds.map((branchId) => ({
+      queryKey: ["admin-zoho-staged-items", status, branchId],
+      queryFn: () =>
+        fetch(`/api/admin/zoho/staged-items?branchId=${encodeURIComponent(branchId)}&status=${status}`).then((r) =>
+          r.json()
+        ),
+    })),
   });
 
-  const items: ZohoStagedItem[] = data?.data?.items ?? [];
+  const isLoading = selectedBranchIds.length === 0 || branchQueries.some((q) => q.isLoading);
+
+  // Recomputed every render (cheap for staged-item list sizes) rather than
+  // memoized — branchQueries is a fresh array each render (useQueries), so
+  // there's no stable dependency to memoize against anyway.
+  const branchNameById = new Map(branches.map((b) => [b.id, b.name]));
+  const items: ZohoStagedItem[] = branchQueries.flatMap((q, i) => {
+    const branchId = selectedBranchIds[i];
+    const rows: ZohoStagedItem[] = q.data?.data?.items ?? [];
+    return rows.map((row) => ({ ...row, branchName: branchNameById.get(branchId) }));
+  });
+
+  // Search + sort — persisted per user, applied client-side over the
+  // merged, already-fetched item list (same pattern as the other admin list
+  // pages, e.g. AdminInventoryClient/AdminOrdersClient).
+  const [search, setSearch] = usePersistedFilter(`zoho-staged-items:${status}:search`, "");
+  const [sort, setSort] = usePersistedFilter<SortKey>(`zoho-staged-items:${status}:sort`, "name");
+
+  const visibleItems = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = q
+      ? items.filter((i) => i.name.toLowerCase().includes(q) || (i.sku ?? "").toLowerCase().includes(q))
+      : items;
+    const sorted = [...filtered];
+    if (sort === "name") sorted.sort((a, b) => a.name.localeCompare(b.name));
+    else if (sort === "price") sorted.sort((a, b) => (b.rateKes ?? 0) - (a.rateKes ?? 0));
+    else if (sort === "stock") sorted.sort((a, b) => (b.stockOnHand ?? 0) - (a.stockOnHand ?? 0));
+    return sorted;
+  }, [items, search, sort]);
 
   function invalidate() {
     // Both the PENDING and EXCLUDED pages share this key prefix — an item
@@ -160,6 +212,7 @@ export function AdminZohoStagedItemsClient({ status }: { status: StagedStatus })
   const [confirmTarget, setConfirmTarget] = useState<ZohoStagedItem | null>(null);
 
   // ── Table columns ─────────────────────────────────────────────────────────
+  const showBranchColumn = isGlobalTier && selectedBranchIds.length > 1;
   const columns = useMemo(() => {
     const dateKey = status === "PENDING" ? "firstSeenAt" : "excludedAt";
     const dateLabel = status === "PENDING" ? "First Seen" : "Excluded";
@@ -178,6 +231,15 @@ export function AdminZohoStagedItemsClient({ status }: { status: StagedStatus })
           );
         },
       },
+      ...(showBranchColumn
+        ? [
+            {
+              key: "branchName",
+              label: "Branch",
+              render: (v: unknown) => <span className="font-dm text-[13px] text-(--neutral-500)">{v ? String(v) : "—"}</span>,
+            },
+          ]
+        : []),
       {
         key: "categoryNameRaw",
         label: "Category",
@@ -266,7 +328,7 @@ export function AdminZohoStagedItemsClient({ status }: { status: StagedStatus })
         },
       },
     ];
-  }, [status, promoteMutation, reenableMutation]);
+  }, [status, promoteMutation, reenableMutation, showBranchColumn]);
 
   return (
     <div className="min-h-screen bg-(--neutral-50)">
@@ -277,31 +339,68 @@ export function AdminZohoStagedItemsClient({ status }: { status: StagedStatus })
             ? "New items pulled from Zoho, awaiting review before they go live."
             : "Items excluded from the catalog. Re-enable to send them back to the review queue."
         }
-        action={
-          isGlobalTier ? (
-            <div className="relative">
-              <select
-                value={branchId}
-                onChange={(e) => setSelectedBranchId(e.target.value)}
-                className="h-10 pl-3 pr-8 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-700) focus:outline-none focus:ring-2 focus:ring-(--green-500) appearance-none cursor-pointer"
-              >
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
-            </div>
-          ) : undefined
-        }
       />
 
-      <div className="px-6 pb-6">
+      <div className="px-6 pb-6 space-y-4">
+        {/* Filter toolbar */}
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+          {/* Search */}
+          <div className="relative flex-1 max-w-sm">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400)" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name or SKU..."
+              className="w-full h-10 pl-9 pr-4 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-900) placeholder:text-(--neutral-400) focus:outline-none focus:ring-2 focus:ring-(--green-500) focus:border-transparent"
+            />
+          </div>
+
+          {/* Sort */}
+          <div className="relative">
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              className="h-10 pl-3 pr-8 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-700) focus:outline-none focus:ring-2 focus:ring-(--green-500) appearance-none cursor-pointer"
+            >
+              <option value="name">Sort: Name</option>
+              <option value="price">Sort: Price</option>
+              <option value="stock">Sort: Stock</option>
+            </select>
+            <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
+          </div>
+
+          {/* Branch toggle — global-tier callers only. Each branch runs its
+              own independent Zoho org, so this multi-selects which branches'
+              queues are merged into the list below (all on by default). */}
+          {isGlobalTier && branches.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 sm:ml-auto">
+              {branches.map((b) => {
+                const active = selectedBranchIds.includes(b.id);
+                return (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => toggleBranch(b.id)}
+                    className={[
+                      "h-9 px-3 rounded-[8px] font-dm text-[13px] font-medium border transition-colors",
+                      active
+                        ? "bg-(--green-800) border-(--green-800) text-white"
+                        : "bg-white border-(--neutral-200) text-(--neutral-600) hover:bg-(--neutral-50)",
+                    ].join(" ")}
+                  >
+                    {b.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         <DataTable
           columns={columns}
-          data={items as unknown as Record<string, unknown>[]}
-          loading={isLoading || !branchId}
+          data={visibleItems as unknown as Record<string, unknown>[]}
+          loading={isLoading}
           emptyTitle={status === "PENDING" ? "No items to review" : "No excluded items"}
           emptyDescription={
             status === "PENDING"
