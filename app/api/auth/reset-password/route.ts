@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getRedis } from "@/lib/redis";
 import { Argon2id } from "oslo/password";
 import { checkPasswordChangeAllowed } from "@/lib/password-policy";
+import { reportError } from "@/lib/observability";
 
 /**
  * POST /api/auth/reset-password
@@ -58,6 +59,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[reset-password]", err);
+    reportError(err, { route: "POST /api/auth/reset-password", tags: { flow: "reset-password" } });
     return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
   }
 }

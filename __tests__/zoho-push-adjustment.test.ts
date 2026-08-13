@@ -66,15 +66,15 @@ describe("pushInventoryAdjustmentToZoho", () => {
     );
   });
 
-  it("includes warehouse_id on every line item when the branch has one configured", async () => {
+  it("includes location_id on every line item when the branch has a warehouse configured", async () => {
     mockBranchFindUnique.mockResolvedValue({ zohoWarehouseId: "wh-1" });
     mockZohoPost.mockResolvedValue({ inventory_adjustment: {} });
 
     await pushInventoryAdjustmentToZoho(baseArgs);
 
     const body = mockZohoPost.mock.calls[0][2];
-    expect(body.line_items[0].warehouse_id).toBe("wh-1");
-    expect(body.line_items[1].warehouse_id).toBe("wh-1");
+    expect(body.line_items[0].location_id).toBe("wh-1");
+    expect(body.line_items[1].location_id).toBe("wh-1");
   });
 
   it("skips the Zoho call and logs SKIPPED when no item in the sale has any mapping", async () => {

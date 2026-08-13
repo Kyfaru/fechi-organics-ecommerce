@@ -5,7 +5,6 @@ import { getRedis } from "@/lib/redis";
 import { paymentChannel } from "@/lib/payment-channel";
 import { generateOrderNumber, type TxClient } from "@/lib/orders/generate-order-number";
 import { pushSaleReceiptToZoho } from "@/lib/zoho/push-sale-receipt";
-import { pushInventoryAdjustmentToZoho } from "@/lib/zoho/push-adjustment";
 import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { paymentModeForOnline } from "@/lib/zoho/payment-mode";
 
@@ -36,9 +35,10 @@ export async function markPaymentSuccess(args: {
       include: { items: true, user: { select: { id: true, name: true, email: true } } },
     });
 
-    await tx.transaction.update({
+    const updatedTransaction = await tx.transaction.update({
       where: { id: args.transactionId },
       data: args.transactionData,
+      select: { mpesaReceiptNumber: true, paystackReference: true },
     });
 
     for (const item of order.items) {
@@ -53,7 +53,12 @@ export async function markPaymentSuccess(args: {
       if (cart) await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
     }
 
-    return { order, provider: transaction.provider };
+    return {
+      order,
+      provider: transaction.provider,
+      mpesaReceiptNumber: updatedTransaction?.mpesaReceiptNumber ?? null,
+      paystackReference: updatedTransaction?.paystackReference ?? null,
+    };
   });
 
   await publishQstashJSON("/api/admin/workers/send-order-confirmation", { orderId: args.orderId });
@@ -84,7 +89,11 @@ export async function markPaymentSuccess(args: {
   // silently (rather than failing an otherwise-successful payment) if the
   // order somehow has no branch, or that branch isn't linked to a Zoho org.
   if (result) {
-    const { order, provider } = result;
+    const { order, provider, mpesaReceiptNumber, paystackReference } = result;
+    // Card payments settle through Paystack, not M-Pesa — the receipt's
+    // reference should read as just the Paystack reference rather than
+    // "orderNumber / mpesaRef" (there is no M-Pesa ref for a card sale).
+    const isCard = provider === "PAYSTACK";
     (async () => {
       try {
         if (!order.branchId) {
@@ -102,9 +111,10 @@ export async function markPaymentSuccess(args: {
           branchId: order.branchId,
           referenceType: "order",
           referenceId: order.id,
-          referenceNumber: order.orderNumber,
+          referenceNumber: isCard ? undefined : order.orderNumber,
           customerName: order.user?.name,
           customerEmail: order.user?.email,
+          customerPhone: order.deliveryPhone,
           paymentMode: paymentModeForOnline(provider),
           items: order.items.map((item) => ({
             productId: item.productId,
@@ -114,6 +124,14 @@ export async function markPaymentSuccess(args: {
           })),
           discountKes: order.discountKes,
           shippingKes: order.deliveryKes,
+          deliveryTown: order.deliveryAddress,
+          deliveryZoneLabel: order.deliveryZone,
+          deliveryCounty: order.deliveryCounty,
+          isInternational: order.isInternational,
+          deliveryState: order.deliveryCity,
+          deliveryPostalCode: order.deliveryPostalCode,
+          deliveryCountryName: order.deliveryCountry,
+          paymentReference: isCard ? paystackReference : mpesaReceiptNumber,
           notes: `Fechi Organics order ${order.orderNumber ?? order.id}`,
         });
 
@@ -124,22 +142,16 @@ export async function markPaymentSuccess(args: {
           });
         }
 
-        // Sales Receipts never move stock on their own — a separate
-        // Inventory Adjustment is what actually decrements Zoho's
-        // shelf-count. Own try/catch: a failed adjustment must never affect
-        // the already-successful Sales Receipt above.
-        try {
-          await pushInventoryAdjustmentToZoho({
-            organizationId,
-            branchId: order.branchId,
-            referenceType: "order",
-            referenceId: order.id,
-            referenceNumber: order.orderNumber,
-            items: order.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
-          });
-        } catch (e) {
-          console.error("[post-payment] Zoho inventory adjustment failed for order", order.id, e);
-        }
+        // NOTE: no separate Inventory Adjustment call here anymore.
+        // Confirmed via a live productZohoMapping check (zohoInventoryItemId
+        // was null, falling back to the same zohoItemId the Sales Receipt
+        // above already used) plus the item-level location_id requirement
+        // (error 27520) that this org's Sales Receipts already move real
+        // stock on their own — this account has full Zoho Inventory wired
+        // in, not just plain Books. Calling pushInventoryAdjustmentToZoho
+        // here was double-decrementing the same item. See
+        // lib/zoho/push-adjustment.ts's own docstring for the manual-only
+        // use case that function still serves.
       } catch (e) {
         console.error("[post-payment] Zoho sales receipt push failed for order", order.id, e);
       }

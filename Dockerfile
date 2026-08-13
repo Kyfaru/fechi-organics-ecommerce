@@ -2,7 +2,7 @@
 
 # ---- base: pin the exact pnpm version, matching your local 11.4.0 ----
 FROM node:22-slim AS base
-RUN apt-get update -y && apt-get install -y --no-install-recommends openssl curl \
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl curl wget \
     && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@11.4.0 --activate
 WORKDIR /app
@@ -23,6 +23,8 @@ ARG SENTRY_ORG
 ARG SENTRY_PROJECT
 ARG SENTRY_AUTH_TOKEN
 ARG SENTRY_DSN
+ARG TURNSTILE_SECRET_KEY
+ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY
 # NEXT_PUBLIC_* vars are inlined into the client JS bundle at build time —
 # .dockerignore excludes .env* from the build context (so secrets never get
 # baked into an image layer), so these must come in as explicit build args
@@ -48,7 +50,9 @@ ENV DATABASE_URL=${DATABASE_URL} \
     NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY} \
     NEXT_PUBLIC_POSTHOG_HOST=${NEXT_PUBLIC_POSTHOG_HOST} \
     NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL} \
-    NEXT_PUBLIC_R2_PUBLIC_URL=${NEXT_PUBLIC_R2_PUBLIC_URL}
+    NEXT_PUBLIC_R2_PUBLIC_URL=${NEXT_PUBLIC_R2_PUBLIC_URL} \
+    TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY} \
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY}
 RUN pnpm build
 
 # ---- runner: what actually ships and runs in production ----

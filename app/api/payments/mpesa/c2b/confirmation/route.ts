@@ -14,6 +14,7 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
+import { reportError } from "@/lib/observability";
 
 function safaricomOk() {
   return Response.json({ ResultCode: "0", ResultDesc: "Success" }, { status: 200 });
@@ -90,10 +91,12 @@ export async function POST(req: NextRequest) {
       if (isDuplicateTransId) {
         console.info(`[c2b/confirmation] Duplicate transId (Safaricom retry) — ${body.TransID}`);
       } else {
+        reportError(e, { route: "POST /api/payments/mpesa/c2b/confirmation", tags: { stage: "log_transaction" } });
         console.error("[c2b/confirmation] Failed to log transaction", e);
       }
     }
   } catch (e) {
+    reportError(e, { route: "POST /api/payments/mpesa/c2b/confirmation", tags: { stage: "handler" } });
     console.error("[c2b/confirmation] Processing error", e);
   }
 

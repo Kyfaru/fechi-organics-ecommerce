@@ -8,6 +8,7 @@ import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { getPeriodChange } from "@/lib/stats";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/customers
@@ -98,8 +99,9 @@ export async function GET(req: NextRequest) {
     console.info("[admin/customers] GET — returned", users.length, "users");
     return ok({ users, stats, statsChange });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/customers", tags: { domain: "customers" } });
     console.error("[admin/customers] GET error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }
 
@@ -138,7 +140,8 @@ export async function PATCH(req: NextRequest) {
     console.info("[admin/customers] PATCH — updated role for", user.id, "->", user.role);
     return ok({ user });
   } catch (e) {
+    reportError(e, { route: "PATCH /api/admin/customers", tags: { domain: "customers" } });
     console.error("[admin/customers] PATCH error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

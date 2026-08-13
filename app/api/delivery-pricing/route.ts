@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ok, Err } from "@/lib/api";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 const BodySchema = z.object({
   country: z.string().min(2),
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest) {
     return ok(await calculateDeliveryPricing(parsed.data));
   } catch (e) {
     console.error("[delivery-pricing] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/delivery-pricing" });
+    return Err.internal();
   }
 }

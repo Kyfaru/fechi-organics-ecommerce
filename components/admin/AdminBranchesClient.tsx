@@ -17,9 +17,10 @@
  * AdminStaffClient.tsx's "Change Role" modal.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, CheckCircle2, XCircle, Copy, Plus } from "lucide-react";
+import { Building2, CheckCircle2, XCircle, Copy, Plus, MoreHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { useAdminMe, useCan } from "@/hooks/use-can";
 import { toast } from "@/lib/toast";
@@ -34,6 +35,7 @@ interface Branch {
   zohoOrganizationId: string | null;
   zohoOrganizationName: string | null;
   zohoLocationId: string | null;
+  zohoWarehouseId: string | null;
 }
 
 interface ZohoOrganization {
@@ -96,6 +98,69 @@ async function reportLoadFailure(label: string, err: unknown) {
   toast.error(`Couldn't load ${label}`, { message });
 }
 
+// ---------------------------------------------------------------------
+// 3-dot row action menu — mirrors CardMenu (AdminProductsClient.tsx) /
+// RowMenu (AdminBlogClient.tsx) so every admin table opens row actions the
+// same way instead of plain text links.
+// ---------------------------------------------------------------------
+interface RowAction {
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}
+
+function RowActionMenu({ actions, ariaLabel }: { actions: RowAction[]; ariaLabel: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        className="w-7 h-7 flex items-center justify-center rounded-[6px] text-(--neutral-500) hover:bg-(--neutral-100) transition-colors"
+        aria-label={ariaLabel}
+      >
+        <MoreHorizontal size={15} />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: -4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -4 }}
+            transition={{ duration: 0.12 }}
+            className="absolute right-0 top-8 w-48 bg-white dark:bg-(--dark-surface) rounded-[10px] shadow-(--e3) border border-(--neutral-200) dark:border-(--dark-border) z-50 overflow-hidden py-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {actions.map((a) => (
+              <button
+                key={a.label}
+                onClick={() => { setOpen(false); a.onClick(); }}
+                className={`w-full text-left px-3 py-2 font-dm text-[13px] transition-colors ${
+                  a.danger
+                    ? "text-(--danger) hover:bg-(--danger-bg)"
+                    : "text-(--neutral-700) dark:text-(--dark-text) hover:bg-(--neutral-50) dark:hover:bg-(--dark-bg)"
+                }`}
+              >
+                {a.label}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export function AdminBranchesClient() {
   const qc = useQueryClient();
   const { data: me } = useAdminMe();
@@ -141,7 +206,7 @@ export function AdminBranchesClient() {
   const [linkPw, setLinkPw] = useState("");
   const [linkVerified, setLinkVerified] = useState(false);
   const [linkLoading, setLinkLoading] = useState(false);
-  const [linkForm, setLinkForm] = useState({ zohoOrganizationId: "", zohoLocationId: "" });
+  const [linkForm, setLinkForm] = useState({ zohoOrganizationId: "", zohoLocationId: "", zohoWarehouseId: "" });
 
   const canUpdateBranches = useCan({ branches: ["update"] });
 
@@ -156,7 +221,11 @@ export function AdminBranchesClient() {
     setLinkTarget(branch);
     setLinkPw("");
     setLinkVerified(false);
-    setLinkForm({ zohoOrganizationId: branch.zohoOrganizationId ?? "", zohoLocationId: branch.zohoLocationId ?? "" });
+    setLinkForm({
+      zohoOrganizationId: branch.zohoOrganizationId ?? "",
+      zohoLocationId: branch.zohoLocationId ?? "",
+      zohoWarehouseId: branch.zohoWarehouseId ?? "",
+    });
   }
 
   function closeLinkModal() {
@@ -185,6 +254,7 @@ export function AdminBranchesClient() {
         body: JSON.stringify({
           zohoOrganizationId: linkForm.zohoOrganizationId,
           zohoLocationId: linkForm.zohoLocationId,
+          zohoWarehouseId: linkForm.zohoWarehouseId,
         }),
       });
       if (result.status === "denied") return;
@@ -441,22 +511,15 @@ export function AdminBranchesClient() {
                         {org.branches.length > 0 ? org.branches.map((b) => b.name).join(", ") : "None linked"}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-3">
-                          <button onClick={() => openOrgModal(org)} className="font-dm text-[13px] font-medium text-(--green-800) hover:underline">
-                            Edit credentials
-                          </button>
-                          <button onClick={() => handleRotateWebhook(org)} className="font-dm text-[13px] font-medium text-(--green-800) hover:underline">
-                            Rotate webhook
-                          </button>
-                          <button onClick={() => handleToggleActive(org)} className="font-dm text-[13px] font-medium text-(--neutral-600) hover:underline">
-                            {org.isActive ? "Deactivate" : "Activate"}
-                          </button>
-                          {!org.isActive && (
-                            <button onClick={() => openDeleteModal(org)} className="font-dm text-[13px] font-medium text-(--danger) hover:underline">
-                              Delete
-                            </button>
-                          )}
-                        </div>
+                        <RowActionMenu
+                          ariaLabel={`${org.name} actions`}
+                          actions={[
+                            { label: "Edit credentials", onClick: () => openOrgModal(org) },
+                            { label: "Rotate webhook", onClick: () => handleRotateWebhook(org) },
+                            { label: org.isActive ? "Deactivate" : "Activate", onClick: () => handleToggleActive(org) },
+                            ...(!org.isActive ? [{ label: "Delete", onClick: () => openDeleteModal(org), danger: true }] : []),
+                          ]}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -511,12 +574,10 @@ export function AdminBranchesClient() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       {canEdit(branch) && (
-                        <button
-                          onClick={() => openLinkModal(branch)}
-                          className="font-dm text-[13px] font-medium text-(--green-800) hover:underline"
-                        >
-                          Edit Zoho Link
-                        </button>
+                        <RowActionMenu
+                          ariaLabel={`${branch.name} actions`}
+                          actions={[{ label: "Edit Zoho Link", onClick: () => openLinkModal(branch) }]}
+                        />
                       )}
                     </td>
                   </tr>
@@ -576,6 +637,18 @@ export function AdminBranchesClient() {
                     />
                     <p className="font-dm text-[11px] text-(--neutral-400) mt-1">
                       Tags every Sales Receipt pushed from this branch with its physical location in Zoho Books. Leave blank if the org isn&apos;t using Zoho Books Locations.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Zoho Warehouse ID (optional)</label>
+                    <input
+                      value={linkForm.zohoWarehouseId}
+                      onChange={(e) => setLinkForm((p) => ({ ...p, zohoWarehouseId: e.target.value }))}
+                      placeholder="Zoho Inventory → Settings → Warehouses"
+                      className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                    />
+                    <p className="font-dm text-[11px] text-(--neutral-400) mt-1">
+                      Which Zoho Inventory warehouse this branch&apos;s stock deductions apply to when an order is paid. Leave blank to use the organization&apos;s default warehouse.
                     </p>
                   </div>
                 </div>

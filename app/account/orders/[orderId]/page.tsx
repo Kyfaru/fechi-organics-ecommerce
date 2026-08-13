@@ -57,6 +57,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ or
     items: order.items.map((item) => ({
       id: item.id,
       name: item.name,
+      variantLabel: item.variantLabel,
       priceKes: item.priceKes,
       quantity: item.quantity,
       imageUrl: item.product.images[0]?.objectKey

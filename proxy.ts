@@ -79,6 +79,7 @@ const PUBLIC_PATHS = [
   // Public API namespaces
   "/api/storefront",
   "/api/cart",
+  "/api/cookie-consent",
   "/api/favorites",
   "/api/blog",
   "/api/currency",
@@ -96,6 +97,10 @@ const PUBLIC_PATHS = [
   // inside each handler) — never carry a session cookie, so they'd otherwise
   // 307-redirect before the handler's own auth check ever runs.
   "/api/admin/workers",
+  // Docker/Coolify healthcheck — hit with no session cookie by design, so it
+  // would otherwise get the new 401-for-unauthenticated-/api/* response below
+  // and fail every deploy's healthcheck.
+  "/api/health",
 ];
 
 /**
@@ -195,7 +200,16 @@ export function proxy(request: NextRequest): NextResponse {
   // 3. Redirect unauthenticated users away from protected routes.
   //    Admin paths go to /admin/login; all other protected paths go to /login
   //    with a callbackUrl so the user lands back where they intended.
+  //    API routes never get the HTML redirect — a fetch() call follows it
+  //    transparently and reports the login page's 200 as success, so any
+  //    caller that does res.json() without checking res.redirected first
+  //    crashes on "<!DOCTYPE ..." instead of seeing an auth failure.
   if (!isPublicPath && !hasSessionCookie && !hasDevAccess) {
+    if (pathname.startsWith("/api/")) {
+      return withSecurityHeaders(
+        NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      );
+    }
     const loginDest = isAdminScopedPath ? "/admin/login" : "/login";
     const loginUrl = new URL(loginDest, request.url);
     if (!isAdminScopedPath) {

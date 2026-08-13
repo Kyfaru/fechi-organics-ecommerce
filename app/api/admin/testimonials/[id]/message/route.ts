@@ -8,6 +8,7 @@ import { combineLegacyPhone } from "@/lib/phone";
 import { Resend } from "resend";
 import { z } from "zod";
 import { emailShell, emailSection, emailIconCircle, EMAIL_BRAND } from "@/lib/email-template";
+import { reportError } from "@/lib/observability";
 
 let _resend: Resend | null = null;
 function getResend(): Resend {
@@ -78,6 +79,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           results.EMAIL = "sent";
         } catch (err) {
           console.error("[testimonials/message] email failed:", err);
+          reportError(err, { route: "POST /api/admin/testimonials/[id]/message", tags: { channel: "EMAIL" }, extra: { testimonialId: id } });
           results.EMAIL = "failed";
         }
       }
@@ -92,6 +94,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           results.SMS = "sent";
         } catch (err) {
           console.error("[testimonials/message] sms failed:", err);
+          reportError(err, { route: "POST /api/admin/testimonials/[id]/message", tags: { channel: "SMS" }, extra: { testimonialId: id } });
           results.SMS = "failed";
         }
       }
@@ -108,6 +111,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           results.INBOX = "sent";
         } catch (err) {
           console.error("[testimonials/message] inbox failed:", err);
+          reportError(err, { route: "POST /api/admin/testimonials/[id]/message", tags: { channel: "INBOX" }, extra: { testimonialId: id } });
           results.INBOX = "failed";
         }
       }
@@ -116,6 +120,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return ok({ results });
   } catch (e) {
     console.error("[admin/testimonials/message] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/testimonials/[id]/message" });
+    return Err.internal();
   }
 }

@@ -14,6 +14,7 @@ import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requireStaffSession } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 export async function PATCH(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
@@ -67,6 +68,7 @@ export async function PATCH(req: NextRequest) {
     if (msg.toLowerCase().includes("password")) {
       return Err.validation("Current password is incorrect.");
     }
-    return Err.internal(err);
+    reportError(err, { route: "PATCH /api/admin/profile/password", tags: { domain: "profile" } });
+    return Err.internal();
   }
 }

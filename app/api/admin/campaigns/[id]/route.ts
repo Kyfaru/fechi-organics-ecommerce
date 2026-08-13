@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 /** PATCH /api/admin/campaigns/[id] */
 export async function PATCH(
@@ -42,8 +43,9 @@ export async function PATCH(
     console.info(`[campaigns/PATCH] Updated campaign: ${id}`);
     return ok(campaign);
   } catch (e) {
+    reportError(e, { route: "PATCH /api/admin/campaigns/[id]", tags: { domain: "campaigns" } });
     console.error("[campaigns/PATCH]", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }
 
@@ -66,7 +68,8 @@ export async function DELETE(
     console.info(`[campaigns/DELETE] Deleted campaign: ${id}`);
     return ok({ deleted: true });
   } catch (e) {
+    reportError(e, { route: "DELETE /api/admin/campaigns/[id]", tags: { domain: "campaigns" } });
     console.error("[campaigns/DELETE]", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

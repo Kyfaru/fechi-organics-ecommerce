@@ -14,6 +14,7 @@ import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { approvalExecutors } from "@/lib/approval-executors";
 import { createNotification } from "@/lib/notify";
 import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 const BodySchema = z.object({
   decision: z.enum(["approve", "reject"]),
@@ -81,7 +82,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     return ok({ decided: true });
   } catch (e) {
+    reportError(e, { route: "POST /api/admin/approvals/[id]/decide", tags: { domain: "approvals" } });
     console.error("[admin/approvals/[id]/decide] POST error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requireStaffSession } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 const BodySchema = z.object({
   method: z.enum(["totp", "email", "sms"]),
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest) {
     return ok({ method });
   } catch (e) {
     console.error("[admin/2fa/method] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/2fa/method", tags: { flow: "admin-2fa" } });
+    return Err.internal();
   }
 }

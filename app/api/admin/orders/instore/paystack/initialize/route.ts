@@ -22,6 +22,10 @@ import { makeRatelimit } from "@/lib/ratelimit";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { buildInStoreOrderNumber } from "@/lib/orders/generate-instore-order-number";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
+import { publishQstashJSON } from "@/lib/qstash";
+
+const PAYMENT_TIMEOUT_SECONDS = 15 * 60; // abandon unpaid in-store orders 15 minutes after checkout init
 
 const bodySchema = z
   .object({
@@ -68,6 +72,11 @@ export async function POST(req: NextRequest) {
   try {
     parsed = bodySchema.parse(await req.json());
   } catch (e) {
+    reportError(e, {
+      route: "POST /api/admin/orders/instore/paystack/initialize",
+      userId: admin.id,
+      tags: { stage: "body_validation" },
+    });
   if (e instanceof z.ZodError) {
     console.error("[instore/paystack/initiate] validation failed:", e.issues);
   }
@@ -143,7 +152,12 @@ export async function POST(req: NextRequest) {
         const r = await resolvePromo(normalizedPromoCode, subtotalKes, customerUserId ?? undefined);
         discountKes = r.discountKes;
         resolvedPromoId = r.promo.id;
-      } catch {
+      } catch (promoErr) {
+        reportError(promoErr, {
+          route: "POST /api/admin/orders/instore/paystack/initialize",
+          userId: admin.id,
+          tags: { stage: "promo_resolution" },
+        });
         /* invalid/expired — discount stays 0 */
       }
     }
@@ -237,6 +251,14 @@ export async function POST(req: NextRequest) {
       metadata: { inStoreOrderId: order.id, adminId: admin.id },
     });
 
+    // Schedule a timeout: if the walk-in customer abandons the card charge
+    // and no webhook arrives within 15 minutes, flip the order to FAILED.
+    await publishQstashJSON(
+      "/api/admin/workers/check-failed-instore-payment",
+      { inStoreOrderId: order.id, transactionId: transaction.id },
+      { delay: PAYMENT_TIMEOUT_SECONDS },
+    );
+
     console.info(
       `[instore/paystack/initialize] transaction initialized — order=${order.orderNumber} tx=${transaction.id} reference=${reference}`,
     );
@@ -248,7 +270,12 @@ export async function POST(req: NextRequest) {
       publicKey: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY ?? "",
     });
   } catch (e) {
+    reportError(e, {
+      route: "POST /api/admin/orders/instore/paystack/initialize",
+      userId: admin.id,
+      tags: { stage: "handler" },
+    });
     console.error("[instore/paystack/initialize] POST error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

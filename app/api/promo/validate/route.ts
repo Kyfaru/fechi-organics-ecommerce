@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { ok, Err } from "@/lib/api";
 import { resolvePromo } from "@/lib/promo";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
@@ -25,6 +26,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     if (e instanceof Response) return e;
     console.error("[promo/validate]", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/promo/validate" });
+    return Err.internal();
   }
 }

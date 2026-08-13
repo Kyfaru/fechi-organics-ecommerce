@@ -3,6 +3,8 @@ import { Resend } from "resend";
 import { qstashReceiver } from "@/lib/qstash";
 import { db } from "@/lib/db";
 import { emailShell, emailSection, emailButton, emailIconCircle, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 let _resend: Resend | null = null;
 function getResend(): Resend {
@@ -33,41 +35,49 @@ export async function POST(req: NextRequest) {
     content: string;
   };
 
-  const adminEmail = process.env.ADMIN_EMAIL ?? "admin@fechiorganics.com";
-  const ticketUrl = `${process.env.NEXT_PUBLIC_APP_URL}/admin/customers/tickets?ticket=${ticketId}`;
+  try {
+    const adminEmail = process.env.ADMIN_EMAIL ?? "admin@fechiorganics.com";
+    const ticketUrl = `${process.env.NEXT_PUBLIC_APP_URL}/admin/customers/tickets?ticket=${ticketId}`;
 
-  const sections = [
-    emailSection(`
-      ${emailIconCircle("chart")}
-      <h1 style="margin:0 0 20px;text-align:center;font-family:${FONT_HEADING};font-size:24px;font-weight:700;color:${EMAIL_BRAND.textDark};">New Customer Reply</h1>
-      <p style="font-size:15px;color:${EMAIL_BRAND.textBody};line-height:1.6;">
-        <strong>${customerName}</strong> replied to ticket: <strong>${subject}</strong>
-      </p>
-      <blockquote style="border-left:3px solid ${EMAIL_BRAND.success};margin:16px 0;padding:12px 20px;background:${EMAIL_BRAND.successBg};border-radius:0 8px 8px 0;">
-        <p style="margin:0;font-size:14px;color:${EMAIL_BRAND.textBody};line-height:1.6;">${content.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
-      </blockquote>
-      <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:24px;"><tr><td>${emailButton("View Ticket", ticketUrl)}</td></tr></table>
-    `),
-  ].join("");
+    const sections = [
+      emailSection(`
+        ${emailIconCircle("chart")}
+        <h1 style="margin:0 0 20px;text-align:center;font-family:${FONT_HEADING};font-size:24px;font-weight:700;color:${EMAIL_BRAND.textDark};">New Customer Reply</h1>
+        <p style="font-size:15px;color:${EMAIL_BRAND.textBody};line-height:1.6;">
+          <strong>${customerName}</strong> replied to ticket: <strong>${subject}</strong>
+        </p>
+        <blockquote style="border-left:3px solid ${EMAIL_BRAND.success};margin:16px 0;padding:12px 20px;background:${EMAIL_BRAND.successBg};border-radius:0 8px 8px 0;">
+          <p style="margin:0;font-size:14px;color:${EMAIL_BRAND.textBody};line-height:1.6;">${content.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
+        </blockquote>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:24px;"><tr><td>${emailButton("View Ticket", ticketUrl)}</td></tr></table>
+      `),
+    ].join("");
 
-  const html = emailShell({ title: "New customer reply", sectionsHtml: sections });
+    const html = emailShell({ title: "New customer reply", sectionsHtml: sections });
 
-  const { error } = await getResend().emails.send({
-    from: process.env.EMAIL_FROM!,
-    to: adminEmail,
-    subject: `[Customer Reply] ${subject}`,
-    html,
-  });
+    const { error } = await getResend().emails.send({
+      from: process.env.EMAIL_FROM!,
+      to: adminEmail,
+      subject: `[Customer Reply] ${subject}`,
+      html,
+    });
 
-  if (error) {
-    console.error("[send-ticket-admin-notify] Resend error:", error);
-    return NextResponse.json({ error: "Email send failed" }, { status: 500 });
+    if (error) {
+      console.error("[send-ticket-admin-notify] Resend error:", error);
+      reportError(error, { route: "POST /api/admin/workers/send-ticket-admin-notify", extra: { ticketId, messageId } });
+      trackServerEvent("system", "send_ticket_admin_notify_worker_failed", { ticketId, messageId });
+      return NextResponse.json({ error: "Email send failed" }, { status: 500 });
+    }
+
+    await db.ticketMessage.update({
+      where: { id: messageId },
+      data: { emailSentAt: new Date() },
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    reportError(error, { route: "POST /api/admin/workers/send-ticket-admin-notify", extra: { ticketId, messageId } });
+    trackServerEvent("system", "send_ticket_admin_notify_worker_failed", { ticketId, messageId });
+    return NextResponse.json({ error: "Worker failed" }, { status: 500 });
   }
-
-  await db.ticketMessage.update({
-    where: { id: messageId },
-    data: { emailSentAt: new Date() },
-  });
-
-  return NextResponse.json({ ok: true });
 }

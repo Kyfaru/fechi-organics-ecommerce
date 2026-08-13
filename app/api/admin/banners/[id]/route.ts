@@ -3,6 +3,7 @@ import { ok, Err } from "@/lib/api";
 import { connection, NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 /** PATCH /api/admin/banners/[id] */
 export async function PATCH(
@@ -43,7 +44,8 @@ export async function PATCH(
     return ok(banner);
   } catch (e) {
     console.error("[banners/PATCH]", e);
-    return Err.internal(e);
+    reportError(e, { route: "PATCH /api/admin/banners/[id]", extra: { bannerId: id } });
+    return Err.internal();
   }
 }
 
@@ -67,6 +69,7 @@ export async function DELETE(
     return ok({ deleted: true });
   } catch (e) {
     console.error("[banners/DELETE]", e);
-    return Err.internal(e);
+    reportError(e, { route: "DELETE /api/admin/banners/[id]", extra: { bannerId: id } });
+    return Err.internal();
   }
 }

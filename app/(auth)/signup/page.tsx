@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, FormEvent, Suspense } from "react";
+import { useState, useEffect, useRef, FormEvent, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@iconify/react";
@@ -12,12 +12,14 @@ import PasswordChecklist, { checkRequirements } from "@/components/auth/Password
 import PhoneInput from "@/components/auth/PhoneInput";
 import CountrySelect from "@/components/auth/CountrySelect";
 import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
+import Turnstile, { TurnstileHandle } from "@/components/auth/Turnstile";
 import { authClient, signUpWithProfile, useSession } from "@/lib/auth-client";
 import { storeUser } from "@/lib/user-store";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
 import { SignupLoader } from "@/components/ui/signup-loader";
 import { posthog } from "@/lib/posthog";
+import { reportError } from "@/lib/observability";
 
 // Isolated component so useSearchParams is inside a Suspense boundary.
 // Better Auth redirects OAuth errors (e.g. a banned user) back here as
@@ -67,6 +69,8 @@ export default function SignupPage() {
   const [errors, setErrors] = useState<SignupErrors>({});
   const [isLoading, setIsLoading] = useState(false);
   const [showSignupLoader, setShowSignupLoader] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileHandle>(null);
 
   // PasswordChecklist visibility — show once the password field receives focus
   const [passwordFocused, setPasswordFocused] = useState(false);
@@ -144,21 +148,27 @@ export default function SignupPage() {
       }
       return;
     }
+    if (!captchaToken) return;
 
     setErrors({});
     setIsLoading(true);
+    const tokenForThisAttempt = captchaToken;
+    setCaptchaToken(null);
 
     try {
-      const result = await signUpWithProfile({
-        name: `${firstName.trim()} ${lastName.trim()}`,
-        email,
-        password,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        phone: phone ?? "",
-        country,
-        city: city.trim(),
-      });
+      const result = await signUpWithProfile(
+        {
+          name: `${firstName.trim()} ${lastName.trim()}`,
+          email,
+          password,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          phone: phone ?? "",
+          country,
+          city: city.trim(),
+        },
+        { headers: { "x-captcha-response": tokenForThisAttempt } }
+      );
 
       if (result.error) {
         const code = result.error.code ?? "";
@@ -191,10 +201,12 @@ export default function SignupPage() {
 
       // Successful signup — show animated loader then redirect
       setShowSignupLoader(true);
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "signup", tags: { step: "submit" } });
       toast.error("An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
+      turnstileRef.current?.reset();
     }
   }
 
@@ -205,7 +217,8 @@ export default function SignupPage() {
     setIsLoading(true);
     try {
       await authClient.signIn.social({ provider: "google", callbackURL: "/", errorCallbackURL: "/signup" });
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "signup", tags: { step: "google-signin" } });
       toast.error("Google sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
@@ -216,7 +229,8 @@ export default function SignupPage() {
     setIsLoading(true);
     try {
       await authClient.signIn.social({ provider: "facebook", callbackURL: "/", errorCallbackURL: "/signup" });
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "signup", tags: { step: "facebook-signin" } });
       toast.error("Facebook sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
@@ -513,10 +527,17 @@ export default function SignupPage() {
               )}
             </div>
 
+            <Turnstile
+              ref={turnstileRef}
+              onVerify={setCaptchaToken}
+              onExpire={() => setCaptchaToken(null)}
+              className="flex justify-center"
+            />
+
             {/* CTA */}
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || !captchaToken}
               className="w-full py-3.5 rounded-full font-bold text-sm tracking-wide text-[#1a1c1c] transition-all duration-150 hover:brightness-95 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed mt-1"
               style={{ backgroundColor: "#fec700" }}
             >

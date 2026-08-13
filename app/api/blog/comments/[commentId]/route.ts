@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 /** DELETE /api/blog/comments/[commentId] — author or admin only */
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ commentId: string }> }) {
@@ -35,6 +36,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ c
     return ok({ id: commentId });
   } catch (e) {
     console.error("[blog comments] DELETE error", e);
-    return Err.internal(e);
+    reportError(e, { route: "DELETE /api/blog/comments/[commentId]" });
+    return Err.internal();
   }
 }

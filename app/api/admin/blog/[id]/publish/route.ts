@@ -7,6 +7,8 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
 import { approvalExecutors } from "@/lib/approval-executors";
 import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 /** POST /api/admin/blog/[id]/publish
  *  Enqueues a blog post to auto-publish at an exact future datetime via Qstash.
@@ -53,9 +55,11 @@ export async function POST(
 
     console.info(`[blog/publish] Post ${id} ("${post.title}") scheduled for ${targetDate.toISOString()}`);
     logActivity(ctx.id, "Scheduled blog post", "blog", id, req, { scheduledAt: targetDate.toISOString() });
+    trackServerEvent(ctx.id, "blog_post_scheduled", { postId: id, scheduledAt: targetDate.toISOString() });
     return ok({ queued: true, post: updated });
   } catch (e) {
     console.error("[blog/[id]/publish/POST]", e);
-    return Err.internal("Failed to schedule post");
+    reportError(e, { route: "POST /api/admin/blog/[id]/publish", extra: { postId: id } });
+    return Err.internal();
   }
 }

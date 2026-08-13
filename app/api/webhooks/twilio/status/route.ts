@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import twilio from "twilio";
 import { db } from "@/lib/db";
+import { reportError } from "@/lib/observability";
 
 const STATUS_MAP: Record<string, "SENT" | "DELIVERED" | "BOUNCED" | "FAILED"> = {
   queued: "SENT",
@@ -35,15 +36,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  await db.campaignRecipient.updateMany({
-    where: { providerMessageId: messageSid },
-    data: {
-      status,
-      deliveredAt: status === "DELIVERED" ? new Date() : undefined,
-      failedAt: status === "BOUNCED" || status === "FAILED" ? new Date() : undefined,
-      errorMessage: params.ErrorMessage || undefined,
-    },
-  });
+  try {
+    await db.campaignRecipient.updateMany({
+      where: { providerMessageId: messageSid },
+      data: {
+        status,
+        deliveredAt: status === "DELIVERED" ? new Date() : undefined,
+        failedAt: status === "BOUNCED" || status === "FAILED" ? new Date() : undefined,
+        errorMessage: params.ErrorMessage || undefined,
+      },
+    });
 
-  return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    reportError(e, { route: "POST /api/webhooks/twilio/status" });
+    console.error("[webhooks/twilio/status] POST error", e);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  }
 }

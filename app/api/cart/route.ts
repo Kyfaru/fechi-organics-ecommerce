@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { auth } from "@/lib/auth";
 import { resolveCart, getCartSummary } from "@/lib/cart";
 import { ok, Err } from "@/lib/api";
+import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -37,6 +38,7 @@ export async function GET(req: NextRequest) {
     return res;
   } catch (e) {
     console.error("[cart] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/cart" });
+    return Err.internal();
   }
 }

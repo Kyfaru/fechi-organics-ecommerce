@@ -9,6 +9,7 @@ import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { isGlobalScope } from "@/lib/branch-access";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { zohoWebhookUrls } from "@/lib/zoho/webhook-events";
+import { reportError } from "@/lib/observability";
 
 // All fields optional — blank/omitted means "leave existing value", same
 // convention as the branch-level Zoho PATCH this replaced. Real secrets are
@@ -106,7 +107,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
   } catch (e) {
     console.error("[admin/zoho/organizations/[id]] PATCH error", e);
-    return Err.internal(e);
+    reportError(e, { route: "PATCH /api/admin/zoho/organizations/[id]", userId: caller.id });
+    return Err.internal();
   }
 }
 
@@ -156,6 +158,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return ok({ deleted: id });
   } catch (e) {
     console.error("[admin/zoho/organizations/[id]] DELETE error", e);
-    return Err.internal(e);
+    reportError(e, { route: "DELETE /api/admin/zoho/organizations/[id]", userId: caller.id });
+    return Err.internal();
   }
 }

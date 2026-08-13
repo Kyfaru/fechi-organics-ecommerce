@@ -7,12 +7,15 @@ import { motion } from "framer-motion";
 import { Smartphone, Mail, MessageSquare } from "lucide-react";
 import FormInput from "@/components/auth/FormInput";
 import PasswordInput from "@/components/auth/PasswordInput";
+import OtpPinInput from "@/components/auth/OtpPinInput";
+import Turnstile, { TurnstileHandle } from "@/components/auth/Turnstile";
 import { authClient, signOut, useSession } from "@/lib/auth-client";
 import { clearPersistedQueryCache } from "@/app/providers";
 import { Spinner } from "@/components/ui/spinner";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "@/lib/toast";
 import { checkPortalMatch } from "@/lib/portal-check";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // State machine for the admin login flow:
@@ -59,28 +62,42 @@ export default function AdminLoginPage() {
   const [totpUri, setTotpUri] = useState("");
   const [code, setCode] = useState("");
 
-  // Email/SMS OTP state
-  const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
-  const [otpMethod, setOtpMethod] = useState<"email" | "sms">("email");
-  const [adminUserId, setAdminUserId] = useState("");
+  // Email/SMS OTP state. otpMethod is only known when THIS browser is the one
+  // that just picked/configured it (new-admin setup) — a returning admin's
+  // channel lives server-side (adminProfile.twoFaMethod) and Better Auth's
+  // twoFactorMethods list doesn't distinguish email vs SMS (both are its one
+  // generic "otp" method), so it stays null for that path and the copy falls
+  // back to a channel-agnostic label.
+  const [otpMethod, setOtpMethod] = useState<"email" | "sms" | null>(null);
+  // Bumped to force-clear the OtpPinInput boxes after a wrong code or resend.
+  const [otpResetSignal, setOtpResetSignal] = useState(0);
   const [resendCountdown, setResendCountdown] = useState(0);
 
-  // Admin profile fetched after credentials succeed — drives the method-choice
-  // screen and the forced password-change gate.
+  // Methods Better Auth reports as available for a RETURNING admin (2FA
+  // already enabled) — e.g. ["totp"], ["otp"], or both. Populated straight
+  // from signIn.email()'s twoFactorRedirect response, before any session
+  // exists, so the method-choice screen can be built without an API call.
+  const [twoFactorMethods, setTwoFactorMethods] = useState<string[]>([]);
+
+  // Admin profile — only fetched once a real session exists (new-admin setup
+  // path immediately after credentials, or after 2FA verification succeeds).
+  // Drives the method-choice screen (new-admin only) and the forced
+  // password-change gate.
   const [adminMe, setAdminMe] = useState<AdminMeResponse | null>(null);
-  // true when the account has no 2FA method configured yet (brand-new admin)
+  // true when the account has no 2FA configured yet (brand-new admin, must
+  // set up a method now) — false means "verify an existing method" instead.
   const [isNewUser, setIsNewUser] = useState(false);
   // which method-choice card is mid-request, if any
-  const [methodChoiceLoading, setMethodChoiceLoading] = useState<"totp" | "email" | "sms" | null>(null);
+  const [methodChoiceLoading, setMethodChoiceLoading] = useState<"totp" | "email" | "sms" | "otp" | null>(null);
 
   // Forced password-change fields
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
 
-  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
-
   const [errors, setErrors] = useState<AdminLoginErrors>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileHandle>(null);
 
   const { data: sessionData, isPending: sessionPending } = useSession();
 
@@ -140,16 +157,31 @@ export default function AdminLoginPage() {
     return errs;
   }
 
-  async function sendOtp(userId: string, method: "email" | "sms") {
-    const res = await fetch("/api/admin/otp/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, method }),
-    });
-    const json = await res.json();
-    if (!json.ok && !json.sent) {
-      throw new Error(json.error?.message ?? "Failed to send OTP");
+  // ---------------------------------------------------------------------------
+  // Runs after any 2FA method succeeds (TOTP verify/setup or OTP verify) — a
+  // real session exists at this point for the first time in a returning
+  // admin's login (Better Auth mints it inside verifyTotp/verifyOtp). The
+  // forced password-change gate is checked HERE rather than right after
+  // credentials, because for a returning 2FA admin no session exists yet at
+  // that point to check it against — see handleCredentialsSubmit.
+  // ---------------------------------------------------------------------------
+  async function finishLogin() {
+    try {
+      const meRes = await fetch("/api/admin/me");
+      if (meRes.ok && !meRes.redirected) {
+        const me: AdminMeResponse = await meRes.json();
+        if (me.mustChangePassword) {
+          setAdminMe(me);
+          setStep("password-change");
+          return;
+        }
+      }
+    } catch (err) {
+      // Best-effort — if this lookup fails, fall through to the redirect;
+      // AdminGuard (app/admin/(protected)/layout.tsx) re-verifies server-side.
+      reportError(err, { route: "admin-login", tags: { step: "finish-login" } });
     }
+    router.push("/admin");
   }
 
   // ---------------------------------------------------------------------------
@@ -163,9 +195,12 @@ export default function AdminLoginPage() {
       setErrors(validationErrors);
       return;
     }
+    if (!captchaToken) return;
 
     setErrors({});
     setIsLoading(true);
+    const tokenForThisAttempt = captchaToken;
+    setCaptchaToken(null);
 
     try {
       // Reject a client's email before ever calling signIn — no session is
@@ -180,15 +215,43 @@ export default function AdminLoginPage() {
       // browser itself drops it the moment the browser (not just this tab)
       // closes. A different browser/device is unaffected — cookies are
       // already scoped per browser instance.
-      const result = await authClient.signIn.email({ email, password, rememberMe: false });
+      const result = await authClient.signIn.email(
+        { email, password, rememberMe: false },
+        { headers: { "x-captcha-response": tokenForThisAttempt } }
+      );
 
       if (result?.error) {
         toast.error("Invalid email or password.");
         return;
       }
 
-      // Defense-in-depth fallback — reject non-admins before they reach 2FA,
-      // in case the precheck above was ever bypassed.
+      // Better Auth's twoFactor plugin intercepts /sign-in/email for any
+      // account with 2FA already enabled: it deletes the session this
+      // signIn.email() call just created and swaps in a scoped two-factor
+      // cookie instead, returning { twoFactorRedirect, twoFactorMethods } in
+      // place of the normal session payload (no `user` on the response
+      // either). This MUST be checked before anything that assumes a
+      // session exists — fetching /api/admin/me first (the old order) hit
+      // that just-deleted session and always came back unauthorized, which
+      // is what caused the false "Sign in failed" / "have to resend" glitch
+      // for returning admins.
+      const twoFactorRedirect = (result?.data as { twoFactorRedirect?: boolean } | null)
+        ?.twoFactorRedirect === true;
+
+      if (twoFactorRedirect) {
+        const methods = (result?.data as { twoFactorMethods?: string[] } | null)
+          ?.twoFactorMethods ?? [];
+        setTwoFactorMethods(methods);
+        setAdminMe(null);
+        setIsNewUser(false);
+        setStep("method-choice");
+        return;
+      }
+
+      // No redirect means this account has no 2FA configured yet (a brand
+      // new admin) — signIn.email() minted a real session, so it's safe to
+      // read it now. Defense-in-depth fallback — reject non-admins before
+      // they reach 2FA, in case the precheck above was ever bypassed.
       const role = (result?.data?.user as { role?: string } | undefined)?.role;
       if (role && role !== "admin") {
         await authClient.signOut();
@@ -196,9 +259,16 @@ export default function AdminLoginPage() {
         return;
       }
 
-      // Fetch admin profile — determines forced password-change and 2FA state
+      // Fetch admin profile — needed for the method-choice screen (whether
+      // to offer SMS, and the userId for /api/admin/2fa/method).
+      // meRes.redirected catches the case where the session cookie from the
+      // signIn.email() call above hasn't propagated to this request yet:
+      // proxy.ts redirects the unauthenticated request to /admin/login, fetch
+      // follows it transparently, and the HTML login page comes back as a
+      // plain 200 — meRes.ok alone would miss that and meRes.json() would
+      // throw on the HTML body.
       const meRes = await fetch("/api/admin/me");
-      if (!meRes.ok) {
+      if (!meRes.ok || meRes.redirected) {
         await authClient.signOut();
         toast.error("Sign in failed.");
         return;
@@ -206,24 +276,18 @@ export default function AdminLoginPage() {
       const me: AdminMeResponse = await meRes.json();
       setAdminMe(me);
 
-      // Forced password change takes priority over 2FA — this used to be a
-      // server-side redirect that only fired *after* 2FA completed; now it's
-      // checked here, before any 2FA branching.
-      if (me.mustChangePassword) {
-        setStep("password-change");
-        return;
-      }
-
-      // Better Auth sets twoFactorRedirect when the account has 2FA enabled
-      const hasTwoFactor = (result?.data as { twoFactorRedirect?: boolean } | null)
-        ?.twoFactorRedirect === true;
-
-      setIsNewUser(!hasTwoFactor);
+      // Forced password change is checked AFTER 2FA now (see finishLogin),
+      // not here — a brand-new admin must finish setting up 2FA in this same
+      // session before the password-change gate applies.
+      setIsNewUser(true);
       setStep("method-choice");
-    } catch {
+    } catch (err) {
+      console.error("[admin-login] handleCredentialsSubmit failed:", err);
+      reportError(err, { route: "admin-login", tags: { step: "credentials" } });
       toast.error("Sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
+      turnstileRef.current?.reset();
     }
   }
 
@@ -271,7 +335,8 @@ export default function AdminLoginPage() {
       setPassword("");
       setAdminMe(null);
       setStep("credentials");
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "admin-login", tags: { step: "password-change" } });
       toast.error("Failed to update password. Please try again.");
     } finally {
       setIsLoading(false);
@@ -281,7 +346,7 @@ export default function AdminLoginPage() {
   // ---------------------------------------------------------------------------
   // Method-choice step — explicit 2FA method picker
   // ---------------------------------------------------------------------------
-  async function handleMethodChoice(method: "totp" | "email" | "sms") {
+  async function handleMethodChoice(method: "totp" | "email" | "sms" | "otp") {
     if (methodChoiceLoading) return;
     setErrors({});
     setMethodChoiceLoading(method);
@@ -306,11 +371,13 @@ export default function AdminLoginPage() {
         return;
       }
 
-      // method === "email" | "sms"
-      const userId = adminMe?.userId ?? "";
-
+      // method === "email" | "sms" (new-admin setup, picking a channel for
+      // the first time) | "otp" (returning admin, channel already decided
+      // server-side by adminProfile.twoFaMethod).
       if (isNewUser) {
-        // Persist the chosen method to the admin profile first
+        // Persist the chosen channel to the admin profile first — Better
+        // Auth's sendOTP (lib/auth.ts) reads it from there, it isn't passed
+        // per-request.
         const body =
           method === "sms"
             ? { method: "sms", phone: adminMe?.phone ?? undefined }
@@ -325,15 +392,23 @@ export default function AdminLoginPage() {
           toast.error(json.error?.message ?? "Failed to set 2FA method.");
           return;
         }
+        setOtpMethod(method as "email" | "sms");
+      } else {
+        // Channel unknown on this returning-admin path — see otpMethod's
+        // declaration comment. renderOtpVerify falls back to generic copy.
+        setOtpMethod(null);
       }
 
-      setAdminUserId(userId);
-      setOtpMethod(method);
-      await sendOtp(userId, method);
-      setOtpDigits(["", "", "", "", "", ""]);
+      const sendResult = await authClient.twoFactor.sendOtp({});
+      if (sendResult?.error) {
+        toast.error(sendResult.error.message ?? "Failed to send code. Please try again.");
+        return;
+      }
+      setOtpResetSignal((n) => n + 1);
       setResendCountdown(60);
       setStep("otp-verify");
     } catch (e) {
+      reportError(e, { route: "admin-login", tags: { step: "method-choice" } });
       toast.error(e instanceof Error ? e.message : "Something went wrong. Please try again.");
     } finally {
       setMethodChoiceLoading(null);
@@ -363,8 +438,9 @@ export default function AdminLoginPage() {
         return;
       }
 
-      router.push("/admin");
-    } catch {
+      await finishLogin();
+    } catch (err) {
+      reportError(err, { route: "admin-login", tags: { step: "totp-verify" } });
       setErrors({ code: "Verification failed. Please try again." });
     } finally {
       setIsLoading(false);
@@ -394,8 +470,9 @@ export default function AdminLoginPage() {
         return;
       }
 
-      router.push("/admin");
-    } catch {
+      await finishLogin();
+    } catch (err) {
+      reportError(err, { route: "admin-login", tags: { step: "totp-setup" } });
       setErrors({ code: "Verification failed. Please try again." });
     } finally {
       setIsLoading(false);
@@ -403,68 +480,43 @@ export default function AdminLoginPage() {
   }
 
   // ---------------------------------------------------------------------------
-  // Step 2c — verify email/SMS OTP
+  // Step 2c — verify email/SMS OTP. Called by OtpPinInput.onComplete the
+  // instant all 6 digits are entered (it fires its own paste/autofill events
+  // too, so this doubles as the paste-to-submit path).
   // ---------------------------------------------------------------------------
-  async function handleOtpVerify() {
-    const otp = otpDigits.join("");
-    if (otp.length !== 6) {
-      setErrors({ code: "Enter all 6 digits." });
-      return;
-    }
-
+  async function handleOtpVerify(otp: string) {
     setErrors({});
     setIsLoading(true);
 
     try {
-      const res = await fetch("/api/admin/otp/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: adminUserId, otp }),
-      });
-      const json = await res.json();
+      const result = await authClient.twoFactor.verifyOtp({ code: otp });
 
-      if (!json.ok) {
-        setErrors({ code: json.error?.message ?? "Invalid code. Try again." });
+      if (result?.error) {
+        setErrors({ code: result.error.message ?? "Invalid code. Try again." });
+        setOtpResetSignal((n) => n + 1);
         return;
       }
 
-      router.push("/admin");
-    } catch {
+      await finishLogin();
+    } catch (err) {
+      reportError(err, { route: "admin-login", tags: { step: "otp-verify" } });
       setErrors({ code: "Verification failed. Please try again." });
+      setOtpResetSignal((n) => n + 1);
     } finally {
       setIsLoading(false);
     }
   }
 
-  function handleOtpChange(index: number, value: string) {
-    const digit = value.replace(/\D/g, "").slice(-1);
-    const next = [...otpDigits];
-    next[index] = digit;
-    setOtpDigits(next);
-    setErrors({});
-
-    if (digit && index < 5) {
-      otpRefs.current[index + 1]?.focus();
-    }
-    // Auto-submit is handled by the useEffect below, which fires once
-    // otpDigits actually contains all 6 filled values.
-  }
-
-  // Auto-submit when all digits filled
-  useEffect(() => {
-    if (step === "otp-verify" && otpDigits.every((d) => d !== "") && !isLoading) {
-      handleOtpVerify();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [otpDigits, step]);
-
   async function handleResendOtp() {
     if (resendCountdown > 0) return;
     try {
-      await sendOtp(adminUserId, otpMethod);
+      const result = await authClient.twoFactor.sendOtp({});
+      if (result?.error) throw new Error(result.error.message ?? "Failed to resend code");
       setResendCountdown(60);
+      setOtpResetSignal((n) => n + 1);
       toast.success("New code sent");
     } catch (e) {
+      reportError(e, { route: "admin-login", tags: { step: "otp-resend" } });
       toast.error(e instanceof Error ? e.message : "Failed to resend code");
     }
   }
@@ -514,9 +566,16 @@ export default function AdminLoginPage() {
           </div>
         </div>
 
+        <Turnstile
+          ref={turnstileRef}
+          onVerify={setCaptchaToken}
+          onExpire={() => setCaptchaToken(null)}
+          className="flex justify-center"
+        />
+
         <button
           type="submit"
-          disabled={isLoading}
+          disabled={isLoading || !captchaToken}
           className="w-full py-3.5 rounded-full font-bold text-sm tracking-wide text-[#1a1c1c] transition-all duration-150 hover:brightness-95 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed mt-1"
           style={{ backgroundColor: "#FFC800" }}
         >
@@ -571,45 +630,73 @@ export default function AdminLoginPage() {
   }
 
   function renderMethodChoice() {
-    const showSms = !!adminMe?.phone;
-
-    const cards: {
-      method: "totp" | "email" | "sms";
+    type Card = {
+      method: "totp" | "email" | "sms" | "otp";
       icon: typeof Smartphone;
       iconBg: string;
       iconColor: string;
       title: string;
       description: string;
-    }[] = [
-      {
-        method: "totp",
-        icon: Smartphone,
-        iconBg: "bg-green-50",
-        iconColor: "text-green-700",
-        title: "Authenticator App",
-        description: "Use Google Authenticator, Authy, or any TOTP app.",
-      },
-      {
-        method: "email",
-        icon: Mail,
-        iconBg: "bg-blue-50",
-        iconColor: "text-blue-700",
-        title: "Email OTP",
-        description: "Receive a one-time code at your email address.",
-      },
-      ...(showSms
-        ? [
-            {
+    };
+
+    const totpCard: Card = {
+      method: "totp",
+      icon: Smartphone,
+      iconBg: "bg-green-50",
+      iconColor: "text-green-700",
+      title: "Authenticator App",
+      description: "Use Google Authenticator, Authy, or any TOTP app.",
+    };
+
+    let cards: Card[];
+
+    if (isNewUser) {
+      // First-time setup — the admin explicitly picks and confirms a
+      // channel, so email/SMS are offered as distinct cards. SMS only shows
+      // once a phone is already on file (lib/auth.ts's sendOTP has no way to
+      // report "no phone" back to the client, so this card must never be
+      // offered when it would silently fail).
+      const showSms = !!adminMe?.phone;
+      cards = [
+        totpCard,
+        {
+          method: "email",
+          icon: Mail,
+          iconBg: "bg-blue-50",
+          iconColor: "text-blue-700",
+          title: "Email OTP",
+          description: "Receive a one-time code at your email address.",
+        },
+        ...(showSms
+          ? [{
               method: "sms" as const,
               icon: MessageSquare,
               iconBg: "bg-purple-50",
               iconColor: "text-purple-700",
               title: "SMS OTP",
               description: "Receive a one-time code via text message.",
-            },
-          ]
-        : []),
-    ];
+            }]
+          : []),
+      ];
+    } else {
+      // Returning admin — Better Auth only reports "totp" and/or "otp" (its
+      // one generic OTP channel; email vs SMS was decided at setup time and
+      // lives server-side), so the card list is built straight from
+      // twoFactorMethods rather than re-deriving email/SMS here.
+      cards = [
+        ...(twoFactorMethods.includes("totp") ? [totpCard] : []),
+        ...(twoFactorMethods.includes("otp")
+          ? [{
+              method: "otp" as const,
+              icon: Mail,
+              iconBg: "bg-blue-50",
+              iconColor: "text-blue-700",
+              title: "One-Time Code",
+              description: "Receive a one-time code via your registered email or phone.",
+            }]
+          : []),
+      ];
+    }
 
     return (
       <div className="flex flex-col gap-3">
@@ -740,7 +827,8 @@ export default function AdminLoginPage() {
   }
 
   function renderOtpVerify() {
-    const methodLabel = otpMethod === "email" ? "email address" : "phone number";
+    const methodLabel =
+      otpMethod === "email" ? "email address" : otpMethod === "sms" ? "phone number" : "registered email or phone";
 
     return (
       <div className="flex flex-col gap-5">
@@ -748,32 +836,15 @@ export default function AdminLoginPage() {
           A 6-digit code was sent to your {methodLabel}. Enter it below.
         </p>
 
-        {/* 6-box OTP input */}
-        <div className="flex justify-center gap-x-3">
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <input
-              key={i}
-              ref={(el) => { otpRefs.current[i] = el; }}
-              type="text"
-              maxLength={1}
-              inputMode="numeric"
-              className="block w-10 h-10 text-center bg-white dark:bg-neutral-800 border border-gray-200 dark:border-neutral-700 rounded-md text-sm text-gray-800 dark:text-neutral-200 placeholder:text-gray-500 dark:placeholder:text-neutral-400 focus:border-blue-700 dark:focus:border-blue-600 focus:ring-1 focus:ring-blue-700 dark:focus:ring-blue-600 outline-none"
-              placeholder="○"
-              value={otpDigits[i]}
-              onChange={(e) => handleOtpChange(i, e.target.value)}
-              onKeyDown={(e) => {
-                // Backspace: clear current cell and go back
-                if (e.key === "Backspace" && !otpDigits[i] && i > 0) {
-                  const next = [...otpDigits];
-                  next[i - 1] = "";
-                  setOtpDigits(next);
-                  otpRefs.current[i - 1]?.focus();
-                }
-              }}
-              disabled={isLoading}
-            />
-          ))}
-        </div>
+        <OtpPinInput
+          theme="admin"
+          disabled={isLoading}
+          resetSignal={otpResetSignal}
+          onComplete={(otp) => {
+            setErrors({});
+            handleOtpVerify(otp);
+          }}
+        />
 
         {errors.code && (
           <p className="text-xs text-red-500 text-center">{errors.code}</p>
@@ -798,7 +869,7 @@ export default function AdminLoginPage() {
 
           <button
             type="button"
-            onClick={() => { setStep("method-choice"); setOtpDigits(["", "", "", "", "", ""]); setErrors({}); }}
+            onClick={() => { setStep("method-choice"); setErrors({}); }}
             className="text-xs text-[#40493c] hover:underline text-center"
           >
             Back to verification methods

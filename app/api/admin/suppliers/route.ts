@@ -3,6 +3,7 @@ import { ok, created, Err } from "@/lib/api";
 import { connection, NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 /** GET /api/admin/suppliers */
 export async function GET(req: NextRequest) {
@@ -24,8 +25,9 @@ export async function GET(req: NextRequest) {
     });
     return ok(suppliers);
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/suppliers", tags: { domain: "suppliers" } });
     console.error("[suppliers/GET]", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }
 
@@ -74,7 +76,8 @@ export async function POST(req: NextRequest) {
     console.info(`[suppliers/POST] Created supplier: ${supplier.id} — ${supplier.name}`);
     return created(supplier);
   } catch (e) {
+    reportError(e, { route: "POST /api/admin/suppliers", tags: { domain: "suppliers" } });
     console.error("[suppliers/POST]", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

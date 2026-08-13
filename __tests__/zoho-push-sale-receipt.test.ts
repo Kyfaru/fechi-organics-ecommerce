@@ -65,8 +65,9 @@ describe("pushSaleReceiptToZoho", () => {
     expect(body.customer_id).toBe("contact-1");
     expect(body.payment_mode).toBe("Mpesa(Daraja)");
     expect(body.reference_number).toBe("FO-0001");
-    expect(body.location_id).toBe("loc-1");
+    expect(body.location_id).toBeUndefined();
     expect(body.line_items[0].item_id).toBe("ZI-001");
+    expect(body.line_items[0].location_id).toBe("loc-1");
 
     expect(mockPushLogCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: "SENT", zohoRecordId: "SR-1", kind: "SALES_RECEIPT" }) }),

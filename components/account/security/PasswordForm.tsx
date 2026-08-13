@@ -88,16 +88,23 @@ export default function PasswordForm({
     start(async () => {
       // A Google-only account has no existing credential account for
       // changePassword to verify currentPassword against — it always fails
-      // with CREDENTIAL_ACCOUNT_NOT_FOUND regardless of what's passed. Use
-      // setPassword instead: no currentPassword required, and it links a
-      // fresh credential account rather than updating one that doesn't exist.
-      // Cast needed the same way authClient.twoFactor is cast elsewhere in
-      // this codebase — Better Auth's client type inference doesn't surface
-      // this base endpoint even though the server exposes it.
-      const res = isOAuthOnly
-        ? await (authClient as any).setPassword({ newPassword: newPw })
-        : await authClient.changePassword({ currentPassword: current, newPassword: newPw, revokeOtherSessions: false })
-      if (res.error) { toast.error(res.error.message ?? "Failed to update password"); return }
+      // with CREDENTIAL_ACCOUNT_NOT_FOUND regardless of what's passed.
+      // Better Auth's own client `setPassword` endpoint 404s (its server
+      // handler is defined without a path in better-auth 1.6.14, so it never
+      // mounts a route) — /api/account/set-password replicates the same
+      // "link a fresh credential account" write directly instead.
+      if (isOAuthOnly) {
+        const res = await fetch("/api/account/set-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ newPassword: newPw }),
+        })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) { toast.error(json.error ?? "Failed to update password"); return }
+      } else {
+        const res = await authClient.changePassword({ currentPassword: current, newPassword: newPw, revokeOtherSessions: false })
+        if (res.error) { toast.error(res.error.message ?? "Failed to update password"); return }
+      }
       toast.success("Password updated")
       setCurrent(""); setNewPw(""); setConfirm("")
     })

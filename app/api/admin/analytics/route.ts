@@ -11,6 +11,7 @@ import { connection } from "next/server";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // Helper: bucket a list of orders by day into ordersChart shape
@@ -103,6 +104,13 @@ export async function GET(req: NextRequest) {
         topCustomersRaw,
         revenueChartOrders,
         ordersForChart,
+        inStoreRevenueAgg,
+        inStoreOrdersCount,
+        inStorePaidOrders,
+        inStoreTopProductsRaw,
+        inStoreTopCustomersRaw,
+        inStoreRevenueChartOrders,
+        inStoreOrdersForChart,
       ] = await Promise.all([
         db.order.aggregate({
           _sum: { totalKes: true },
@@ -139,17 +147,52 @@ export async function GET(req: NextRequest) {
           where: { createdAt: dateFilter },
           select: { createdAt: true, status: true, paymentStatus: true },
         }),
+        db.inStoreOrder.aggregate({
+          _sum: { totalKes: true },
+          where: { paymentStatus: "PAID", createdAt: dateFilter },
+        }),
+        db.inStoreOrder.count({ where: { createdAt: dateFilter } }),
+        db.inStoreOrder.count({ where: { paymentStatus: "PAID", createdAt: dateFilter } }),
+        db.inStoreOrderItem.groupBy({
+          by: ["productId", "name"],
+          _count: { _all: true },
+          _sum: { priceKes: true },
+          orderBy: { _count: { productId: "desc" } },
+          take: 5,
+          where: { inStoreOrder: { createdAt: dateFilter } },
+        }),
+        db.inStoreOrder.groupBy({
+          by: ["customerUserId"],
+          _sum: { totalKes: true },
+          _count: { _all: true },
+          orderBy: { _sum: { totalKes: "desc" } },
+          take: 5,
+          where: { paymentStatus: "PAID", customerUserId: { not: null }, createdAt: dateFilter },
+        }),
+        db.inStoreOrder.findMany({
+          where: { paymentStatus: "PAID", createdAt: dateFilter },
+          select: { createdAt: true, totalKes: true },
+        }),
+        // fulfillmentStatus values (CONFIRMED/PICKED_UP) double as OrderStatus
+        // members, except PICKED_UP — mapped to DELIVERED below so it counts
+        // as "successful" the same way a delivered online order does.
+        db.inStoreOrder.findMany({
+          where: { createdAt: dateFilter },
+          select: { createdAt: true, fulfillmentStatus: true, paymentStatus: true },
+        }),
       ]);
 
       // Build daily revenue chart
       const dailyMap: Record<string, number> = {};
-      for (const ord of revenueChartOrders) {
+      for (const ord of [...revenueChartOrders, ...inStoreRevenueChartOrders]) {
         const key = ord.createdAt.toISOString().slice(0, 10);
         dailyMap[key] = (dailyMap[key] ?? 0) + ord.totalKes;
       }
 
-      const totalRevenue = revenueAgg._sum.totalKes ?? 0;
-      const aov = paidOrders > 0 ? Math.round(totalRevenue / paidOrders) : 0;
+      const totalRevenue = (revenueAgg._sum.totalKes ?? 0) + (inStoreRevenueAgg._sum.totalKes ?? 0);
+      const combinedOrders = ordersCount + inStoreOrdersCount;
+      const combinedPaidOrders = paidOrders + inStorePaidOrders;
+      const aov = combinedPaidOrders > 0 ? Math.round(totalRevenue / combinedPaidOrders) : 0;
 
       // Build chart from from→to
       const revenueChart: { date: string; amount: number }[] = [];
@@ -162,41 +205,72 @@ export async function GET(req: NextRequest) {
       }
 
       // Build orders chart (order-status area chart data)
-      const ordersChart = buildOrdersChart(ordersForChart, from, to);
+      const inStoreForChart = inStoreOrdersForChart.map((o) => ({
+        createdAt: o.createdAt,
+        status: o.fulfillmentStatus === "PICKED_UP" ? "DELIVERED" : o.fulfillmentStatus,
+        paymentStatus: o.paymentStatus,
+      }));
+      const ordersChart = buildOrdersChart([...ordersForChart, ...inStoreForChart], from, to);
 
-      // Resolve user names for top customers
-      const customerIds = topCustomersRaw
-        .map((c) => c.userId)
-        .filter(Boolean) as string[];
+      // Resolve user names for top customers (online + in-store share the user table)
+      const customerIds = [
+        ...topCustomersRaw.map((c) => c.userId),
+        ...inStoreTopCustomersRaw.map((c) => c.customerUserId),
+      ].filter(Boolean) as string[];
       const customerUsers = await db.user.findMany({
         where: { id: { in: customerIds } },
         select: { id: true, name: true, email: true },
       });
       const userMap = Object.fromEntries(customerUsers.map((u) => [u.id, u]));
 
-      const topCustomers = topCustomersRaw.map((c) => ({
-        userId: c.userId,
-        name: userMap[c.userId!]?.name ?? "Guest",
-        email: userMap[c.userId!]?.email ?? "",
-        orders: c._count._all,
-        totalSpend: c._sum.totalKes ?? 0,
-      }));
+      // Merge online + in-store spend per customer before ranking
+      const spendByCustomer = new Map<string, { orders: number; totalSpend: number }>();
+      for (const c of topCustomersRaw) {
+        if (!c.userId) continue;
+        spendByCustomer.set(c.userId, { orders: c._count._all, totalSpend: c._sum.totalKes ?? 0 });
+      }
+      for (const c of inStoreTopCustomersRaw) {
+        if (!c.customerUserId) continue;
+        const existing = spendByCustomer.get(c.customerUserId) ?? { orders: 0, totalSpend: 0 };
+        existing.orders += c._count._all;
+        existing.totalSpend += c._sum.totalKes ?? 0;
+        spendByCustomer.set(c.customerUserId, existing);
+      }
+      const topCustomers = [...spendByCustomer.entries()]
+        .sort((a, b) => b[1].totalSpend - a[1].totalSpend)
+        .slice(0, 5)
+        .map(([userId, v]) => ({
+          userId,
+          name: userMap[userId]?.name ?? "Guest",
+          email: userMap[userId]?.email ?? "",
+          orders: v.orders,
+          totalSpend: v.totalSpend,
+        }));
 
-      const topProducts = topProductsRaw.map((p) => ({
-        productId: p.productId,
-        name: p.name,
-        orders: p._count._all,
-        revenue: p._sum.priceKes ?? 0,
-        pctOfTotal: totalRevenue > 0
-          ? Math.round(((p._sum.priceKes ?? 0) / totalRevenue) * 1000) / 10
-          : 0,
-      }));
+      // Merge online + in-store product sales before ranking
+      const salesByProduct = new Map<string, { name: string; orders: number; revenue: number }>();
+      for (const p of [...topProductsRaw, ...inStoreTopProductsRaw]) {
+        const existing = salesByProduct.get(p.productId) ?? { name: p.name, orders: 0, revenue: 0 };
+        existing.orders += p._count._all;
+        existing.revenue += p._sum.priceKes ?? 0;
+        salesByProduct.set(p.productId, existing);
+      }
+      const topProducts = [...salesByProduct.entries()]
+        .sort((a, b) => b[1].orders - a[1].orders)
+        .slice(0, 5)
+        .map(([productId, v]) => ({
+          productId,
+          name: v.name,
+          orders: v.orders,
+          revenue: v.revenue,
+          pctOfTotal: totalRevenue > 0 ? Math.round((v.revenue / totalRevenue) * 1000) / 10 : 0,
+        }));
 
       return ok({
         tab: "overview",
         stats: {
           revenue: totalRevenue,
-          orders: ordersCount,
+          orders: combinedOrders,
           aov,
           conversionRate: 3.2, // placeholder
           newCustomers,
@@ -220,7 +294,7 @@ export async function GET(req: NextRequest) {
     // Sales tab
     // -------------------------------------------------------------------------
     if (tab === "sales") {
-      const [orders, revenueByDay, ordersForChart] = await Promise.all([
+      const [orders, revenueByDay, ordersForChart, inStoreOrders, inStoreRevenueByDay, inStoreOrdersForChart] = await Promise.all([
         db.order.findMany({
           where: { createdAt: dateFilter },
           orderBy: { createdAt: "desc" },
@@ -244,10 +318,33 @@ export async function GET(req: NextRequest) {
           where: { createdAt: dateFilter },
           select: { createdAt: true, status: true, paymentStatus: true },
         }),
+        db.inStoreOrder.findMany({
+          where: { createdAt: dateFilter },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+          select: {
+            id: true,
+            fulfillmentStatus: true,
+            paymentStatus: true,
+            totalKes: true,
+            createdAt: true,
+            customerName: true,
+            customerEmail: true,
+            items: { select: { quantity: true } },
+          },
+        }),
+        db.inStoreOrder.findMany({
+          where: { paymentStatus: "PAID", createdAt: dateFilter },
+          select: { createdAt: true, totalKes: true },
+        }),
+        db.inStoreOrder.findMany({
+          where: { createdAt: dateFilter },
+          select: { createdAt: true, fulfillmentStatus: true, paymentStatus: true },
+        }),
       ]);
 
       const dailyMap: Record<string, number> = {};
-      for (const ord of revenueByDay) {
+      for (const ord of [...revenueByDay, ...inStoreRevenueByDay]) {
         const key = ord.createdAt.toISOString().slice(0, 10);
         dailyMap[key] = (dailyMap[key] ?? 0) + ord.totalKes;
       }
@@ -261,11 +358,18 @@ export async function GET(req: NextRequest) {
         revenueChart.push({ date: key, amount: dailyMap[key] ?? 0 });
       }
 
-      // Build orders chart
-      const ordersChart = buildOrdersChart(ordersForChart, from, to);
+      // Build orders chart — PICKED_UP maps to DELIVERED so in-store pickups
+      // count as "successful" the same way a delivered online order does.
+      const inStoreForChart = inStoreOrdersForChart.map((o) => ({
+        createdAt: o.createdAt,
+        status: o.fulfillmentStatus === "PICKED_UP" ? "DELIVERED" : o.fulfillmentStatus,
+        paymentStatus: o.paymentStatus,
+      }));
+      const ordersChart = buildOrdersChart([...ordersForChart, ...inStoreForChart], from, to);
 
       const formattedOrders = orders.map((o) => ({
         id: o.id,
+        channel: "online" as const,
         customer: o.user?.name ?? "Guest",
         email: o.user?.email ?? "",
         items: o.items.reduce((sum, it) => sum + it.quantity, 0),
@@ -274,42 +378,75 @@ export async function GET(req: NextRequest) {
         paymentStatus: o.paymentStatus,
         createdAt: o.createdAt.toISOString(),
       }));
+      const formattedInStoreOrders = inStoreOrders.map((o) => ({
+        id: o.id,
+        channel: "in-store" as const,
+        customer: o.customerName ?? "Walk-in customer",
+        email: o.customerEmail ?? "",
+        items: o.items.reduce((sum, it) => sum + it.quantity, 0),
+        totalKes: o.totalKes,
+        status: o.fulfillmentStatus as string,
+        paymentStatus: o.paymentStatus,
+        createdAt: o.createdAt.toISOString(),
+      }));
+      const mergedOrders = [...formattedOrders, ...formattedInStoreOrders].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
 
-      return ok({ tab: "sales", revenueChart, ordersChart, orders: formattedOrders });
+      return ok({ tab: "sales", revenueChart, ordersChart, orders: mergedOrders });
     }
 
     // -------------------------------------------------------------------------
     // Products tab
     // -------------------------------------------------------------------------
     if (tab === "products") {
-      const products = await db.product.findMany({
-        where: { isActive: true },
-        select: {
-          id: true,
-          name: true,
-          stock: true,
-          ratingAvg: true,
-          ratingCount: true,
-          category: { select: { name: true } },
-          orderItems: {
-            where: { order: { createdAt: dateFilter } },
-            select: { quantity: true, priceKes: true },
+      const [products, inStoreItems] = await Promise.all([
+        db.product.findMany({
+          where: { isActive: true },
+          select: {
+            id: true,
+            name: true,
+            stock: true,
+            ratingAvg: true,
+            ratingCount: true,
+            category: { select: { name: true } },
+            orderItems: {
+              where: { order: { createdAt: dateFilter } },
+              select: { quantity: true, priceKes: true },
+            },
           },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 100,
-      });
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        }),
+        // No FK relation to product (denormalized productId, see schema) —
+        // join in JS by id instead of a nested `select`.
+        db.inStoreOrderItem.findMany({
+          where: { inStoreOrder: { createdAt: dateFilter } },
+          select: { productId: true, quantity: true, priceKes: true },
+        }),
+      ]);
 
-      const productTable = products.map((p) => ({
-        id: p.id,
-        name: p.name,
-        category: p.category.name,
-        stock: p.stock,
-        orders: p.orderItems.reduce((s, i) => s + i.quantity, 0),
-        revenue: p.orderItems.reduce((s, i) => s + i.priceKes * i.quantity, 0),
-        ratingAvg: Math.round(p.ratingAvg * 10) / 10,
-        ratingCount: p.ratingCount,
-      }));
+      const inStoreByProduct = new Map<string, { orders: number; revenue: number }>();
+      for (const i of inStoreItems) {
+        const existing = inStoreByProduct.get(i.productId) ?? { orders: 0, revenue: 0 };
+        existing.orders += i.quantity;
+        existing.revenue += i.priceKes * i.quantity;
+        inStoreByProduct.set(i.productId, existing);
+      }
+
+      const productTable = products.map((p) => {
+        const inStore = inStoreByProduct.get(p.id);
+        return {
+          id: p.id,
+          name: p.name,
+          category: p.category.name,
+          stock: p.stock,
+          orders: p.orderItems.reduce((s, i) => s + i.quantity, 0) + (inStore?.orders ?? 0),
+          revenue: p.orderItems.reduce((s, i) => s + i.priceKes * i.quantity, 0) + (inStore?.revenue ?? 0),
+          ratingAvg: Math.round(p.ratingAvg * 10) / 10,
+          ratingCount: p.ratingCount,
+        };
+      });
 
       return ok({ tab: "products", products: productTable });
     }
@@ -333,10 +470,23 @@ export async function GET(req: NextRequest) {
         take: 200,
       });
 
+      // In-store purchases tied to a registered customer (walk-ins with no
+      // linked account can't be folded into this table — nothing to key on).
+      const inStoreOrders = await db.inStoreOrder.findMany({
+        where: { customerUserId: { in: customers.map((c) => c.id) } },
+        select: { customerUserId: true, totalKes: true, createdAt: true, paymentStatus: true },
+      });
+      const inStoreByCustomer = new Map<string, typeof inStoreOrders>();
+      for (const o of inStoreOrders) {
+        const key = o.customerUserId!;
+        inStoreByCustomer.set(key, [...(inStoreByCustomer.get(key) ?? []), o]);
+      }
+
       const customerTable = customers.map((c) => {
-        const paidOrders = c.orders.filter((o) => o.paymentStatus === "PAID");
+        const allOrders = [...c.orders, ...(inStoreByCustomer.get(c.id) ?? [])];
+        const paidOrders = allOrders.filter((o) => o.paymentStatus === "PAID");
         const totalSpent = paidOrders.reduce((s, o) => s + o.totalKes, 0);
-        const lastOrder = c.orders.sort(
+        const lastOrder = allOrders.sort(
           (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
         )[0];
         return {
@@ -344,10 +494,10 @@ export async function GET(req: NextRequest) {
           name: c.name,
           email: c.email,
           createdAt: c.createdAt.toISOString(),
-          orders: c.orders.length,
+          orders: allOrders.length,
           totalSpent,
           lastOrder: lastOrder?.createdAt.toISOString() ?? null,
-          status: c.orders.length > 0 ? "active" : "pending",
+          status: allOrders.length > 0 ? "active" : "pending",
         };
       });
 
@@ -424,7 +574,8 @@ export async function GET(req: NextRequest) {
 
     return Err.validation(`Unknown tab: ${tab}`);
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/analytics", tags: { domain: "analytics" } });
     console.error("[admin/analytics] GET error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

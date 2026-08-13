@@ -7,6 +7,8 @@ import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { assertBranchAccess } from "@/lib/branch-access";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 // ---------------------------------------------------------------------------
 // POST /api/admin/zoho/sync  — RBAC-gated, rate-limited to 1 call per 60s per
@@ -57,6 +59,7 @@ export async function POST(req: NextRequest) {
     console.info("[admin/zoho/sync] Starting full item sync for organization", organizationId);
     const result = await syncAllItems(organizationId);
     console.info("[admin/zoho/sync] Sync complete for organization", organizationId, result);
+    trackServerEvent(caller.id, "zoho_sync_completed", { organizationId, branchId, ...result });
 
     // Additive — backfills the Inventory item id used for automatic stock
     // deduction (see lib/zoho/push-adjustment.ts). Must never fail the
@@ -72,6 +75,7 @@ export async function POST(req: NextRequest) {
     return ok({ ...result, inventoryIdSync });
   } catch (e) {
     console.error("[admin/zoho/sync] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/zoho/sync", userId: caller.id, extra: { organizationId, branchId } });
+    return Err.internal();
   }
 }

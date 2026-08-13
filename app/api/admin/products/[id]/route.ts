@@ -7,6 +7,8 @@ import { invalidateProductCache } from "@/lib/cache-tags";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { createNotification } from "@/lib/notify";
 import { requirePermission } from "@/lib/require-permission";
+import { syncProductVariants } from "@/lib/products/sync-variants";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/products/[id]
@@ -31,6 +33,10 @@ export async function GET(
         images: {
           orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }],
         },
+        variants: {
+          orderBy: { sortOrder: "asc" },
+          include: { image: { select: { objectKey: true } } },
+        },
       },
     });
 
@@ -40,7 +46,8 @@ export async function GET(
     return ok({ product });
   } catch (e) {
     console.error("[admin/products/[id]] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/products/[id]" });
+    return Err.internal();
   }
 }
 
@@ -71,6 +78,14 @@ const UpdateSchema = z.object({
   // imageObjectKeys: ordered array; index 0 = primary.
   // Passing this replaces all existing images with the new set.
   imageObjectKeys: z.array(z.string()).optional(),
+  variantMode: z.enum(["sizes", "variants"]).optional(),
+  variantGroupLabel: z.string().nullable().optional(),
+  variantImagesHidden: z.boolean().optional(),
+  // Passing this replaces all existing variants with the new set.
+  variants: z.array(z.object({
+    label: z.string().min(1),
+    imageObjectKey: z.string().optional(),
+  })).optional(),
 }).strict();
 
 export async function PATCH(
@@ -91,7 +106,7 @@ export async function PATCH(
     const parsed = UpdateSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
-    const { imageObjectKeys, ...productData } = parsed.data;
+    const { imageObjectKeys, variants, ...productData } = parsed.data;
 
     // Verify product exists
     const existing = await db.product.findUnique({ where: { id } });
@@ -122,6 +137,8 @@ export async function PATCH(
       }
     }
 
+    await syncProductVariants(id, variants);
+
     // Re-fetch with images and category for fresh response
     const updated = await db.product.findUnique({
       where: { id },
@@ -129,6 +146,10 @@ export async function PATCH(
         category: { select: { id: true, name: true, slug: true } },
         images: {
           orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }],
+        },
+        variants: {
+          orderBy: { sortOrder: "asc" },
+          include: { image: { select: { objectKey: true } } },
         },
       },
     });
@@ -141,7 +162,8 @@ export async function PATCH(
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("A product with this slug already exists");
     }
-    return Err.internal(e);
+    reportError(e, { route: "PATCH /api/admin/products/[id]" });
+    return Err.internal();
   }
 }
 
@@ -179,6 +201,7 @@ export async function DELETE(
     return ok({ id });
   } catch (e) {
     console.error("[admin/products/[id]] DELETE error", e);
-    return Err.internal(e);
+    reportError(e, { route: "DELETE /api/admin/products/[id]" });
+    return Err.internal();
   }
 }

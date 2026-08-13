@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 const PatchSchema = z.object({
   county: z.string().min(1).optional(),
@@ -29,8 +30,14 @@ export async function PATCH(
   const parsed = PatchSchema.safeParse(body);
   if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
-  const zone = await db.deliveryZone.update({ where: { id }, data: parsed.data });
-  return ok({ zone });
+  try {
+    const zone = await db.deliveryZone.update({ where: { id }, data: parsed.data });
+    return ok({ zone });
+  } catch (e) {
+    reportError(e, { route: "PATCH /api/admin/delivery-zones/[id]", tags: { domain: "delivery-zones" } });
+    console.error("[admin/delivery-zones/[id]] PATCH error", e);
+    return Err.internal();
+  }
 }
 
 export async function DELETE(
@@ -44,6 +51,12 @@ export async function DELETE(
   if (denied) return denied;
 
   const { id } = await params;
-  await db.deliveryZone.delete({ where: { id } });
-  return ok({ id });
+  try {
+    await db.deliveryZone.delete({ where: { id } });
+    return ok({ id });
+  } catch (e) {
+    reportError(e, { route: "DELETE /api/admin/delivery-zones/[id]", tags: { domain: "delivery-zones" } });
+    console.error("[admin/delivery-zones/[id]] DELETE error", e);
+    return Err.internal();
+  }
 }

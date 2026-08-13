@@ -113,7 +113,7 @@ function OrderThumbnails({ items }: { items: OrderItem[] }) {
     // Placeholder when no images
     return (
       <div className="w-10 h-10 rounded-[8px] bg-[#f0fdf4] flex items-center justify-center shrink-0">
-        <Icon icon="mdi:cart-outline" width={20} className="text-[#27731e]" />
+        <Icon icon="solar:cart-3-line-duotone" width={22} className="text-[#27731e]" />
       </div>
     );
   }

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { reportError } from "@/lib/observability";
 
 /**
  * GET /api/branches?county=<name>
@@ -70,6 +71,7 @@ export async function GET(req: NextRequest) {
     return ok(result);
   } catch (e) {
     console.error("[branches] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/branches" });
+    return Err.internal();
   }
 }

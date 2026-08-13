@@ -9,6 +9,7 @@ import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
 import { approvalExecutors } from "@/lib/approval-executors";
 import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 const PAGE_SIZE_DEFAULT = 20;
 
@@ -53,7 +54,8 @@ export async function GET(req: NextRequest) {
     return ok({ testimonials: rows.map(withUrls), total, page, pageSize, approvedCount });
   } catch (e) {
     console.error("[admin/testimonials] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/testimonials" });
+    return Err.internal();
   }
 }
 
@@ -100,6 +102,7 @@ export async function POST(req: NextRequest) {
     return created({ testimonial: withUrls(t) });
   } catch (e) {
     console.error("[admin/testimonials] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/testimonials" });
+    return Err.internal();
   }
 }

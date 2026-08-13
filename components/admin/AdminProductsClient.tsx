@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, Grid, List, ChevronDown, Star, MoreHorizontal,
   Pencil, Copy, ExternalLink, Trash2, Check, X, ImagePlus,
-  GripVertical, Tag, RefreshCw, AlertTriangle,
+  GripVertical, Tag, RefreshCw, AlertTriangle, ListChecks, Archive,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
@@ -34,6 +34,13 @@ type ProductImage = {
   isPrimary: boolean;
 };
 
+type ProductVariant = {
+  id: string;
+  label: string;
+  sortOrder: number;
+  image: { objectKey: string } | null;
+};
+
 type AdminProduct = {
   id: string;
   name: string;
@@ -48,6 +55,10 @@ type AdminProduct = {
   compareAtPriceKes: number | null;
   variantLabel: string | null;
   sizes: string[];
+  variantMode: string;
+  variantGroupLabel: string | null;
+  variantImagesHidden: boolean;
+  variants: ProductVariant[];
   howToUse: string | null;
   ingredients: string | null;
   bestSeller: boolean;
@@ -83,6 +94,10 @@ type DrawerFormData = {
   imageKeys: string[];
   // Product details
   sizes: string[];
+  variantMode: "sizes" | "variants";
+  variantGroupLabel: string;
+  variantImagesHidden: boolean;
+  variants: { label: string; imageObjectKey: string }[];
   howToUse: string;
   ingredients: string;
   // SEO
@@ -201,7 +216,8 @@ function blankForm(): DrawerFormData {
     name: "", slug: "", description: "", shortDescription: "",
     categoryId: "", priceKes: "", compareAtPriceKes: "", variantLabel: "",
     stock: "0", bestSeller: false, isActive: true, outOfStock: false,
-    imageKeys: [], sizes: [], howToUse: "", ingredients: "",
+    imageKeys: [], sizes: [], variantMode: "sizes", variantGroupLabel: "", variantImagesHidden: false, variants: [],
+    howToUse: "", ingredients: "",
     seoTitle: "", metaDescription: "",
   };
 }
@@ -223,7 +239,15 @@ function productToForm(p: AdminProduct): DrawerFormData {
     variantLabel: p.variantLabel ?? "",
     stock: String(p.stock), bestSeller: p.bestSeller, isActive: p.isActive, outOfStock: p.outOfStock,
     imageKeys: sortedImages.map((i) => i.objectKey),
-    sizes: p.sizes ?? [], howToUse: p.howToUse ?? "", ingredients: p.ingredients ?? "",
+    sizes: p.sizes ?? [],
+    variantMode: p.variantMode === "variants" ? "variants" : "sizes",
+    variantGroupLabel: p.variantGroupLabel ?? "",
+    variantImagesHidden: p.variantImagesHidden ?? false,
+    variants: (p.variants ?? [])
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((v) => ({ label: v.label, imageObjectKey: v.image?.objectKey ?? "" })),
+    howToUse: p.howToUse ?? "", ingredients: p.ingredients ?? "",
     seoTitle: "", metaDescription: "",
   };
 }
@@ -944,6 +968,140 @@ function SizeTagInput({ sizes, onChange }: { sizes: string[]; onChange: (s: stri
 }
 
 // ---------------------------------------------------------------------------
+// Variant editor — color/flavour/etc. options, each optionally tied to a
+// photo (either one already uploaded above, or its own upload).
+// ---------------------------------------------------------------------------
+type FormVariant = { label: string; imageObjectKey: string };
+
+function VariantEditor({
+  variants, onChange, imageKeys, groupLabel, onGroupLabelChange, imagesHidden, onImagesHiddenChange,
+}: {
+  variants: FormVariant[];
+  onChange: (v: FormVariant[]) => void;
+  imageKeys: string[];
+  groupLabel: string;
+  onGroupLabelChange: (v: string) => void;
+  imagesHidden: boolean;
+  onImagesHiddenChange: (v: boolean) => void;
+}) {
+  const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
+
+  function addVariant() {
+    onChange([...variants, { label: "", imageObjectKey: "" }]);
+  }
+  function updateVariant(idx: number, patch: Partial<FormVariant>) {
+    onChange(variants.map((v, i) => (i === idx ? { ...v, ...patch } : v)));
+  }
+  function removeVariant(idx: number) {
+    onChange(variants.filter((_, i) => i !== idx));
+  }
+
+  async function uploadVariantImage(idx: number, file: File) {
+    setUploadingIdx(idx);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("category", "products");
+      const res = await fetch("/api/admin/upload?category=products", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.error ?? "Upload failed"); return; }
+      updateVariant(idx, { imageObjectKey: json.objectKey });
+    } finally {
+      setUploadingIdx(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <label className={labelCls}>Variant Group Name</label>
+        <input
+          className={inputCls}
+          placeholder="e.g. Color, Flavour"
+          value={groupLabel}
+          onChange={(e) => onGroupLabelChange(e.target.value)}
+        />
+      </div>
+
+      <label className="flex items-center gap-2.5 cursor-pointer select-none">
+        <Switch checked={imagesHidden} onChange={onImagesHiddenChange} />
+        <span className="font-dm text-[13px] text-(--neutral-700)">
+          Hide variant photos from the gallery until selected (Amazon-style)
+        </span>
+      </label>
+
+      <div className="flex flex-col gap-2">
+        {variants.map((v, idx) => {
+          const src = imageUrl(v.imageObjectKey);
+          return (
+            <div key={idx} className="flex items-center gap-2 p-2 border border-(--neutral-200) rounded-[8px]">
+              <div className="relative w-11 h-11 rounded-[6px] overflow-hidden bg-(--neutral-100) shrink-0">
+                {uploadingIdx === idx ? (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <CircularProgress percent={50} size={28} strokeWidth={3} />
+                  </div>
+                ) : src ? (
+                  <Image src={src} alt="" fill className="object-cover" sizes="44px" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Tag size={16} className="text-(--neutral-300)" />
+                  </div>
+                )}
+              </div>
+              <input
+                className={`${inputCls} flex-1`}
+                placeholder="e.g. Red"
+                value={v.label}
+                onChange={(e) => updateVariant(idx, { label: e.target.value })}
+              />
+              <select
+                className={`${inputCls} w-36 shrink-0`}
+                value={v.imageObjectKey}
+                onChange={(e) => updateVariant(idx, { imageObjectKey: e.target.value })}
+              >
+                <option value="">No photo</option>
+                {imageKeys.map((k, i) => (
+                  <option key={k} value={k}>Photo {i + 1}</option>
+                ))}
+              </select>
+              <label className="shrink-0 text-(--green-800) font-dm text-[12px] font-medium cursor-pointer hover:underline">
+                Upload
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadVariantImage(idx, file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => removeVariant(idx)}
+                className="shrink-0 text-(--danger) hover:opacity-70 transition-opacity"
+                aria-label="Remove variant"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <button
+        type="button"
+        onClick={addVariant}
+        className="self-start flex items-center gap-1.5 text-(--green-800) font-dm text-[13px] font-medium hover:underline"
+      >
+        <Plus size={14} /> Add variant
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Product Drawer (640px)
 // ---------------------------------------------------------------------------
 function ProductDrawer({
@@ -1163,11 +1321,45 @@ function ProductDrawer({
           <h3 className={sectionTitleCls}>Product Details</h3>
           <div className="flex flex-col gap-4">
             <div>
-              <label className={labelCls}>Sizes</label>
-              <SizeTagInput sizes={form.sizes} onChange={(s) => onChange({ sizes: s })} />
-              <p className="font-dm text-[11px] text-(--neutral-400) mt-1">
-                e.g. 250ml, 500ml, 1kg — displayed as selectable buttons on the product page.
-              </p>
+              <label className={labelCls}>Options</label>
+              <div className="inline-flex rounded-[8px] border border-(--neutral-200) p-0.5 mb-3">
+                {(["sizes", "variants"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => onChange({ variantMode: mode })}
+                    className={`px-3 py-1.5 rounded-[6px] font-dm text-[13px] font-medium transition-colors ${
+                      form.variantMode === mode ? "bg-(--green-800) text-white" : "text-(--neutral-600) hover:bg-(--neutral-50)"
+                    }`}
+                  >
+                    {mode === "sizes" ? "Sizes" : "Variants (color/flavour)"}
+                  </button>
+                ))}
+              </div>
+
+              {form.variantMode === "sizes" ? (
+                <>
+                  <SizeTagInput sizes={form.sizes} onChange={(s) => onChange({ sizes: s })} />
+                  <p className="font-dm text-[11px] text-(--neutral-400) mt-1">
+                    e.g. 250ml, 500ml, 1kg — displayed as selectable buttons on the product page.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <VariantEditor
+                    variants={form.variants}
+                    onChange={(v) => onChange({ variants: v })}
+                    imageKeys={form.imageKeys}
+                    groupLabel={form.variantGroupLabel}
+                    onGroupLabelChange={(v) => onChange({ variantGroupLabel: v })}
+                    imagesHidden={form.variantImagesHidden}
+                    onImagesHiddenChange={(v) => onChange({ variantImagesHidden: v })}
+                  />
+                  <p className="font-dm text-[11px] text-(--neutral-400) mt-1">
+                    Each variant can use a photo already uploaded above, or its own — clicking a variant on the storefront jumps to that photo. Only affects orders, never synced to Zoho.
+                  </p>
+                </>
+              )}
             </div>
             <div>
               <label className={labelCls}>How to Use</label>
@@ -1616,6 +1808,15 @@ export function AdminProductsClient() {
       outOfStock: form.outOfStock,
       imageObjectKeys: form.imageKeys,
       sizes: form.sizes,
+      variantMode: form.variantMode,
+      variantGroupLabel: form.variantGroupLabel.trim() || null,
+      variantImagesHidden: form.variantImagesHidden,
+      variants: form.variantMode === "variants"
+        ? form.variants.filter((v) => v.label.trim()).map((v) => ({
+            label: v.label.trim(),
+            imageObjectKey: v.imageObjectKey || undefined,
+          }))
+        : [],
       howToUse: form.howToUse.trim() || null,
       ingredients: form.ingredients.trim() || null,
     };
@@ -1811,6 +2012,23 @@ export function AdminProductsClient() {
       >
         <Star size={16} />
         View Reviews
+      </button>
+
+      {/* Zoho staging review queue — new Zoho items land here instead of
+          auto-creating live products. See AdminZohoStagedItemsClient. */}
+      <button
+        onClick={() => router.push('/admin/products/zoho')}
+        className="h-10 px-5 rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+      >
+        <ListChecks size={16} />
+        Zoho Products
+      </button>
+      <button
+        onClick={() => router.push('/admin/products/zoho/expelled')}
+        className="h-10 px-5 rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+      >
+        <Archive size={16} />
+        Expelled Zoho Products
       </button>
     </div>
   );

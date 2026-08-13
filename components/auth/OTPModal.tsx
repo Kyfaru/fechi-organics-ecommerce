@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Icon } from "@iconify/react";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
+import Turnstile, { TurnstileHandle } from "@/components/auth/Turnstile";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,8 +18,10 @@ interface OTPModalProps {
   onVerified: () => void;
   /** Called when the user hits the resend rate limit — parent should show an error. */
   onMaxAttemptsReached: () => void;
-  /** Called to send/resend the OTP email. */
-  onRequestOTP: () => Promise<void>;
+  /** Called to send/resend the OTP email. Only invoked for resend — the
+   * initial send happens before this modal opens — with a freshly solved
+   * Turnstile token, since the endpoint requires one on every call. */
+  onRequestOTP: (captchaToken: string) => Promise<void>;
   /** Called with the entered OTP string; returns success or an error message. */
   onVerifyOTP: (otp: string) => Promise<{ success: boolean; error?: string }>;
 }
@@ -55,8 +58,10 @@ export default function OTPModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [isClosingDueToLimit, setIsClosingDueToLimit] = useState(false);
+  const [resendCaptchaToken, setResendCaptchaToken] = useState<string | null>(null);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const resendTurnstileRef = useRef<TurnstileHandle>(null);
 
   // -------------------------------------------------------------------------
   // Countdown timer — decrements every second until it hits 0
@@ -82,6 +87,7 @@ export default function OTPModal({
       setResendCount(0);
       setError("");
       setIsClosingDueToLimit(false);
+      setResendCaptchaToken(null);
       // Give the DOM a tick to mount before focusing
       setTimeout(() => inputRefs.current[0]?.focus(), 50);
     }
@@ -146,6 +152,8 @@ export default function OTPModal({
   // Resend handler
   // -------------------------------------------------------------------------
   async function handleResend(): Promise<void> {
+    if (!resendCaptchaToken) return;
+
     // Rate limit: after exhausting all RESEND_STEPS, block further attempts
     if (resendCount >= RESEND_STEPS.length) {
       setIsClosingDueToLimit(true);
@@ -161,13 +169,17 @@ export default function OTPModal({
     setResendCount((c) => c + 1);
     setTimeLeft(nextTime);
     setCanResend(false);
+    const tokenForThisResend = resendCaptchaToken;
+    setResendCaptchaToken(null);
 
     try {
-      await onRequestOTP();
+      await onRequestOTP(tokenForThisResend);
       toast.success("Code sent!", { message: "Check your email for a new code" });
     } catch {
       // Non-fatal — the user can try again when the next timer expires
       console.warn("[OTPModal] Resend OTP request failed silently");
+    } finally {
+      resendTurnstileRef.current?.reset();
     }
 
     setTimeout(() => inputRefs.current[0]?.focus(), 50);
@@ -351,20 +363,29 @@ export default function OTPModal({
                 </span>
               </span>
             ) : (
-              /* Resend link — shown once timer reaches 0 */
-              <button
-                onClick={handleResend}
-                className="flex items-center gap-1.5 text-sm font-medium transition-colors hover:underline"
-                style={{ color: "#045a03" }}
-              >
-                <Icon
-                  icon="solar:refresh-circle-linear"
-                  width={16}
-                  height={16}
-                  className="shrink-0"
+              /* Resend — a fresh Turnstile solve is required before each
+                 resend, since the send-otp endpoint requires one per call */
+              <div className="flex flex-col items-center gap-2">
+                <Turnstile
+                  ref={resendTurnstileRef}
+                  onVerify={setResendCaptchaToken}
+                  onExpire={() => setResendCaptchaToken(null)}
                 />
-                No code yet? Send it again
-              </button>
+                <button
+                  onClick={handleResend}
+                  disabled={!resendCaptchaToken}
+                  className="flex items-center gap-1.5 text-sm font-medium transition-colors hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:no-underline"
+                  style={{ color: "#045a03" }}
+                >
+                  <Icon
+                    icon="solar:refresh-circle-linear"
+                    width={16}
+                    height={16}
+                    className="shrink-0"
+                  />
+                  No code yet? Send it again
+                </button>
+              </div>
             )}
           </div>
         )}

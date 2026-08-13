@@ -24,10 +24,28 @@ export async function pushSaleReceiptToZoho(args: {
   referenceNumber?: string | null;
   customerName?: string | null;
   customerEmail?: string | null;
+  customerPhone?: string | null;
   paymentMode: string;
   items: Array<{ productId: string; name: string; quantity: number; priceKes: number }>;
   discountKes?: number;
   shippingKes?: number;
+  // Delivery destination, formatted "town/building/estate, zone, county" —
+  // pass whatever's known, blanks are dropped rather than left as empty segments.
+  deliveryTown?: string | null;
+  deliveryZoneLabel?: string | null;
+  deliveryCounty?: string | null;
+  // International orders only — folded into billing_address (state/zip/country)
+  // rather than the line-item title, since Kenya orders already cover their
+  // location via deliveryTown/deliveryZoneLabel/deliveryCounty above.
+  isInternational?: boolean;
+  deliveryState?: string | null;
+  deliveryPostalCode?: string | null;
+  deliveryCountryName?: string | null;
+  // Gateway reference (M-Pesa receipt number, or the Paystack reference for
+  // card payments), folded into reference_number alongside the order number
+  // — unless the caller omits referenceNumber (card payments), in which case
+  // this is the whole reference_number.
+  paymentReference?: string | null;
   notes: string;
 }): Promise<{ salesReceiptId: string | null }> {
   const { organizationId, branchId, referenceType, referenceId, items } = args;
@@ -48,28 +66,65 @@ export async function pushSaleReceiptToZoho(args: {
       name: args.customerName,
     });
 
-    // No top-level discount/shipping_charge fields on Sales Receipts are
-    // confirmed in Zoho's docs — fold them into notes so the amounts aren't
-    // silently dropped, pending live verification of real field names.
+    // No top-level discount field is confirmed in Zoho's docs — fold it into
+    // notes so the amount isn't silently dropped, pending live verification
+    // of the real field name. Shipping is itemized as a line item below
+    // instead, so the receipt's own total already includes it.
     const extraNotes = [
       args.discountKes ? `Discount: KES ${(args.discountKes / 100).toFixed(2)}` : null,
-      args.shippingKes ? `Shipping: KES ${(args.shippingKes / 100).toFixed(2)}` : null,
     ].filter(Boolean);
     const notes = [args.notes, ...extraNotes].filter(Boolean).join(" | ");
+
+    const deliveryTitleParts = [args.deliveryTown, args.deliveryZoneLabel, args.deliveryCounty].filter(
+      (p): p is string => !!p && p.trim().length > 0,
+    );
+    const deliveryLineItem =
+      args.shippingKes && args.shippingKes > 0
+        ? [
+            {
+              name: deliveryTitleParts.length > 0 ? `Delivery to ${deliveryTitleParts.join(", ")}` : "Delivery",
+              quantity: 1,
+              rate: args.shippingKes / 100,
+              location_id: branch?.zohoLocationId ?? undefined,
+            },
+          ]
+        : [];
+
+    const referenceNumber = [args.referenceNumber, args.paymentReference].filter(Boolean).join(" / ") || undefined;
 
     const payload: ZohoSalesReceiptPayload = {
       customer_id: contactId,
       payment_mode: args.paymentMode,
       date: new Date().toISOString().slice(0, 10),
-      line_items: items.map((item) => ({
-        item_id: itemIdByProductId.get(item.productId) ?? undefined,
-        name: item.name,
-        quantity: item.quantity,
-        rate: item.priceKes / 100,
-      })),
-      location_id: branch?.zohoLocationId ?? undefined,
-      reference_number: args.referenceNumber ?? undefined,
+      line_items: [
+        ...items.map((item) => ({
+          item_id: itemIdByProductId.get(item.productId) ?? undefined,
+          name: item.name,
+          quantity: item.quantity,
+          rate: item.priceKes / 100,
+          // Set per line item, not at the transaction level — see the
+          // CONFIRMED note on ZohoSalesReceiptPayload.line_items in lib/zoho.ts.
+          location_id: branch?.zohoLocationId ?? undefined,
+        })),
+        ...deliveryLineItem,
+      ],
+      reference_number: referenceNumber,
       notes,
+      billing_address:
+        args.customerName || args.customerPhone
+          ? {
+              attention: [args.customerName, args.customerPhone].filter(Boolean).join(", ") || undefined,
+              phone: args.customerPhone ?? undefined,
+              ...(args.isInternational
+                ? {
+                    address: args.deliveryTown ?? undefined,
+                    state: args.deliveryState ?? undefined,
+                    zip: args.deliveryPostalCode ?? undefined,
+                    country: args.deliveryCountryName ?? undefined,
+                  }
+                : {}),
+            }
+          : undefined,
     };
 
     // Response wraps the created record under "sales_receipt" (snake_case) —

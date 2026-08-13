@@ -89,15 +89,29 @@ export type ZohoSalesReceiptPayload = {
     name?: string;
     quantity: number;
     rate: number;
+    // CONFIRMED via a live 400 from a real order push: this org has Zoho
+    // Books' "Item-Level Location" tracking enabled, which rejects a
+    // transaction-level location_id outright — error 27520 "You cannot
+    // associate an Item-Level location at a transaction level." Location
+    // must be set per line item instead.
+    location_id?: string;
   }>;
-  // UNVERIFIED — not listed on the generic Sales Receipt docs page, but
-  // Zoho Books' Locations feature (Settings → Locations, confirmed via
-  // GET /locations) is expected to extend most transaction types with this
-  // field once enabled for the org. Confirm against a live payload; Zoho
-  // will simply ignore an unrecognized field if this guess is wrong.
-  location_id?: string;
   reference_number?: string;
   notes?: string;
+  // Per-transaction "Bill To" override — doesn't touch the shared Contact
+  // record (see resolve-customer.ts), just this receipt's display block.
+  // attention carries "name, +254712345678" so the phone shows without a
+  // dedicated contact field.
+  billing_address?: {
+    attention?: string;
+    phone?: string;
+    // International orders only — Kenya orders cover their delivery location
+    // via the line-item title instead (see push-sale-receipt.ts).
+    address?: string;
+    state?: string;
+    zip?: string;
+    country?: string;
+  };
 };
 
 export type ZohoInventoryAdjustmentPayload = {
@@ -108,7 +122,13 @@ export type ZohoInventoryAdjustmentPayload = {
   line_items: Array<{
     item_id: string;
     quantity_adjusted: number; // signed delta — negative for a sale
-    warehouse_id?: string;
+    // CONFIRMED via Zoho's Item Adjustments API docs (zoho.com/inventory/api/v1/itemadjustments)
+    // after a live 400 "Invalid Element warehouse_id" — Zoho Inventory's
+    // field is location_id; warehouse_id is a Zoho POS field, a different
+    // product. Set per line item (not at the transaction root) to match
+    // this account's item-level location tracking, confirmed by the
+    // analogous Sales Receipt error (see ZohoSalesReceiptPayload above).
+    location_id?: string;
   }>;
   description?: string;
 };

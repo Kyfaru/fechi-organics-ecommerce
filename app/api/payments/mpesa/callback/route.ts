@@ -12,6 +12,8 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { markPaymentFailed, markPaymentSuccess } from "@/lib/payments/post-payment";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 function safaricomOk() {
   return Response.json({ ResultCode: 0, ResultDesc: "Accepted" }, { status: 200 });
@@ -21,7 +23,8 @@ export async function POST(req: NextRequest) {
   let body: unknown;
   try {
     body = await req.json();
-  } catch {
+  } catch (parseErr) {
+    reportError(parseErr, { route: "POST /api/payments/mpesa/callback", tags: { stage: "body_parse" } });
     // Malformed JSON — still return 200 so Safaricom doesn't retry
     return safaricomOk();
   }
@@ -51,7 +54,13 @@ export async function POST(req: NextRequest) {
     // Look up the transaction by CheckoutRequestID
     const transaction = await db.transaction.findUnique({
       where: { checkoutRequestId: CheckoutRequestID },
-      select: { id: true, orderId: true, status: true, mpesaReceiptNumber: true },
+      select: {
+        id: true,
+        orderId: true,
+        status: true,
+        mpesaReceiptNumber: true,
+        order: { select: { userId: true } },
+      },
     });
 
     if (!transaction) {
@@ -85,16 +94,31 @@ export async function POST(req: NextRequest) {
       rawCallbackPayload: body as unknown as import("@prisma/client").Prisma.InputJsonValue,
     } as const;
 
+    // Customer id, when known, ties this event back to the shopper in PostHog
+    // funnels; webhooks have no browser distinctId so we fall back to "system".
+    const distinctId = transaction.order?.userId ?? "system";
+
     if (isSuccess) {
       await markPaymentSuccess({
         transactionId: transaction.id,
         orderId: transaction.orderId,
         transactionData,
       });
+      trackServerEvent(distinctId, "payment_succeeded", {
+        provider: "mpesa",
+        orderId: transaction.orderId,
+        transactionId: transaction.id,
+      });
     } else {
       await markPaymentFailed({
         transactionId: transaction.id,
         orderId: transaction.orderId,
+        reason: `${ResultCode}:${ResultDesc}`,
+      });
+      trackServerEvent(distinctId, "payment_failed", {
+        provider: "mpesa",
+        orderId: transaction.orderId,
+        transactionId: transaction.id,
         reason: `${ResultCode}:${ResultDesc}`,
       });
     }
@@ -103,6 +127,7 @@ export async function POST(req: NextRequest) {
       `[mpesa/callback] Processed — tx=${transaction.id} success=${isSuccess} receipt=${mpesaReceiptNumber ?? "N/A"}`,
     );
   } catch (e) {
+    reportError(e, { route: "POST /api/payments/mpesa/callback", tags: { stage: "handler" } });
     // Log but do NOT return a non-200 — Safaricom must not retry
     console.error("[mpesa/callback] Processing error", e);
   }

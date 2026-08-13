@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 import { ok, Err } from "@/lib/api";
 import { getPeriodChange } from "@/lib/stats";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -31,6 +32,14 @@ export async function GET(req: NextRequest) {
       prevRevenueAgg,
       prevOrdersCount,
       prevNewCustomers,
+      // In-store — same metrics, mirrored from the online-order queries above.
+      inStoreRevenueAgg,
+      inStoreOrdersCount,
+      recentInStoreOrders,
+      allInStore30d,
+      inStoreByStatusRaw,
+      prevInStoreRevenueAgg,
+      prevInStoreOrdersCount,
     ] = await Promise.all([
       // Sum of totalKes for PAID orders in last 30 days
       db.order.aggregate({
@@ -110,12 +119,42 @@ export async function GET(req: NextRequest) {
       db.user.count({
         where: { role: "client", createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } },
       }),
+      db.inStoreOrder.aggregate({
+        _sum: { totalKes: true },
+        where: { paymentStatus: "PAID", createdAt: { gte: thirtyDaysAgo } },
+      }),
+      db.inStoreOrder.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
+      db.inStoreOrder.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 8,
+        select: {
+          id: true,
+          fulfillmentStatus: true,
+          paymentStatus: true,
+          totalKes: true,
+          createdAt: true,
+          customerName: true,
+          customerEmail: true,
+        },
+      }),
+      db.inStoreOrder.findMany({
+        where: { paymentStatus: "PAID", createdAt: { gte: thirtyDaysAgo } },
+        select: { createdAt: true, totalKes: true },
+      }),
+      // fulfillmentStatus only has CONFIRMED/PICKED_UP, both literal OrderStatus
+      // values too, so counts merge straight into ordersByStatus below.
+      db.inStoreOrder.groupBy({ by: ["fulfillmentStatus"], _count: { _all: true } }),
+      db.inStoreOrder.aggregate({
+        _sum: { totalKes: true },
+        where: { paymentStatus: "PAID", createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } },
+      }),
+      db.inStoreOrder.count({ where: { createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } } }),
     ]);
 
     // Build daily revenue chart for last 30 days
     // Key each order by its local KE date string (YYYY-MM-DD)
     const dailyMap: Record<string, number> = {};
-    for (const ord of allOrders30d) {
+    for (const ord of [...allOrders30d, ...allInStore30d]) {
       const dateKey = ord.createdAt.toISOString().slice(0, 10);
       dailyMap[dateKey] = (dailyMap[dateKey] ?? 0) + ord.totalKes;
     }
@@ -132,26 +171,52 @@ export async function GET(req: NextRequest) {
       status: g.status,
       count: g._count._all,
     }));
+    for (const g of inStoreByStatusRaw) {
+      const existing = ordersByStatus.find((s) => s.status === g.fulfillmentStatus);
+      if (existing) existing.count += g._count._all;
+      else ordersByStatus.push({ status: g.fulfillmentStatus, count: g._count._all });
+    }
+
+    // Merge recent orders with recent in-store orders (shaped to the same
+    // {status, paymentStatus, user} contract the table already renders) and
+    // re-slice to the top 8 by date, same pattern as /api/admin/orders.
+    const recentInStoreShaped = recentInStoreOrders.map((o) => ({
+      id: o.id,
+      status: o.fulfillmentStatus as string,
+      paymentStatus: o.paymentStatus,
+      totalKes: o.totalKes,
+      createdAt: o.createdAt,
+      user: { name: o.customerName ?? "Walk-in customer", email: o.customerEmail ?? "" },
+    }));
+    const mergedRecentOrders = [...recentOrders, ...recentInStoreShaped]
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, 8);
+
+    const revenue = (revenueAgg._sum.totalKes ?? 0) + (inStoreRevenueAgg._sum.totalKes ?? 0);
+    const prevRevenue = (prevRevenueAgg._sum.totalKes ?? 0) + (prevInStoreRevenueAgg._sum.totalKes ?? 0);
+    const orders = ordersCount + inStoreOrdersCount;
+    const prevOrders = prevOrdersCount + prevInStoreOrdersCount;
 
     return ok({
       stats: {
-        revenue: revenueAgg._sum.totalKes ?? 0,
-        orders: ordersCount,
+        revenue,
+        orders,
         newCustomers,
         lowStock: lowStockCount,
       },
       statsChange: {
-        revenue: getPeriodChange(revenueAgg._sum.totalKes ?? 0, prevRevenueAgg._sum.totalKes ?? 0),
-        orders: getPeriodChange(ordersCount, prevOrdersCount),
+        revenue: getPeriodChange(revenue, prevRevenue),
+        orders: getPeriodChange(orders, prevOrders),
         newCustomers: getPeriodChange(newCustomers, prevNewCustomers),
       },
-      recentOrders,
+      recentOrders: mergedRecentOrders,
       lowStockProducts,
       revenueChart,
       ordersByStatus,
     });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/dashboard", tags: { domain: "dashboard" } });
     console.error("[admin/dashboard] GET error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

@@ -44,7 +44,12 @@ export async function pushInventoryAdjustmentToZoho(args: {
       .map((i) => ({
         item_id: itemIdByProduct.get(i.productId)!,
         quantity_adjusted: -i.quantity,
-        ...(warehouseId ? { warehouse_id: warehouseId } : {}),
+        // Wire field is location_id (Zoho Inventory), not warehouse_id
+        // (that's Zoho POS) — see the CONFIRMED note on
+        // ZohoInventoryAdjustmentPayload.line_items in lib/zoho.ts. The
+        // branch column stays named zohoWarehouseId (admin-facing concept),
+        // only the field sent to Zoho differs.
+        ...(warehouseId ? { location_id: warehouseId } : {}),
       }));
 
     if (lineItems.length === 0) {

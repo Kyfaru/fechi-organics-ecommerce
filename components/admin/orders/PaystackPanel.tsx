@@ -152,6 +152,18 @@ export default function PaystackPanel({ orderContext, branchReady }: PaystackPan
           startCooldown();
         },
         onCancel: () => {
+          // Customer closed the popup before submitting card details — no
+          // webhook will ever arrive for this attempt, so the PENDING
+          // transaction/order rows created by initialize() above would
+          // otherwise sit stuck until the 10-minute SSE timeout. Same call
+          // PaymentWaitingModal's own Cancel button makes; best-effort only,
+          // matching its error handling (not fatal to the admin's flow).
+          const orderId = json.data?.inStoreOrderId;
+          if (orderId) {
+            fetch(`/api/admin/orders/instore/${orderId}/cancel-wait`, { method: "POST" }).catch((err) => {
+              console.error("[PaystackPanel] cancel-wait failed", err);
+            });
+          }
           setCharging(false);
           startCooldown();
         },

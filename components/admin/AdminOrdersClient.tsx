@@ -128,6 +128,31 @@ function formatDate(iso: string | null | undefined) {
   return new Date(iso).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function formatTime(iso: string | null | undefined) {
+  if (!iso) return "—";
+
+  return new Date(iso).toLocaleTimeString("en-KE", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+function formatDateTime(iso: string | null | undefined) {
+  if (!iso) return "—";
+
+  return new Date(iso).toLocaleString("en-KE", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
 // 31-letter ASCII alphabet, 1-indexed by day-of-month (1-31).
 const ALPHABET = [
   "A","B","C","D","E","F","G","H","I","J","K","L","M",
@@ -372,7 +397,7 @@ function InStoreOrderDrawerContent({
                   <div className="flex items-center gap-2 text-[#15803D]">
                     <CheckCircle size={16} />
                     <p className="font-dm text-[13px] font-semibold">
-                      Picked up{order.pickedUpAt ? ` — ${formatDate(order.pickedUpAt)}` : ""}
+                      Picked up{order.pickedUpAt ? ` — ${formatDate(order.pickedUpAt)} ${formatTime(order.pickedUpAt)}` : ""}
                     </p>
                   </div>
                 ) : (
@@ -498,7 +523,7 @@ function InStoreOrderDrawerContent({
 
           {/* Date info */}
           <div className="font-dm text-[11px] text-(--neutral-400)">
-            <p>Placed {formatDate(order.createdAt)}</p>
+            <p>Placed {formatDate(order.createdAt)} {formatTime(order.createdAt)}</p>
             <p className="mt-0.5">In-store order</p>
           </div>
         </div>
@@ -707,7 +732,7 @@ function OrderDetailDrawer({
                       <div>
                         <p className="font-dm text-[14px] font-medium text-(--neutral-900)">Processing</p>
                         {isProcessed ? (
-                          <p className="font-dm text-[12px] text-(--neutral-500)">Packaging started {formatDate(order.processedAt)}</p>
+                          <p className="font-dm text-[12px] text-(--neutral-500)">Packaging started {formatDateTime(order.processedAt)}</p>
                         ) : (
                           <p className="font-dm text-[12px] text-(--neutral-400)">Waiting to be packaged / shipped</p>
                         )}
@@ -944,7 +969,7 @@ function OrderDetailDrawer({
 
             {/* Date info */}
             <div className="font-dm text-[11px] text-(--neutral-400)">
-              <p>Placed {formatDate(order.createdAt)}</p>
+              <p>Placed {formatDate(order.createdAt)} {formatTime(order.createdAt)}</p>
               {order.deliveryType && (
                 <p className="mt-0.5">{order.deliveryType === "PICKUP" ? "Pickup order" : "Delivery order"}</p>
               )}
@@ -1203,7 +1228,7 @@ export function AdminOrdersClient() {
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => {
         const o = row as unknown as AdminOrderRow;
-        return <span className="font-dm text-[12px] text-(--neutral-400)">{formatDate(o.createdAt)}</span>;
+        return <span className="font-dm text-[12px] text-(--neutral-400)">{formatDateTime(o.createdAt)}</span>;
       },
     },
     {

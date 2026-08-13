@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -14,7 +15,8 @@ export async function GET(req: NextRequest) {
     const unread = await db.contactMessage.count({ where: { status: "new" } });
     return ok({ unread });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/contact-messages/count", tags: { domain: "contact-messages" } });
     console.error("[admin/contact-messages/count] GET error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

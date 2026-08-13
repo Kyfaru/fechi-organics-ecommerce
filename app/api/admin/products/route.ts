@@ -8,6 +8,7 @@ import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
 import { approvalExecutors } from "@/lib/approval-executors";
 import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/products
@@ -20,13 +21,24 @@ export async function GET(req: NextRequest) {
   if (denied) return denied;
 
   try {
+    // activeOnly=true scopes results to storefront-eligible products — used
+    // by pickers (e.g. the in-store order product picker) that must not
+    // offer inactive products for sale. Omitted entirely for the general
+    // product-management page, which needs to see and edit inactive products too.
+    const activeOnly = req.nextUrl.searchParams.get("activeOnly") === "true";
+
     const products = await db.product.findMany({
+      where: activeOnly ? { isActive: true } : undefined,
       orderBy: { createdAt: "desc" },
       include: {
         category: { select: { id: true, name: true, slug: true } },
         images: {
           orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }],
           select: { id: true, objectKey: true, isPrimary: true, sortOrder: true, alt: true },
+        },
+        variants: {
+          orderBy: { sortOrder: "asc" },
+          select: { id: true, label: true, sortOrder: true, image: { select: { objectKey: true } } },
         },
       },
     });
@@ -35,7 +47,8 @@ export async function GET(req: NextRequest) {
     return ok({ products });
   } catch (e) {
     console.error("[admin/products] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/products" });
+    return Err.internal();
   }
 }
 
@@ -64,6 +77,13 @@ const CreateSchema = z.object({
   ingredients: z.string().nullable().optional(),
   // imageObjectKeys: ordered array; index 0 = primary.
   imageObjectKeys: z.array(z.string()).optional(),
+  variantMode: z.enum(["sizes", "variants"]).optional(),
+  variantGroupLabel: z.string().nullable().optional(),
+  variantImagesHidden: z.boolean().optional(),
+  variants: z.array(z.object({
+    label: z.string().min(1),
+    imageObjectKey: z.string().optional(),
+  })).optional(),
 }).strict();
 
 export async function POST(req: NextRequest) {
@@ -96,7 +116,8 @@ export async function POST(req: NextRequest) {
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("A product with this slug already exists");
     }
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/products" });
+    return Err.internal();
   }
 }
 
@@ -128,6 +149,14 @@ const UpdateSchema = z.object({
   // imageObjectKeys: ordered array; index 0 = primary.
   // Passing this replaces all existing images with the new set.
   imageObjectKeys: z.array(z.string()).optional(),
+  variantMode: z.enum(["sizes", "variants"]).optional(),
+  variantGroupLabel: z.string().nullable().optional(),
+  variantImagesHidden: z.boolean().optional(),
+  // Passing this replaces all existing variants with the new set.
+  variants: z.array(z.object({
+    label: z.string().min(1),
+    imageObjectKey: z.string().optional(),
+  })).optional(),
 }).strict();
 
 export async function PATCH(req: NextRequest) {
@@ -161,6 +190,7 @@ export async function PATCH(req: NextRequest) {
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("A product with this slug already exists");
     }
-    return Err.internal(e);
+    reportError(e, { route: "PATCH /api/admin/products" });
+    return Err.internal();
   }
 }

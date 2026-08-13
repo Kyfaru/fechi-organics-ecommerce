@@ -3,6 +3,7 @@ import { NextRequest } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { ok, Err } from "@/lib/api"
+import { reportError } from "@/lib/observability"
 
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
@@ -62,6 +63,7 @@ export async function POST(req: NextRequest) {
     return ok({ success: true })
   } catch (e) {
     console.error("[account/reviews] POST error", e)
-    return Err.internal(e)
+    reportError(e, { route: "POST /api/account/reviews" })
+    return Err.internal()
   }
 }

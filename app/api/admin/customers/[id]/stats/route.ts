@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { ok, Err } from "@/lib/api";
 import { NextRequest } from "next/server";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 /**
  * GET /api/admin/customers/[id]/stats — testimonials given, lifetime spend,
@@ -40,7 +41,8 @@ export async function GET(
       channelUsage: channelGroups.map((g) => ({ channel: g.channel, count: g._count._all })),
     });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/customers/[id]/stats", tags: { domain: "customers" } });
     console.error("[admin/customers/[id]/stats] GET error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

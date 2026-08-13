@@ -23,6 +23,7 @@
  *     an org's Zoho items and sync each one.
  */
 
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { zohoGet, type ZohoItem } from "@/lib/zoho";
 import { invalidateProductCache } from "@/lib/cache-tags";
@@ -46,7 +47,7 @@ export function slugify(name: string): string {
 }
 
 /** Generate a unique slug, appending a numeric suffix on collision. */
-async function uniqueSlug(base: string, excludeId?: string): Promise<string> {
+export async function uniqueSlug(base: string, excludeId?: string): Promise<string> {
   let slug = base;
   let attempt = 0;
 
@@ -56,6 +57,43 @@ async function uniqueSlug(base: string, excludeId?: string): Promise<string> {
     attempt++;
     slug = `${base}-${attempt}`;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Staged-item mapping
+// ---------------------------------------------------------------------------
+/**
+ * Maps a raw Zoho item onto zohoStagedItem's flattened review-queue fields.
+ * Mirrors the same field derivation `catalogFields`/`purchaseRateKes` use
+ * below for the mapped-product path, so a promoted staged item and a
+ * directly-mapped product end up with identical values for the same Zoho
+ * item — the only structural difference is which table they land in.
+ */
+function mapZohoItemToStagedFields(item: ZohoItem) {
+  const hasRate = typeof item.rate === "number" && Number.isFinite(item.rate);
+  const purchaseRateKes =
+    typeof item.purchase_rate === "number" && Number.isFinite(item.purchase_rate)
+      ? Math.round(item.purchase_rate * 100)
+      : null;
+
+  return {
+    name: item.name,
+    description: item.description ?? null,
+    sku: item.sku ?? null,
+    productType: item.product_type ?? null,
+    zohoStatus: item.status ?? null,
+    unit: item.unit ?? null,
+    brand: item.brand ?? null,
+    rateKes: hasRate ? Math.round(item.rate * 100) : null,
+    purchaseRateKes,
+    categoryNameRaw: item.category_name ?? null,
+    // Same field/fallback upsertBranchStocks reads for the mapped-product
+    // path (item.stock_on_hand is itself UNVERIFIED — see lib/zoho.ts) —
+    // null here (not 0) so "Zoho returned nothing" stays distinguishable
+    // from "Zoho returned a real zero" in the review queue.
+    stockOnHand: item.stock_on_hand ?? null,
+    rawPayload: item as unknown as Prisma.InputJsonValue,
+  };
 }
 
 /**
@@ -224,37 +262,28 @@ export async function syncItemToProduct(
     productId = existing.id;
     productSlug = existing.slug;
   } else {
-    const category = matchedCategory ?? (await db.category.findUnique({ where: { key: "UNCATEGORIZED" } }));
-    if (!category) {
-      console.error(
-        `[zoho-sync] No matching category and no UNCATEGORIZED fallback found — skipping item ${item.item_id}. Has prisma/seed.ts been run?`,
-      );
-      return;
-    }
-
-    const slug = await uniqueSlug(slugify(item.name));
-
-    const created = await db.$transaction(async (tx: TxClient) => {
-      const product = await tx.product.create({
-        data: {
-          ...catalogFields,
-          slug,
-          categoryId: category.id,
-          // A product must have some price to exist — default to 0 on create
-          // when Zoho didn't return a rate, unlike the update path.
-          priceKes: priceKesUpdate ?? 0,
-        },
-      });
-      await tx.productZohoMapping.create({
-        data: { productId: product.id, organizationId, zohoItemId: item.item_id },
-      });
-      const results = await upsertBranchStocks(tx, product.id, item, orgBranches);
-      return { product, results };
+    // No product mapping yet for this Zoho item. Never auto-create a live
+    // product from an unreviewed Zoho item — stage it for admin review
+    // instead (see prisma/schema.prisma's zohoStagedItem doc comment), and
+    // return early: nothing below this branch (cache invalidation, stock
+    // writes, low-stock notifications) applies to a product that doesn't
+    // exist yet.
+    const existingStaged = await db.zohoStagedItem.findUnique({
+      where: { organizationId_zohoItemId: { organizationId, zohoItemId: item.item_id } },
+      select: { status: true },
     });
 
-    productId = created.product.id;
-    productSlug = created.product.slug;
-    stockResults = created.results;
+    // Permanent guard — an admin explicitly excluded this item, so it must
+    // never resurface in the review queue just because it's still present
+    // (or re-appeared) in the Zoho catalog on a later sync.
+    if (existingStaged?.status === "EXCLUDED") return;
+
+    await db.zohoStagedItem.upsert({
+      where: { organizationId_zohoItemId: { organizationId, zohoItemId: item.item_id } },
+      create: { organizationId, zohoItemId: item.item_id, status: "PENDING", ...mapZohoItemToStagedFields(item) },
+      update: mapZohoItemToStagedFields(item), // lastSeenAt bumps via @updatedAt; status untouched so a still-PENDING row stays PENDING
+    });
+    return;
   }
 
   invalidateProductCache(productSlug);

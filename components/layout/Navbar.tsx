@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { LogoutModal } from "@/components/ui/LogoutModal";
+import { NavbarWhatsAppButton } from "@/components/ui/NavbarWhatsAppButton";
 import { useSession, signOut } from "@/lib/auth-client";
 import { readSessionCache, writeSessionCache, clearSessionCache } from "@/lib/session-cache";
 import { useTheme, clearPersistedQueryCache } from "@/app/providers";
@@ -505,6 +506,11 @@ export function Navbar({ flat = false, transparent = false }: { flat?: boolean; 
             </button>
           </Tooltip>
 
+          {/* WhatsApp */}
+          <Tooltip label="WhatsApp">
+            <NavbarWhatsAppButton transparent={isTransparent} />
+          </Tooltip>
+
           {/* Cart */}
           <Tooltip label="Cart">
             <Link
@@ -605,8 +611,9 @@ export function Navbar({ flat = false, transparent = false }: { flat?: boolean; 
           />
         </Link>
         <div className="flex items-center gap-2">
+          <NavbarWhatsAppButton variant="mobile" />
           <Link href="/cart" className="relative p-2" aria-label="Cart">
-            <Icon icon="mdi:cart-outline" width={22} className={mobileIsTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"} />
+            <Icon icon="solar:cart-large-4-linear" width={22} className={mobileIsTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"} />
             {cartCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] bg-[#27731e] text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none">
                 {cartCount > 99 ? "99+" : cartCount}

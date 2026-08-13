@@ -14,6 +14,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
+import { reportError } from "@/lib/observability";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
 import { isCardEligible } from "@/lib/payments/card-eligibility";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
@@ -46,7 +47,8 @@ export async function POST(req: NextRequest) {
   try {
     const raw = await req.json();
     parsed = bodySchema.parse(raw);
-  } catch {
+  } catch (bodyErr) {
+    reportError(bodyErr, { route: "POST /api/payments/paystack/initialize", tags: { stage: "body_validation" } });
     return Err.validation("Invalid request body");
   }
 
@@ -103,7 +105,8 @@ export async function POST(req: NextRequest) {
         discountCents = r.discountKes;
         if (r.deliveryFree) deliveryCents = 0;
         resolvedPromoId = r.promo.id;
-      } catch {
+      } catch (promoErr) {
+        reportError(promoErr, { route: "POST /api/payments/paystack/initialize", tags: { stage: "promo_resolution" } });
         /* invalid/expired — discount stays 0 */
       }
     }
@@ -164,6 +167,8 @@ export async function POST(req: NextRequest) {
         deliveryCity: deliveryData.city ?? deliveryData.state ?? null,
         deliveryCounty: deliveryData.county || deliveryData.country,
         deliveryZone: deliveryData.deliveryZone ?? pricing.label,
+        deliveryPostalCode: deliveryData.postalCode ?? null,
+        deliveryCountry: deliveryData.countryName ?? null,
         isInternational,
         branchId: branch.id,
         items: {
@@ -172,6 +177,8 @@ export async function POST(req: NextRequest) {
             name: item.product.name,
             priceKes: item.product.priceKes,
             quantity: item.quantity,
+            variantId: item.variantId,
+            variantLabel: item.variantLabel,
           })),
         },
       },
@@ -199,7 +206,15 @@ export async function POST(req: NextRequest) {
     });
 
     // 8. Initialize Paystack transaction
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.MPESA_CALLBACK_BASE_URL ?? "";
+    // Derived from the incoming request's own origin rather than
+    // NEXT_PUBLIC_APP_URL — that's inlined at build time, so a production
+    // image built without it passed through as a Docker build arg silently
+    // ships whatever it defaulted to (e.g. "http://localhost:3000"), sending
+    // customers back to a URL that only resolves on a developer's machine.
+    // req.nextUrl.origin reflects whatever domain the customer's browser is
+    // actually on right now — the same source verify/route.ts's redirects
+    // already rely on downstream.
+    const baseUrl = req.nextUrl.origin;
     const paystackRes = await initializeTransaction({
       email: userEmail,
       amount: totalCents,
@@ -228,7 +243,8 @@ export async function POST(req: NextRequest) {
       orderId: order.id,
     });
   } catch (e) {
+    reportError(e, { route: "POST /api/payments/paystack/initialize", tags: { stage: "handler" }, extra: { userId } });
     console.error("[paystack/initialize] POST error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

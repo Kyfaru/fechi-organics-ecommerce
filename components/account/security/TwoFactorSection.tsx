@@ -361,6 +361,22 @@ function BackupCodesMethod({ totpEnabled, isOAuthOnly, onRequirePasswordFirst }:
     if (!next) { setStep("idle"); setPassword("") }
   }
 
+  function handleCopy() {
+    navigator.clipboard.writeText(codes.join("\n"))
+      .then(() => toast.success("Codes copied to clipboard"))
+      .catch(() => toast.error("Could not copy codes"))
+  }
+
+  function handleDownload() {
+    const blob = new Blob([codes.join("\n") + "\n"], { type: "text/plain" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "fechi-organics-backup-codes.txt"
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <MethodRow
       icon="lucide:key"
@@ -431,6 +447,16 @@ function BackupCodesMethod({ totpEnabled, isOAuthOnly, onRequirePasswordFirst }:
                   {code}
                 </code>
               ))}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleCopy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 text-sm text-neutral-700 hover:bg-neutral-100">
+                <Icon icon="lucide:copy" width={14} />
+                Copy
+              </button>
+              <button onClick={handleDownload} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 text-sm text-neutral-700 hover:bg-neutral-100">
+                <Icon icon="lucide:download" width={14} />
+                Download .txt
+              </button>
             </div>
             <button onClick={() => setStep("password")} className="text-sm text-[#15803D] hover:underline">
               Generate new codes
