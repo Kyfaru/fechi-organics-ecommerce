@@ -161,19 +161,56 @@ export const auth = betterAuth({
               ? new Date()
               : undefined;
 
-          // Admin sessions expire after 8 hours; client sessions use the
-          // default 7-day expiry set in the session config above.
+          // Admin sessions expire at the next midnight (Africa/Nairobi)
+          // rather than a rolling window, so every admin is forced to
+          // re-authenticate once a day regardless of login time. Client
+          // sessions use the default 7-day expiry set in the session
+          // config above.
           if (user?.role === "admin" || captchaVerifiedAt) {
             return {
               data: {
                 ...session,
                 ...(user?.role === "admin" && {
-                  expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000),
+                  expiresAt: nextMidnightNairobi(),
                 }),
                 ...(captchaVerifiedAt && { captchaVerifiedAt }),
               },
             };
           }
+        },
+      },
+      // -----------------------------------------------------------------
+      // Activity-based session refresh (session.updateAge above) recomputes
+      // expiresAt from the flat 7-day session.expiresIn on every active
+      // request (see node_modules/better-auth/dist/api/routes/session.mjs,
+      // the `needsRefresh` branch calling internalAdapter.updateSession),
+      // which would silently undo the midnight cutoff set in create.before
+      // above the first time an admin is active a day after logging in.
+      // This hook re-anchors it the same way on every refresh.
+      //
+      // The update payload only ever contains { expiresAt, updatedAt } (it's
+      // keyed by token, not userId — see internal-adapter.mjs's
+      // updateSession), so role can't be read off `session` here. Instead it
+      // comes from context.context.session, which the get-session route sets
+      // (ctx.context.session = session) immediately before calling
+      // updateSession, in the same request — database hooks receive that
+      // same AuthContext instance (see to-auth-endpoints.mjs's
+      // `internalContext` construction). If that internal wiring ever
+      // changes upstream, `role` reads as undefined and this hook no-ops
+      // rather than mis-firing on the wrong sessions.
+      // -----------------------------------------------------------------
+      update: {
+        before: async (session, context) => {
+          if (!session.expiresAt) return;
+          const role = (context?.context?.session?.user as { role?: string } | undefined)?.role;
+          if (role !== "admin") return;
+
+          return {
+            data: {
+              ...session,
+              expiresAt: nextMidnightNairobi(),
+            },
+          };
         },
       },
     },
@@ -245,8 +282,57 @@ export const auth = betterAuth({
     twoFactor({
       issuer: "Fechi Organics",
       otpOptions: {
-        period: 30,
         digits: 6,
+        period: 10, // minutes
+        allowedAttempts: 5,
+        // Delivers the code Better Auth generates internally for its own
+        // /two-factor/send-otp + /two-factor/verify-otp endpoints. Replaces
+        // the old hand-rolled app/api/admin/otp/send + /verify routes, which
+        // checked for a real session — but this plugin's own sign-in hook
+        // (below, in the twoFactor plugin's "after" hook) deletes the real
+        // session and swaps in a scoped two-factor cookie before those
+        // routes ever ran, so they always 401'd on a returning admin.
+        //
+        // Channel (email vs SMS) isn't a Better Auth concept — there's only
+        // one generic "otp" method — so it's resolved here from the admin's
+        // stored preference (adminProfile.twoFaMethod), exactly like the
+        // retired /api/admin/otp/send route did.
+        sendOTP: async ({ user, otp }) => {
+          const profile = await db.adminProfile.findUnique({
+            where: { userId: user.id },
+            select: { twoFaMethod: true },
+          });
+          const method = profile?.twoFaMethod ?? "email";
+
+          if (method === "sms") {
+            const dbUser = await db.user.findUnique({
+              where: { id: user.id },
+              select: { phone: true, phoneCode: true },
+            });
+            const phone = dbUser?.phone ? combineLegacyPhone(dbUser.phone, dbUser.phoneCode) : null;
+            if (!phone) {
+              // Better Auth's /two-factor/send-otp always responds
+              // { status: true } regardless of what sendOTP does (it's
+              // fire-and-forget — see otp/index.mjs) so there's no way to
+              // surface this to the client here. The method-choice screen
+              // only ever lets an admin pick SMS when a phone is already on
+              // file, so this should be unreachable in practice; logged so
+              // a real occurrence (e.g. phone removed after enrollment)
+              // isn't silent in the server logs even though it's silent to
+              // the admin waiting on the code.
+              console.error("[auth] admin 2FA OTP: no phone on file for user", user.id);
+              return;
+            }
+            await sendSms(phone, `Your Fechi Organics admin login code: ${otp}. Valid for 10 minutes.`);
+            return;
+          }
+
+          if (!user.email) {
+            console.error("[auth] admin 2FA OTP: no email on file for user", user.id);
+            return;
+          }
+          await sendOTPEmail(user.email, otp, "sign-in");
+        },
       },
     }),
     // Bot protection on the credential forms — signup, admin login, and the

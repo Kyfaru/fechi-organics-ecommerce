@@ -175,7 +175,7 @@ function DropdownLink({
 
 // ── Navbar ───────────────────────────────────────────────────────────────────
 
-export function Navbar({ flat = false }: { flat?: boolean } = {}) {
+export function Navbar({ flat = false, transparent = false }: { flat?: boolean; transparent?: boolean } = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -183,7 +183,32 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(flat);
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [pastHero, setPastHero] = useState(!transparent);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+
+  // While `transparent`, watch the hero's own sentinel element (rendered by
+  // the page) rather than a hardcoded pixel height — works no matter how
+  // tall the hero renders at a given breakpoint.
+  useEffect(() => {
+    if (!transparent) return;
+    function check() {
+      const sentinel = document.getElementById("navbar-hero-sentinel");
+      setPastHero(!sentinel || sentinel.getBoundingClientRect().top <= 80);
+    }
+    check();
+    window.addEventListener("scroll", check, { passive: true });
+    window.addEventListener("resize", check);
+    return () => {
+      window.removeEventListener("scroll", check);
+      window.removeEventListener("resize", check);
+    };
+  }, [transparent]);
+
+  const isTransparent = transparent && !pastHero;
+  // The mobile drawer is an opaque white overlay — force the sticky mobile
+  // bar solid while it's open so its icons stay visible against it.
+  const mobileIsTransparent = isTransparent && !mobileOpen;
 
   const { theme, toggleTheme } = useTheme();
 
@@ -499,10 +524,15 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
       <div aria-hidden className="md:hidden h-16" />
 
       {/* ── Mobile Navbar (fixed) ── */}
-      <nav className="md:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between h-16 bg-white dark:bg-[#111] px-4 shadow-sm">
+      <nav
+        className={[
+          "md:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between h-16 px-4 transition-colors duration-300",
+          mobileIsTransparent ? "bg-transparent shadow-none" : "bg-white dark:bg-[#111] shadow-sm",
+        ].join(" ")}
+      >
         <Link href="/">
           <Image
-            src="/logo/Asset 16@5x.webp"
+            src={mobileIsTransparent ? "/logo/logo-white-version.webp" : "/logo/logo-black.webp"}
             alt="Fechi Organics"
             width={100}
             height={35}
@@ -512,7 +542,7 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
         <div className="flex items-center gap-2">
           <NavbarWhatsAppButton variant="mobile" />
           <Link href="/cart" className="relative p-2" aria-label="Cart">
-            <Icon icon="solar:cart-large-4-linear" width={22} className="text-[#1a1c1c] dark:text-white" />
+            <Icon icon="solar:cart-large-4-linear" width={22} className={mobileIsTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"} />
             {cartCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] bg-[#27731e] text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none">
                 {cartCount > 99 ? "99+" : cartCount}
@@ -521,7 +551,7 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
           </Link>
           {user && (
             <Link href="/account/inbox" className="relative p-2" aria-label="Notifications">
-              <Icon icon="lucide:bell" width={20} className="text-[#1a1c1c] dark:text-white" />
+              <Icon icon="lucide:bell" width={20} className={mobileIsTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"} />
               {unreadCount > 0 && (
                 <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
               )}
@@ -550,7 +580,7 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
             <Icon
               icon={mobileOpen ? "mdi:close" : "mdi:menu"}
               width={24}
-              className="text-[#1a1c1c] dark:text-white"
+              className={mobileIsTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"}
             />
           </button>
         </div>

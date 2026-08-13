@@ -675,6 +675,7 @@ function SalesTab({ payload, isLoading }: { payload: Record<string, unknown>; is
 
   const cols = [
     { key: "id", label: "Order", render: (_v: unknown, row: Record<string, unknown>) => <span className="font-mono text-[13px]">{shortId(String(row.id))}</span> },
+    { key: "channel", label: "Channel", render: (_v: unknown, row: Record<string, unknown>) => <StatusPill status={row.channel === "in-store" ? "In-Store" : "Online"} /> },
     { key: "customer", label: "Customer" },
     { key: "items", label: "Items" },
     { key: "totalKes", label: "Total", sortable: true, render: (_v: unknown, row: Record<string, unknown>) => <span className="font-dm text-[13px] font-medium">{formatKes(Number(row.totalKes))}</span> },

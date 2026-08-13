@@ -26,6 +26,9 @@ import type { MpesaGateway } from "@prisma/client";
 import { buildInStoreOrderNumber } from "@/lib/orders/generate-instore-order-number";
 import { requirePermission } from "@/lib/require-permission";
 import { reportError } from "@/lib/observability";
+import { publishQstashJSON } from "@/lib/qstash";
+
+const PAYMENT_TIMEOUT_SECONDS = 15 * 60; // abandon unpaid in-store orders 15 minutes after STK push
 
 const bodySchema = z
   .object({
@@ -323,6 +326,14 @@ export async function POST(req: NextRequest) {
       where: { id: transaction.id },
       data: { checkoutRequestId, mpesaGatewayUsed: gatewayUsed },
     });
+
+    // Schedule a timeout: if the walk-in customer abandons the STK prompt
+    // and no callback arrives within 15 minutes, flip the order to FAILED.
+    await publishQstashJSON(
+      "/api/admin/workers/check-failed-instore-payment",
+      { inStoreOrderId: order.id, transactionId: transaction.id },
+      { delay: PAYMENT_TIMEOUT_SECONDS },
+    );
 
     console.info(
       `[instore/mpesa/initiate] STK push initiated — order=${order.orderNumber} checkout=${checkoutRequestId}`,
