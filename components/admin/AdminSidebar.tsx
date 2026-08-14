@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  LogOut, ArrowLeft, ChevronLeft, ChevronRight, Menu, X,
+  LogOut, History, ChevronLeft, ChevronRight, Menu, X,
 } from "lucide-react";
 import { signOut, authClient } from "@/lib/auth-client";
 import { clearPersistedQueryCache } from "@/app/providers";
@@ -29,6 +29,9 @@ export function AdminSidebar() {
   // Fetch current admin profile to drive permission-based nav filtering.
   // Cached for 5 minutes — sidebar doesn't need real-time permission updates.
   const { data: me } = useAdminMe();
+  // /admin/activity is admin/super_admin-only (see its page + API route) —
+  // hide the link entirely for roles that would just hit a 403.
+  const showActivityLink = Boolean(me?.isSuperAdmin || me?.role === "admin");
 
   // Precomputed once per `me` change (not per render/navigation) and passed
   // down as plain data — keeps SidebarContent a stable component so it never
@@ -83,6 +86,7 @@ export function AdminSidebar() {
           collapsed={collapsed}
           pathname={pathname}
           visibleGroups={visibleGroups}
+          showActivityLink={showActivityLink}
           onToggleCollapsed={toggleCollapsed}
           onLogoutClick={() => setLogoutConfirming(true)}
         />
@@ -121,6 +125,7 @@ export function AdminSidebar() {
                 collapsed={collapsed}
                 pathname={pathname}
                 visibleGroups={visibleGroups}
+                showActivityLink={showActivityLink}
                 onNavClick={() => setMobileOpen(false)}
                 onToggleCollapsed={toggleCollapsed}
                 onLogoutClick={() => setLogoutConfirming(true)}
@@ -153,13 +158,14 @@ interface SidebarContentProps {
   collapsed: boolean;
   pathname: string;
   visibleGroups: VisibleGroup[];
+  showActivityLink: boolean;
   onNavClick?: () => void;
   onToggleCollapsed: () => void;
   onLogoutClick: () => void;
 }
 
 function SidebarContent({
-  mobile = false, collapsed, pathname, visibleGroups, onNavClick, onToggleCollapsed, onLogoutClick,
+  mobile = false, collapsed, pathname, visibleGroups, showActivityLink, onNavClick, onToggleCollapsed, onLogoutClick,
 }: SidebarContentProps) {
   return (
     <div className="flex flex-col h-full bg-(--green-900) dark:bg-(--dark-surface)">
@@ -224,14 +230,16 @@ function SidebarContent({
 
       {/* Bottom section */}
       <div className="border-t border-(--green-800) dark:border-(--dark-border) p-3 space-y-0.5 shrink-0">
-        <Link
-          href="/"
-          className={["flex items-center gap-3 h-10 rounded-[8px] px-3 text-white/70 dark:text-(--dark-muted) hover:bg-(--green-800) dark:hover:bg-(--dark-border) transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}
-          title={collapsed && !mobile ? "Back to Store" : undefined}
-        >
-          <ArrowLeft size={18} />
-          {(!collapsed || mobile) && <span className="font-dm text-[13px]">Back to Store</span>}
-        </Link>
+        {showActivityLink && (
+          <Link
+            href="/admin/activity"
+            className={["flex items-center gap-3 h-10 rounded-[8px] px-3 text-white/70 dark:text-(--dark-muted) hover:bg-(--green-800) dark:hover:bg-(--dark-border) transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}
+            title={collapsed && !mobile ? "Activity Log" : undefined}
+          >
+            <History size={18} />
+            {(!collapsed || mobile) && <span className="font-dm text-[13px]">Activity Log</span>}
+          </Link>
+        )}
         <button
           onClick={onLogoutClick}
           className={["w-full flex items-center gap-3 h-10 rounded-[8px] px-3 text-[#ff4545] hover:text-[#ff0f0f] hover:bg-(--green-800) dark:hover:bg-(--dark-border) transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}

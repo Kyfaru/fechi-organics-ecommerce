@@ -53,6 +53,15 @@ export async function DELETE(
   const denied = await requirePermission(req, { products: ["delete"] });
   if (denied) return denied;
 
+  let reason: string;
+  try {
+    const body = await req.json();
+    reason = typeof body?.reason === "string" ? body.reason.trim() : "";
+  } catch {
+    reason = "";
+  }
+  if (!reason) return Err.validation("A reason is required to permanently delete a product");
+
   try {
     const { id } = await params;
 
@@ -68,13 +77,13 @@ export async function DELETE(
     const ctx = await loadCallerContext();
     if (ctx.denied) return Err.forbidden();
 
-    const outcome = await requireApprovalOrProceed(ctx, "products", "delete", { slug: existing.slug }, id);
+    const outcome = await requireApprovalOrProceed(ctx, "products", "delete", { slug: existing.slug, reason }, id);
     if (!outcome.proceed) return Approval.queued(outcome.requestId);
 
-    await approvalExecutors["products:delete"]({ slug: existing.slug }, id);
+    await approvalExecutors["products:delete"]({ slug: existing.slug, reason }, id);
 
     console.info("[admin/products/[id]/permanent] DELETE (hard) —", id);
-    logActivity(ctx.id, `Permanently deleted product "${existing.name}"`, "product", id, req);
+    logActivity(ctx.id, `Permanently deleted product "${existing.name}"`, "product", id, req, { reason }, "CRITICAL");
     return ok({ id });
   } catch (e) {
     console.error("[admin/products/[id]/permanent] DELETE error", e);

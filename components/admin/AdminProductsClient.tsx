@@ -65,7 +65,6 @@ type AdminProduct = {
   bestSeller: boolean;
   isActive: boolean;
   outOfStock: boolean;
-  stock: number;
   ratingAvg: number;
   ratingCount: number;
   createdAt: string;
@@ -86,8 +85,6 @@ type DrawerFormData = {
   priceKes: string;
   compareAtPriceKes: string;
   variantLabel: string;
-  // Inventory
-  stock: string;
   bestSeller: boolean;
   isActive: boolean;
   outOfStock: boolean;
@@ -107,7 +104,7 @@ type DrawerFormData = {
 };
 
 type ViewMode = "grid" | "list";
-type SortOption = "newest" | "oldest" | "price-asc" | "price-desc" | "name-asc" | "stock-asc";
+type SortOption = "newest" | "oldest" | "price-asc" | "price-desc" | "name-asc";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -216,7 +213,7 @@ function blankForm(): DrawerFormData {
   return {
     name: "", slug: "", description: "", shortDescription: "",
     categoryId: "", priceKes: "", compareAtPriceKes: "", variantLabel: "",
-    stock: "0", bestSeller: false, isActive: true, outOfStock: false,
+    bestSeller: false, isActive: true, outOfStock: false,
     imageKeys: [], sizes: [], variantMode: "sizes", variantGroupLabel: "", variantImagesHidden: false, variants: [],
     howToUse: "", ingredients: "",
     seoTitle: "", metaDescription: "",
@@ -238,7 +235,7 @@ function productToForm(p: AdminProduct): DrawerFormData {
       ? String(p.compareAtPriceKes)
       : "",
     variantLabel: p.variantLabel ?? "",
-    stock: String(p.stock), bestSeller: p.bestSeller, isActive: p.isActive, outOfStock: p.outOfStock,
+    bestSeller: p.bestSeller, isActive: p.isActive, outOfStock: p.outOfStock,
     imageKeys: sortedImages.map((i) => i.objectKey),
     sizes: p.sizes ?? [],
     variantMode: p.variantMode === "variants" ? "variants" : "sizes",
@@ -254,18 +251,14 @@ function productToForm(p: AdminProduct): DrawerFormData {
 }
 
 // ---------------------------------------------------------------------------
-// Stock pill (floating on card)
+// Out-of-stock pill (floating on card) — stock levels themselves live on the
+// Inventory page (per-branch); this only reflects the outOfStock override.
 // ---------------------------------------------------------------------------
-function StockPill({ stock }: { stock: number }) {
-  const cfg =
-    stock === 0
-      ? "bg-(--danger-bg) text-(--danger)"
-      : stock < 10
-      ? "bg-(--gold-100) text-(--gold-700)"
-      : "bg-(--green-50) text-(--success)";
+function OutOfStockPill({ outOfStock }: { outOfStock: boolean }) {
+  if (!outOfStock) return null;
   return (
-    <span className={`absolute top-2 right-2 rounded-full px-2 py-0.5 text-[11px] font-dm font-medium ${cfg}`}>
-      {stock === 0 ? "Out" : stock < 10 ? `Low: ${stock}` : stock}
+    <span className="absolute top-2 right-2 rounded-full px-2 py-0.5 text-[11px] font-dm font-medium bg-(--danger-bg) text-(--danger)">
+      Out
     </span>
   );
 }
@@ -402,7 +395,7 @@ function ProductGridCard({
             <ImagePlus size={34} className="text-(--green-500) dark:text-(--dark-accent)" />
           </div>
         )}
-        <StockPill stock={product.stock} />
+        <OutOfStockPill outOfStock={product.outOfStock} />
         {savePct && (
           <span className="absolute top-2 left-2 rounded-full px-2 py-0.5 text-[11px] font-dm font-medium bg-(--gold-100) text-(--gold-700)">
             -{savePct}%
@@ -1386,16 +1379,9 @@ function ProductDrawer({
         {/* ── 5. Inventory ── */}
         <section>
           <h3 className={sectionTitleCls}>Inventory</h3>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className={labelCls}>Stock Quantity</label>
-              <input
-                type="number" min={0} className={inputCls}
-                value={form.stock}
-                onChange={(e) => onChange({ stock: e.target.value })}
-              />
-            </div>
-          </div>
+          <p className="text-[12px] font-dm text-(--neutral-500) mb-4">
+            Stock levels are managed per branch on the <a href="/admin/inventory" target="_blank" rel="noreferrer" className="underline hover:text-(--green-700)">Inventory page</a>.
+          </p>
           <div className="flex flex-col gap-3">
             <label className="flex items-center gap-2.5 cursor-pointer select-none">
               <Switch
@@ -1538,7 +1524,10 @@ export function AdminProductsClient() {
 
   // Confirm delete
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [bulkDeleteReason, setBulkDeleteReason] = useState("");
+  const [permanentDeleteReason, setPermanentDeleteReason] = useState("");
 
   // Permanent delete flow: confirm -> order-history check -> blocked message
   // OR slug-confirm -> real delete.
@@ -1584,6 +1573,10 @@ export function AdminProductsClient() {
         body: JSON.stringify({ branchId }),
       });
       const json = await res.json();
+      if (res.status === 202) {
+        toast.info("Sync queued for admin approval.");
+        return;
+      }
       if (!res.ok) throw new Error(json.error?.message ?? "Sync failed");
       toast.success("Zoho sync complete.");
       qc.invalidateQueries({ queryKey: ["admin-products"] });
@@ -1647,7 +1640,6 @@ export function AdminProductsClient() {
         case "price-asc": return a.priceKes - b.priceKes;
         case "price-desc": return b.priceKes - a.priceKes;
         case "name-asc": return a.name.localeCompare(b.name);
-        case "stock-asc": return a.stock - b.stock;
         default: return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       }
     });
@@ -1683,16 +1675,24 @@ export function AdminProductsClient() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(`/api/admin/products/${id}`, { method: "DELETE" });
-      return res.json();
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const res = await fetch(`/api/admin/products/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const json = await res.json();
+      if (res.status === 202) return { queued: true };
+      if (!json.ok) throw new Error(json.error?.message ?? "Could not delete product");
+      return json;
     },
-    onSuccess: () => {
-      toast.success("Product deactivated");
+    onSuccess: (res) => {
+      toast.success(res && "queued" in res ? "Deletion queued for admin approval" : "Product deactivated");
       qc.invalidateQueries({ queryKey: ["admin-products"] });
       setDeleteTarget(null);
+      setDeleteReason("");
     },
-    onError: () => toast.error("Could not delete product"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Could not delete product"),
   });
 
   async function handleConfirmPermanentDelete() {
@@ -1718,27 +1718,37 @@ export function AdminProductsClient() {
   }
 
   const permanentDeleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(`/api/admin/products/${id}/permanent`, { method: "DELETE" });
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const res = await fetch(`/api/admin/products/${id}/permanent`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
       const json = await res.json();
+      if (res.status === 202) return { queued: true };
       if (!json.ok) throw new Error(json.error?.message ?? "Could not delete product");
       return json;
     },
-    onSuccess: () => {
-      toast.success("Product permanently deleted");
+    onSuccess: (res) => {
+      toast.success(res && "queued" in res ? "Deletion queued for admin approval" : "Product permanently deleted");
       qc.invalidateQueries({ queryKey: ["admin-products"] });
       setPermanentSlugTarget(null);
       setPermanentSlugInput("");
+      setPermanentDeleteReason("");
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : "Could not delete product"),
   });
 
   const bulkMutation = useMutation({
-    mutationFn: async ({ ids, action }: { ids: string[]; action: "activate" | "deactivate" | "delete" }) => {
+    mutationFn: async ({ ids, action, reason }: { ids: string[]; action: "activate" | "deactivate" | "delete"; reason?: string }) => {
       // Sequential PATCH/DELETE for each — simple, avoids a bulk endpoint
       const promises = ids.map((id) => {
         if (action === "delete") {
-          return fetch(`/api/admin/products/${id}`, { method: "DELETE" });
+          return fetch(`/api/admin/products/${id}`, {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reason }),
+          });
         }
         return fetch(`/api/admin/products/${id}`, {
           method: "PATCH",
@@ -1754,6 +1764,7 @@ export function AdminProductsClient() {
       qc.invalidateQueries({ queryKey: ["admin-products"] });
       setSelected(new Set());
       setBulkDeleteConfirm(false);
+      setBulkDeleteReason("");
     },
     onError: () => toast.error("Bulk action failed"),
   });
@@ -1786,8 +1797,6 @@ export function AdminProductsClient() {
     // E1: form.priceKes is a digits-only string already in cents (e.g. "120000" = KES 1,200.00)
     const priceKes = form.priceKes ? parseInt(form.priceKes, 10) : NaN;
     const compareAtPriceKes = form.compareAtPriceKes ? parseInt(form.compareAtPriceKes, 10) : undefined;
-    const stock = parseInt(form.stock, 10) || 0;
-
     if (!form.name.trim()) { toast.error("Product name is required"); return null; }
     if (!form.slug.trim()) { toast.error("Slug is required"); return null; }
     if (!form.categoryId) { toast.error("Category is required"); return null; }
@@ -1803,7 +1812,6 @@ export function AdminProductsClient() {
       priceKes,
       compareAtPriceKes: compareAtPriceKes && compareAtPriceKes > 0 ? compareAtPriceKes : undefined,
       variantLabel: form.variantLabel.trim() || undefined,
-      stock,
       bestSeller: form.bestSeller,
       isActive,
       outOfStock: form.outOfStock,
@@ -1902,25 +1910,6 @@ export function AdminProductsClient() {
               <p className="font-dm text-[12px] text-(--neutral-400) line-through">{formatKes(p.compareAtPriceKes)}</p>
             )}
           </div>
-        );
-      },
-    },
-    {
-      key: "stock",
-      label: "Stock",
-      sortable: true,
-      render: (_: unknown, row: Record<string, unknown>) => {
-        const p = row as unknown as AdminProduct;
-        const cfg =
-          p.stock === 0
-            ? "bg-(--danger-bg) text-(--danger)"
-            : p.stock < 10
-            ? "bg-(--gold-100) text-(--gold-700)"
-            : "bg-(--green-50) text-(--success)";
-        return (
-          <span className={`inline-block rounded-full px-2.5 py-0.5 font-dm text-[12px] font-semibold ${cfg}`}>
-            {p.stock === 0 ? "Out of stock" : p.stock}
-          </span>
         );
       },
     },
@@ -2040,7 +2029,6 @@ export function AdminProductsClient() {
     { value: "price-asc", label: "Price: Low → High" },
     { value: "price-desc", label: "Price: High → Low" },
     { value: "name-asc", label: "Name A–Z" },
-    { value: "stock-asc", label: "Stock: Low → High" },
   ];
 
   return (
@@ -2199,26 +2187,46 @@ export function AdminProductsClient() {
       {/* ── Single delete confirm ── */}
       <ConfirmModal
         open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget)}
+        onClose={() => { setDeleteTarget(null); setDeleteReason(""); }}
+        onConfirm={() => {
+          if (!deleteReason.trim()) { toast.error("A reason is required"); return; }
+          if (deleteTarget) deleteMutation.mutate({ id: deleteTarget, reason: deleteReason.trim() });
+        }}
         title="Deactivate product?"
         description="The product will be hidden from the store. You can reactivate it any time."
         confirmLabel="Deactivate"
         danger
         loading={deleteMutation.isPending}
-      />
+      >
+        <textarea
+          value={deleteReason}
+          onChange={(e) => setDeleteReason(e.target.value)}
+          placeholder="Reason for deleting this product…"
+          className="w-full h-20 px-3 py-2 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] resize-none outline-none focus:border-(--danger)"
+        />
+      </ConfirmModal>
 
       {/* ── Bulk delete confirm ── */}
       <ConfirmModal
         open={bulkDeleteConfirm}
-        onClose={() => setBulkDeleteConfirm(false)}
-        onConfirm={() => bulkMutation.mutate({ ids: Array.from(selected), action: "delete" })}
+        onClose={() => { setBulkDeleteConfirm(false); setBulkDeleteReason(""); }}
+        onConfirm={() => {
+          if (!bulkDeleteReason.trim()) { toast.error("A reason is required"); return; }
+          bulkMutation.mutate({ ids: Array.from(selected), action: "delete", reason: bulkDeleteReason.trim() });
+        }}
         title={`Deactivate ${selected.size} products?`}
         description="All selected products will be hidden from the store."
         confirmLabel="Deactivate all"
         danger
         loading={bulkMutation.isPending}
-      />
+      >
+        <textarea
+          value={bulkDeleteReason}
+          onChange={(e) => setBulkDeleteReason(e.target.value)}
+          placeholder="Reason for deleting these products…"
+          className="w-full h-20 px-3 py-2 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] resize-none outline-none focus:border-(--danger)"
+        />
+      </ConfirmModal>
 
       {/* ── Permanently delete: confirm ── */}
       <ConfirmModal
@@ -2277,16 +2285,25 @@ export function AdminProductsClient() {
               placeholder={permanentSlugTarget.slug}
               className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--danger)"
             />
+            <textarea
+              value={permanentDeleteReason}
+              onChange={(e) => setPermanentDeleteReason(e.target.value)}
+              placeholder="Reason for permanently deleting this product…"
+              className="w-full h-20 px-3 py-2 rounded-xl border border-(--neutral-200) font-dm text-[13px] resize-none outline-none focus:border-(--danger)"
+            />
             <div className="flex gap-2 justify-end">
               <button
-                onClick={() => { setPermanentSlugTarget(null); setPermanentSlugInput(""); }}
+                onClick={() => { setPermanentSlugTarget(null); setPermanentSlugInput(""); setPermanentDeleteReason(""); }}
                 className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)"
               >
                 Cancel
               </button>
               <button
-                onClick={() => permanentDeleteMutation.mutate(permanentSlugTarget.id)}
-                disabled={permanentSlugInput !== permanentSlugTarget.slug || permanentDeleteMutation.isPending}
+                onClick={() => {
+                  if (!permanentDeleteReason.trim()) { toast.error("A reason is required"); return; }
+                  permanentDeleteMutation.mutate({ id: permanentSlugTarget.id, reason: permanentDeleteReason.trim() });
+                }}
+                disabled={permanentSlugInput !== permanentSlugTarget.slug || !permanentDeleteReason.trim() || permanentDeleteMutation.isPending}
                 className="px-4 py-2 rounded-xl bg-(--danger) text-white font-dm text-[14px] disabled:opacity-50"
               >
                 {permanentDeleteMutation.isPending ? "Deleting…" : "Delete Permanently"}

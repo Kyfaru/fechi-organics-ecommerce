@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle } from "lucide-react";
 
@@ -12,11 +13,12 @@ interface ConfirmModalProps {
   confirmLabel?: string;
   danger?: boolean;
   loading?: boolean;
+  children?: ReactNode;
 }
 
 export function ConfirmModal({
   open, onClose, onConfirm, title, description,
-  confirmLabel = "Confirm", danger = false, loading = false,
+  confirmLabel = "Confirm", danger = false, loading = false, children,
 }: ConfirmModalProps) {
   return (
     <AnimatePresence>
@@ -40,6 +42,7 @@ export function ConfirmModal({
                 <p className="font-dm text-[14px] text-(--neutral-500) dark:text-(--dark-muted)">{description}</p>
               </div>
             </div>
+            {children && <div className="mt-4">{children}</div>}
             <div className="flex justify-end gap-3 mt-6">
               <button
                 onClick={onClose}

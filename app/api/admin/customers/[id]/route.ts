@@ -6,7 +6,8 @@ import { ok, Err } from "@/lib/api";
 import { z } from "zod";
 import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { requirePermission } from "@/lib/require-permission";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
+import { logActivity } from "@/lib/admin-activity";
 import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
@@ -59,12 +60,17 @@ export async function GET(
 
 // ---------------------------------------------------------------------------
 // PATCH /api/admin/customers/[id]
-// Body: { banned?: boolean, banReason?: string }
+// Body: { banned?, banReason?, name?, phone?, email? }
+// name/phone/email exist mainly to let an admin fill in the real email for a
+// walk-in customer created with a placeholder (see lib/customers/find-or-create-walkin.ts).
 // Admins cannot ban themselves.
 // ---------------------------------------------------------------------------
 const PatchSchema = z.object({
   banned: z.boolean().optional(),
   banReason: z.string().max(500).optional(),
+  name: z.string().min(1).max(200).optional(),
+  phone: z.string().min(9).max(20).optional(),
+  email: z.string().email().optional(),
 }).strict();
 
 export async function PATCH(
@@ -89,11 +95,34 @@ export async function PATCH(
     const parsed = PatchSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
+    const before = await db.user.findUnique({ where: { id }, select: { name: true, email: true, phone: true } });
+    if (!before) return Err.notFound("Customer");
+
+    if (parsed.data.email) {
+      const emailTaken = await db.user.findFirst({
+        where: { email: parsed.data.email, id: { not: id } },
+        select: { id: true },
+      });
+      if (emailTaken) return Err.validation("That email is already in use by another account");
+    }
+
     const user = await db.user.update({
       where: { id },
       data: parsed.data,
-      select: { id: true, banned: true, banReason: true, role: true },
+      select: { id: true, name: true, email: true, phone: true, banned: true, banReason: true, role: true },
     });
+
+    const changedFields = (["name", "phone", "email"] as const).filter(
+      (f) => parsed.data[f] !== undefined && parsed.data[f] !== before[f],
+    );
+    if (changedFields.length > 0) {
+      const caller = await loadCallerContext();
+      if (!caller.denied) {
+        logActivity(caller.id, `Updated customer ${user.name} (${changedFields.join(", ")})`, "customer", id, req, {
+          changes: Object.fromEntries(changedFields.map((f) => [f, { from: before[f], to: parsed.data[f] }])),
+        }, "WARNING");
+      }
+    }
 
     console.info("[admin/customers/[id]] PATCH — updated", user.id);
     return ok({ user });

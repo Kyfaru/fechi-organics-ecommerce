@@ -22,6 +22,7 @@ import CheckboxGreen from "@/components/ui/CheckboxGreen";
 import { PrelineSelect } from "@/components/admin/ui/PrelineSelect";
 import { PrelineDatePicker } from "@/components/admin/ui/PrelineDatePicker";
 import { usePersistedFilter } from "@/hooks/use-persisted-filters";
+import { ExportModal } from "@/components/admin/exports/ExportModal";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1051,6 +1052,7 @@ export function AdminOrdersClient() {
   const [customFrom, setCustomFrom] = usePersistedFilter("orders:date-from", "");
   const [customTo, setCustomTo] = usePersistedFilter("orders:date-to", "");
   const [branchFilter, setBranchFilter] = usePersistedFilter("orders:branch", "");
+  const [exportOpen, setExportOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<AdminOrderRow | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -1389,12 +1391,14 @@ export function AdminOrdersClient() {
         )}
 
         <button
-          onClick={() => toast.info("Export coming soon")}
+          onClick={() => setExportOpen(true)}
           className="ml-auto h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center gap-2 transition-colors"
         >
           <Download size={14} /> Export
         </button>
       </div>
+
+      <ExportModal resource="orders" open={exportOpen} onClose={() => setExportOpen(false)} />
 
       {/* ── Table ── */}
       <motion.div

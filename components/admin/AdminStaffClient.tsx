@@ -610,6 +610,7 @@ export function AdminStaffClient() {
   // Delete modal
   const [deleteTarget, setDeleteTarget] = useState<StaffMember | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
 
   // Reset password modal
   const [resetTarget, setResetTarget] = useState<StaffMember | null>(null);
@@ -681,20 +682,27 @@ export function AdminStaffClient() {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (target: StaffMember) => {
-      const res = await fetch(`/api/admin/staff/${target.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/staff/${target.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: deleteReason.trim() }),
+      });
       const json = await res.json();
+      if (res.status === 202) return;
       if (!json.ok) throw new Error(json.error?.message ?? "Delete failed");
     },
     onSuccess: (_d, target) => {
       toast.success(`${target.name} deleted.`);
       qc.invalidateQueries({ queryKey: ["admin-staff"] });
       setDeleteTarget(null);
+      setDeleteReason("");
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : "Delete failed"),
   });
 
   async function handleDelete() {
     if (!deleteTarget) return;
+    if (!deleteReason.trim()) { toast.error("A reason is required"); return; }
     setDeleting(true);
     try { await deleteMutation.mutateAsync(deleteTarget); } finally { setDeleting(false); }
   }
@@ -1047,14 +1055,21 @@ export function AdminStaffClient() {
       {deleteTarget && (
         <ConfirmModal
           open
-          onClose={() => setDeleteTarget(null)}
+          onClose={() => { setDeleteTarget(null); setDeleteReason(""); }}
           onConfirm={handleDelete}
           title="Permanently delete staff member?"
           description={`This will delete ${deleteTarget.name}'s account, sessions, and profile. This cannot be undone.`}
           confirmLabel="Delete permanently"
           danger
           loading={deleting}
-        />
+        >
+          <textarea
+            value={deleteReason}
+            onChange={(e) => setDeleteReason(e.target.value)}
+            placeholder="Reason for deleting this staff member…"
+            className="w-full h-20 px-3 py-2 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] resize-none outline-none focus:border-(--danger)"
+          />
+        </ConfirmModal>
       )}
 
       {/* Reset password modal */}

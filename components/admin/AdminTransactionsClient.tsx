@@ -6,11 +6,12 @@ import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { SkeletonStatCard, SkeletonChart } from "@/components/admin/ui/Skeleton";
-import DownloadButton from "@/components/ui/DownloadButton";
+import { Download } from "lucide-react";
 import { ProgressMetricCard } from "@/components/ui/progress-metric-card";
 import { DonutChart, type DonutChartSegment } from "@/components/ui/donut-chart";
 import { VisxBarChart } from "@/components/ui/bar-chart-visx";
 import { toSeriesPoints } from "@/lib/chart-transforms";
+import { ExportModal } from "@/components/admin/exports/ExportModal";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,6 +46,10 @@ type ApiResponse = {
       pageSize: number;
       total: number;
       totalPages: number;
+    };
+    stats: {
+      totalRevenue: number;
+      pending: number;
     };
   };
 };
@@ -140,30 +145,12 @@ function buildProviderData(transactions: AdminTransaction[], filter: PieFilter) 
 }
 
 // ---------------------------------------------------------------------------
-// Export handler — triggers CSV download from server
-// Used by DownloadButton via onDownload prop
-// ---------------------------------------------------------------------------
-async function handleExportCsv(): Promise<void> {
-  const res = await fetch("/api/admin/finance/export", { method: "POST" });
-  if (!res.ok) {
-    console.error("[finance/export] failed:", res.status);
-    throw new Error(`Export failed: ${res.status}`);
-  }
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `transactions-${Date.now()}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 export function AdminTransactionsClient() {
   // Filter state for the payment methods pie chart (F4)
   const [pieFilter, setPieFilter] = useState<PieFilter>("SUCCESSFUL");
+  const [exportOpen, setExportOpen] = useState(false);
 
   const { data, isLoading } = useQuery<ApiResponse>({
     queryKey: ["admin-finance"],
@@ -176,11 +163,10 @@ export function AdminTransactionsClient() {
   const transactions = data?.data?.transactions ?? [];
   const total = data?.data?.pagination?.total ?? 0;
 
-  // Derived stats — computed from the fetched page.
-  // For fully accurate totals, the API would need to return aggregate fields.
-  const successTxns = transactions.filter((t) => t.status === "SUCCESS");
-  const pendingTxns = transactions.filter((t) => t.status === "PENDING");
-  const totalRevenue = successTxns.reduce((s, t) => s + t.amount, 0);
+  // Real, all-time figures from the API's aggregate query — not derived from
+  // the current paginated page (see app/api/admin/transactions/route.ts).
+  const totalRevenue = data?.data?.stats?.totalRevenue ?? 0;
+  const pendingCount = data?.data?.stats?.pending ?? 0;
 
   const monthlyRevenue = buildMonthlyRevenue(transactions);
 
@@ -303,14 +289,23 @@ export function AdminTransactionsClient() {
       <PageHeader
         title="Finance"
         description="Revenue, transactions and payment records"
-        action={<DownloadButton onDownload={handleExportCsv} label="Export CSV" />}
+        action={
+          <button
+            onClick={() => setExportOpen(true)}
+            className="h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center gap-2 transition-colors"
+          >
+            <Download size={14} /> Export
+          </button>
+        }
       />
+
+      <ExportModal resource="finance" open={exportOpen} onClose={() => setExportOpen(false)} />
 
       <div className="px-6 pb-8 space-y-6">
         {/* ── Stat cards ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           {isLoading ? (
-            Array.from({ length: 4 }).map((_, i) => <SkeletonStatCard key={i} />)
+            Array.from({ length: 3 }).map((_, i) => <SkeletonStatCard key={i} />)
           ) : (
             <>
               <ProgressMetricCard
@@ -333,18 +328,10 @@ export function AdminTransactionsClient() {
               />
               <ProgressMetricCard
                 title="Pending"
-                value={pendingTxns.length}
+                value={pendingCount}
                 change={-2.1}
                 changeLabel="vs last month"
                 accent="amber"
-                series={[]}
-              />
-              <ProgressMetricCard
-                title="Refunds"
-                value={0}
-                change={0}
-                changeLabel="vs last month"
-                accent="rose"
                 series={[]}
               />
             </>

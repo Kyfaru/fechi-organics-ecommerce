@@ -442,3 +442,23 @@ export async function syncInventoryIds(organizationId: string): Promise<{
 
   return { matched, unmatched };
 }
+
+/**
+ * Runs the full item sync followed by the (best-effort) inventory item-id
+ * backfill — the same two-step sequence POST /api/admin/zoho/sync performs.
+ * Extracted so both that route's direct admin/super_admin path and the
+ * "inventory:sync" approval executor (see lib/approval-executors.ts) can
+ * trigger the same work.
+ */
+export async function runZohoSync(organizationId: string) {
+  const result = await syncAllItems(organizationId);
+
+  let inventoryIdSync: { matched: number; unmatched: number } | null = null;
+  try {
+    inventoryIdSync = await syncInventoryIds(organizationId);
+  } catch (e) {
+    console.error("[runZohoSync] Inventory item-id sync failed for organization", organizationId, e);
+  }
+
+  return { ...result, inventoryIdSync };
+}

@@ -21,7 +21,9 @@ import { getRedis } from "@/lib/redis";
 import { makeRatelimit } from "@/lib/ratelimit";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { buildInStoreOrderNumber } from "@/lib/orders/generate-instore-order-number";
+import { findOrCreateWalkInCustomer } from "@/lib/customers/find-or-create-walkin";
 import { requirePermission } from "@/lib/require-permission";
+import { logActivity } from "@/lib/admin-activity";
 import { reportError } from "@/lib/observability";
 import { publishQstashJSON } from "@/lib/qstash";
 
@@ -167,6 +169,18 @@ export async function POST(req: NextRequest) {
     }
     const totalKes = Math.max(0, subtotalKes - discountKes);
 
+    // Resolve the walk-in to a real customer record (find-by-phone or
+    // create) so they appear on /admin/customers — skip on retry (already
+    // resolved) and when no phone was captured (nothing to dedup/identify by).
+    let resolvedCustomerUserId = customerUserId ?? null;
+    if (!retryOrderId && !resolvedCustomerUserId && customerPhone) {
+      resolvedCustomerUserId = await findOrCreateWalkInCustomer({
+        name: customerName,
+        phone: customerPhone,
+        email: customerEmail,
+      });
+    }
+
     let order;
     if (retryOrderId) {
       const existingOrder = await db.inStoreOrder.findUnique({ where: { id: retryOrderId } });
@@ -199,7 +213,7 @@ export async function POST(req: NextRequest) {
           branchId: branch.id,
           createdByAdminId: admin.id,
           createdByAdminName: admin.name,
-          customerUserId: customerUserId ?? null,
+          customerUserId: resolvedCustomerUserId,
           customerName: customerName ?? null,
           customerPhone,
           customerEmail: customerEmail ?? null,
@@ -224,8 +238,8 @@ export async function POST(req: NextRequest) {
 
       // Only on the initial creation path — retries reuse the same order and
       // must not record a second redemption for one order.
-      if (resolvedPromoId && normalizedPromoCode && customerUserId) {
-        await recordCouponRedemption(resolvedPromoId, customerUserId, order.id);
+      if (resolvedPromoId && normalizedPromoCode && resolvedCustomerUserId) {
+        await recordCouponRedemption(resolvedPromoId, resolvedCustomerUserId, order.id);
       }
     }
 
@@ -268,6 +282,15 @@ export async function POST(req: NextRequest) {
     console.info(
       `[instore/paystack/initialize] transaction initialized — order=${order.orderNumber} tx=${transaction.id} reference=${reference}`,
     );
+
+    if (!retryOrderId && admin.adminProfile) {
+      logActivity(admin.adminProfile.id, `Created in-store order ${order.orderNumber}`, "order", order.id, req, {
+        branchId: branch.id,
+        itemCount: items.length,
+        totalKes,
+        paymentMethod: "PAYSTACK",
+      });
+    }
 
     return ok({
       inStoreOrderId: order.id,

@@ -5,8 +5,10 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { invalidateProductCache } from "@/lib/cache-tags";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { createNotification } from "@/lib/notify";
-import { requirePermission } from "@/lib/require-permission";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { logActivity } from "@/lib/admin-activity";
 import { syncProductVariants } from "@/lib/products/sync-variants";
 import { reportError } from "@/lib/observability";
 
@@ -68,7 +70,6 @@ const UpdateSchema = z.object({
   priceKes: z.number().int().positive().optional(),
   compareAtPriceKes: z.number().int().positive().nullable().optional(),
   variantLabel: z.string().nullable().optional(),
-  stock: z.number().int().min(0).optional(),
   bestSeller: z.boolean().optional(),
   isActive: z.boolean().optional(),
   outOfStock: z.boolean().optional(),
@@ -169,7 +170,10 @@ export async function PATCH(
 
 // ---------------------------------------------------------------------------
 // DELETE /api/admin/products/[id]
-// Soft-delete: sets isActive = false
+// Soft-delete: sets isActive = false. Requires a reason (critical action —
+// logged and, for non-admin/super_admin roles, queued for approval instead
+// of executed immediately; see lib/require-approval.ts).
+// Body: { reason: string }
 // ---------------------------------------------------------------------------
 export async function DELETE(
   req: NextRequest,
@@ -182,22 +186,31 @@ export async function DELETE(
   const denied = await requirePermission(req, { products: ["delete"] });
   if (denied) return denied;
 
+  const ctx = await loadCallerContext();
+  if (ctx.denied) return ctx.denied === "auth" ? Err.authRequired() : Err.forbidden();
+
+  let reason: string;
+  try {
+    const body = await req.json();
+    reason = typeof body?.reason === "string" ? body.reason.trim() : "";
+  } catch {
+    reason = "";
+  }
+  if (!reason) return Err.validation("A reason is required to delete a product");
+
   try {
     const { id } = await params;
 
     const existing = await db.product.findUnique({ where: { id } });
     if (!existing) return Err.notFound("Product");
 
-    await db.product.update({ where: { id }, data: { isActive: false } });
+    const outcome = await requireApprovalOrProceed(ctx, "products", "archive", { slug: existing.slug, reason }, id);
+    if (!outcome.proceed) return Approval.queued(outcome.requestId);
+
+    await approvalExecutors["products:archive"]({ slug: existing.slug, reason }, id);
 
     console.info("[admin/products/[id]] DELETE (soft) —", id);
-    invalidateProductCache(existing.slug);
-    createNotification({
-      type: "PRODUCT_DELETED",
-      title: `Product removed: ${existing.name}`,
-      body: `"${existing.name}" has been unpublished from the store.`,
-      link: "/admin/products",
-    }).catch(() => {});
+    logActivity(ctx.id, `Deleted product "${existing.name}"`, "product", id, req, { reason }, "CRITICAL");
     return ok({ id });
   } catch (e) {
     console.error("[admin/products/[id]] DELETE error", e);

@@ -2,18 +2,19 @@
  * Admin activity logger — write an auditLog entry non-blockingly.
  *
  * auditLog schema:
- *   id, adminProfileId, action, resource, resourceId?, details?, ipAddress?,
- *   userAgent?, path?, createdAt
+ *   id, adminProfileId, action, resource, resourceId?, severity, details?,
+ *   ipAddress?, userAgent?, path?, createdAt
  *
  * Usage:
  *   await logActivity(adminProfileId, "Updated product", "product", productId, req);
+ *   await logActivity(adminProfileId, "Deleted product", "product", productId, req, { reason }, "CRITICAL");
  *
  * The function never throws — audit logging is best-effort and must not break
  * the primary request path.
  */
 
 import { db } from "@/lib/db";
-import { Prisma } from "@prisma/client";
+import { NotificationSeverity, Prisma } from "@prisma/client";
 import type { NextRequest } from "next/server";
 
 export async function logActivity(
@@ -23,6 +24,7 @@ export async function logActivity(
   resourceId?: string,
   req?: NextRequest,
   details?: Record<string, unknown>,
+  severity: NotificationSeverity = "INFO",
 ): Promise<void> {
   try {
     const ipAddress = req?.headers.get("x-forwarded-for")?.split(",")[0].trim()
@@ -37,6 +39,7 @@ export async function logActivity(
         action,
         resource,
         resourceId: resourceId ?? null,
+        severity,
         details: (details ?? undefined) as Prisma.InputJsonValue | undefined,
         ipAddress: ipAddress ?? null,
         userAgent: userAgent ?? null,

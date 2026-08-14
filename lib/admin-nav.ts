@@ -77,6 +77,11 @@ export function isActive(pathname: string, href: string, exact?: boolean) {
 const UNLISTED_RESOURCE_PATHS: { href: string; resource: AppResource }[] = [
   { href: "/admin/transactions", resource: "transactions" },
   { href: "/admin/users", resource: "customers" },
+  // Not in NAV_GROUPS since it's linked from the sidebar's bottom slot
+  // (replacing "Back to Store"), not a group item. Also hard-restricted to
+  // admin/super_admin in the page itself and in GET /api/admin/activity —
+  // this staff:view check is just the outer resource gate.
+  { href: "/admin/activity", resource: "staff" },
 ];
 
 // The only admin paths allowed with NO resource check at all — self-service

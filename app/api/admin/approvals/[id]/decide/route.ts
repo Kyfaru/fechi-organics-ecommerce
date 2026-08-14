@@ -78,7 +78,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       targetRoles: [request.requestedBy.role],
     }).catch(() => {});
 
-    logActivity(ctx.id, `${decision === "approve" ? "Approved" : "Rejected"} ${request.resource}:${request.action}`, "approval", id, req);
+    const requestedReason = (request.payload as Record<string, unknown> | null)?.reason;
+    logActivity(
+      ctx.id,
+      `${decision === "approve" ? "Approved" : "Rejected"} ${request.resource}:${request.action}`,
+      "approval",
+      id,
+      req,
+      { requestedBy: request.requestedByAdminProfileId, ...(requestedReason ? { reason: requestedReason } : {}), reviewNote: note },
+      "WARNING",
+    );
 
     return ok({ decided: true });
   } catch (e) {

@@ -172,10 +172,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
 
     if (isBanChange) {
-      await logActivity(ctx.id, typeof body.banned === "boolean" ? (body.banned ? "Deactivated staff member" : "Reactivated staff member") : "Updated ban reason", "staff", id, req);
+      await logActivity(ctx.id, typeof body.banned === "boolean" ? (body.banned ? "Deactivated staff member" : "Reactivated staff member") : "Updated ban reason", "staff", id, req, undefined, "WARNING");
     }
     if (isDetailsChange) await logActivity(ctx.id, "Updated staff details", "staff", id, req);
-    if (isRoleChange || isPermissionChange || isSuperAdminGrant) await logActivity(ctx.id, "Changed staff role/permissions", "staff", id, req, { role: body.role, permissions: body.permissions, isSuperAdmin: body.isSuperAdmin });
+    if (isRoleChange || isPermissionChange || isSuperAdminGrant) await logActivity(ctx.id, "Changed staff role/permissions", "staff", id, req, { role: body.role, permissions: body.permissions, isSuperAdmin: body.isSuperAdmin }, "CRITICAL");
 
     return ok({ user: updated });
   } catch (err: unknown) {
@@ -202,6 +202,15 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     return Err.forbidden();
   }
 
+  let reason: string;
+  try {
+    const body = await req.json();
+    reason = typeof body?.reason === "string" ? body.reason.trim() : "";
+  } catch {
+    reason = "";
+  }
+  if (!reason) return Err.validation("A reason is required to delete a staff member");
+
   const { id } = await params;
   if (id === caller.session.user.id) return Err.validation("Cannot delete your own account.");
 
@@ -220,7 +229,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   // Effectively always "proceed" today — staff:delete is hard-restricted to
   // isSuperAdmin above, and super_admin always skips the queue — but wired
   // in case staff:delete permission is ever extended to another role.
-  const outcome = await requireApprovalOrProceed(ctx, "staff", "delete", {}, id);
+  const outcome = await requireApprovalOrProceed(ctx, "staff", "delete", { reason }, id);
   if (!outcome.proceed) return Approval.queued(outcome.requestId);
 
   try {
@@ -237,6 +246,6 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     reportError(e, { route: "DELETE /api/admin/staff/[id]" });
     return Err.internal();
   }
-  await logActivity(ctx.id, "Deleted staff member", "staff", id, req);
+  await logActivity(ctx.id, "Deleted staff member", "staff", id, req, { reason }, "CRITICAL");
   return ok({ deleted: id });
 }

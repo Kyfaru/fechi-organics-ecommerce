@@ -198,6 +198,7 @@ enum NotificationType {
   SYSTEM_ALERT
   APPROVAL_REQUESTED
   APPROVAL_DECIDED
+  EXPORT_READY
 
   @@schema("admin")
 }
@@ -900,25 +901,28 @@ model adminProfile {
   auditLogs          auditLog[]
   requestedApprovals approvalRequest[] @relation("RequestedApprovals")
   reviewedApprovals  approvalRequest[] @relation("ReviewedApprovals")
+  exportRequests     exportRequest[]
 
   @@index([branchId])
   @@schema("admin")
 }
 
 model auditLog {
-  id             String       @id @default(uuid())
+  id             String               @id @default(uuid())
   adminProfileId String
-  adminProfile   adminProfile @relation(fields: [adminProfileId], references: [id])
+  adminProfile   adminProfile         @relation(fields: [adminProfileId], references: [id])
   action         String
   resource       String
   resourceId     String?
+  severity       NotificationSeverity @default(INFO)
   details        Json?
   ipAddress      String?
   userAgent      String?
   path           String?
-  createdAt      DateTime     @default(now())
+  createdAt      DateTime             @default(now())
 
   @@index([adminProfileId, createdAt])
+  @@index([severity, createdAt])
   @@schema("admin")
 }
 
@@ -949,9 +953,48 @@ model approvalRequest {
   reviewNote                String?
   reviewedAt                DateTime?
   createdAt                 DateTime       @default(now())
+  exportRequest             exportRequest?
 
   @@index([status, createdAt])
   @@index([requestedByAdminProfileId])
+  @@schema("admin")
+}
+
+enum ExportRequestStatus {
+  PENDING
+  GENERATING
+  READY
+  FAILED
+
+  @@schema("admin")
+}
+
+// A generated report file (Orders/Finance export). Kept separate from
+// approvalRequest because the admin/super_admin fast path never creates an
+// approval row at all — file-result state (fileKey, status, deliveredAt)
+// needs a home that doesn't depend on one existing. See
+// lib/reports/generate-export.ts for what fills these fields in, and
+// app/api/admin/exports/[id]/download/route.ts for the ownership-gated
+// streaming download that reads fileKey back out of R2.
+model exportRequest {
+  id                        String               @id @default(uuid())
+  requestedByAdminProfileId String
+  requestedBy               adminProfile         @relation(fields: [requestedByAdminProfileId], references: [id])
+  resource                  String // "orders" | "finance"
+  format                    String // "pdf" | "csv" | "xml"
+  filters                   Json
+  status                    ExportRequestStatus  @default(PENDING)
+  approvalRequestId         String?              @unique
+  approvalRequest           approvalRequest?     @relation(fields: [approvalRequestId], references: [id])
+  fileKey                   String?
+  fileName                  String?
+  fileSizeBytes             Int?
+  errorMessage              String?
+  deliveredAt               DateTime?
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
+
+  @@index([requestedByAdminProfileId, status, createdAt])
   @@schema("admin")
 }
 

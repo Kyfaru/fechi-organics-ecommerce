@@ -103,6 +103,10 @@ export function AdminInventoryClient() {
         body: JSON.stringify({ branchId }),
       });
       const json = await res.json();
+      if (res.status === 202) {
+        toast.info("Sync queued for admin approval.");
+        return;
+      }
       if (!res.ok) throw new Error(json.error?.message ?? "Sync failed");
       toast.success("Zoho sync complete.");
       qc.invalidateQueries({ queryKey: ["admin-inventory"] });

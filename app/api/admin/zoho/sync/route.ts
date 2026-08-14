@@ -2,11 +2,13 @@ import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { getRedis } from "@/lib/redis";
 import { ok, Err } from "@/lib/api";
-import { syncAllItems, syncInventoryIds } from "@/lib/zoho-sync";
+import { runZohoSync } from "@/lib/zoho-sync";
 import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { assertBranchAccess } from "@/lib/branch-access";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { logActivity } from "@/lib/admin-activity";
 import { reportError } from "@/lib/observability";
 import { trackServerEvent } from "@/lib/observability-server";
 
@@ -44,6 +46,12 @@ export async function POST(req: NextRequest) {
   const organizationId = await resolveZohoOrganizationId(branchId);
   if (!organizationId) return Err.validation("This branch isn't linked to a Zoho organization yet");
 
+  // Only admin/super_admin may sync directly — everyone else's request is
+  // queued as an approvalRequest (see lib/require-approval.ts) and actually
+  // runs via the "inventory:sync" executor once an admin approves it.
+  const outcome = await requireApprovalOrProceed(caller, "inventory", "sync", { branchId }, branchId);
+  if (!outcome.proceed) return Approval.queued(outcome.requestId);
+
   try {
     // Rate limit: max 1 sync per organization per 60 seconds.
     const redis = getRedis();
@@ -57,22 +65,12 @@ export async function POST(req: NextRequest) {
     }
 
     console.info("[admin/zoho/sync] Starting full item sync for organization", organizationId);
-    const result = await syncAllItems(organizationId);
+    const result = await runZohoSync(organizationId);
     console.info("[admin/zoho/sync] Sync complete for organization", organizationId, result);
     trackServerEvent(caller.id, "zoho_sync_completed", { organizationId, branchId, ...result });
+    logActivity(caller.id, "Synced products from Zoho", "inventory", branchId, req, { organizationId, ...result });
 
-    // Additive — backfills the Inventory item id used for automatic stock
-    // deduction (see lib/zoho/push-adjustment.ts). Must never fail the
-    // Books catalog sync above, which already succeeded.
-    let inventoryIdSync: { matched: number; unmatched: number } | null = null;
-    try {
-      inventoryIdSync = await syncInventoryIds(organizationId);
-      console.info("[admin/zoho/sync] Inventory item-id sync complete for organization", organizationId, inventoryIdSync);
-    } catch (e) {
-      console.error("[admin/zoho/sync] Inventory item-id sync failed for organization", organizationId, e);
-    }
-
-    return ok({ ...result, inventoryIdSync });
+    return ok(result);
   } catch (e) {
     console.error("[admin/zoho/sync] POST error", e);
     reportError(e, { route: "POST /api/admin/zoho/sync", userId: caller.id, extra: { organizationId, branchId } });
