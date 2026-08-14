@@ -54,8 +54,12 @@ export interface SignUpProfileData {
   city?: string;
 }
 
-export function signUpWithProfile(data: SignUpProfileData) {
+export function signUpWithProfile(
+  data: SignUpProfileData,
+  fetchOptions?: Parameters<typeof authClient.signUp.email>[1]
+) {
   return authClient.signUp.email(
-    data as Parameters<typeof authClient.signUp.email>[0]
+    data as Parameters<typeof authClient.signUp.email>[0],
+    fetchOptions
   );
 }

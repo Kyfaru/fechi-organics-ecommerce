@@ -5,11 +5,10 @@
  *
  * Two sections:
  *  - Zoho organizations (HQ/global-scope only): the small number of shared
- *    Zoho Inventory orgs and their credentials. Several branches can point
+ *    Zoho Books orgs and their credentials. Several branches can point
  *    at the same org.
  *  - Branches: lists branches and lets an authorized admin link a branch to
- *    one of those organizations (+ optionally its Zoho warehouse id for
- *    per-branch stock splitting). Admin/super_admin can edit any branch; a
+ *    one of those organizations. Admin/super_admin can edit any branch; a
  *    branch-scoped manager only their own (enforced server-side regardless —
  *    this client-side hide is UX only, matching the pattern everywhere else
  *    in the admin panel).
@@ -18,12 +17,14 @@
  * AdminStaffClient.tsx's "Change Role" modal.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, CheckCircle2, XCircle, Copy, Plus } from "lucide-react";
+import { Building2, CheckCircle2, XCircle, Copy, Plus, MoreHorizontal } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
-import { useAdminMe } from "@/hooks/use-can";
+import { useAdminMe, useCan } from "@/hooks/use-can";
 import { toast } from "@/lib/toast";
+import { adminFetch } from "@/lib/admin-fetch";
 
 interface Branch {
   id: string;
@@ -33,6 +34,7 @@ interface Branch {
   zohoConnected: boolean;
   zohoOrganizationId: string | null;
   zohoOrganizationName: string | null;
+  zohoLocationId: string | null;
   zohoWarehouseId: string | null;
 }
 
@@ -41,7 +43,122 @@ interface ZohoOrganization {
   name: string;
   zohoOrgId: string;
   connectedAt: string | null;
+  isActive: boolean;
   branches: { id: string; name: string }[];
+}
+
+// Fetches an admin API's { ok, data } envelope and throws with the server's
+// own error message (or the raw response text, for a route handler that
+// crashed before ever reaching that envelope) instead of failing silently
+// inside react-query — see reportLoadFailure below for what happens with it.
+//
+// IMPORTANT: returns the full { ok, data } envelope, unwrapped no further —
+// several other admin components (AdminProductsClient, AdminInventoryClient,
+// NotificationsClient, AdminDeliveryZonesClient, AdminStaffClient) share the
+// exact same react-query key ["admin-branches"] for /api/admin/branches and
+// all read `data?.data?.branches`. Returning anything else here means
+// whichever component fetches first silently poisons the shared cache entry
+// for all the others (symptom: "x.map is not a function" on a totally
+// unrelated page).
+async function fetchJson<T>(url: string): Promise<T> {
+  const res = await fetch(url);
+  let json: { ok?: boolean; data?: unknown; error?: { message?: string } } | null = null;
+  try {
+    json = await res.json();
+  } catch {
+    // Response wasn't JSON at all — most commonly an uncaught exception in
+    // the route handler, which Next.js renders as a bare HTML/text 500.
+    throw new Error(`${url} → HTTP ${res.status} (non-JSON response)`);
+  }
+  if (!res.ok || !json?.ok) {
+    throw new Error(json?.error?.message ?? `${url} → HTTP ${res.status}`);
+  }
+  return json as T;
+}
+
+// Surfaces a failed load to the console + a toast, and pulls in /api/health
+// so a DB/env problem is named instead of just "something failed".
+async function reportLoadFailure(label: string, err: unknown) {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`[AdminBranchesClient] ${label} failed:`, err);
+  try {
+    const healthRes = await fetch("/api/health");
+    const health = await healthRes.json();
+    if (!health.ok) {
+      const failing = Object.entries(health.checks as Record<string, { ok: boolean; error?: string }>)
+        .filter(([, c]) => !c.ok)
+        .map(([name, c]) => `${name}: ${c.error}`)
+        .join("; ");
+      toast.error(`Couldn't load ${label}`, { message: `${message} — health check found: ${failing}` });
+      return;
+    }
+  } catch (healthErr) {
+    console.error("[AdminBranchesClient] health check itself failed:", healthErr);
+  }
+  toast.error(`Couldn't load ${label}`, { message });
+}
+
+// ---------------------------------------------------------------------
+// 3-dot row action menu — mirrors CardMenu (AdminProductsClient.tsx) /
+// RowMenu (AdminBlogClient.tsx) so every admin table opens row actions the
+// same way instead of plain text links.
+// ---------------------------------------------------------------------
+interface RowAction {
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}
+
+function RowActionMenu({ actions, ariaLabel }: { actions: RowAction[]; ariaLabel: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        className="w-7 h-7 flex items-center justify-center rounded-[6px] text-(--neutral-500) hover:bg-(--neutral-100) transition-colors"
+        aria-label={ariaLabel}
+      >
+        <MoreHorizontal size={15} />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: -4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -4 }}
+            transition={{ duration: 0.12 }}
+            className="absolute right-0 top-8 w-48 bg-white dark:bg-(--dark-surface) rounded-[10px] shadow-(--e3) border border-(--neutral-200) dark:border-(--dark-border) z-50 overflow-hidden py-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {actions.map((a) => (
+              <button
+                key={a.label}
+                onClick={() => { setOpen(false); a.onClick(); }}
+                className={`w-full text-left px-3 py-2 font-dm text-[13px] transition-colors ${
+                  a.danger
+                    ? "text-(--danger) hover:bg-(--danger-bg)"
+                    : "text-(--neutral-700) dark:text-(--dark-text) hover:bg-(--neutral-50) dark:hover:bg-(--dark-bg)"
+                }`}
+              >
+                {a.label}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 }
 
 export function AdminBranchesClient() {
@@ -49,18 +166,28 @@ export function AdminBranchesClient() {
   const { data: me } = useAdminMe();
   const isGlobalScope = Boolean(me?.isSuperAdmin || !me?.branchId);
 
-  const { data: branchData, isLoading: branchesLoading } = useQuery({
+  const { data: branchData, isLoading: branchesLoading, isError: branchesErrored, error: branchesError } = useQuery({
     queryKey: ["admin-branches"],
-    queryFn: () => fetch("/api/admin/branches").then((r) => r.json()).then((j) => j.data?.branches ?? []),
+    queryFn: () => fetchJson<{ data: { branches: Branch[] } }>("/api/admin/branches"),
+    retry: 1,
   });
-  const branches: Branch[] = branchData ?? [];
+  const branches: Branch[] = branchData?.data?.branches ?? [];
 
-  const { data: orgData, isLoading: orgsLoading } = useQuery({
+  const { data: orgData, isLoading: orgsLoading, isError: orgsErrored, error: orgsError } = useQuery({
     queryKey: ["admin-zoho-organizations"],
-    queryFn: () => fetch("/api/admin/zoho/organizations").then((r) => r.json()).then((j) => j.data?.organizations ?? []),
+    queryFn: () => fetchJson<{ data: { organizations: ZohoOrganization[] } }>("/api/admin/zoho/organizations"),
     enabled: isGlobalScope,
+    retry: 1,
   });
-  const organizations: ZohoOrganization[] = orgData ?? [];
+  const organizations: ZohoOrganization[] = orgData?.data?.organizations ?? [];
+
+  useEffect(() => {
+    if (branchesErrored) reportLoadFailure("branches", branchesError);
+  }, [branchesErrored, branchesError]);
+
+  useEffect(() => {
+    if (orgsErrored) reportLoadFailure("Zoho organizations", orgsError);
+  }, [orgsErrored, orgsError]);
 
   async function verifyAdminPassword(password: string): Promise<boolean> {
     const res = await fetch("/api/admin/verify-password", {
@@ -79,10 +206,13 @@ export function AdminBranchesClient() {
   const [linkPw, setLinkPw] = useState("");
   const [linkVerified, setLinkVerified] = useState(false);
   const [linkLoading, setLinkLoading] = useState(false);
-  const [linkForm, setLinkForm] = useState({ zohoOrganizationId: "", zohoWarehouseId: "" });
+  const [linkForm, setLinkForm] = useState({ zohoOrganizationId: "", zohoLocationId: "", zohoWarehouseId: "" });
+
+  const canUpdateBranches = useCan({ branches: ["update"] });
 
   function canEdit(branch: Branch): boolean {
     if (!me?.role) return false;
+    if (!canUpdateBranches) return false;
     if (me.isSuperAdmin) return true;
     return me.branchId === branch.id;
   }
@@ -91,7 +221,11 @@ export function AdminBranchesClient() {
     setLinkTarget(branch);
     setLinkPw("");
     setLinkVerified(false);
-    setLinkForm({ zohoOrganizationId: branch.zohoOrganizationId ?? "", zohoWarehouseId: branch.zohoWarehouseId ?? "" });
+    setLinkForm({
+      zohoOrganizationId: branch.zohoOrganizationId ?? "",
+      zohoLocationId: branch.zohoLocationId ?? "",
+      zohoWarehouseId: branch.zohoWarehouseId ?? "",
+    });
   }
 
   function closeLinkModal() {
@@ -114,22 +248,23 @@ export function AdminBranchesClient() {
     if (!linkTarget) return;
     setLinkLoading(true);
     try {
-      const res = await fetch(`/api/admin/branches/${linkTarget.id}/zoho`, {
+      const result = await adminFetch(`/api/admin/branches/${linkTarget.id}/zoho`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           zohoOrganizationId: linkForm.zohoOrganizationId,
+          zohoLocationId: linkForm.zohoLocationId,
           zohoWarehouseId: linkForm.zohoWarehouseId,
         }),
       });
-      const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json.error?.message ?? "Failed to save");
+      if (result.status === "denied") return;
+      if (result.status === "queued") { closeLinkModal(); return; }
 
       toast.success("Branch updated", { message: `${linkTarget.name}'s Zoho link was saved.` });
       qc.invalidateQueries({ queryKey: ["admin-branches"] });
       closeLinkModal();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save");
+    } catch {
+      // adminFetch already surfaced a toast for this case
     } finally {
       setLinkLoading(false);
     }
@@ -144,7 +279,7 @@ export function AdminBranchesClient() {
   const [orgLoading, setOrgLoading] = useState(false);
   const [orgForm, setOrgForm] = useState({ name: "", zohoOrgId: "", clientId: "", clientSecret: "", refreshToken: "" });
 
-  const [webhookReveal, setWebhookReveal] = useState<{ secret: string; url: string } | null>(null);
+  const [webhookReveal, setWebhookReveal] = useState<{ secret: string; urls: Record<string, string> } | null>(null);
 
   function openOrgModal(target: ZohoOrganization | "new") {
     setOrgTarget(target);
@@ -201,7 +336,7 @@ export function AdminBranchesClient() {
       closeOrgModal();
 
       if (json.data?.webhookSecret) {
-        setWebhookReveal({ secret: json.data.webhookSecret, url: json.data.webhookUrl });
+        setWebhookReveal({ secret: json.data.webhookSecret, urls: json.data.webhookUrls });
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save");
@@ -210,11 +345,116 @@ export function AdminBranchesClient() {
     }
   }
 
+  // Deactivating (blocked server-side while any branch is still linked) and
+  // reactivating are both easily reversible, so a native confirm is enough —
+  // no password re-gate needed, unlike credential edits/permanent delete.
+  async function handleToggleActive(org: ZohoOrganization) {
+    const activating = !org.isActive;
+    if (!activating && !window.confirm(
+      `Deactivate "${org.name}"? Syncing and Sales Receipt pushes for any linked branch will stop immediately.`,
+    )) return;
+
+    try {
+      const res = await fetch(`/api/admin/zoho/organizations/${org.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: activating }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        if (json.error?.code === "ORG_IN_USE") {
+          toast.error(json.error.message);
+          toast.warning(
+            "Unlink each listed branch from this organization below first, then retry deactivating — about a minute per branch.",
+          );
+          return;
+        }
+        throw new Error(json.error?.message ?? "Failed to update");
+      }
+      toast.success(activating ? "Organization activated" : "Organization deactivated");
+      qc.invalidateQueries({ queryKey: ["admin-zoho-organizations"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update");
+    }
+  }
+
+  async function handleRotateWebhook(org: ZohoOrganization) {
+    if (!window.confirm(
+      `Rotate the webhook secret for "${org.name}"? The old secret stops being accepted immediately — every webhook entry configured in Zoho Books will need the new one.`,
+    )) return;
+
+    try {
+      const res = await fetch(`/api/admin/zoho/organizations/${org.id}/rotate-webhook`, { method: "POST" });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error?.message ?? "Failed to rotate webhook credentials");
+      toast.success("Webhook credentials rotated", { message: "Update Zoho Books with the new secret now shown." });
+      setWebhookReveal({ secret: json.data.webhookSecret, urls: json.data.webhookUrls });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to rotate webhook credentials");
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Zoho organization permanent delete — only reachable once deactivated;
+  // password-gated like the credentials modal since it's irreversible.
+  // ---------------------------------------------------------------------
+  const [deleteTarget, setDeleteTarget] = useState<ZohoOrganization | null>(null);
+  const [deletePw, setDeletePw] = useState("");
+  const [deleteVerified, setDeleteVerified] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  function openDeleteModal(org: ZohoOrganization) {
+    setDeleteTarget(org);
+    setDeletePw("");
+    setDeleteVerified(false);
+  }
+
+  function closeDeleteModal() {
+    setDeleteTarget(null);
+    setDeletePw("");
+    setDeleteVerified(false);
+    setDeleteLoading(false);
+  }
+
+  async function handleVerifyForDelete() {
+    setDeleteLoading(true);
+    try {
+      const ok = await verifyAdminPassword(deletePw);
+      if (!ok) { toast.error("Incorrect password"); return; }
+      setDeleteVerified(true);
+    } finally { setDeleteLoading(false); }
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    try {
+      const res = await fetch(`/api/admin/zoho/organizations/${deleteTarget.id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        if (json.error?.code === "ORG_IN_USE") {
+          toast.error(json.error.message);
+          toast.warning("Unlink each listed branch from this organization first, then retry — about a minute per branch.");
+        } else {
+          toast.error(json.error?.message ?? "Failed to delete");
+        }
+        return;
+      }
+      toast.success("Zoho organization deleted");
+      qc.invalidateQueries({ queryKey: ["admin-zoho-organizations"] });
+      closeDeleteModal();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete");
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
       <PageHeader
         title="Branches"
-        description="Manage store locations and their Zoho Inventory connections"
+        description="Manage store locations and their Zoho Books connections"
       />
 
       {isGlobalScope && (
@@ -234,6 +474,10 @@ export function AdminBranchesClient() {
             </div>
             {orgsLoading ? (
               <div className="p-8 text-center font-dm text-[14px] text-(--neutral-400)">Loading…</div>
+            ) : orgsErrored ? (
+              <div className="p-8 text-center font-dm text-[14px] text-(--danger)">
+                Couldn&apos;t load Zoho organizations — see the toast for details.
+              </div>
             ) : organizations.length === 0 ? (
               <div className="p-8 text-center font-dm text-[14px] text-(--neutral-400)">No Zoho organizations yet.</div>
             ) : (
@@ -242,6 +486,7 @@ export function AdminBranchesClient() {
                   <tr className="border-b border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg)">
                     <th className="px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Organization</th>
                     <th className="px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Zoho Org ID</th>
+                    <th className="px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Status</th>
                     <th className="px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Linked Branches</th>
                     <th className="px-6 py-3 text-right font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Actions</th>
                   </tr>
@@ -251,13 +496,30 @@ export function AdminBranchesClient() {
                     <tr key={org.id} className={`border-b border-(--neutral-200) dark:border-(--dark-border) ${idx % 2 === 0 ? "" : "bg-(--neutral-50)/50 dark:bg-(--dark-bg)/30"}`}>
                       <td className="px-6 py-4 font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">{org.name}</td>
                       <td className="px-6 py-4 font-dm text-[13px] text-(--neutral-600)">{org.zohoOrgId}</td>
+                      <td className="px-6 py-4">
+                        {org.isActive ? (
+                          <span className="inline-flex items-center gap-1.5 font-dm text-[13px] text-(--success)">
+                            <CheckCircle2 size={14} /> Active
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 font-dm text-[13px] text-(--neutral-400)">
+                            <XCircle size={14} /> Deactivated
+                          </span>
+                        )}
+                      </td>
                       <td className="px-6 py-4 font-dm text-[13px] text-(--neutral-600)">
                         {org.branches.length > 0 ? org.branches.map((b) => b.name).join(", ") : "None linked"}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button onClick={() => openOrgModal(org)} className="font-dm text-[13px] font-medium text-(--green-800) hover:underline">
-                          Edit credentials
-                        </button>
+                        <RowActionMenu
+                          ariaLabel={`${org.name} actions`}
+                          actions={[
+                            { label: "Edit credentials", onClick: () => openOrgModal(org) },
+                            { label: "Rotate webhook", onClick: () => handleRotateWebhook(org) },
+                            { label: org.isActive ? "Deactivate" : "Activate", onClick: () => handleToggleActive(org) },
+                            ...(!org.isActive ? [{ label: "Delete", onClick: () => openDeleteModal(org), danger: true }] : []),
+                          ]}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -272,6 +534,10 @@ export function AdminBranchesClient() {
         <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) overflow-hidden">
           {branchesLoading ? (
             <div className="p-8 text-center font-dm text-[14px] text-(--neutral-400)">Loading…</div>
+          ) : branchesErrored ? (
+            <div className="p-8 text-center font-dm text-[14px] text-(--danger)">
+              Couldn&apos;t load branches — see the toast for details.
+            </div>
           ) : (
             <table className="w-full">
               <thead>
@@ -308,12 +574,10 @@ export function AdminBranchesClient() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       {canEdit(branch) && (
-                        <button
-                          onClick={() => openLinkModal(branch)}
-                          className="font-dm text-[13px] font-medium text-(--green-800) hover:underline"
-                        >
-                          Edit Zoho Link
-                        </button>
+                        <RowActionMenu
+                          ariaLabel={`${branch.name} actions`}
+                          actions={[{ label: "Edit Zoho Link", onClick: () => openLinkModal(branch) }]}
+                        />
                       )}
                     </td>
                   </tr>
@@ -364,6 +628,18 @@ export function AdminBranchesClient() {
                     </select>
                   </div>
                   <div>
+                    <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Zoho Location ID (optional)</label>
+                    <input
+                      value={linkForm.zohoLocationId}
+                      onChange={(e) => setLinkForm((p) => ({ ...p, zohoLocationId: e.target.value }))}
+                      placeholder="Zoho Books → Settings → Locations"
+                      className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                    />
+                    <p className="font-dm text-[11px] text-(--neutral-400) mt-1">
+                      Tags every Sales Receipt pushed from this branch with its physical location in Zoho Books. Leave blank if the org isn&apos;t using Zoho Books Locations.
+                    </p>
+                  </div>
+                  <div>
                     <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Zoho Warehouse ID (optional)</label>
                     <input
                       value={linkForm.zohoWarehouseId}
@@ -372,7 +648,7 @@ export function AdminBranchesClient() {
                       className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
                     />
                     <p className="font-dm text-[11px] text-(--neutral-400) mt-1">
-                      Splits this branch&apos;s stock from the org&apos;s per-warehouse breakdown. Leave blank to use the org&apos;s combined stock number for this branch.
+                      Which Zoho Inventory warehouse this branch&apos;s stock deductions apply to when an order is paid. Leave blank to use the organization&apos;s default warehouse.
                     </p>
                   </div>
                 </div>
@@ -481,22 +757,24 @@ export function AdminBranchesClient() {
               Webhook secret — copy it now
             </h3>
             <p className="font-dm text-[13px] text-(--neutral-500)">
-              This secret is shown only once. Paste it, along with the webhook URL, into this organization&apos;s Zoho
-              webhook configuration.
+              This secret is shown only once. Zoho Books needs a separate webhook entry per event — paste this secret
+              plus each URL below into its own entry (Settings → Automation → Webhooks).
             </p>
-            <div>
-              <label className="font-dm text-[12px] font-medium text-(--neutral-500) block mb-1">Webhook URL</label>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 px-3 py-2 rounded-lg bg-(--neutral-50) dark:bg-(--dark-bg) font-dm text-[12px] break-all">{webhookReveal.url}</code>
-                <button
-                  onClick={() => { navigator.clipboard.writeText(webhookReveal.url); toast.success("Copied"); }}
-                  className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-(--neutral-100)"
-                  aria-label="Copy webhook URL"
-                >
-                  <Copy size={15} />
-                </button>
+            {Object.entries(webhookReveal.urls ?? {}).map(([event, url]) => (
+              <div key={event}>
+                <label className="font-dm text-[12px] font-medium text-(--neutral-500) block mb-1">{event}</label>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 px-3 py-2 rounded-lg bg-(--neutral-50) dark:bg-(--dark-bg) font-dm text-[12px] break-all">{url}</code>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(url); toast.success("Copied"); }}
+                    className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-(--neutral-100)"
+                    aria-label={`Copy ${event} webhook URL`}
+                  >
+                    <Copy size={15} />
+                  </button>
+                </div>
               </div>
-            </div>
+            ))}
             <div>
               <label className="font-dm text-[12px] font-medium text-(--neutral-500) block mb-1">Webhook Secret</label>
               <div className="flex items-center gap-2">
@@ -518,6 +796,51 @@ export function AdminBranchesClient() {
                 Done — I&apos;ve saved it
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Permanent delete confirmation */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
+            <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
+              Delete {deleteTarget.name}
+            </h3>
+
+            {!deleteVerified ? (
+              <>
+                <p className="font-dm text-[13px] text-(--neutral-500)">Enter your own admin password to continue.</p>
+                <input
+                  type="password"
+                  value={deletePw}
+                  onChange={(e) => setDeletePw(e.target.value)}
+                  placeholder="Your password"
+                  className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                />
+                <div className="flex gap-2 justify-end">
+                  <button onClick={closeDeleteModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
+                  <button onClick={handleVerifyForDelete} disabled={deleteLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Verify</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="font-dm text-[13px] text-(--neutral-500)">
+                  This permanently deletes <strong>{deleteTarget.name}</strong>&apos;s credentials and cannot be undone.
+                  This action is only reachable because it&apos;s already deactivated and unlinked from every branch.
+                </p>
+                <div className="flex gap-2 justify-end">
+                  <button onClick={closeDeleteModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
+                  <button
+                    onClick={handleConfirmDelete}
+                    disabled={deleteLoading}
+                    className="px-4 py-2 rounded-xl bg-(--danger) text-white font-dm text-[14px] disabled:opacity-60"
+                  >
+                    Delete permanently
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

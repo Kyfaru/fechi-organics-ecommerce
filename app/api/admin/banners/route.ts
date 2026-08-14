@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 /** GET /api/admin/banners */
 export async function GET(req: NextRequest) {
@@ -17,7 +18,8 @@ export async function GET(req: NextRequest) {
     return ok(banners);
   } catch (e) {
     console.error("[banners/GET]", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/banners" });
+    return Err.internal();
   }
 }
 
@@ -67,6 +69,7 @@ export async function POST(req: NextRequest) {
     return created(banner);
   } catch (e) {
     console.error("[banners/POST]", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/banners" });
+    return Err.internal();
   }
 }

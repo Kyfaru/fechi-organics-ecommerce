@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { r2PublicUrl } from "@/lib/r2";
+import { reportError } from "@/lib/observability";
 
 /**
  * GET /api/products/options?q=<search> — lightweight product list for
@@ -11,32 +12,38 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.trim();
 
-  const products = await db.product.findMany({
-    where: {
-      isActive: true,
-      ...(q ? { name: { contains: q, mode: "insensitive" } } : {}),
-    },
-    select: {
-      id: true,
-      name: true,
-      category: { select: { name: true } },
-      images: {
-        where: { isPrimary: true },
-        select: { objectKey: true },
-        take: 1,
+  try {
+    const products = await db.product.findMany({
+      where: {
+        isActive: true,
+        ...(q ? { name: { contains: q, mode: "insensitive" } } : {}),
       },
-    },
-    orderBy: { name: "asc" },
-    take: 100,
-  });
+      select: {
+        id: true,
+        name: true,
+        category: { select: { name: true } },
+        images: {
+          where: { isPrimary: true },
+          select: { objectKey: true },
+          take: 1,
+        },
+      },
+      orderBy: { name: "asc" },
+      take: 100,
+    });
 
-  return NextResponse.json({
-    ok: true,
-    data: products.map((p) => ({
-      id: p.id,
-      name: p.name,
-      category: p.category.name,
-      image: p.images[0]?.objectKey ? r2PublicUrl(p.images[0].objectKey) : null,
-    })),
-  });
+    return NextResponse.json({
+      ok: true,
+      data: products.map((p) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category.name,
+        image: p.images[0]?.objectKey ? r2PublicUrl(p.images[0].objectKey) : null,
+      })),
+    });
+  } catch (e) {
+    reportError(e, { route: "GET /api/products/options" });
+    console.error("[products/options] GET error", e);
+    return NextResponse.json({ ok: false }, { status: 500 });
+  }
 }

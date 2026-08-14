@@ -5,6 +5,7 @@ import { db } from "@/lib/db"
 import { generateOtp, storeOtp } from "@/lib/otp"
 import { sendSms, hasSmsConfig } from "@/lib/sms"
 import { combineLegacyPhone } from "@/lib/phone"
+import { reportError } from "@/lib/observability"
 
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   } catch (e) {
     console.error("[2fa/phone/send] error", e)
+    reportError(e, { route: "POST /api/account/2fa/phone/send", tags: { flow: "account-2fa" } })
     return NextResponse.json({ ok: false, error: { message: "Failed to send SMS" } }, { status: 500 })
   }
 }

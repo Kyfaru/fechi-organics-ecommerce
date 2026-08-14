@@ -11,6 +11,7 @@ import { assignTicketToAdmin } from "@/lib/tickets/assign-admin";
 import { sendTicketAcknowledgmentEmail } from "@/lib/email";
 import { createNotification } from "@/lib/notify";
 import { emailShell, emailSection, emailInfoBox, emailIconCircle, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template";
+import { reportError } from "@/lib/observability";
 
 const ContactSchema = z.object({
   name: z.string().min(2).max(100),
@@ -103,7 +104,8 @@ export async function POST(req: NextRequest) {
     return ok({ id: record.id, ticketNumber });
   } catch (e) {
     console.error("[contact] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/contact" });
+    return Err.internal();
   }
 }
 
@@ -122,7 +124,13 @@ async function sendNotificationEmail(data: {
     return;
   }
 
-  const resend = new Resend(apiKey);
+  let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (!_resend) {
+    _resend = new Resend(apiKey);
+  }
+  return _resend;
+}
   const sections = [
     emailSection(`
       ${emailIconCircle("alert")}
@@ -134,7 +142,7 @@ async function sendNotificationEmail(data: {
     `),
   ].join("");
 
-  await resend.emails.send({
+  await getResend().emails.send({
     from: "Fechi Organics <noreply@fechiorganics.com>",
     to: adminEmail,
     subject: `New contact: ${data.subject}`,

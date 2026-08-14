@@ -3,6 +3,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { db } from "@/lib/db";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { makeRatelimit } from "@/lib/ratelimit";
+import { reportError } from "@/lib/observability";
 
 const ratelimit = makeRatelimit(Ratelimit.slidingWindow(10, "1 m"), "auth_portal_check");
 
@@ -51,6 +52,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false });
   } catch (err) {
     console.error("[auth/portal-check]", err);
+    reportError(err, { route: "POST /api/auth/portal-check", tags: { flow: "portal-check" } });
+    // Fails open by design — a Redis/DB blip must never block a legitimate sign-in.
     return NextResponse.json({ ok: true });
   }
 }

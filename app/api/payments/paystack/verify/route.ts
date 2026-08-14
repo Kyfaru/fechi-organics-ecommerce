@@ -11,6 +11,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { markPaymentSuccess, markPaymentFailed } from "@/lib/payments/post-payment";
 import { verifyTransaction } from "@/lib/paystack/client";
+import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -55,6 +56,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(new URL("/payment?error=payment_failed", req.url));
     }
   } catch (e) {
+    reportError(e, {
+      route: "GET /api/payments/paystack/verify",
+      userId: session.user.id,
+      tags: { stage: "handler" },
+      extra: { reference },
+    });
     console.error("[paystack/verify] GET error", e);
     return NextResponse.redirect(new URL("/payment?error=verify_failed", req.url));
   }

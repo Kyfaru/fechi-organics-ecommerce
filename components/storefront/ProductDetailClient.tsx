@@ -149,9 +149,35 @@ export function ProductDetailClient({ product }: Props) {
   const { format } = useCurrency();
 
   // ── Local state ────────────────────────────────────────────────────────────
-  const [selectedImage, setSelectedImage] = useState(0);
+  const isVariantMode = product.variantMode === "variants" && product.variants.length > 0;
+  const [selectedImage, setSelectedImage] = useState(() => {
+    const firstVariantImageUrl = isVariantMode ? product.variants[0].imageUrl : null;
+    if (!firstVariantImageUrl) return 0;
+    const idx = product.images.findIndex((img) => img.url === firstVariantImageUrl);
+    return idx >= 0 ? idx : 0;
+  });
   const [quantity, setQuantity] = useState(1);
   const [selectedSize, setSelectedSize] = useState<string | null>(product.sizes?.[0] ?? null);
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(
+    isVariantMode ? product.variants[0].id : null
+  );
+  const selectedVariant = product.variants.find((v) => v.id === selectedVariantId) ?? null;
+  // URLs of images "owned" by a variant — used to hide them from the default
+  // thumbnail strip when variantImagesHidden is on (Amazon-style: revealed
+  // only once that specific variant is selected).
+  const variantImageUrls = useMemo(
+    () => new Set(product.variants.map((v) => v.imageUrl).filter((u): u is string => Boolean(u))),
+    [product.variants]
+  );
+
+  function selectVariant(variantId: string) {
+    setSelectedVariantId(variantId);
+    const variant = product.variants.find((v) => v.id === variantId);
+    if (variant?.imageUrl) {
+      const idx = product.images.findIndex((img) => img.url === variant.imageUrl);
+      if (idx >= 0) setSelectedImage(idx);
+    }
+  }
   const [activeTab, setActiveTab] = useState<"description" | "howToUse" | "ingredients">("description");
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -251,7 +277,11 @@ export function ProductDetailClient({ product }: Props) {
       const res = await fetch("/api/cart/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId: product.id, quantity }),
+        body: JSON.stringify({
+          productId: product.id,
+          quantity,
+          ...(selectedVariant ? { variantId: selectedVariant.id, variantLabel: selectedVariant.label } : {}),
+        }),
       });
       return res.json();
     },
@@ -425,29 +455,37 @@ export function ProductDetailClient({ product }: Props) {
             )}
           </div>
 
-          {/* Thumbnail strip — only shown when there are multiple images */}
+          {/* Thumbnail strip — only shown when there are multiple images.
+              When variantImagesHidden is on, a variant-owned image is
+              excluded until that variant is the one currently selected. */}
           {product.images.length > 1 && (
             <div className="flex items-center gap-3 overflow-x-auto pb-1">
-              {product.images.map((img, i) => (
-                <button
-                  key={i}
-                  onClick={() => setSelectedImage(i)}
-                  aria-label={`View image ${i + 1}`}
-                  className="flex-shrink-0 w-16 h-16 rounded-[10px] overflow-hidden transition-all duration-200 bg-[#f6f6f6] dark:bg-gray-700"
-                  style={{
-                    border: `2px solid ${selectedImage === i ? "#27731e" : "transparent"}`,
-                    outline: "none",
-                  }}
-                >
-                  <Image
-                    src={img.url}
-                    alt={img.alt}
-                    width={64}
-                    height={64}
-                    className="object-contain w-full h-full"
-                  />
-                </button>
-              ))}
+              {product.images.map((img, i) => {
+                const isVariantOwned = variantImageUrls.has(img.url);
+                if (product.variantImagesHidden && isVariantOwned && img.url !== selectedVariant?.imageUrl) {
+                  return null;
+                }
+                return (
+                  <button
+                    key={i}
+                    onClick={() => setSelectedImage(i)}
+                    aria-label={`View image ${i + 1}`}
+                    className="flex-shrink-0 w-16 h-16 rounded-[10px] overflow-hidden transition-all duration-200 bg-[#f6f6f6] dark:bg-gray-700"
+                    style={{
+                      border: `2px solid ${selectedImage === i ? "#27731e" : "transparent"}`,
+                      outline: "none",
+                    }}
+                  >
+                    <Image
+                      src={img.url}
+                      alt={img.alt}
+                      width={64}
+                      height={64}
+                      className="object-contain w-full h-full"
+                    />
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -521,7 +559,7 @@ export function ProductDetailClient({ product }: Props) {
           <StarRow rating={product.ratingAvg} />
 
           {/* Sizes picker */}
-          {(product.sizes?.length ?? 0) > 0 && (
+          {!isVariantMode && (product.sizes?.length ?? 0) > 0 && (
             <div>
               <p className="font-body text-[13px] font-medium mb-2" style={{ color: "#40493c" }}>
                 Select Size
@@ -540,6 +578,39 @@ export function ProductDetailClient({ product }: Props) {
                     }}
                   >
                     {size}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Variant picker — color/flavour/etc. Selecting one jumps the
+              gallery to that variant's photo (or reveals it, if
+              variantImagesHidden hides it from the strip by default). */}
+          {isVariantMode && (
+            <div>
+              <p className="font-body text-[13px] font-medium mb-2" style={{ color: "#40493c" }}>
+                {product.variantGroupLabel || "Select Option"}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {product.variants.map((v) => (
+                  <button
+                    key={v.id}
+                    onClick={() => selectVariant(v.id)}
+                    className="flex items-center gap-2 pl-1.5 pr-3.5 py-1.5 rounded-[8px] border font-body text-[14px] transition-all"
+                    style={{
+                      borderColor: selectedVariantId === v.id ? "#27731e" : "#c0cab8",
+                      background: selectedVariantId === v.id ? "#e8fce3" : "transparent",
+                      color: selectedVariantId === v.id ? "#27731e" : "#1a1c1c",
+                      fontWeight: selectedVariantId === v.id ? 600 : 400,
+                    }}
+                  >
+                    {v.imageUrl && (
+                      <span className="w-7 h-7 rounded-[6px] overflow-hidden bg-[#f6f6f6] shrink-0 relative">
+                        <Image src={v.imageUrl} alt="" fill className="object-cover" sizes="28px" />
+                      </span>
+                    )}
+                    {v.label}
                   </button>
                 ))}
               </div>

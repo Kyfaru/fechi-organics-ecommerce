@@ -15,6 +15,7 @@ import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 const bodySchema = z
   .object({
@@ -46,7 +47,12 @@ export async function POST(req: NextRequest) {
   let parsed: z.infer<typeof bodySchema>;
   try {
     parsed = bodySchema.parse(await req.json());
-  } catch {
+  } catch (bodyErr) {
+    reportError(bodyErr, {
+      route: "POST /api/admin/orders/instore/mpesa/c2b/start",
+      userId: admin.id,
+      tags: { stage: "body_validation" },
+    });
     return Err.validation("Invalid request body");
   }
 
@@ -67,7 +73,12 @@ export async function POST(req: NextRequest) {
 
     return ok({ windowSeconds: 600 });
   } catch (e) {
+    reportError(e, {
+      route: "POST /api/admin/orders/instore/mpesa/c2b/start",
+      userId: admin.id,
+      tags: { stage: "handler" },
+    });
     console.error("[instore/mpesa/c2b/start] POST error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

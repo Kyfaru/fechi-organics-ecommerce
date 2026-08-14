@@ -18,7 +18,8 @@
  *  9. Danger Zone   — export GDPR, delete test orders, delete store (disabled)
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Store, Building2, Palette, Truck, CreditCard, Bell,
@@ -57,6 +58,11 @@ const TABS: TabDef[] = [
   { id: "api",           label: "API & Integrations",icon: Zap           },
   { id: "danger",        label: "Danger Zone",       icon: AlertTriangle },
 ];
+
+// Non-admin roles get read-only settings access — only these two tabs stay
+// visible for them (Shipping is a link-out card, Security has self-service
+// 2FA + notification preferences alongside the read-only password policy).
+const RESTRICTED_TAB_IDS = new Set(["shipping", "security"]);
 
 // ---------------------------------------------------------------------------
 // Reusable sub-components
@@ -389,7 +395,91 @@ function NotificationsTab({ settings, onSave, saving }: { settings: Settings; on
   );
 }
 
-function SecurityTab({ settings, onSave, saving }: { settings: Settings; onSave: (k: string, v: unknown) => void; saving: boolean }) {
+function titleCase(enumValue: string): string {
+  return enumValue
+    .toLowerCase()
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+interface NotificationPreferences {
+  mutedTypes: string[];
+  toggleableTypes: string[];
+  lockedTypes: string[];
+}
+
+/** Self-service per-user notification muting — shown to every role. */
+function NotificationPreferencesCard() {
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["notification-preferences"],
+    queryFn: (): Promise<NotificationPreferences> =>
+      fetch("/api/admin/notification-preferences").then((r) => r.json()).then((j) => j.data),
+  });
+
+  const mutedTypes = data?.mutedTypes ?? [];
+  const toggleableTypes = data?.toggleableTypes ?? [];
+  const lockedTypes = data?.lockedTypes ?? [];
+
+  const muteMutation = useMutation({
+    mutationFn: async (nextMuted: string[]) => {
+      const res = await fetch("/api/admin/notification-preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mutedTypes: nextMuted }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error?.message ?? "Save failed.");
+      return nextMuted;
+    },
+    onSuccess: (nextMuted) => {
+      qc.setQueryData<NotificationPreferences | undefined>(["notification-preferences"], (prev) =>
+        prev ? { ...prev, mutedTypes: nextMuted } : prev
+      );
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Failed to update notification preference.");
+    },
+  });
+
+  function toggle(type: string, enabled: boolean) {
+    const next = enabled ? mutedTypes.filter((t) => t !== type) : [...mutedTypes, type];
+    muteMutation.mutate(next);
+  }
+
+  return (
+    <Card>
+      <CardHeader title="Notification Preferences" description="Choose which notification types you personally receive" />
+      {isLoading ? (
+        <div className="h-24 rounded-[8px] bg-(--neutral-50) dark:bg-(--dark-bg) animate-pulse" />
+      ) : (
+        <div className="divide-y divide-(--neutral-100) dark:divide-(--dark-border)">
+          {toggleableTypes.map((type) => (
+            <div key={type} className="flex items-center justify-between py-3">
+              <div className="font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">{titleCase(type)}</div>
+              <Switch checked={!mutedTypes.includes(type)} onChange={(v) => toggle(type, v)} disabled={muteMutation.isPending} />
+            </div>
+          ))}
+          {lockedTypes.map((type) => (
+            <div key={type} className="flex items-center justify-between py-3">
+              <div>
+                <div className="font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">{titleCase(type)}</div>
+                <div className="font-dm text-[11px] text-(--neutral-400)">Always on</div>
+              </div>
+              <Switch checked disabled onChange={() => {}} />
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function SecurityTab({
+  settings, onSave, saving, canEdit,
+}: { settings: Settings; onSave: (k: string, v: unknown) => void; saving: boolean; canEdit: boolean }) {
   // Pull 2FA status from session — we can't know this from settings, so placeholder
   const [minLength, setMinLength] = useState(String(settings.pw_min_length ?? "8"));
   const [requireSpecial, setRequireSpecial] = useState(Boolean(settings.pw_require_special ?? false));
@@ -422,40 +512,42 @@ function SecurityTab({ settings, onSave, saving }: { settings: Settings; onSave:
         </div>
       </Card>
 
-      {/* Active sessions placeholder */}
-      <Card>
-        <CardHeader title="Active Sessions" description="Devices currently signed into the admin panel" />
-        <div className="bg-(--neutral-50) dark:bg-(--dark-bg) rounded-[8px] p-4 text-center">
-          <p className="font-dm text-[13px] text-(--neutral-400)">
-            Session management UI coming soon. To invalidate all sessions, change your password.
-          </p>
-        </div>
-      </Card>
-
       {/* Password policy */}
       <Card>
         <CardHeader title="Password Policy" description="Minimum requirements for admin passwords" />
         <div className="space-y-4">
           <Field label="Minimum password length">
-            <select className={selectCls} value={minLength} onChange={(e) => setMinLength(e.target.value)}>
-              <option value="8">8 characters</option>
-              <option value="10">10 characters</option>
-              <option value="12">12 characters</option>
-            </select>
+            {canEdit ? (
+              <select className={selectCls} value={minLength} onChange={(e) => setMinLength(e.target.value)}>
+                <option value="8">8 characters</option>
+                <option value="10">10 characters</option>
+                <option value="12">12 characters</option>
+              </select>
+            ) : (
+              <div className={readonlyCls}>{minLength} characters</div>
+            )}
           </Field>
           <div className="flex items-center justify-between">
             <div>
               <div className="font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">Require special characters</div>
               <div className="font-dm text-[12px] text-(--neutral-400)">Passwords must include at least one symbol</div>
             </div>
-            <Switch checked={requireSpecial} onChange={setRequireSpecial} />
+            {canEdit ? (
+              <Switch checked={requireSpecial} onChange={setRequireSpecial} />
+            ) : (
+              <span className="font-dm text-[13px] text-(--neutral-500)">{requireSpecial ? "Required" : "Not required"}</span>
+            )}
           </div>
         </div>
       </Card>
 
-      <div className="flex justify-end">
-        <SaveBtn onClick={handleSavePolicy} saving={saving} />
-      </div>
+      {canEdit && (
+        <div className="flex justify-end">
+          <SaveBtn onClick={handleSavePolicy} saving={saving} />
+        </div>
+      )}
+
+      <NotificationPreferencesCard />
     </div>
   );
 }
@@ -598,16 +690,37 @@ function DangerTab() {
 // Main component
 // ---------------------------------------------------------------------------
 export function AdminSettingsClient() {
-  const [activeTab, setActiveTab] = useState("general");
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin-settings"],
     queryFn: () =>
-      fetch("/api/admin/settings").then((r) => r.json()).then((j) => j.data?.settings ?? {}),
+      fetch("/api/admin/settings").then((r) => r.json()).then((j) => j.data ?? {}),
   });
 
-  const settings: Settings = data ?? {};
+  const settings: Settings = data?.settings ?? {};
+  const canEdit: boolean = data?.canEdit ?? false;
+
+  const visibleTabs = useMemo(
+    () => (canEdit ? TABS : TABS.filter((t) => RESTRICTED_TAB_IDS.has(t.id))),
+    [canEdit]
+  );
+
+  const tabParam = searchParams.get("tab");
+  const activeTab =
+    tabParam && visibleTabs.some((t) => t.id === tabParam)
+      ? tabParam
+      : canEdit
+        ? "general"
+        : "security";
+
+  function setActiveTab(tabId: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", tabId);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }
 
   const saveMutation = useMutation({
     mutationFn: async ({ key, value }: { key: string; value: unknown }) => {
@@ -652,7 +765,7 @@ export function AdminSettingsClient() {
       case "shipping":      return <ShippingTab />;
       case "payment":       return <PaymentTab />;
       case "notifications": return <NotificationsTab settings={settings} onSave={onSave} saving={saving} />;
-      case "security":      return <SecurityTab settings={settings} onSave={onSave} saving={saving} />;
+      case "security":      return <SecurityTab settings={settings} onSave={onSave} saving={saving} canEdit={canEdit} />;
       case "api":           return <ApiTab />;
       case "danger":        return <DangerTab />;
       default:              return null;
@@ -666,7 +779,7 @@ export function AdminSettingsClient() {
       <div className="flex gap-6 px-6 pb-6">
         {/* Left sidebar tab list */}
         <nav className="w-[220px] shrink-0 space-y-0.5">
-          {TABS.map((tab) => {
+          {visibleTabs.map((tab) => {
             const isDanger = tab.id === "danger";
             const isActive = activeTab === tab.id;
             return (

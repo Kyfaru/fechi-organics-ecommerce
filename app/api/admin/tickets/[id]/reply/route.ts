@@ -9,6 +9,7 @@ import { getRedis } from "@/lib/redis";
 import { ticketChannel } from "@/lib/ticket-channel";
 import { requirePermission } from "@/lib/require-permission";
 import { uploadTicketAttachment, AttachmentValidationError, type TicketAttachment } from "@/lib/tickets/upload-attachment";
+import { reportError } from "@/lib/observability";
 
 const ReplySchema = z.object({
   content: z.string().max(5000).optional(),
@@ -129,6 +130,7 @@ export async function POST(
     } catch (qstashErr) {
       // Non-fatal — message was saved, email delivery can be retried
       console.error("[admin/tickets/reply] Qstash enqueue failed", qstashErr);
+      reportError(qstashErr, { route: "POST /api/admin/tickets/[id]/reply", tags: { stage: "qstash-enqueue" }, extra: { ticketId: id } });
     }
 
     // Notify any open SSE stream on this ticket — best-effort, non-blocking
@@ -140,12 +142,14 @@ export async function POST(
       );
     } catch (redisErr) {
       console.error("[admin/tickets/reply] Redis publish failed", redisErr);
+      reportError(redisErr, { route: "POST /api/admin/tickets/[id]/reply", tags: { stage: "redis-publish" }, extra: { ticketId: id } });
     }
 
     console.info("[admin/tickets/[id]/reply] POST — message", message.id, "for ticket", id);
     return ok({ message });
   } catch (e) {
     console.error("[admin/tickets/[id]/reply] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/tickets/[id]/reply" });
+    return Err.internal();
   }
 }

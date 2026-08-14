@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/orders
@@ -161,7 +162,8 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/orders", tags: { domain: "orders" } });
     console.error("[admin/orders] GET error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import confetti from "canvas-confetti";
 import { Icon } from "@iconify/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { toast } from "@/lib/toast";
+import { CHECKOUT_FLOW_FLAG_KEY } from "@/lib/checkout-flow";
 
 type Order = {
   id: string;
@@ -38,7 +41,31 @@ function capture(event: string, props?: Record<string, unknown>) {
 }
 
 export function OrderSuccessClient({ order }: { order: Order }) {
+  const qc = useQueryClient();
+  const router = useRouter();
+  // Blocks re-showing this page on a browser-back or a revisited/bookmarked
+  // URL once it's already been viewed once for this order — see
+  // lib/checkout-flow.ts for the matching /delivery + /payment guards.
+  const [ready, setReady] = useState(false);
+
   useEffect(() => {
+    const seenKey = `fechi_order_success_seen:${order.id}`;
+    if (sessionStorage.getItem(seenKey)) {
+      router.replace("/cart");
+      return;
+    }
+    sessionStorage.setItem(seenKey, "1");
+    window.setTimeout(() => setReady(true), 0);
+
+    // The order is paid and its cart was already cleared server-side
+    // (lib/payments/post-payment.ts). Drop the persisted ["cart"] entry
+    // (react-query's localStorage-backed cache, "fechi-cache") rather than
+    // just invalidating it — remove first so no stale item list is ever
+    // served from the persisted snapshot, then let the next read refetch
+    // the now-actually-empty cart fresh from the server.
+    qc.removeQueries({ queryKey: ["cart"] });
+    qc.invalidateQueries({ queryKey: ["cart"] });
+
     // Mark the coupon as used before clearing session
     const usedPromo = sessionStorage.getItem("fechi_promo");
     if (usedPromo) {
@@ -54,6 +81,10 @@ export function OrderSuccessClient({ order }: { order: Order }) {
     sessionStorage.removeItem("fechi_promo");
     sessionStorage.removeItem("fechi_promo_amount");
     sessionStorage.removeItem("fechi_promo_free_shipping");
+    // Checkout is complete — /delivery and /payment require this flag, so
+    // clearing it means the flow can't be re-entered without a fresh
+    // "Place Order" click from /cart.
+    sessionStorage.removeItem(CHECKOUT_FLOW_FLAG_KEY);
     capture("order_success_viewed", { orderId: order.id });
 
     const burst = () => confetti({ particleCount: 120, spread: 80, colors: ["#27731e", "#fec700", "#a4f690"], origin: { y: 0.42 } });
@@ -73,7 +104,9 @@ export function OrderSuccessClient({ order }: { order: Order }) {
       .catch(() => undefined);
 
     return () => timers.forEach(window.clearTimeout);
-  }, [order.id]);
+  }, [order.id, qc, router]);
+
+  if (!ready) return null;
 
   return (
     <div className="min-h-screen bg-[#fbfbfa] dark:bg-gray-950">

@@ -1,91 +1,16 @@
 /**
- * POST /api/admin/finance/export
- *
- * Admin-only endpoint. Queries all transactions with associated order and user,
- * builds a CSV string, and returns it as a downloadable file.
- *
- * Generation is synchronous — dataset is bounded (transactions per store).
- * If volume grows beyond ~100k rows, convert to streaming CSV via a queue job.
+ * POST /api/admin/finance/export — customize-filters export for the Finance
+ * page. Replaces the old CSV-only, unfiltered, transaction-level export
+ * (same three bugs as the Total Revenue stat card — see
+ * app/api/admin/transactions/route.ts for the fix history) with the shared
+ * PDF/CSV/XML report pipeline. See lib/reports/export-route-handler.ts for
+ * the shared flow and lib/reports/finance-rows.ts for the row-fetch logic
+ * (PAID-only, order-level, combined online + in-store).
  */
-
-import { NextRequest } from "next/server";
-import { connection } from "next/server";
-import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { Err } from "@/lib/api";
-import { requirePermission } from "@/lib/require-permission";
-import { assertTrustedOrigin } from "@/lib/origin-check";
+import { NextRequest, connection } from "next/server";
+import { handleExportRequest } from "@/lib/reports/export-route-handler";
 
 export async function POST(req: NextRequest) {
-  const originCheck = assertTrustedOrigin(req);
-  if (originCheck) return originCheck;
   await connection();
-
-  const denied = await requirePermission(req, { finance: ["export"] });
-  if (denied) return denied;
-
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  try {
-    const transactions = await db.transaction.findMany({
-      orderBy: { createdAt: "desc" },
-      include: {
-        order: {
-          select: {
-            id: true,
-            user: { select: { name: true, email: true } },
-          },
-        },
-      },
-    });
-
-    // Build CSV — amounts are stored in cents, display as KES with 2dp
-    const header = "ID,Order ID,Customer Name,Customer Email,Amount (KES),Provider,Status,Receipt,Date";
-    const rows = transactions.map((tx) => {
-      const orderId = tx.order?.id ?? "";
-      const customerName = tx.order?.user?.name ?? "";
-      const customerEmail = tx.order?.user?.email ?? "";
-      const amountKes = (tx.amount / 100).toFixed(2);
-      const receipt = tx.mpesaReceiptNumber ?? "";
-      const date = tx.createdAt.toISOString();
-
-      // Escape any field that might contain commas or quotes
-      function esc(v: string) {
-        if (v.includes(",") || v.includes('"') || v.includes("\n")) {
-          return `"${v.replace(/"/g, '""')}"`;
-        }
-        return v;
-      }
-
-      return [
-        esc(tx.id),
-        esc(orderId),
-        esc(customerName),
-        esc(customerEmail),
-        amountKes,
-        tx.provider,
-        tx.status,
-        esc(receipt),
-        date,
-      ].join(",");
-    });
-
-    const csvString = [header, ...rows].join("\n");
-
-    console.info(
-      `[admin/finance/export] POST admin=${session.user.id} rows=${transactions.length}`
-    );
-
-    return new Response(csvString, {
-      headers: {
-        "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="transactions-${Date.now()}.csv"`,
-      },
-    });
-  } catch (e) {
-    console.error("[admin/finance/export] POST error", e);
-    return Err.internal(e);
-  }
+  return handleExportRequest(req, "finance");
 }

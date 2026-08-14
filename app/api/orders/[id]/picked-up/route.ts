@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { ok, Err } from "@/lib/api"
 import { publishQstashJSON } from "@/lib/qstash"
+import { reportError } from "@/lib/observability"
 
 const FOUR_DAYS_SECONDS = 4 * 24 * 60 * 60
 
@@ -58,6 +59,7 @@ export async function POST(
     })
   } catch (e) {
     console.error("[orders/[id]/picked-up] POST error", e)
-    return Err.internal(e)
+    reportError(e, { route: "POST /api/orders/[id]/picked-up" })
+    return Err.internal()
   }
 }

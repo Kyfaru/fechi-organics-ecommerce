@@ -4,6 +4,7 @@ import { ok, Err } from "@/lib/api";
 import { connection, NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 /** GET /api/admin/homepage — return sections ordered by `order` */
 export async function GET(req: NextRequest) {
@@ -19,7 +20,8 @@ export async function GET(req: NextRequest) {
     return ok(sections);
   } catch (e) {
     console.error("[homepage/GET]", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/homepage" });
+    return Err.internal();
   }
 }
 
@@ -60,6 +62,7 @@ export async function PUT(req: NextRequest) {
     return ok(updated);
   } catch (e) {
     console.error("[homepage/PUT]", e);
-    return Err.internal(e);
+    reportError(e, { route: "PUT /api/admin/homepage" });
+    return Err.internal();
   }
 }

@@ -106,6 +106,7 @@ export async function initiateSTKPush(params: {
 
   const token = await getDarajaToken(branch);
   if (!branch.passkeyEnc) throw new Error(`[stk-push] Branch ${branch.id} has no passkey configured`);
+  if (!branch.shortcode) throw new Error(`[stk-push] Branch ${branch.id} has no shortcode configured`);
   const passkey = decrypt(branch.passkeyEnc);
   const timestamp = darajaTimestamp();
   const normalised = normalisePhone(phone);

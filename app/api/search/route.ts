@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { searchStaticPages } from "@/lib/search/static-pages";
+import { reportError } from "@/lib/observability";
 
 const RESULT_LIMIT = 5;
 
@@ -86,6 +87,7 @@ export async function GET(req: NextRequest) {
     return ok({ results });
   } catch (e) {
     console.error("[search] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/search" });
+    return Err.internal();
   }
 }

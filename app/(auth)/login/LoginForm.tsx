@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, FormEvent, Suspense } from "react";
+import { useState, useEffect, useRef, FormEvent, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@iconify/react";
@@ -9,12 +9,14 @@ import FormInput from "@/components/auth/FormInput";
 import PasswordInput from "@/components/auth/PasswordInput";
 import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
 import OTPModal from "@/components/auth/OTPModal";
+import Turnstile, { TurnstileHandle } from "@/components/auth/Turnstile";
 import { authClient, signOut, useSession } from "@/lib/auth-client";
 import { storeUser } from "@/lib/user-store";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
 import { posthog } from "@/lib/posthog";
 import { checkPortalMatch } from "@/lib/portal-check";
+import { reportError } from "@/lib/observability";
 
 interface LoginErrors {
   email?: string;
@@ -51,6 +53,8 @@ export default function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   // OTP modal state
   const [showOTP, setShowOTP] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileHandle>(null);
 
   const { data: sessionData, isPending: sessionPending } = useSession();
 
@@ -97,9 +101,15 @@ export default function LoginForm() {
       setErrors(validationErrors);
       return;
     }
+    if (!captchaToken) return;
 
     setErrors({});
     setIsLoading(true);
+    // Tokens are single-use — clear it now so the button re-disables until
+    // a fresh one is solved, and request a new widget render regardless of
+    // outcome below.
+    const tokenForThisAttempt = captchaToken;
+    setCaptchaToken(null);
 
     try {
       // Reject an admin's email before ever sending an OTP — no code is
@@ -113,15 +123,17 @@ export default function LoginForm() {
       // Send the OTP to the user's email before showing the modal.
       // The actual signIn.email call happens inside onVerifyOTP after the code
       // is confirmed, so the session cookie is only set on a verified login.
-      await authClient.emailOtp.sendVerificationOtp({
-        email,
-        type: "sign-in",
-      });
+      await authClient.emailOtp.sendVerificationOtp(
+        { email, type: "sign-in" },
+        { headers: { "x-captcha-response": tokenForThisAttempt } }
+      );
       setShowOTP(true);
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "login", tags: { step: "send-otp" } });
       toast.error("Failed to send verification code. Please try again.");
     } finally {
       setIsLoading(false);
+      turnstileRef.current?.reset();
     }
   }
 
@@ -132,7 +144,8 @@ export default function LoginForm() {
     setIsLoading(true);
     try {
       await authClient.signIn.social({ provider: "google", callbackURL: "/", errorCallbackURL: "/login" });
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "login", tags: { step: "google-signin" } });
       toast.error("Google sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
@@ -143,7 +156,8 @@ export default function LoginForm() {
     setIsLoading(true);
     try {
       await authClient.signIn.social({ provider: "facebook", callbackURL: "/", errorCallbackURL: "/login" });
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "login", tags: { step: "facebook-signin" } });
       toast.error("Facebook sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
@@ -193,7 +207,8 @@ export default function LoginForm() {
       }
 
       return { success: true };
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "login", tags: { step: "verify-otp" } });
       return { success: false, error: "Verification failed. Please try again." };
     }
   }
@@ -353,10 +368,17 @@ export default function LoginForm() {
               </div>
             </div>
 
+            <Turnstile
+              ref={turnstileRef}
+              onVerify={setCaptchaToken}
+              onExpire={() => setCaptchaToken(null)}
+              className="flex justify-center"
+            />
+
             {/* CTA — submitting triggers OTP send, not direct sign-in */}
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || !captchaToken}
               className="w-full py-3.5 rounded-full font-bold text-sm tracking-wide text-[#1a1c1c] transition-all duration-150 hover:brightness-95 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed mt-1"
               style={{ backgroundColor: "#fec700" }}
             >
@@ -412,11 +434,11 @@ export default function LoginForm() {
           setShowOTP(false);
           toast.error("Too many verification attempts. Please try again.");
         }}
-        onRequestOTP={async () => {
-          await authClient.emailOtp.sendVerificationOtp({
-            email,
-            type: "sign-in",
-          });
+        onRequestOTP={async (resendCaptchaToken) => {
+          await authClient.emailOtp.sendVerificationOtp(
+            { email, type: "sign-in" },
+            { headers: { "x-captcha-response": resendCaptchaToken } }
+          );
         }}
         onVerifyOTP={handleVerifyOTP}
       />

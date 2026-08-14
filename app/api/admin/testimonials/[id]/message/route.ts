@@ -8,8 +8,15 @@ import { combineLegacyPhone } from "@/lib/phone";
 import { Resend } from "resend";
 import { z } from "zod";
 import { emailShell, emailSection, emailIconCircle, EMAIL_BRAND } from "@/lib/email-template";
+import { reportError } from "@/lib/observability";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (!_resend) {
+    _resend = new Resend(process.env.RESEND_API_KEY);
+  }
+  return _resend;
+}
 
 const BodySchema = z.object({
   message: z.string().min(1).max(2000),
@@ -63,7 +70,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             `),
           ].join("");
 
-          await resend.emails.send({
+          await getResend().emails.send({
             from: process.env.EMAIL_FROM!,
             to: email,
             subject: "A message from Fechi Organics",
@@ -72,6 +79,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           results.EMAIL = "sent";
         } catch (err) {
           console.error("[testimonials/message] email failed:", err);
+          reportError(err, { route: "POST /api/admin/testimonials/[id]/message", tags: { channel: "EMAIL" }, extra: { testimonialId: id } });
           results.EMAIL = "failed";
         }
       }
@@ -86,6 +94,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           results.SMS = "sent";
         } catch (err) {
           console.error("[testimonials/message] sms failed:", err);
+          reportError(err, { route: "POST /api/admin/testimonials/[id]/message", tags: { channel: "SMS" }, extra: { testimonialId: id } });
           results.SMS = "failed";
         }
       }
@@ -102,6 +111,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           results.INBOX = "sent";
         } catch (err) {
           console.error("[testimonials/message] inbox failed:", err);
+          reportError(err, { route: "POST /api/admin/testimonials/[id]/message", tags: { channel: "INBOX" }, extra: { testimonialId: id } });
           results.INBOX = "failed";
         }
       }
@@ -110,6 +120,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return ok({ results });
   } catch (e) {
     console.error("[admin/testimonials/message] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/testimonials/[id]/message" });
+    return Err.internal();
   }
 }

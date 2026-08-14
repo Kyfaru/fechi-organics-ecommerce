@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Search, Grid, List, ChevronDown, Star, MoreHorizontal,
   Pencil, Copy, ExternalLink, Trash2, Check, X, ImagePlus,
-  GripVertical, Tag, RefreshCw,
+  GripVertical, Tag, RefreshCw, AlertTriangle, ListChecks, Archive,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
@@ -21,6 +21,8 @@ import { ScreenLoader } from "@/components/admin/ui/ScreenLoader";
 import Switch from "@/components/ui/Switch";
 import CircularProgress from "@/components/ui/CircularProgress";
 import { useAdminMe } from "@/hooks/use-can";
+import { Can } from "@/components/admin/Can";
+import { usePersistedFilter } from "@/hooks/use-persisted-filters";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,6 +33,13 @@ type ProductImage = {
   alt: string | null;
   sortOrder: number;
   isPrimary: boolean;
+};
+
+type ProductVariant = {
+  id: string;
+  label: string;
+  sortOrder: number;
+  image: { objectKey: string } | null;
 };
 
 type AdminProduct = {
@@ -47,12 +56,15 @@ type AdminProduct = {
   compareAtPriceKes: number | null;
   variantLabel: string | null;
   sizes: string[];
+  variantMode: string;
+  variantGroupLabel: string | null;
+  variantImagesHidden: boolean;
+  variants: ProductVariant[];
   howToUse: string | null;
   ingredients: string | null;
   bestSeller: boolean;
   isActive: boolean;
   outOfStock: boolean;
-  stock: number;
   ratingAvg: number;
   ratingCount: number;
   createdAt: string;
@@ -73,8 +85,6 @@ type DrawerFormData = {
   priceKes: string;
   compareAtPriceKes: string;
   variantLabel: string;
-  // Inventory
-  stock: string;
   bestSeller: boolean;
   isActive: boolean;
   outOfStock: boolean;
@@ -82,6 +92,10 @@ type DrawerFormData = {
   imageKeys: string[];
   // Product details
   sizes: string[];
+  variantMode: "sizes" | "variants";
+  variantGroupLabel: string;
+  variantImagesHidden: boolean;
+  variants: { label: string; imageObjectKey: string }[];
   howToUse: string;
   ingredients: string;
   // SEO
@@ -90,7 +104,7 @@ type DrawerFormData = {
 };
 
 type ViewMode = "grid" | "list";
-type SortOption = "newest" | "oldest" | "price-asc" | "price-desc" | "name-asc" | "stock-asc";
+type SortOption = "newest" | "oldest" | "price-asc" | "price-desc" | "name-asc";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -199,8 +213,9 @@ function blankForm(): DrawerFormData {
   return {
     name: "", slug: "", description: "", shortDescription: "",
     categoryId: "", priceKes: "", compareAtPriceKes: "", variantLabel: "",
-    stock: "0", bestSeller: false, isActive: true, outOfStock: false,
-    imageKeys: [], sizes: [], howToUse: "", ingredients: "",
+    bestSeller: false, isActive: true, outOfStock: false,
+    imageKeys: [], sizes: [], variantMode: "sizes", variantGroupLabel: "", variantImagesHidden: false, variants: [],
+    howToUse: "", ingredients: "",
     seoTitle: "", metaDescription: "",
   };
 }
@@ -220,26 +235,30 @@ function productToForm(p: AdminProduct): DrawerFormData {
       ? String(p.compareAtPriceKes)
       : "",
     variantLabel: p.variantLabel ?? "",
-    stock: String(p.stock), bestSeller: p.bestSeller, isActive: p.isActive, outOfStock: p.outOfStock,
+    bestSeller: p.bestSeller, isActive: p.isActive, outOfStock: p.outOfStock,
     imageKeys: sortedImages.map((i) => i.objectKey),
-    sizes: p.sizes ?? [], howToUse: p.howToUse ?? "", ingredients: p.ingredients ?? "",
+    sizes: p.sizes ?? [],
+    variantMode: p.variantMode === "variants" ? "variants" : "sizes",
+    variantGroupLabel: p.variantGroupLabel ?? "",
+    variantImagesHidden: p.variantImagesHidden ?? false,
+    variants: (p.variants ?? [])
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((v) => ({ label: v.label, imageObjectKey: v.image?.objectKey ?? "" })),
+    howToUse: p.howToUse ?? "", ingredients: p.ingredients ?? "",
     seoTitle: "", metaDescription: "",
   };
 }
 
 // ---------------------------------------------------------------------------
-// Stock pill (floating on card)
+// Out-of-stock pill (floating on card) — stock levels themselves live on the
+// Inventory page (per-branch); this only reflects the outOfStock override.
 // ---------------------------------------------------------------------------
-function StockPill({ stock }: { stock: number }) {
-  const cfg =
-    stock === 0
-      ? "bg-(--danger-bg) text-(--danger)"
-      : stock < 10
-      ? "bg-(--gold-100) text-(--gold-700)"
-      : "bg-(--green-50) text-(--success)";
+function OutOfStockPill({ outOfStock }: { outOfStock: boolean }) {
+  if (!outOfStock) return null;
   return (
-    <span className={`absolute top-2 right-2 rounded-full px-2 py-0.5 text-[11px] font-dm font-medium ${cfg}`}>
-      {stock === 0 ? "Out" : stock < 10 ? `Low: ${stock}` : stock}
+    <span className="absolute top-2 right-2 rounded-full px-2 py-0.5 text-[11px] font-dm font-medium bg-(--danger-bg) text-(--danger)">
+      Out
     </span>
   );
 }
@@ -252,11 +271,13 @@ function CardMenu({
   onEdit,
   onDuplicate,
   onDelete,
+  onPermanentDelete,
 }: {
   product: AdminProduct;
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onPermanentDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -289,18 +310,22 @@ function CardMenu({
             className="absolute right-0 bottom-full mb-1 w-44 bg-white rounded-[10px] shadow-(--e3) border border-(--neutral-200) z-50 overflow-hidden py-1"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              onClick={() => { setOpen(false); onEdit(); }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
-            >
-              <Pencil size={14} /> Edit
-            </button>
-            <button
-              onClick={() => { setOpen(false); onDuplicate(); }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
-            >
-              <Copy size={14} /> Duplicate
-            </button>
+            <Can permissions={{ products: ["update"] }}>
+              <button
+                onClick={() => { setOpen(false); onEdit(); }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+              >
+                <Pencil size={14} /> Edit
+              </button>
+            </Can>
+            <Can permissions={{ products: ["create"] }}>
+              <button
+                onClick={() => { setOpen(false); onDuplicate(); }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+              >
+                <Copy size={14} /> Duplicate
+              </button>
+            </Can>
             <a
               href={`/shop/${product.slug}`}
               target="_blank"
@@ -310,13 +335,23 @@ function CardMenu({
             >
               <ExternalLink size={14} /> View on Store
             </a>
-            <div className="h-px bg-(--neutral-200) mx-2 my-1" />
-            <button
-              onClick={() => { setOpen(false); onDelete(); }}
-              className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
-            >
-              <Trash2 size={14} /> Delete
-            </button>
+            <Can permissions={{ products: ["delete"] }}>
+              <div className="h-px bg-(--neutral-200) mx-2 my-1" />
+              <button
+                onClick={() => { setOpen(false); onDelete(); }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
+              >
+                <Trash2 size={14} /> Delete
+              </button>
+              {!product.isActive && (
+                <button
+                  onClick={() => { setOpen(false); onPermanentDelete(); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 font-dm text-[13px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
+                >
+                  <Trash2 size={14} /> Permanently Delete
+                </button>
+              )}
+            </Can>
           </motion.div>
         )}
       </AnimatePresence>
@@ -332,11 +367,13 @@ function ProductGridCard({
   onEdit,
   onDuplicate,
   onDelete,
+  onPermanentDelete,
 }: {
   product: AdminProduct;
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onPermanentDelete: () => void;
 }) {
   const imgSrc = getPrimaryImage(product.images);
   const savePct =
@@ -358,7 +395,7 @@ function ProductGridCard({
             <ImagePlus size={34} className="text-(--green-500) dark:text-(--dark-accent)" />
           </div>
         )}
-        <StockPill stock={product.stock} />
+        <OutOfStockPill outOfStock={product.outOfStock} />
         {savePct && (
           <span className="absolute top-2 left-2 rounded-full px-2 py-0.5 text-[11px] font-dm font-medium bg-(--gold-100) text-(--gold-700)">
             -{savePct}%
@@ -397,6 +434,7 @@ function ProductGridCard({
                 onEdit={onEdit}
                 onDuplicate={onDuplicate}
                 onDelete={onDelete}
+                onPermanentDelete={onPermanentDelete}
               />
             </div>
           </div>
@@ -924,6 +962,140 @@ function SizeTagInput({ sizes, onChange }: { sizes: string[]; onChange: (s: stri
 }
 
 // ---------------------------------------------------------------------------
+// Variant editor — color/flavour/etc. options, each optionally tied to a
+// photo (either one already uploaded above, or its own upload).
+// ---------------------------------------------------------------------------
+type FormVariant = { label: string; imageObjectKey: string };
+
+function VariantEditor({
+  variants, onChange, imageKeys, groupLabel, onGroupLabelChange, imagesHidden, onImagesHiddenChange,
+}: {
+  variants: FormVariant[];
+  onChange: (v: FormVariant[]) => void;
+  imageKeys: string[];
+  groupLabel: string;
+  onGroupLabelChange: (v: string) => void;
+  imagesHidden: boolean;
+  onImagesHiddenChange: (v: boolean) => void;
+}) {
+  const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
+
+  function addVariant() {
+    onChange([...variants, { label: "", imageObjectKey: "" }]);
+  }
+  function updateVariant(idx: number, patch: Partial<FormVariant>) {
+    onChange(variants.map((v, i) => (i === idx ? { ...v, ...patch } : v)));
+  }
+  function removeVariant(idx: number) {
+    onChange(variants.filter((_, i) => i !== idx));
+  }
+
+  async function uploadVariantImage(idx: number, file: File) {
+    setUploadingIdx(idx);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("category", "products");
+      const res = await fetch("/api/admin/upload?category=products", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) { toast.error(json.error ?? "Upload failed"); return; }
+      updateVariant(idx, { imageObjectKey: json.objectKey });
+    } finally {
+      setUploadingIdx(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <label className={labelCls}>Variant Group Name</label>
+        <input
+          className={inputCls}
+          placeholder="e.g. Color, Flavour"
+          value={groupLabel}
+          onChange={(e) => onGroupLabelChange(e.target.value)}
+        />
+      </div>
+
+      <label className="flex items-center gap-2.5 cursor-pointer select-none">
+        <Switch checked={imagesHidden} onChange={onImagesHiddenChange} />
+        <span className="font-dm text-[13px] text-(--neutral-700)">
+          Hide variant photos from the gallery until selected (Amazon-style)
+        </span>
+      </label>
+
+      <div className="flex flex-col gap-2">
+        {variants.map((v, idx) => {
+          const src = imageUrl(v.imageObjectKey);
+          return (
+            <div key={idx} className="flex items-center gap-2 p-2 border border-(--neutral-200) rounded-[8px]">
+              <div className="relative w-11 h-11 rounded-[6px] overflow-hidden bg-(--neutral-100) shrink-0">
+                {uploadingIdx === idx ? (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <CircularProgress percent={50} size={28} strokeWidth={3} />
+                  </div>
+                ) : src ? (
+                  <Image src={src} alt="" fill className="object-cover" sizes="44px" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Tag size={16} className="text-(--neutral-300)" />
+                  </div>
+                )}
+              </div>
+              <input
+                className={`${inputCls} flex-1`}
+                placeholder="e.g. Red"
+                value={v.label}
+                onChange={(e) => updateVariant(idx, { label: e.target.value })}
+              />
+              <select
+                className={`${inputCls} w-36 shrink-0`}
+                value={v.imageObjectKey}
+                onChange={(e) => updateVariant(idx, { imageObjectKey: e.target.value })}
+              >
+                <option value="">No photo</option>
+                {imageKeys.map((k, i) => (
+                  <option key={k} value={k}>Photo {i + 1}</option>
+                ))}
+              </select>
+              <label className="shrink-0 text-(--green-800) font-dm text-[12px] font-medium cursor-pointer hover:underline">
+                Upload
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadVariantImage(idx, file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => removeVariant(idx)}
+                className="shrink-0 text-(--danger) hover:opacity-70 transition-opacity"
+                aria-label="Remove variant"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <button
+        type="button"
+        onClick={addVariant}
+        className="self-start flex items-center gap-1.5 text-(--green-800) font-dm text-[13px] font-medium hover:underline"
+      >
+        <Plus size={14} /> Add variant
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Product Drawer (640px)
 // ---------------------------------------------------------------------------
 function ProductDrawer({
@@ -1143,11 +1315,45 @@ function ProductDrawer({
           <h3 className={sectionTitleCls}>Product Details</h3>
           <div className="flex flex-col gap-4">
             <div>
-              <label className={labelCls}>Sizes</label>
-              <SizeTagInput sizes={form.sizes} onChange={(s) => onChange({ sizes: s })} />
-              <p className="font-dm text-[11px] text-(--neutral-400) mt-1">
-                e.g. 250ml, 500ml, 1kg — displayed as selectable buttons on the product page.
-              </p>
+              <label className={labelCls}>Options</label>
+              <div className="inline-flex rounded-[8px] border border-(--neutral-200) p-0.5 mb-3">
+                {(["sizes", "variants"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => onChange({ variantMode: mode })}
+                    className={`px-3 py-1.5 rounded-[6px] font-dm text-[13px] font-medium transition-colors ${
+                      form.variantMode === mode ? "bg-(--green-800) text-white" : "text-(--neutral-600) hover:bg-(--neutral-50)"
+                    }`}
+                  >
+                    {mode === "sizes" ? "Sizes" : "Variants (color/flavour)"}
+                  </button>
+                ))}
+              </div>
+
+              {form.variantMode === "sizes" ? (
+                <>
+                  <SizeTagInput sizes={form.sizes} onChange={(s) => onChange({ sizes: s })} />
+                  <p className="font-dm text-[11px] text-(--neutral-400) mt-1">
+                    e.g. 250ml, 500ml, 1kg — displayed as selectable buttons on the product page.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <VariantEditor
+                    variants={form.variants}
+                    onChange={(v) => onChange({ variants: v })}
+                    imageKeys={form.imageKeys}
+                    groupLabel={form.variantGroupLabel}
+                    onGroupLabelChange={(v) => onChange({ variantGroupLabel: v })}
+                    imagesHidden={form.variantImagesHidden}
+                    onImagesHiddenChange={(v) => onChange({ variantImagesHidden: v })}
+                  />
+                  <p className="font-dm text-[11px] text-(--neutral-400) mt-1">
+                    Each variant can use a photo already uploaded above, or its own — clicking a variant on the storefront jumps to that photo. Only affects orders, never synced to Zoho.
+                  </p>
+                </>
+              )}
             </div>
             <div>
               <label className={labelCls}>How to Use</label>
@@ -1173,16 +1379,9 @@ function ProductDrawer({
         {/* ── 5. Inventory ── */}
         <section>
           <h3 className={sectionTitleCls}>Inventory</h3>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className={labelCls}>Stock Quantity</label>
-              <input
-                type="number" min={0} className={inputCls}
-                value={form.stock}
-                onChange={(e) => onChange({ stock: e.target.value })}
-              />
-            </div>
-          </div>
+          <p className="text-[12px] font-dm text-(--neutral-500) mb-4">
+            Stock levels are managed per branch on the <a href="/admin/inventory" target="_blank" rel="noreferrer" className="underline hover:text-(--green-700)">Inventory page</a>.
+          </p>
           <div className="flex flex-col gap-3">
             <label className="flex items-center gap-2.5 cursor-pointer select-none">
               <Switch
@@ -1310,10 +1509,10 @@ export function AdminProductsClient() {
     }
     return "list";
   });
-  const [search, setSearch] = useState("");
-  const [filterCategory, setFilterCategory] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"" | "active" | "inactive">("");
-  const [sort, setSort] = useState<SortOption>("newest");
+  const [search, setSearch] = usePersistedFilter("products:search", "");
+  const [filterCategory, setFilterCategory] = usePersistedFilter("products:category", "");
+  const [filterStatus, setFilterStatus] = usePersistedFilter<"" | "active" | "inactive">("products:status", "");
+  const [sort, setSort] = usePersistedFilter<SortOption>("products:sort", "newest");
 
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -1325,7 +1524,18 @@ export function AdminProductsClient() {
 
   // Confirm delete
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [bulkDeleteReason, setBulkDeleteReason] = useState("");
+  const [permanentDeleteReason, setPermanentDeleteReason] = useState("");
+
+  // Permanent delete flow: confirm -> order-history check -> blocked message
+  // OR slug-confirm -> real delete.
+  const [permanentConfirmTarget, setPermanentConfirmTarget] = useState<AdminProduct | null>(null);
+  const [permanentCheckLoading, setPermanentCheckLoading] = useState(false);
+  const [permanentBlockedTarget, setPermanentBlockedTarget] = useState<AdminProduct | null>(null);
+  const [permanentSlugTarget, setPermanentSlugTarget] = useState<AdminProduct | null>(null);
+  const [permanentSlugInput, setPermanentSlugInput] = useState("");
 
   // Caller profile — determines whether Zoho sync targets the caller's own
   // branch automatically, or needs a branch picker (global tier).
@@ -1363,6 +1573,10 @@ export function AdminProductsClient() {
         body: JSON.stringify({ branchId }),
       });
       const json = await res.json();
+      if (res.status === 202) {
+        toast.info("Sync queued for admin approval.");
+        return;
+      }
       if (!res.ok) throw new Error(json.error?.message ?? "Sync failed");
       toast.success("Zoho sync complete.");
       qc.invalidateQueries({ queryKey: ["admin-products"] });
@@ -1426,7 +1640,6 @@ export function AdminProductsClient() {
         case "price-asc": return a.priceKes - b.priceKes;
         case "price-desc": return b.priceKes - a.priceKes;
         case "name-asc": return a.name.localeCompare(b.name);
-        case "stock-asc": return a.stock - b.stock;
         default: return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       }
     });
@@ -1462,24 +1675,80 @@ export function AdminProductsClient() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(`/api/admin/products/${id}`, { method: "DELETE" });
-      return res.json();
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const res = await fetch(`/api/admin/products/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const json = await res.json();
+      if (res.status === 202) return { queued: true };
+      if (!json.ok) throw new Error(json.error?.message ?? "Could not delete product");
+      return json;
     },
-    onSuccess: () => {
-      toast.success("Product deactivated");
+    onSuccess: (res) => {
+      toast.success(res && "queued" in res ? "Deletion queued for admin approval" : "Product deactivated");
       qc.invalidateQueries({ queryKey: ["admin-products"] });
       setDeleteTarget(null);
+      setDeleteReason("");
     },
-    onError: () => toast.error("Could not delete product"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Could not delete product"),
+  });
+
+  async function handleConfirmPermanentDelete() {
+    if (!permanentConfirmTarget) return;
+    const target = permanentConfirmTarget;
+    setPermanentCheckLoading(true);
+    try {
+      const res = await fetch(`/api/admin/products/${target.id}/permanent`);
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error?.message ?? "Could not check order history");
+      setPermanentConfirmTarget(null);
+      if (json.data.hasOrders) {
+        setPermanentBlockedTarget(target);
+      } else {
+        setPermanentSlugInput("");
+        setPermanentSlugTarget(target);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not check order history");
+    } finally {
+      setPermanentCheckLoading(false);
+    }
+  }
+
+  const permanentDeleteMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const res = await fetch(`/api/admin/products/${id}/permanent`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const json = await res.json();
+      if (res.status === 202) return { queued: true };
+      if (!json.ok) throw new Error(json.error?.message ?? "Could not delete product");
+      return json;
+    },
+    onSuccess: (res) => {
+      toast.success(res && "queued" in res ? "Deletion queued for admin approval" : "Product permanently deleted");
+      qc.invalidateQueries({ queryKey: ["admin-products"] });
+      setPermanentSlugTarget(null);
+      setPermanentSlugInput("");
+      setPermanentDeleteReason("");
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Could not delete product"),
   });
 
   const bulkMutation = useMutation({
-    mutationFn: async ({ ids, action }: { ids: string[]; action: "activate" | "deactivate" | "delete" }) => {
+    mutationFn: async ({ ids, action, reason }: { ids: string[]; action: "activate" | "deactivate" | "delete"; reason?: string }) => {
       // Sequential PATCH/DELETE for each — simple, avoids a bulk endpoint
       const promises = ids.map((id) => {
         if (action === "delete") {
-          return fetch(`/api/admin/products/${id}`, { method: "DELETE" });
+          return fetch(`/api/admin/products/${id}`, {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reason }),
+          });
         }
         return fetch(`/api/admin/products/${id}`, {
           method: "PATCH",
@@ -1495,6 +1764,7 @@ export function AdminProductsClient() {
       qc.invalidateQueries({ queryKey: ["admin-products"] });
       setSelected(new Set());
       setBulkDeleteConfirm(false);
+      setBulkDeleteReason("");
     },
     onError: () => toast.error("Bulk action failed"),
   });
@@ -1527,8 +1797,6 @@ export function AdminProductsClient() {
     // E1: form.priceKes is a digits-only string already in cents (e.g. "120000" = KES 1,200.00)
     const priceKes = form.priceKes ? parseInt(form.priceKes, 10) : NaN;
     const compareAtPriceKes = form.compareAtPriceKes ? parseInt(form.compareAtPriceKes, 10) : undefined;
-    const stock = parseInt(form.stock, 10) || 0;
-
     if (!form.name.trim()) { toast.error("Product name is required"); return null; }
     if (!form.slug.trim()) { toast.error("Slug is required"); return null; }
     if (!form.categoryId) { toast.error("Category is required"); return null; }
@@ -1544,12 +1812,20 @@ export function AdminProductsClient() {
       priceKes,
       compareAtPriceKes: compareAtPriceKes && compareAtPriceKes > 0 ? compareAtPriceKes : undefined,
       variantLabel: form.variantLabel.trim() || undefined,
-      stock,
       bestSeller: form.bestSeller,
       isActive,
       outOfStock: form.outOfStock,
       imageObjectKeys: form.imageKeys,
       sizes: form.sizes,
+      variantMode: form.variantMode,
+      variantGroupLabel: form.variantGroupLabel.trim() || null,
+      variantImagesHidden: form.variantImagesHidden,
+      variants: form.variantMode === "variants"
+        ? form.variants.filter((v) => v.label.trim()).map((v) => ({
+            label: v.label.trim(),
+            imageObjectKey: v.imageObjectKey || undefined,
+          }))
+        : [],
       howToUse: form.howToUse.trim() || null,
       ingredients: form.ingredients.trim() || null,
     };
@@ -1638,25 +1914,6 @@ export function AdminProductsClient() {
       },
     },
     {
-      key: "stock",
-      label: "Stock",
-      sortable: true,
-      render: (_: unknown, row: Record<string, unknown>) => {
-        const p = row as unknown as AdminProduct;
-        const cfg =
-          p.stock === 0
-            ? "bg-(--danger-bg) text-(--danger)"
-            : p.stock < 10
-            ? "bg-(--gold-100) text-(--gold-700)"
-            : "bg-(--green-50) text-(--success)";
-        return (
-          <span className={`inline-block rounded-full px-2.5 py-0.5 font-dm text-[12px] font-semibold ${cfg}`}>
-            {p.stock === 0 ? "Out of stock" : p.stock}
-          </span>
-        );
-      },
-    },
-    {
       key: "isActive",
       label: "Status",
       render: (_: unknown, row: Record<string, unknown>) => {
@@ -1690,6 +1947,7 @@ export function AdminProductsClient() {
               onEdit={() => openEdit(p)}
               onDuplicate={() => handleDuplicate(p)}
               onDelete={() => setDeleteTarget(p.id)}
+              onPermanentDelete={() => setPermanentConfirmTarget(p)}
             />
           </div>
         );
@@ -1728,13 +1986,15 @@ export function AdminProductsClient() {
         <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
         {syncing ? "Syncing…" : "Sync with Zoho"}
       </button>
-      <button
-        onClick={openCreate}
-        className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
-      >
-        <Plus size={16} />
-        Add Product
-      </button>
+      <Can permissions={{ products: ["create"] }}>
+        <button
+          onClick={openCreate}
+          className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+        >
+          <Plus size={16} />
+          Add Product
+        </button>
+      </Can>
       
       <button
         onClick={() => router.push('/admin/products/reviews')}
@@ -1742,6 +2002,23 @@ export function AdminProductsClient() {
       >
         <Star size={16} />
         View Reviews
+      </button>
+
+      {/* Zoho staging review queue — new Zoho items land here instead of
+          auto-creating live products. See AdminZohoStagedItemsClient. */}
+      <button
+        onClick={() => router.push('/admin/products/zoho')}
+        className="h-10 px-5 rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+      >
+        <ListChecks size={16} />
+        Zoho Products
+      </button>
+      <button
+        onClick={() => router.push('/admin/products/zoho/expelled')}
+        className="h-10 px-5 rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+      >
+        <Archive size={16} />
+        Expelled Zoho Products
       </button>
     </div>
   );
@@ -1752,7 +2029,6 @@ export function AdminProductsClient() {
     { value: "price-asc", label: "Price: Low → High" },
     { value: "price-desc", label: "Price: High → Low" },
     { value: "name-asc", label: "Name A–Z" },
-    { value: "stock-asc", label: "Stock: Low → High" },
   ];
 
   return (
@@ -1875,6 +2151,7 @@ export function AdminProductsClient() {
                   onEdit={() => openEdit(p)}
                   onDuplicate={() => handleDuplicate(p)}
                   onDelete={() => setDeleteTarget(p.id)}
+                  onPermanentDelete={() => setPermanentConfirmTarget(p)}
                 />
               ))}
             </div>
@@ -1910,26 +2187,131 @@ export function AdminProductsClient() {
       {/* ── Single delete confirm ── */}
       <ConfirmModal
         open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget)}
+        onClose={() => { setDeleteTarget(null); setDeleteReason(""); }}
+        onConfirm={() => {
+          if (!deleteReason.trim()) { toast.error("A reason is required"); return; }
+          if (deleteTarget) deleteMutation.mutate({ id: deleteTarget, reason: deleteReason.trim() });
+        }}
         title="Deactivate product?"
         description="The product will be hidden from the store. You can reactivate it any time."
         confirmLabel="Deactivate"
         danger
         loading={deleteMutation.isPending}
-      />
+      >
+        <textarea
+          value={deleteReason}
+          onChange={(e) => setDeleteReason(e.target.value)}
+          placeholder="Reason for deleting this product…"
+          className="w-full h-20 px-3 py-2 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] resize-none outline-none focus:border-(--danger)"
+        />
+      </ConfirmModal>
 
       {/* ── Bulk delete confirm ── */}
       <ConfirmModal
         open={bulkDeleteConfirm}
-        onClose={() => setBulkDeleteConfirm(false)}
-        onConfirm={() => bulkMutation.mutate({ ids: Array.from(selected), action: "delete" })}
+        onClose={() => { setBulkDeleteConfirm(false); setBulkDeleteReason(""); }}
+        onConfirm={() => {
+          if (!bulkDeleteReason.trim()) { toast.error("A reason is required"); return; }
+          bulkMutation.mutate({ ids: Array.from(selected), action: "delete", reason: bulkDeleteReason.trim() });
+        }}
         title={`Deactivate ${selected.size} products?`}
         description="All selected products will be hidden from the store."
         confirmLabel="Deactivate all"
         danger
         loading={bulkMutation.isPending}
+      >
+        <textarea
+          value={bulkDeleteReason}
+          onChange={(e) => setBulkDeleteReason(e.target.value)}
+          placeholder="Reason for deleting these products…"
+          className="w-full h-20 px-3 py-2 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] resize-none outline-none focus:border-(--danger)"
+        />
+      </ConfirmModal>
+
+      {/* ── Permanently delete: confirm ── */}
+      <ConfirmModal
+        open={!!permanentConfirmTarget}
+        onClose={() => setPermanentConfirmTarget(null)}
+        onConfirm={handleConfirmPermanentDelete}
+        title="Permanently delete product?"
+        description="This removes the product and its data for good. This can't be undone."
+        confirmLabel="Continue"
+        danger
+        loading={permanentCheckLoading}
       />
+
+      {/* ── Permanently delete: blocked (has order history) ── */}
+      {permanentBlockedTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-(--danger-bg)">
+                <AlertTriangle size={18} className="text-(--danger)" />
+              </div>
+              <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
+                Can&apos;t permanently delete
+              </h3>
+            </div>
+            <p className="font-dm text-[14px] text-(--neutral-600) dark:text-(--dark-muted)">
+              &quot;{permanentBlockedTarget.name}&quot; has order history and can&apos;t be permanently deleted.
+              It will remain deactivated to preserve order records.
+            </p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setPermanentBlockedTarget(null)}
+                className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] hover:bg-(--green-900)"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Permanently delete: type-slug-to-confirm ── */}
+      {permanentSlugTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
+              Confirm permanent delete
+            </h3>
+            <p className="font-dm text-[14px] text-(--neutral-600) dark:text-(--dark-muted)">
+              Type <span className="font-semibold text-(--neutral-900) dark:text-(--dark-text)">{permanentSlugTarget.slug}</span> to confirm.
+            </p>
+            <input
+              type="text"
+              value={permanentSlugInput}
+              onChange={(e) => setPermanentSlugInput(e.target.value)}
+              placeholder={permanentSlugTarget.slug}
+              className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--danger)"
+            />
+            <textarea
+              value={permanentDeleteReason}
+              onChange={(e) => setPermanentDeleteReason(e.target.value)}
+              placeholder="Reason for permanently deleting this product…"
+              className="w-full h-20 px-3 py-2 rounded-xl border border-(--neutral-200) font-dm text-[13px] resize-none outline-none focus:border-(--danger)"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => { setPermanentSlugTarget(null); setPermanentSlugInput(""); setPermanentDeleteReason(""); }}
+                className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (!permanentDeleteReason.trim()) { toast.error("A reason is required"); return; }
+                  permanentDeleteMutation.mutate({ id: permanentSlugTarget.id, reason: permanentDeleteReason.trim() });
+                }}
+                disabled={permanentSlugInput !== permanentSlugTarget.slug || !permanentDeleteReason.trim() || permanentDeleteMutation.isPending}
+                className="px-4 py-2 rounded-xl bg-(--danger) text-white font-dm text-[14px] disabled:opacity-50"
+              >
+                {permanentDeleteMutation.isPending ? "Deleting…" : "Delete Permanently"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Bulk action bar ── */}
       <BulkBar

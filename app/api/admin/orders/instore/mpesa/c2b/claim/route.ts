@@ -24,8 +24,9 @@ import { getRedis } from "@/lib/redis";
 import { paymentChannel } from "@/lib/payment-channel";
 import { buildInStoreOrderNumber } from "@/lib/orders/generate-instore-order-number";
 import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-invoice";
-import { pushSaleToZoho } from "@/lib/zoho/push-sale";
+import { pushSaleReceiptToZoho } from "@/lib/zoho/push-sale-receipt";
 import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
+import { reportError } from "@/lib/observability";
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
@@ -71,7 +72,12 @@ export async function POST(req: NextRequest) {
   let parsed: z.infer<typeof bodySchema>;
   try {
     parsed = bodySchema.parse(await req.json());
-  } catch {
+  } catch (bodyErr) {
+    reportError(bodyErr, {
+      route: "POST /api/admin/orders/instore/mpesa/c2b/claim",
+      userId: admin.id,
+      tags: { stage: "body_validation" },
+    });
     return Err.validation("Invalid request body");
   }
 
@@ -124,7 +130,12 @@ export async function POST(req: NextRequest) {
         const r = await resolvePromo(normalizedPromoCode, subtotalKes, customerUserId ?? undefined);
         discountKes = r.discountKes;
         resolvedPromoId = r.promo.id;
-      } catch {
+      } catch (promoErr) {
+        reportError(promoErr, {
+          route: "POST /api/admin/orders/instore/mpesa/c2b/claim",
+          userId: admin.id,
+          tags: { stage: "promo_resolution" },
+        });
         /* invalid/expired — discount stays 0 */
       }
     }
@@ -217,8 +228,15 @@ export async function POST(req: NextRequest) {
       });
     } catch (e) {
       if (e instanceof AlreadyClaimedError) {
+        // Expected race outcome, not a bug — don't page on it.
         return err("ALREADY_CLAIMED", "Already claimed", 409);
       }
+      reportError(e, {
+        route: "POST /api/admin/orders/instore/mpesa/c2b/claim",
+        userId: admin.id,
+        tags: { stage: "claim_transaction" },
+        extra: { c2bTransactionId },
+      });
       throw e;
     }
 
@@ -229,6 +247,12 @@ export async function POST(req: NextRequest) {
     try {
       await getOrCreateInStoreInvoice(result.orderId);
     } catch (e) {
+      reportError(e, {
+        route: "POST /api/admin/orders/instore/mpesa/c2b/claim",
+        userId: admin.id,
+        tags: { stage: "invoice_pregeneration" },
+        extra: { orderId: result.orderId },
+      });
       console.error("[instore/mpesa/c2b/claim] Invoice pre-generation failed:", e);
     }
 
@@ -245,33 +269,52 @@ export async function POST(req: NextRequest) {
         { ex: 900 },
       );
     } catch (e) {
+      reportError(e, {
+        route: "POST /api/admin/orders/instore/mpesa/c2b/claim",
+        userId: admin.id,
+        tags: { stage: "redis_signal" },
+        extra: { orderId: result.orderId },
+      });
       console.error("[instore/mpesa/c2b/claim] Redis set failed:", e);
     }
 
-    // Fire-and-forget: push this sale to Zoho — this route bypasses
-    // markInStorePaymentSuccess (order is created PAID directly), so it
-    // needs its own copy of the push, same reasoning as the invoice/Redis
-    // blocks above.
+    // Fire-and-forget: push this sale to Zoho as a Sales Receipt — this
+    // route bypasses markInStorePaymentSuccess (order is created PAID
+    // directly), so it needs its own copy of the push, same reasoning as the
+    // invoice/Redis blocks above. Provider is unambiguous here — a C2B
+    // till/paybill payment is always M-Pesa via Daraja.
     (async () => {
       try {
         const organizationId = await resolveZohoOrganizationId(branch.id);
         if (!organizationId) return;
-        await pushSaleToZoho({
+        await pushSaleReceiptToZoho({
           organizationId,
           branchId: branch.id,
           referenceType: "inStoreOrder",
           referenceId: result.orderId,
+          referenceNumber: result.orderNumber,
           customerName: customerName ?? null,
           customerEmail: customerEmail ?? null,
+          paymentMode: "Mpesa",
           items: items.map((item) => {
             const product = productById.get(item.productId)!;
             return { productId: product.id, name: product.name, priceKes: product.priceKes, quantity: item.quantity };
           }),
           discountKes,
-          notes: `Fechi Organics in-store order ${result.orderId}`,
+          notes: `Fechi Organics in-store order ${result.orderNumber ?? result.orderId}`,
         });
+
+        // NOTE: no separate Inventory Adjustment call here anymore — see
+        // lib/payments/post-payment.ts for why. This org's Sales Receipts
+        // already move real stock; the extra call was double-decrementing.
       } catch (e) {
-        console.error("[instore/mpesa/c2b/claim] Zoho SO push failed:", e);
+        reportError(e, {
+          route: "POST /api/admin/orders/instore/mpesa/c2b/claim",
+          userId: admin.id,
+          tags: { stage: "zoho_sales_receipt" },
+          extra: { orderId: result.orderId },
+        });
+        console.error("[instore/mpesa/c2b/claim] Zoho sales receipt push failed:", e);
       }
     })();
 
@@ -281,7 +324,12 @@ export async function POST(req: NextRequest) {
 
     return ok({ inStoreOrderId: result.orderId, orderNumber: result.orderNumber });
   } catch (e) {
+    reportError(e, {
+      route: "POST /api/admin/orders/instore/mpesa/c2b/claim",
+      userId: admin.id,
+      tags: { stage: "handler" },
+    });
     console.error("[instore/mpesa/c2b/claim] POST error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

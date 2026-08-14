@@ -9,6 +9,7 @@ import PasswordChecklist, { checkRequirements } from "@/components/auth/Password
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
 import { PWRESET_COMPLETION_FLAG_KEY } from "@/lib/pwreset-flag";
+import { reportError } from "@/lib/observability";
 
 /**
  * Reset Password page — user-facing.
@@ -145,7 +146,8 @@ function ResetPasswordForm() {
       // Success
       toast.success("Password updated. Please log in.");
       router.push("/login");
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "reset-password", tags: { step: "submit" } });
       toast.error("Failed to update password. Please try again.");
     } finally {
       setIsLoading(false);

@@ -86,3 +86,25 @@ export function allowedNotificationTypes(
     return grantsFor(role, resource).includes("view");
   });
 }
+
+// Notification types every staff member keeps seeing regardless of their
+// personal mute preferences — never user-toggleable.
+export const LOCKED_NOTIFICATION_TYPES: NotificationType[] = ["SYSTEM_ALERT", "APPROVAL_DECIDED"];
+
+/**
+ * Same as `allowedNotificationTypes`, further narrowed by the caller's own
+ * muted-types preference (adminProfile.mutedNotificationTypes) — used by the
+ * list/preview/unread-count routes so muted types never appear in query
+ * results. Locked types can't be muted, so they always survive this filter.
+ */
+export function visibleNotificationTypes(
+  role: RoleName,
+  isSuperAdmin: boolean,
+  deny: Set<string>,
+  mutedTypes: NotificationType[]
+): NotificationType[] {
+  const allowed = allowedNotificationTypes(role, isSuperAdmin, deny);
+  if (mutedTypes.length === 0) return allowed;
+  const muted = new Set(mutedTypes.filter((t) => !LOCKED_NOTIFICATION_TYPES.includes(t)));
+  return allowed.filter((type) => !muted.has(type));
+}

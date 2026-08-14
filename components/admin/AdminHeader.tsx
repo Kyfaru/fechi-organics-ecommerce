@@ -12,6 +12,7 @@ import { useTheme } from "@/app/providers";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { GlobalSearchModal, type SearchResult } from "@/components/ui/GlobalSearchModal";
 import { NotificationBell } from "@/components/admin/NotificationBell";
+import { ExportHeaderIcon } from "@/components/admin/exports/ExportHeaderIcon";
 
 const WHATSAPP_URL = "https://wa.me/254768151505";
 
@@ -97,6 +98,8 @@ export function AdminHeader() {
 
       {/* Right controls */}
       <div className="flex items-center gap-2 ml-auto">
+        <ExportHeaderIcon />
+
         <a
           href={WHATSAPP_URL}
           target="_blank"
@@ -123,7 +126,7 @@ export function AdminHeader() {
           <Settings size={18} />
         </Link>
 
-        <Link href="/admin/settings">
+        <Link href="/admin/profile">
           <div className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-transparent hover:ring-(--green-500) dark:hover:ring-(--dark-accent) transition cursor-pointer">
             {userImage ? (
               <Image src={imgUrl} alt={userName} width={36} height={36} className="object-cover w-full h-full" />

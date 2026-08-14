@@ -3,10 +3,12 @@ import { connection } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { invalidateProductCache } from "@/lib/cache-tags";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { createNotification } from "@/lib/notify";
-import { requirePermission } from "@/lib/require-permission";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/products
@@ -19,13 +21,24 @@ export async function GET(req: NextRequest) {
   if (denied) return denied;
 
   try {
+    // activeOnly=true scopes results to storefront-eligible products — used
+    // by pickers (e.g. the in-store order product picker) that must not
+    // offer inactive products for sale. Omitted entirely for the general
+    // product-management page, which needs to see and edit inactive products too.
+    const activeOnly = req.nextUrl.searchParams.get("activeOnly") === "true";
+
     const products = await db.product.findMany({
+      where: activeOnly ? { isActive: true } : undefined,
       orderBy: { createdAt: "desc" },
       include: {
         category: { select: { id: true, name: true, slug: true } },
         images: {
           orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }],
           select: { id: true, objectKey: true, isPrimary: true, sortOrder: true, alt: true },
+        },
+        variants: {
+          orderBy: { sortOrder: "asc" },
+          select: { id: true, label: true, sortOrder: true, image: { select: { objectKey: true } } },
         },
       },
     });
@@ -34,7 +47,8 @@ export async function GET(req: NextRequest) {
     return ok({ products });
   } catch (e) {
     console.error("[admin/products] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/products" });
+    return Err.internal();
   }
 }
 
@@ -54,7 +68,6 @@ const CreateSchema = z.object({
   priceKes: z.number().int().positive("Price must be a positive number"),
   compareAtPriceKes: z.number().int().positive().optional(),
   variantLabel: z.string().optional(),
-  stock: z.number().int().min(0, "Stock cannot be negative").default(0),
   bestSeller: z.boolean().default(false),
   isActive: z.boolean().default(true),
   outOfStock: z.boolean().default(false),
@@ -63,6 +76,13 @@ const CreateSchema = z.object({
   ingredients: z.string().nullable().optional(),
   // imageObjectKeys: ordered array; index 0 = primary.
   imageObjectKeys: z.array(z.string()).optional(),
+  variantMode: z.enum(["sizes", "variants"]).optional(),
+  variantGroupLabel: z.string().nullable().optional(),
+  variantImagesHidden: z.boolean().optional(),
+  variants: z.array(z.object({
+    label: z.string().min(1),
+    imageObjectKey: z.string().optional(),
+  })).optional(),
 }).strict();
 
 export async function POST(req: NextRequest) {
@@ -78,48 +98,25 @@ export async function POST(req: NextRequest) {
     const parsed = CreateSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
-    const { imageObjectKeys, ...productData } = parsed.data;
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return Err.forbidden();
 
-    const product = await db.product.create({
-      data: {
-        ...productData,
-        ...(imageObjectKeys?.length
-          ? {
-              images: {
-                create: imageObjectKeys.map((objectKey, idx) => ({
-                  objectKey,
-                  isPrimary: idx === 0,
-                  sortOrder: idx,
-                })),
-              },
-            }
-          : {}),
-      },
-      include: {
-        category: { select: { id: true, name: true, slug: true } },
-        images: {
-          orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }],
-          select: { objectKey: true, isPrimary: true },
-        },
-      },
-    });
+    const outcome = await requireApprovalOrProceed(ctx, "products", "create", parsed.data);
+    if (!outcome.proceed) return Approval.queued(outcome.requestId);
+
+    const product = await approvalExecutors["products:create"](parsed.data, null) as
+      Awaited<ReturnType<typeof db.product.create>>;
 
     console.info("[admin/products] POST — created product", product.id, product.slug);
-    invalidateProductCache(product.slug);
-    // Notify admin inbox about new product
-    createNotification({
-      type: "PRODUCT_ADDED",
-      title: `New product added: ${product.name}`,
-      body: `"${product.name}" has been published to the store.`,
-      link: `/admin/products`,
-    }).catch((e) => console.error("[admin/products] notification create failed:", e));
+    logActivity(ctx.id, `Created product "${product.name}"`, "product", product.id, req);
     return ok({ product });
   } catch (e: unknown) {
     console.error("[admin/products] POST error", e);
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("A product with this slug already exists");
     }
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/products" });
+    return Err.internal();
   }
 }
 
@@ -141,7 +138,6 @@ const UpdateSchema = z.object({
   priceKes: z.number().int().positive().optional(),
   compareAtPriceKes: z.number().int().positive().nullable().optional(),
   variantLabel: z.string().nullable().optional(),
-  stock: z.number().int().min(0).optional(),
   bestSeller: z.boolean().optional(),
   isActive: z.boolean().optional(),
   outOfStock: z.boolean().optional(),
@@ -151,6 +147,14 @@ const UpdateSchema = z.object({
   // imageObjectKeys: ordered array; index 0 = primary.
   // Passing this replaces all existing images with the new set.
   imageObjectKeys: z.array(z.string()).optional(),
+  variantMode: z.enum(["sizes", "variants"]).optional(),
+  variantGroupLabel: z.string().nullable().optional(),
+  variantImagesHidden: z.boolean().optional(),
+  // Passing this replaces all existing variants with the new set.
+  variants: z.array(z.object({
+    label: z.string().min(1),
+    imageObjectKey: z.string().optional(),
+  })).optional(),
 }).strict();
 
 export async function PATCH(req: NextRequest) {
@@ -165,39 +169,26 @@ export async function PATCH(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const parsed = UpdateSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
+    const { id } = parsed.data;
 
-    const { id, imageObjectKeys, ...data } = parsed.data;
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return Err.forbidden();
 
-    const existing = await db.product.findUnique({ where: { id }, select: { slug: true } });
+    const outcome = await requireApprovalOrProceed(ctx, "products", "update", parsed.data, id);
+    if (!outcome.proceed) return Approval.queued(outcome.requestId);
 
-    const product = await db.product.update({
-      where: { id },
-      data,
-    });
-
-    // If imageObjectKeys provided, replace all images for this product
-    if (imageObjectKeys !== undefined) {
-      await db.productImage.deleteMany({ where: { productId: id } });
-      if (imageObjectKeys.length > 0) {
-        await db.productImage.createMany({
-          data: imageObjectKeys.map((objectKey, idx) => ({
-            productId: id,
-            objectKey,
-            isPrimary: idx === 0,
-            sortOrder: idx,
-          })),
-        });
-      }
-    }
+    const product = await approvalExecutors["products:update"](parsed.data, id) as
+      Awaited<ReturnType<typeof db.product.update>>;
 
     console.info("[admin/products] PATCH — updated product", id);
-    invalidateProductCache(existing?.slug, product.slug);
+    logActivity(ctx.id, `Updated product "${product.name}"`, "product", id, req);
     return ok({ product });
   } catch (e: unknown) {
     console.error("[admin/products] PATCH error", e);
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("A product with this slug already exists");
     }
-    return Err.internal(e);
+    reportError(e, { route: "PATCH /api/admin/products" });
+    return Err.internal();
   }
 }

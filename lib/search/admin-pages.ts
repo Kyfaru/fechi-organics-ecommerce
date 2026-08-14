@@ -30,6 +30,16 @@ export const ADMIN_PAGES: Array<{ title: string; url: string; keywords: string[]
   { title: "Security", url: "/admin/security", keywords: ["security", "audit log", "2fa"] },
   { title: "Settings — Delivery Zones", url: "/admin/settings/delivery-zones", keywords: ["delivery zones", "branches", "county"] },
   { title: "Settings", url: "/admin/settings", keywords: ["settings", "configuration"] },
+  { title: "Settings — General", url: "/admin/settings?tab=general", keywords: ["general settings", "store name"] },
+  { title: "Settings — Store Profile", url: "/admin/settings?tab=profile", keywords: ["store profile", "business info"] },
+  { title: "Settings — Branding", url: "/admin/settings?tab=branding", keywords: ["branding", "logo", "colors", "theme"] },
+  { title: "Settings — Shipping", url: "/admin/settings?tab=shipping", keywords: ["shipping settings", "delivery fee"] },
+  { title: "Settings — Payment", url: "/admin/settings?tab=payment", keywords: ["payment settings", "mpesa", "checkout"] },
+  { title: "Settings — Notifications", url: "/admin/settings?tab=notifications", keywords: ["notification settings", "alerts"] },
+  { title: "Settings — Security", url: "/admin/settings?tab=security", keywords: ["security", "2fa", "password policy", "notification preferences"] },
+  { title: "Settings — API & Integrations", url: "/admin/settings?tab=api", keywords: ["zoho", "mpesa", "api keys", "integrations", "posthog"] },
+  { title: "Settings — Danger Zone", url: "/admin/settings?tab=danger", keywords: ["danger zone", "delete account", "reset"] },
+  { title: "Branches — Zoho Integration", url: "/admin/branches", keywords: ["zoho", "branch zoho link", "organization link"] },
   { title: "Profile", url: "/admin/profile", keywords: ["profile", "my account", "password"] },
 ];
 

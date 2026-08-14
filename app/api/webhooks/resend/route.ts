@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { db } from "@/lib/db";
+import { reportError } from "@/lib/observability";
 
 const EVENT_MAP: Record<string, "DELIVERED" | "BOUNCED" | "SPAM" | "OPENED" | "CLICKED"> = {
   "email.delivered": "DELIVERED",
@@ -32,25 +33,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  const event = JSON.parse(rawBody) as { type?: string; data?: { email_id?: string } };
-  const status = EVENT_MAP[event.type ?? ""];
-  const emailId = event.data?.email_id;
-  if (!status || !emailId) {
+  try {
+    const event = JSON.parse(rawBody) as { type?: string; data?: { email_id?: string } };
+    const status = EVENT_MAP[event.type ?? ""];
+    const emailId = event.data?.email_id;
+    if (!status || !emailId) {
+      return NextResponse.json({ ok: true });
+    }
+
+    await db.campaignRecipient.updateMany({
+      where: { providerMessageId: emailId },
+      data: {
+        status,
+        deliveredAt: status === "DELIVERED" ? new Date() : undefined,
+        openedAt: status === "OPENED" ? new Date() : undefined,
+        clickedAt: status === "CLICKED" ? new Date() : undefined,
+        failedAt: status === "BOUNCED" ? new Date() : undefined,
+      },
+    });
+
     return NextResponse.json({ ok: true });
+  } catch (e) {
+    reportError(e, { route: "POST /api/webhooks/resend" });
+    console.error("[webhooks/resend] POST error", e);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
-
-  await db.campaignRecipient.updateMany({
-    where: { providerMessageId: emailId },
-    data: {
-      status,
-      deliveredAt: status === "DELIVERED" ? new Date() : undefined,
-      openedAt: status === "OPENED" ? new Date() : undefined,
-      clickedAt: status === "CLICKED" ? new Date() : undefined,
-      failedAt: status === "BOUNCED" ? new Date() : undefined,
-    },
-  });
-
-  return NextResponse.json({ ok: true });
 }
 
 function verifySignature(

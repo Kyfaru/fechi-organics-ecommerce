@@ -24,7 +24,7 @@ export const statements = {
   dashboard:         ["view"],
   products:          ["view", "create", "update", "delete"],
   inventory:         ["view", "update", "adjust"],
-  orders:            ["view", "update_status", "cancel", "refund"],
+  orders:            ["view", "update_status", "cancel", "refund", "export"],
   customers:         ["view", "update"],
   analytics:         ["view", "export"],
   finance:           ["view", "export"],
@@ -42,6 +42,7 @@ export const statements = {
   reviews:           ["view", "update", "delete"],
   contact_messages:  ["view", "update"],
   transactions:      ["view"],
+  approvals:         ["view", "decide"],
 } as const
 
 export const ac = createAccessControl(statements)
@@ -64,14 +65,14 @@ export const appResources = (Object.keys(statements) as (keyof typeof statements
 export const roles = {
   super_admin: ac.newRole({
     dashboard: ["view"], products: ["view", "create", "update", "delete"], inventory: ["view", "update", "adjust"],
-    orders: ["view", "update_status", "cancel", "refund"], customers: ["view", "update"],
+    orders: ["view", "update_status", "cancel", "refund", "export"], customers: ["view", "update"],
     analytics: ["view", "export"], finance: ["view", "export"], campaigns: ["view", "create", "update", "delete", "send"],
     promotions: ["view", "create", "update", "delete"], loyalty: ["view", "create", "update", "delete"],
     content: ["view", "create", "update", "delete", "publish"], suppliers: ["view", "create", "update", "delete"],
     delivery: ["view", "create", "update", "delete"], branches: ["view", "create", "update", "delete"],
     staff: ["view", "invite", "update", "deactivate", "delete", "assign_roles"], settings: ["view", "update"],
     notifications: ["view", "manage"], tickets: ["view", "update", "reply"], reviews: ["view", "update", "delete"],
-    contact_messages: ["view", "update"], transactions: ["view"],
+    contact_messages: ["view", "update"], transactions: ["view"], approvals: ["view", "decide"],
     user: adminDefaultStatements.user, session: adminDefaultStatements.session,
   }),
 
@@ -80,61 +81,61 @@ export const roles = {
   // entirely on this grant. Identical to super_admin's ac grant on purpose.
   admin: ac.newRole({
     dashboard: ["view"], products: ["view", "create", "update", "delete"], inventory: ["view", "update", "adjust"],
-    orders: ["view", "update_status", "cancel", "refund"], customers: ["view", "update"],
+    orders: ["view", "update_status", "cancel", "refund", "export"], customers: ["view", "update"],
     analytics: ["view", "export"], finance: ["view", "export"], campaigns: ["view", "create", "update", "delete", "send"],
     promotions: ["view", "create", "update", "delete"], loyalty: ["view", "create", "update", "delete"],
     content: ["view", "create", "update", "delete", "publish"], suppliers: ["view", "create", "update", "delete"],
     delivery: ["view", "create", "update", "delete"], branches: ["view", "create", "update", "delete"],
     staff: ["view", "invite", "update", "deactivate", "delete", "assign_roles"], settings: ["view", "update"],
     notifications: ["view", "manage"], tickets: ["view", "update", "reply"], reviews: ["view", "update", "delete"],
-    contact_messages: ["view", "update"], transactions: ["view"],
+    contact_messages: ["view", "update"], transactions: ["view"], approvals: ["view", "decide"],
     user: adminDefaultStatements.user, session: adminDefaultStatements.session,
   }),
 
   manager: ac.newRole({
-    dashboard: ["view"], products: ["view", "create", "update", "delete"], inventory: ["view", "update", "adjust"],
-    orders: ["view", "update_status", "cancel", "refund"], customers: ["view", "update"],
+    dashboard: ["view"], products: ["view", "create", "update", "delete"], inventory: ["view", "update"],
+    orders: ["view", "update_status", "cancel", "refund", "export"], customers: ["view", "update"],
     analytics: ["view", "export"],
     finance: ["view"], // narrowed: AdminRolesClient.Manager.manage_finance === false
     campaigns: ["view", "create", "update", "delete", "send"], promotions: ["view", "create", "update", "delete"],
     loyalty: ["view", "create", "update", "delete"], content: ["view", "create", "update", "delete", "publish"],
     suppliers: ["view", "create", "update", "delete"], delivery: ["view", "create", "update", "delete"],
-    branches: ["view"], notifications: ["view", "manage"], tickets: ["view", "update", "reply"],
+    branches: ["view"], settings: ["view"], notifications: ["view", "manage"], tickets: ["view", "update", "reply"],
     reviews: ["view", "update", "delete"], contact_messages: ["view", "update"], transactions: ["view"],
-    // no staff, no settings — never in ROLE_TEMPLATES.manager
+    // no staff — never in ROLE_TEMPLATES.manager. settings:view only (read-only Settings page)
   }),
 
   finance: ac.newRole({
     dashboard: ["view"], finance: ["view", "export"], analytics: ["view", "export"],
-    transactions: ["view"], branches: ["view"], notifications: ["view", "manage"],
+    transactions: ["view"], branches: ["view"], settings: ["view"], notifications: ["view", "manage"],
     // everything else: none
   }),
 
   marketing: ac.newRole({
     dashboard: ["view"], loyalty: ["view", "create", "update", "delete"],
     campaigns: ["view", "create", "update", "delete", "send"], promotions: ["view", "create", "update", "delete"],
-    content: ["view", "create", "update", "delete", "publish"], notifications: ["view", "manage"],
+    content: ["view", "create", "update", "delete", "publish"], settings: ["view"], notifications: ["view", "manage"],
     // everything else: none
   }),
 
   inventory: ac.newRole({
-    dashboard: ["view"], products: ["view", "create", "update", "delete"], inventory: ["view", "update", "adjust"],
-    orders: ["view"], // narrowed: AdminRolesClient.Inventory.manage_orders === false
+    dashboard: ["view"], products: ["view", "create", "update", "delete"], inventory: ["view", "update"],
+    orders: ["view", "export"], // narrowed: AdminRolesClient.Inventory.manage_orders === false
     suppliers: ["view", "create", "update", "delete"], delivery: ["view", "create", "update", "delete"],
-    branches: ["view"], notifications: ["view", "manage"],
+    branches: ["view"], settings: ["view"], notifications: ["view", "manage"],
     // everything else: none
   }),
 
   customer_care: ac.newRole({
-    dashboard: ["view"], customers: ["view", "update"], orders: ["view", "update_status", "cancel", "refund"],
+    dashboard: ["view"], customers: ["view", "update"], orders: ["view", "update_status", "cancel", "refund", "export"],
     content: ["view"], // narrowed: AdminRolesClient.Support.manage_content === false
     tickets: ["view", "update", "reply"], reviews: ["view", "update"], // editorial: moderate, not delete
-    contact_messages: ["view", "update"], branches: ["view"], notifications: ["view", "manage"],
+    contact_messages: ["view", "update"], branches: ["view"], settings: ["view"], notifications: ["view", "manage"],
     // everything else: none
   }),
 
   viewer: ac.newRole({
-    dashboard: ["view"], notifications: ["view", "manage"],
+    dashboard: ["view"], settings: ["view"], notifications: ["view", "manage"],
     // no analytics — ROLE_TEMPLATES.viewer never granted it
   }),
 } as const

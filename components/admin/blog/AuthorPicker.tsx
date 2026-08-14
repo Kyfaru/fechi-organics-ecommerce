@@ -25,7 +25,7 @@
  */
 
 import React, { useRef, useState, useEffect, useCallback } from "react";
-import { Search, X } from "lucide-react";
+import { Search, X, UserPlus } from "lucide-react";
 import CheckboxGreen from "@/components/ui/CheckboxGreen";
 import { Avatar, RolePill } from "@/components/admin/AdminStaffClient";
 
@@ -44,6 +44,9 @@ export interface AuthorPickerProps {
   /** Array of selected admin user IDs (blogPost.authorIds) */
   value: string[];
   onChange: (ids: string[]) => void;
+  /** Creates a new lightweight (no-login) author when the search has no match. */
+  onCreateAuthor?: (name: string) => void;
+  creatingAuthor?: boolean;
   placeholder?: string;
   className?: string;
 }
@@ -55,6 +58,8 @@ export default function AuthorPicker({
   authors,
   value,
   onChange,
+  onCreateAuthor,
+  creatingAuthor = false,
   placeholder = "Select authors…",
   className = "",
 }: AuthorPickerProps) {
@@ -107,6 +112,8 @@ export default function AuthorPicker({
     const q = query.toLowerCase();
     return a.name.toLowerCase().includes(q) || a.email.toLowerCase().includes(q);
   });
+
+  const hasExactMatch = authors.some((a) => a.name.trim().toLowerCase() === query.trim().toLowerCase());
 
   // Partition into selected-first then rest (both sorted alphabetically within each group)
   const displayList = [
@@ -261,6 +268,27 @@ export default function AuthorPicker({
                   </div>
                 );
               })
+            )}
+
+            {/* Create-new-author row — shown whenever the typed name has no
+                exact match among existing authors. */}
+            {onCreateAuthor && query.trim().length >= 2 && !hasExactMatch && (
+              <button
+                type="button"
+                disabled={creatingAuthor}
+                onClick={() => {
+                  onCreateAuthor(query.trim());
+                  setQuery("");
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 border-t border-[var(--neutral-100,#f3f4f6)] dark:border-[var(--dark-border,#374151)] text-left cursor-pointer hover:bg-[var(--neutral-50,#f9fafb)] dark:hover:bg-[var(--dark-bg,#111827)] disabled:opacity-50 transition-colors"
+              >
+                <span className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
+                  <UserPlus size={14} className="text-green-700" />
+                </span>
+                <span className="font-dm text-[13px] font-medium text-green-700">
+                  {creatingAuthor ? "Adding…" : `Add "${query.trim().toUpperCase()}" as a new author`}
+                </span>
+              </button>
             )}
           </div>
         </div>

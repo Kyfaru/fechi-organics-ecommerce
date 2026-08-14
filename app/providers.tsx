@@ -1,9 +1,9 @@
 "use client";
 
-import { QueryClient, useQuery } from "@tanstack/react-query";
+import { QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { CurrencyCode, FxRates } from "@/lib/currency";
 import { CURRENCIES, formatPrice } from "@/lib/currency";
@@ -191,6 +191,44 @@ function PortalSessionGuard() {
   return null;
 }
 
+// ── Cart sync guard ─────────────────────────────────────────────────────────
+
+/**
+ * Merges any guest cart into the account cart the moment a session appears
+ * for a new user id, then drops the cached ["cart"] query so every consumer
+ * (Navbar, CartClient, DeliveryClient, payment page, ...) refetches the real
+ * DB cart instead of continuing to show whatever was persisted to
+ * localStorage before login (stale guest cart, or a previous account's cart
+ * on a shared browser). Mirrors clearPersistedQueryCache(), which already
+ * runs on every logout — this is the missing login-side counterpart.
+ */
+function CartSyncGuard() {
+  const { data, isPending } = useSession();
+  const qc = useQueryClient();
+  const lastUserId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (isPending) return;
+    const user = data?.session
+      ? (data.user as { id: string; role?: string })
+      : null;
+    if (!user) {
+      lastUserId.current = null;
+      return;
+    }
+    if (user.role === "admin" || user.id === lastUserId.current) return;
+    lastUserId.current = user.id;
+    fetch("/api/cart/merge", { method: "POST" })
+      .catch(() => {})
+      .finally(() => {
+        qc.removeQueries({ queryKey: ["cart"] });
+        qc.invalidateQueries({ queryKey: ["cart"] });
+      });
+  }, [data, isPending, qc]);
+
+  return null;
+}
+
 // ── Root providers wrapper ──────────────────────────────────────────────────
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -210,6 +248,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         client={qc}
         persistOptions={{ persister, maxAge: 24 * 60 * 60_000 }}
       >
+        <CartSyncGuard />
         <ThemeProvider>
           <CurrencyProvider>{children}</CurrencyProvider>
         </ThemeProvider>

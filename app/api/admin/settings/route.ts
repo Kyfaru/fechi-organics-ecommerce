@@ -10,7 +10,17 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { connection, NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { requirePermission } from "@/lib/require-permission";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
+
+// Settings keys sensitive enough to require admin approval before a
+// non-admin role's change takes effect — currently just the password
+// policy (Security tab); extend this list as more settings gain a real
+// save path (e.g. once the API & Integrations tab's TODOs are wired up).
+const SENSITIVE_SETTING_KEYS = new Set(["pw_min_length", "pw_require_special"]);
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -19,6 +29,10 @@ export async function GET(req: NextRequest) {
   if (denied) return denied;
 
   try {
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return Err.forbidden();
+    const canEdit = ctx.role === "admin" || ctx.role === "super_admin";
+
     const rows = await db.systemConfig.findMany({ orderBy: { key: "asc" } });
 
     // Convert rows to a flat Record<string, unknown> for easy client consumption
@@ -27,10 +41,11 @@ export async function GET(req: NextRequest) {
       settings[row.key] = row.value;
     }
 
-    return ok({ settings });
+    return ok({ settings, canEdit });
   } catch (err) {
+    reportError(err, { route: "GET /api/admin/settings", tags: { domain: "settings" } });
     console.error("[GET /api/admin/settings]", err);
-    return Err.internal(err);
+    return Err.internal();
   }
 }
 
@@ -59,15 +74,29 @@ export async function PATCH(req: NextRequest) {
   }
 
   try {
+    const trimmedKey = key.trim();
+
+    if (SENSITIVE_SETTING_KEYS.has(trimmedKey)) {
+      const ctx = await loadCallerContext();
+      if (ctx.denied) return Err.forbidden();
+      const outcome = await requireApprovalOrProceed(ctx, "settings", "update", { key: trimmedKey, value });
+      if (!outcome.proceed) return Approval.queued(outcome.requestId);
+      const updated = await approvalExecutors["settings:update"]({ key: trimmedKey, value }, null) as
+        Awaited<ReturnType<typeof db.systemConfig.upsert>>;
+      logActivity(ctx.id, `Updated setting "${trimmedKey}"`, "setting", trimmedKey, req);
+      return ok({ setting: updated });
+    }
+
     const updated = await db.systemConfig.upsert({
-      where: { key: key.trim() },
-      create: { key: key.trim(), value: value as never },
+      where: { key: trimmedKey },
+      create: { key: trimmedKey, value: value as never },
       update: { value: value as never },
     });
 
     return ok({ setting: updated });
   } catch (err) {
+    reportError(err, { route: "PATCH /api/admin/settings", tags: { domain: "settings" } });
     console.error("[PATCH /api/admin/settings]", err);
-    return Err.internal(err);
+    return Err.internal();
   }
 }

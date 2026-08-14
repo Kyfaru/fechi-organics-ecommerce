@@ -6,6 +6,14 @@
  * fine for a walk-in till payment), so this always accepts. Public,
  * unauthenticated — Safaricom calls it directly.
  */
+import { reportError } from "@/lib/observability";
+
 export async function POST() {
-  return Response.json({ ResultCode: 0, ResultDesc: "Accepted" }, { status: 200 });
+  try {
+    return Response.json({ ResultCode: 0, ResultDesc: "Accepted" }, { status: 200 });
+  } catch (e) {
+    reportError(e, { route: "POST /api/payments/mpesa/c2b/validation", tags: { stage: "handler" } });
+    // Safaricom must not retry — always accept even if something above throws.
+    return Response.json({ ResultCode: 0, ResultDesc: "Accepted" }, { status: 200 });
+  }
 }

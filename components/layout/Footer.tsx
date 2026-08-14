@@ -133,12 +133,13 @@ export function Footer() {
             </div>
           </div>
 
-          {/* Company links */}
-          <FooterColumn title="Company" links={COMPANY_LINKS} />
-          {/* Shop links */}
-          <FooterColumn title="Shop" links={SHOP_LINKS} />
-          {/* Support links */}
-          <FooterColumn title="Support" links={SUPPORT_LINKS} />
+          {/* Link columns — 2-col grid on mobile to shorten the footer; md:contents
+              makes this wrapper transparent so desktop's 4-col grid is untouched */}
+          <div className="grid grid-cols-2 gap-x-6 gap-y-8 md:contents">
+            <FooterColumn title="Company" links={COMPANY_LINKS} />
+            <FooterColumn title="Shop" links={SHOP_LINKS} />
+            <FooterColumn title="Support" links={SUPPORT_LINKS} />
+          </div>
         </div>
 
         {/* Divider + bottom bar */}

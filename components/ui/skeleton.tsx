@@ -75,11 +75,25 @@ export function SkeletonImage({ className, aspectRatio = '1/1' }: SkeletonImageP
 // ---------------------------------------------------------------------------
 // Product card skeleton
 // ---------------------------------------------------------------------------
-export function SkeletonCard({ className }: { className?: string }) {
+// Mirrors ProductCard's image height (components/storefront/ProductCard.tsx)
+// so the skeleton doesn't jump in size once real cards replace it.
+const SKELETON_SIZES = {
+  default: { image: 'h-[210px] sm:h-[280px]' },
+  compact: { image: 'h-[130px] sm:h-[170px] lg:h-[280px]' },
+} as const;
+
+export function SkeletonCard({
+  className,
+  variant = 'default',
+}: {
+  className?: string;
+  variant?: 'default' | 'compact';
+}) {
+  const sizes = SKELETON_SIZES[variant];
   return (
-    <div className={cn('flex flex-col gap-3 p-3 rounded-2xl bg-white', className)}>
+    <div className={cn('flex flex-col gap-3 p-3 rounded-[20px] bg-white dark:bg-gray-900', className)}>
       {/* Image */}
-      <SkeletonImage aspectRatio="1/1" className="rounded-xl" />
+      <SkeletonImage aspectRatio="auto" className={cn('rounded-[16px]', sizes.image)} />
       {/* Title lines */}
       <div className="flex flex-col gap-2 px-1">
         <Skeleton className="h-4 w-full rounded" />
@@ -131,12 +145,13 @@ export function SkeletonShopGrid({ count = 8, className }: SkeletonShopGridProps
   return (
     <div
       className={cn(
-        'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4',
+        // Matches ShopClient.tsx's real grid exactly (grid-cols-2 lg:grid-cols-4)
+        'grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6',
         className,
       )}
     >
       {Array.from({ length: count }).map((_, i) => (
-        <SkeletonCard key={i} />
+        <SkeletonCard key={i} variant="compact" />
       ))}
     </div>
   );

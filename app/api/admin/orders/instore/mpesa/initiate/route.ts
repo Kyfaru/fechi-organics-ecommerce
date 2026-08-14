@@ -24,7 +24,17 @@ import { markInStorePaymentFailed } from "@/lib/payments/instore-post-payment";
 import { resolveMpesaGateway, otherGateway } from "@/lib/payments/mpesa/gateway";
 import type { MpesaGateway } from "@prisma/client";
 import { buildInStoreOrderNumber } from "@/lib/orders/generate-instore-order-number";
+import { findOrCreateWalkInCustomer } from "@/lib/customers/find-or-create-walkin";
 import { requirePermission } from "@/lib/require-permission";
+import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
+import { publishQstashJSON } from "@/lib/qstash";
+
+// Gives the client's 60s AbortSignal.timeout room to fire before the
+// serverless function itself gets cut off mid-dispatch.
+export const maxDuration = 60;
+
+const PAYMENT_TIMEOUT_SECONDS = 15 * 60; // abandon unpaid in-store orders 15 minutes after STK push
 
 const bodySchema = z
   .object({
@@ -74,6 +84,11 @@ export async function POST(req: NextRequest) {
     console.log("Incoming Body:", raw);
     parsed = bodySchema.parse(raw);
   } catch (e) {
+    reportError(e, {
+      route: "POST /api/admin/orders/instore/mpesa/initiate",
+      userId: admin.id,
+      tags: { stage: "body_validation" },
+    });
   if (e instanceof z.ZodError) {
     console.error("[instore/mpesa/initiate] validation failed:", e.issues);
   }
@@ -119,11 +134,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Never trust client-submitted prices — recompute from the DB.
-    const products = await db.product.findMany({
-      where: { id: { in: items.map((i) => i.productId) } },
-      select: { id: true, name: true, priceKes: true, isActive: true },
-    });
-    const productById = new Map(products.map((p) => [p.id, p]));
+    const products: { id: string; name: string; priceKes: number; isActive: boolean }[] =
+      await db.product.findMany({
+        where: { id: { in: items.map((i) => i.productId) } },
+        select: { id: true, name: true, priceKes: true, isActive: true },
+      });
+    const productById = new Map<string, { id: string; name: string; priceKes: number; isActive: boolean }>(
+      products.map((p) => [p.id, p])
+    );
     for (const item of items) {
       const product = productById.get(item.productId);
       if (!product || !product.isActive) {
@@ -144,11 +162,28 @@ export async function POST(req: NextRequest) {
         const r = await resolvePromo(normalizedPromoCode, subtotalKes, customerUserId ?? undefined);
         discountKes = r.discountKes;
         resolvedPromoId = r.promo.id;
-      } catch {
+      } catch (promoErr) {
+        reportError(promoErr, {
+          route: "POST /api/admin/orders/instore/mpesa/initiate",
+          userId: admin.id,
+          tags: { stage: "promo_resolution" },
+        });
         /* invalid/expired — discount stays 0 */
       }
     }
     const totalKes = Math.max(0, subtotalKes - discountKes);
+
+    // Resolve the walk-in to a real customer record (find-by-phone or
+    // create) so they appear on /admin/customers — skip on retry, the
+    // original order already resolved this.
+    let resolvedCustomerUserId = customerUserId ?? null;
+    if (!retryOrderId && !resolvedCustomerUserId) {
+      resolvedCustomerUserId = await findOrCreateWalkInCustomer({
+        name: customerName,
+        phone: customerPhone,
+        email: customerEmail,
+      });
+    }
 
     // 1. Create order + PENDING transaction atomically — or, on retry, reuse
     // the existing failed order instead of creating a new one.
@@ -182,7 +217,7 @@ export async function POST(req: NextRequest) {
           branchId: branch.id,
           createdByAdminId: admin.id,
           createdByAdminName: admin.name,
-          customerUserId: customerUserId ?? null,
+          customerUserId: resolvedCustomerUserId,
           customerName: customerName ?? null,
           customerPhone,
           customerEmail: customerEmail ?? null,
@@ -207,8 +242,8 @@ export async function POST(req: NextRequest) {
 
       // Only on the initial creation path — retries reuse the same order and
       // must not record a second redemption for one order.
-      if (resolvedPromoId && normalizedPromoCode && customerUserId) {
-        await recordCouponRedemption(resolvedPromoId, customerUserId, order.id);
+      if (resolvedPromoId && normalizedPromoCode && resolvedCustomerUserId) {
+        await recordCouponRedemption(resolvedPromoId, resolvedCustomerUserId, order.id);
       }
     }
 
@@ -228,19 +263,22 @@ export async function POST(req: NextRequest) {
 
     async function dispatchKcb(): Promise<string> {
       const { initiateKcbStkPush } = await import("@/lib/payments/kcb/kcb-client");
-      if (!branch!.invoiceNumber) {
-        throw new Error(`Branch ${branch!.id} has no invoiceNumber configured for KCB Buni`);
-      }
+      const { resolveKcbBranch, originBranchTag } = await import("@/lib/payments/kcb/resolve-kcb-branch");
+      // Falls back to the head office KCB Buni paybill when this branch has
+      // no KCB account of its own (Eldoret/Kitengela/Mwea). order.branchId
+      // stays the customer's real branch either way — only these credentials
+      // and the invoice tag below change.
+      const kcbBranch = await resolveKcbBranch(branch!);
       const formatOrderNumber = order.orderNumber?.slice(7, -1);
-      const invoiceCode = `${branch!.invoiceNumber}-${formatOrderNumber}`;
+      const invoiceCode = `${kcbBranch.invoiceNumber}-${originBranchTag(branch!)}-${formatOrderNumber}`;
       const kcbRes = await initiateKcbStkPush({
         branch: {
-          id: branch!.id,
-          shortcode: branch!.shortcode,
-          invoiceNumber: invoiceCode ?? branch!.invoiceNumber,
-          consumerKeyEnc: branch!.consumerKeyEnc,
-          consumerSecretEnc: branch!.consumerSecretEnc,
-          apiKeyEnc: branch!.apiKeyEnc ?? null,
+          id: kcbBranch.id,
+          shortcode: kcbBranch.shortcode,
+          invoiceNumber: invoiceCode,
+          consumerKeyEnc: kcbBranch.consumerKeyEnc,
+          consumerSecretEnc: kcbBranch.consumerSecretEnc,
+          apiKeyEnc: kcbBranch.apiKeyEnc ?? null,
         },
         phone: customerPhone,
         amountKes: totalKes,
@@ -273,14 +311,32 @@ export async function POST(req: NextRequest) {
     const fallbackGateway = otherGateway(primaryGateway);
     let checkoutRequestId: string;
     let gatewayUsed: MpesaGateway = primaryGateway;
+    console.info(`[instore/mpesa/initiate] Dispatching STK via ${primaryGateway} — order=${order.orderNumber}`);
     try {
       checkoutRequestId = await dispatch(primaryGateway);
+      console.info(
+        `[instore/mpesa/initiate] ${primaryGateway} dispatch succeeded — order=${order.orderNumber} checkout=${checkoutRequestId}`,
+      );
     } catch (primaryErr) {
+      reportError(primaryErr, {
+        route: "POST /api/admin/orders/instore/mpesa/initiate",
+        userId: admin.id,
+        tags: { stage: "gateway_dispatch", gateway: primaryGateway },
+      });
       console.error(`[instore/mpesa/initiate] ${primaryGateway} dispatch failed, falling back to ${fallbackGateway}`, primaryErr);
+      console.info(`[instore/mpesa/initiate] Dispatching STK via fallback ${fallbackGateway} — order=${order.orderNumber}`);
       try {
         checkoutRequestId = await dispatch(fallbackGateway);
         gatewayUsed = fallbackGateway;
+        console.info(
+          `[instore/mpesa/initiate] ${fallbackGateway} fallback dispatch succeeded — order=${order.orderNumber} checkout=${checkoutRequestId}`,
+        );
       } catch (fallbackErr) {
+        reportError(fallbackErr, {
+          route: "POST /api/admin/orders/instore/mpesa/initiate",
+          userId: admin.id,
+          tags: { stage: "gateway_dispatch_fallback", gateway: fallbackGateway },
+        });
         console.error(`[instore/mpesa/initiate] ${fallbackGateway} fallback also failed`, fallbackErr);
         await markInStorePaymentFailed({
           transactionId: transaction.id,
@@ -297,13 +353,43 @@ export async function POST(req: NextRequest) {
       data: { checkoutRequestId, mpesaGatewayUsed: gatewayUsed },
     });
 
+    // Schedule a timeout: if the walk-in customer abandons the STK prompt
+    // and no callback arrives within 15 minutes, flip the order to FAILED.
+    await publishQstashJSON(
+      "/api/admin/workers/check-failed-instore-payment",
+      { inStoreOrderId: order.id, transactionId: transaction.id },
+      { delay: PAYMENT_TIMEOUT_SECONDS },
+    );
+
     console.info(
       `[instore/mpesa/initiate] STK push initiated — order=${order.orderNumber} checkout=${checkoutRequestId}`,
     );
 
+    if (!retryOrderId && admin.adminProfile) {
+      logActivity(admin.adminProfile.id, `Created in-store order ${order.orderNumber}`, "order", order.id, req, {
+        branchId: branch.id,
+        itemCount: items.length,
+        totalKes,
+        paymentMethod: "MPESA_STK",
+      });
+    }
+
     return ok({ inStoreOrderId: order.id, orderNumber: order.orderNumber });
   } catch (e) {
+    reportError(e, {
+      route: "POST /api/admin/orders/instore/mpesa/initiate",
+      userId: admin.id,
+      tags: { stage: "handler" },
+    });
     console.error("[instore/mpesa/initiate] POST error", e);
-    return Err.internal(e);
+
+    const prismaCode = (e as { code?: string })?.code;
+    if (typeof prismaCode === "string" && prismaCode.startsWith("P")) {
+      return err("DB_ERROR", `Database operation failed (${prismaCode})`, 500);
+    }
+    if (e instanceof Error && /daraja|stk-push|kcb/i.test(e.message)) {
+      return err("MPESA_GATEWAY_ERROR", e.message, 502);
+    }
+    return Err.internal();
   }
 }

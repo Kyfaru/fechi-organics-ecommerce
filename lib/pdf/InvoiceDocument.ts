@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { GREEN, GOLD, GRAY_LINE, TEXT_DARK, TEXT_MUTED, STRIPE_TINT, MARGIN_X, PAGE_WIDTH, CONTENT_RIGHT, kes, fmtDate } from "@/lib/pdf/theme";
 
 type InvoiceOrder = {
   id: string;
@@ -26,21 +27,6 @@ type InvoiceOrder = {
   }[];
 };
 
-const GREEN: [number, number, number] = [39, 115, 30]; // #27731e
-const GOLD: [number, number, number] = [254, 199, 0]; // #fec700
-const GRAY_LINE: [number, number, number] = [183, 183, 183]; // #B7B7B7
-const TEXT_DARK: [number, number, number] = [40, 40, 40];
-const TEXT_MUTED: [number, number, number] = [130, 130, 130];
-const STRIPE_TINT: [number, number, number] = [240, 247, 240];
-
-const MARGIN_X = 15;
-const PAGE_WIDTH = 210;
-const CONTENT_RIGHT = PAGE_WIDTH - MARGIN_X;
-
-function kes(cents: number) {
-  return `KES ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 2 })}`;
-}
-
 const PROVIDER_LABELS: Record<string, string> = {
   MPESA: "M-Pesa",
   PAYSTACK: "Paystack",
@@ -52,7 +38,7 @@ function paymentMethodLine(order: InvoiceOrder): string {
   if (!tx) return "Paid";
   const provider = PROVIDER_LABELS[tx.provider] ?? tx.provider;
   return tx.mpesaReceiptNumber
-    ? `Paid via ${provider} — Receipt ${tx.mpesaReceiptNumber}`
+    ? `Paid via ${provider} , Receipt ${tx.mpesaReceiptNumber}`
     : `Paid via ${provider}`;
 }
 
@@ -61,16 +47,12 @@ function paidDate(order: InvoiceOrder): Date {
   return tx?.updatedAt ?? order.createdAt;
 }
 
-function fmtDate(date: Date) {
-  return date.toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" });
-}
-
 export function renderInvoicePdfBuffer(order: InvoiceOrder): Buffer {
   const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
 
   // ---- Header: title + PAID badge --------------------------------------
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(24);
+  doc.setFontSize(28);
   doc.setTextColor(...GREEN);
   doc.text("INVOICE", MARGIN_X, 24);
 
@@ -115,14 +97,14 @@ export function renderInvoicePdfBuffer(order: InvoiceOrder): Buffer {
   const customerEmail = order.user?.email ?? order.guestEmail ?? "";
   const isPickup = order.deliveryType === "PICKUP";
   const billLines = isPickup
-    ? [`Store Pickup — ${order.branch?.name ?? "Fechi Organics"}`]
+    ? [`Store Pickup : ${order.branch?.name ?? "Fechi Organics"}`]
     : [order.deliveryAddress, [order.deliveryCity, order.deliveryCounty].filter(Boolean).join(", ")].filter(Boolean) as string[];
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
   doc.setTextColor(...TEXT_MUTED);
   doc.text("BILL TO", MARGIN_X, y);
-  doc.text("INVOICE #", CONTENT_RIGHT - 60, y);
+  doc.text("INVOICE #", CONTENT_RIGHT - 75, y);
   doc.text("DATE", CONTENT_RIGHT - 30, y);
 
   doc.setFont("helvetica", "normal");
@@ -136,7 +118,7 @@ export function renderInvoicePdfBuffer(order: InvoiceOrder): Buffer {
 
   doc.setFontSize(10.5);
   doc.setTextColor(...TEXT_DARK);
-  doc.text(order.invoiceNumber, CONTENT_RIGHT - 60, y + 5.5);
+  doc.text(order.invoiceNumber, CONTENT_RIGHT - 75, y + 5.5);
   doc.text(fmtDate(order.createdAt), CONTENT_RIGHT - 30, y + 5.5);
 
   y += 15.5 + billLines.length * 5 + 8;

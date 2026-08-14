@@ -1,5 +1,5 @@
 /**
- * Zoho Inventory → Fechi Organics product sync
+ * Zoho Books → Fechi Organics product sync
  *
  * Several branches can share one Zoho organization's catalog (see
  * lib/zoho-credentials.ts and prisma schema `zohoOrganization`/`branch`).
@@ -7,7 +7,9 @@
  * row per SKU, linked to each org's own item id via `productZohoMapping`
  * (a product has a *different* zohoItemId per org, since each org's catalog
  * is independent). Stock is branch-specific and lives in
- * `branchProductStock`, keyed on (branchId, productId).
+ * `branchProductStock`, keyed on (branchId, productId) — every branch under
+ * an org currently receives the same org-level aggregate stock number (no
+ * per-branch/location splitting).
  *
  * Every mapped field is written on every sync, including nulling out fields
  * Zoho doesn't return for an item — the admin fills gaps manually rather
@@ -21,6 +23,7 @@
  *     an org's Zoho items and sync each one.
  */
 
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { zohoGet, type ZohoItem } from "@/lib/zoho";
 import { invalidateProductCache } from "@/lib/cache-tags";
@@ -29,7 +32,7 @@ import { LOW_STOCK_THRESHOLD } from "@/lib/inventory/constants";
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
-type OrgBranch = { id: string; zohoWarehouseId: string | null };
+type OrgBranch = { id: string };
 
 // ---------------------------------------------------------------------------
 // Slug helpers
@@ -44,7 +47,7 @@ export function slugify(name: string): string {
 }
 
 /** Generate a unique slug, appending a numeric suffix on collision. */
-async function uniqueSlug(base: string, excludeId?: string): Promise<string> {
+export async function uniqueSlug(base: string, excludeId?: string): Promise<string> {
   let slug = base;
   let attempt = 0;
 
@@ -54,6 +57,43 @@ async function uniqueSlug(base: string, excludeId?: string): Promise<string> {
     attempt++;
     slug = `${base}-${attempt}`;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Staged-item mapping
+// ---------------------------------------------------------------------------
+/**
+ * Maps a raw Zoho item onto zohoStagedItem's flattened review-queue fields.
+ * Mirrors the same field derivation `catalogFields`/`purchaseRateKes` use
+ * below for the mapped-product path, so a promoted staged item and a
+ * directly-mapped product end up with identical values for the same Zoho
+ * item — the only structural difference is which table they land in.
+ */
+function mapZohoItemToStagedFields(item: ZohoItem) {
+  const hasRate = typeof item.rate === "number" && Number.isFinite(item.rate);
+  const purchaseRateKes =
+    typeof item.purchase_rate === "number" && Number.isFinite(item.purchase_rate)
+      ? Math.round(item.purchase_rate * 100)
+      : null;
+
+  return {
+    name: item.name,
+    description: item.description ?? null,
+    sku: item.sku ?? null,
+    productType: item.product_type ?? null,
+    zohoStatus: item.status ?? null,
+    unit: item.unit ?? null,
+    brand: item.brand ?? null,
+    rateKes: hasRate ? Math.round(item.rate * 100) : null,
+    purchaseRateKes,
+    categoryNameRaw: item.category_name ?? null,
+    // Same field/fallback upsertBranchStocks reads for the mapped-product
+    // path (item.stock_on_hand is itself UNVERIFIED — see lib/zoho.ts) —
+    // null here (not 0) so "Zoho returned nothing" stays distinguishable
+    // from "Zoho returned a real zero" in the review queue.
+    stockOnHand: item.stock_on_hand ?? null,
+    rawPayload: item as unknown as Prisma.InputJsonValue,
+  };
 }
 
 /**
@@ -90,11 +130,10 @@ async function notifyIfCrossedLowStock(
 }
 
 /**
- * Upserts one product's stock for every branch in orgBranches. Uses Zoho's
- * per-warehouse breakdown when a branch has a zohoWarehouseId configured and
- * the item's payload includes it; otherwise falls back to applying the org's
- * aggregate quantity_available identically to that branch (see
- * syncAllItems's one-warning-per-run notice for this fallback).
+ * Upserts one product's stock for every branch in orgBranches. Every branch
+ * under the org receives the same org-level aggregate stock number — no
+ * per-branch/location splitting (see lib/zoho.ts's ZohoItem.locations for the
+ * unused per-location capability, kept in case it's wanted later).
  */
 async function upsertBranchStocks(
   tx: TxClient,
@@ -103,13 +142,18 @@ async function upsertBranchStocks(
   orgBranches: OrgBranch[],
 ): Promise<Array<{ branchId: string; previousStock: number | null; newStock: number }>> {
   const results: Array<{ branchId: string; previousStock: number | null; newStock: number }> = [];
+  // item.stock_on_hand is itself an UNVERIFIED field name (see lib/zoho.ts) —
+  // distinguish "Zoho didn't return this field at all" (likely the wrong
+  // field name, worth investigating) from "Zoho returned a real 0" (item is
+  // genuinely out of stock), since both currently write the same 0 below.
+  if (item.stock_on_hand === undefined) {
+    console.warn(
+      `[zoho-sync] item ${item.item_id} ("${item.name}") has no stock_on_hand field in the Books response — writing 0 stock. If this fires for every item, stock_on_hand is likely the wrong field name (see the UNVERIFIED comment on ZohoItem in lib/zoho.ts).`,
+    );
+  }
+  const stock = item.stock_on_hand ?? 0;
 
   for (const branch of orgBranches) {
-    const warehouseEntry = branch.zohoWarehouseId
-      ? item.warehouses?.find((w) => w.warehouse_id === branch.zohoWarehouseId)
-      : undefined;
-    const stock = warehouseEntry?.warehouse_available_stock ?? item.quantity_available ?? 0;
-
     const previousRow = await tx.branchProductStock.findUnique({
       where: { branchId_productId: { branchId: branch.id, productId } },
       select: { stock: true },
@@ -134,7 +178,7 @@ async function upsertBranchStocks(
  * Upserts one Zoho item into the shared product catalog row (linked via
  * productZohoMapping), and its stock into every branch under this org.
  * @param organizationId - the org this item's catalog belongs to
- * @param item - the Zoho Inventory item payload
+ * @param item - the Zoho Books item payload
  * @param orgBranches - every branch currently linked to this organization
  */
 export async function syncItemToProduct(
@@ -173,7 +217,7 @@ export async function syncItemToProduct(
     name: item.name,
     description: item.description ?? null,
     zohoSku: item.sku ?? null,
-    zohoItemType: item.item_type ?? item.product_type ?? null,
+    zohoItemType: item.product_type ?? null,
     zohoStatus: item.status ?? null,
     zohoUnit: item.unit ?? null,
     zohoBrand: item.brand ?? null,
@@ -218,37 +262,28 @@ export async function syncItemToProduct(
     productId = existing.id;
     productSlug = existing.slug;
   } else {
-    const category = matchedCategory ?? (await db.category.findUnique({ where: { key: "UNCATEGORIZED" } }));
-    if (!category) {
-      console.error(
-        `[zoho-sync] No matching category and no UNCATEGORIZED fallback found — skipping item ${item.item_id}. Has prisma/seed.ts been run?`,
-      );
-      return;
-    }
-
-    const slug = await uniqueSlug(slugify(item.name));
-
-    const created = await db.$transaction(async (tx: TxClient) => {
-      const product = await tx.product.create({
-        data: {
-          ...catalogFields,
-          slug,
-          categoryId: category.id,
-          // A product must have some price to exist — default to 0 on create
-          // when Zoho didn't return a rate, unlike the update path.
-          priceKes: priceKesUpdate ?? 0,
-        },
-      });
-      await tx.productZohoMapping.create({
-        data: { productId: product.id, organizationId, zohoItemId: item.item_id },
-      });
-      const results = await upsertBranchStocks(tx, product.id, item, orgBranches);
-      return { product, results };
+    // No product mapping yet for this Zoho item. Never auto-create a live
+    // product from an unreviewed Zoho item — stage it for admin review
+    // instead (see prisma/schema.prisma's zohoStagedItem doc comment), and
+    // return early: nothing below this branch (cache invalidation, stock
+    // writes, low-stock notifications) applies to a product that doesn't
+    // exist yet.
+    const existingStaged = await db.zohoStagedItem.findUnique({
+      where: { organizationId_zohoItemId: { organizationId, zohoItemId: item.item_id } },
+      select: { status: true },
     });
 
-    productId = created.product.id;
-    productSlug = created.product.slug;
-    stockResults = created.results;
+    // Permanent guard — an admin explicitly excluded this item, so it must
+    // never resurface in the review queue just because it's still present
+    // (or re-appeared) in the Zoho catalog on a later sync.
+    if (existingStaged?.status === "EXCLUDED") return;
+
+    await db.zohoStagedItem.upsert({
+      where: { organizationId_zohoItemId: { organizationId, zohoItemId: item.item_id } },
+      create: { organizationId, zohoItemId: item.item_id, status: "PENDING", ...mapZohoItemToStagedFields(item) },
+      update: mapZohoItemToStagedFields(item), // lastSeenAt bumps via @updatedAt; status untouched so a still-PENDING row stays PENDING
+    });
+    return;
   }
 
   invalidateProductCache(productSlug);
@@ -283,17 +318,11 @@ export async function syncAllItems(organizationId: string): Promise<{
 }> {
   const orgBranches = await db.branch.findMany({
     where: { zohoOrganizationId: organizationId },
-    select: { id: true, zohoWarehouseId: true },
+    select: { id: true },
   });
 
   if (orgBranches.length === 0) {
     console.warn(`[zoho-sync] No branches linked to organization ${organizationId} — nothing to sync stock into`);
-  }
-  const branchesWithoutWarehouse = orgBranches.filter((b) => !b.zohoWarehouseId);
-  if (branchesWithoutWarehouse.length > 0) {
-    console.warn(
-      `[zoho-sync] ${branchesWithoutWarehouse.length} branch(es) in org ${organizationId} have no zohoWarehouseId configured — applying Zoho's aggregate quantity_available to them instead of a real per-branch number.`,
-    );
   }
 
   let page = 1;
@@ -346,4 +375,90 @@ export async function syncAllItems(organizationId: string): Promise<{
     upserted: seenZohoIds.length,
     deactivated,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Inventory item-id sync — additive, doesn't touch the Books-sourced sync
+// above (that stays the source of truth for catalog fields and the Sales
+// Receipt item id). This just backfills productZohoMapping.zohoInventoryItemId
+// so lib/zoho/push-adjustment.ts's automatic stock deduction can target the
+// right Inventory item — falls back to the Books item id when a product
+// hasn't been matched yet (or never needs to be, if the two products'
+// item ids happen to coincide for this account).
+// ---------------------------------------------------------------------------
+/**
+ * Paginates Zoho Inventory's catalog (a separate product from Books, same
+ * account) and matches each item to an existing product by SKU — the two
+ * products' item ids are independent/opaque, but the same physical product
+ * is expected to carry the same SKU in both catalogs. Only updates products
+ * that already have a Books-sourced productZohoMapping row (via
+ * syncAllItems/syncItemToProduct) — this sync attaches an Inventory id to an
+ * existing mapping, it doesn't create products or mappings on its own.
+ */
+export async function syncInventoryIds(organizationId: string): Promise<{
+  matched: number;
+  unmatched: number;
+}> {
+  let page = 1;
+  let hasMore = true;
+  let matched = 0;
+  let unmatched = 0;
+
+  while (hasMore) {
+    const response = await zohoGet<ZohoItemsResponse>(
+      organizationId,
+      "/items",
+      { page: String(page), page_size: "200" },
+      "inventory",
+    );
+    const items = response.items ?? [];
+
+    for (const item of items) {
+      if (!item.item_id || !item.sku) {
+        unmatched++;
+        continue;
+      }
+
+      const product = await db.product.findFirst({
+        where: { zohoSku: item.sku },
+        select: { id: true },
+      });
+      if (!product) {
+        unmatched++;
+        continue;
+      }
+
+      const result = await db.productZohoMapping.updateMany({
+        where: { productId: product.id, organizationId },
+        data: { zohoInventoryItemId: item.item_id },
+      });
+      if (result.count > 0) matched++;
+      else unmatched++; // no Books-sourced mapping exists yet for this product/org
+    }
+
+    hasMore = response.page_context?.has_more_page ?? false;
+    page++;
+  }
+
+  return { matched, unmatched };
+}
+
+/**
+ * Runs the full item sync followed by the (best-effort) inventory item-id
+ * backfill — the same two-step sequence POST /api/admin/zoho/sync performs.
+ * Extracted so both that route's direct admin/super_admin path and the
+ * "inventory:sync" approval executor (see lib/approval-executors.ts) can
+ * trigger the same work.
+ */
+export async function runZohoSync(organizationId: string) {
+  const result = await syncAllItems(organizationId);
+
+  let inventoryIdSync: { matched: number; unmatched: number } | null = null;
+  try {
+    inventoryIdSync = await syncInventoryIds(organizationId);
+  } catch (e) {
+    console.error("[runZohoSync] Inventory item-id sync failed for organization", organizationId, e);
+  }
+
+  return { ...result, inventoryIdSync };
 }

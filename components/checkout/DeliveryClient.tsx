@@ -13,6 +13,7 @@ import PhoneInput from "@/components/ui/PhoneInput";
 import { KENYA_COUNTIES } from "@/lib/kenya-counties";
 import { toast } from "@/lib/toast";
 import { useCurrency } from "@/app/providers";
+import { CHECKOUT_FLOW_FLAG_KEY } from "@/lib/checkout-flow";
 
 type DeliveryMode = "DELIVERY" | "PICKUP";
 type Country = { code: string; name: string; flag: string };
@@ -30,7 +31,7 @@ type Props = {
 const MODE_COPY: Record<DeliveryMode, { heading: string; description: string; icon: string }> = {
   DELIVERY: {
     heading: "Home Delivery Details",
-    description: "We'll bring your order straight to your door.",
+    description: "We'll bring your order straight to your location.",
     icon: "mdi:truck-delivery-outline",
   },
   PICKUP: {
@@ -186,18 +187,30 @@ function SelectDropdown({
 export function DeliveryClient({ user }: Props) {
   const router = useRouter();
   const { format } = useCurrency();
+
+  // Only reachable via the cart's "Place Order" button (which sets this
+  // flag) — typing/bookmarking /delivery directly sends you back to /cart.
+  const [flowChecked, setFlowChecked] = useState(false);
+  useEffect(() => {
+    window.setTimeout(() => {
+      if (!sessionStorage.getItem(CHECKOUT_FLOW_FLAG_KEY)) {
+        router.replace("/cart");
+        return;
+      }
+      setFlowChecked(true);
+    }, 0);
+  }, [router]);
+
   const initialName = splitName(user.fullName);
   const [mode, setMode] = useState<DeliveryMode>("DELIVERY");
   const [firstName, setFirstName] = useState(initialName.firstName);
   const [lastName, setLastName] = useState(initialName.lastName);
   const [email, setEmail] = useState(user.email);
-  const [phone, setPhone] = useState<PhoneValue | undefined>(() => {
-    const p = user.phone;
-    if (!p) return undefined;
-    if (p.startsWith("+")) return p as PhoneValue;
-    if (p.startsWith("0")) return `+254${p.slice(1)}` as PhoneValue;
-    return p as PhoneValue;
-  });
+  // user.phone is already a properly combined E.164 value (phone + phoneCode
+  // joined server-side via lib/phone.ts combineLegacyPhone — see app/delivery/page.tsx).
+  const [phone, setPhone] = useState<PhoneValue | undefined>(
+    user.phone && user.phone.startsWith("+") ? (user.phone as PhoneValue) : undefined
+  );
 
   // Always default to Kenya — user's stored country may be a name not a code
   const [country, setCountry] = useState("KE");
@@ -276,6 +289,7 @@ export function DeliveryClient({ user }: Props) {
     queryKey: ["cart"],
     queryFn: () => fetch("/api/cart").then((r) => r.json()),
     staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const branchesQuery = useQuery<{ ok: boolean; data: { branches: Branch[] } }>({
@@ -318,7 +332,6 @@ export function DeliveryClient({ user }: Props) {
         if (!county) e.county = "Please select your county";
         else if (noZones) e.zone = "No delivery zones available for this county — contact the store or pick another county";
         else if (!zoneId) e.zone = "Please select a delivery zone";
-        if (!address.trim()) e.address = "Please enter your town, estate, or building";
       } else {
         if (!state && !stateText.trim()) e.state = "Please select or enter your state / province";
         if (!address.trim()) e.address = "Please enter your address";
@@ -448,6 +461,14 @@ export function DeliveryClient({ user }: Props) {
   // ---------------------------------------------------------------------------
   // JSX
   // ---------------------------------------------------------------------------
+  if (!flowChecked) {
+    return (
+      <div className="min-h-screen bg-[#f8f8f7] dark:bg-gray-950 flex items-center justify-center">
+        <Icon icon="mdi:loading" width={30} className="animate-spin text-[#27731e]" />
+      </div>
+    );
+  }
+
   return (
     <>
     <Navbar />
@@ -576,15 +597,16 @@ export function DeliveryClient({ user }: Props) {
                         disabled={!county || noZones}
                         loading={zonesQuery.isLoading && Boolean(county)}
                         hasError={!!showErr("zone")}
+                        searchable
                       />
                     </Field>
                   )}
 
                   {/* Town / Estate / Building (Kenya) or Address (International) */}
                   {isKenya ? (
-                    <Field label="Town / Estate / Building" error={showErr("address")}>
+                    <Field label="Town / Estate / Building (Optional)">
                       <input
-                        className={inputCls(!!showErr("address"))}
+                        className={inputNormal}
                         value={address}
                         onChange={(e) => setAddress(e.target.value)}
                         placeholder={!zoneId ? "Select a delivery zone first" : "e.g. Westlands, The Mirage"}

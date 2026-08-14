@@ -4,8 +4,12 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
-import { requirePermission } from "@/lib/require-permission";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 /** GET /api/admin/blog/[id] — single post */
 export async function GET(
@@ -28,7 +32,8 @@ export async function GET(
     return ok(post);
   } catch (e) {
     console.error("[blog/GET/id]", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/blog/[id]", extra: { postId: id } });
+    return Err.internal();
   }
 }
 
@@ -66,6 +71,23 @@ export async function PATCH(
         ? new Date(body.publishedAt as string)
         : undefined;
 
+    // Publishing (not draft saves) is a gated action — the "Publish Now" and
+    // schedule-publish flows both call this route as an isolated
+    // { status: "PUBLISHED", publishedAt } request, so it's safe to gate the
+    // whole call rather than trying to split it from other field edits.
+    if (statusUpdate === "PUBLISHED") {
+      const ctx = await loadCallerContext();
+      if (ctx.denied) return Err.forbidden();
+      const outcome = await requireApprovalOrProceed(
+        ctx, "content", "publish", { publishedAt: publishedAt?.toISOString() }, id
+      );
+      if (!outcome.proceed) return Approval.queued(outcome.requestId);
+      await approvalExecutors["content:publish"]({ publishedAt: publishedAt?.toISOString() }, id);
+      logActivity(ctx.id, "Published blog post", "blog", id, req);
+      const published = await db.blogPost.findUnique({ where: { id }, include: { author: { select: { name: true } } } });
+      return ok(published);
+    }
+
     // authorIds drives authorId when present: a non-empty selection makes its
     // first entry the primary author (kept in sync for the single-author
     // `author` relation still read elsewhere); an explicitly emptied
@@ -99,11 +121,12 @@ export async function PATCH(
     return ok(post);
   } catch (e) {
     console.error("[blog/PATCH]", e);
-    return Err.internal(e);
+    reportError(e, { route: "PATCH /api/admin/blog/[id]", extra: { postId: id } });
+    return Err.internal();
   }
 }
 
-/** DELETE /api/admin/blog/[id] — archive post */
+/** DELETE /api/admin/blog/[id] — permanently delete post */
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -118,14 +141,14 @@ export async function DELETE(
   const { id } = await params;
 
   try {
-    const post = await db.blogPost.update({
-      where: { id },
-      data: { status: "ARCHIVED" },
-    });
-    console.info(`[blog/DELETE] Archived post: ${id}`);
-    return ok({ id: post.id, status: "ARCHIVED" });
+    // blogView/blogReaction/blogComment all cascade on their post relation
+    // (prisma/schema.prisma) — no orphaned rows left behind.
+    await db.blogPost.delete({ where: { id } });
+    console.info(`[blog/DELETE] Permanently deleted post: ${id}`);
+    return ok({ id, deleted: true });
   } catch (e) {
     console.error("[blog/DELETE]", e);
-    return Err.internal(e);
+    reportError(e, { route: "DELETE /api/admin/blog/[id]", extra: { postId: id } });
+    return Err.internal();
   }
 }

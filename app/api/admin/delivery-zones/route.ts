@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 const ZoneSchema = z.object({
   county: z.string().min(1),
@@ -19,13 +20,19 @@ export async function GET(req: NextRequest) {
   const denied = await requirePermission(req, { delivery: ["view"] });
   if (denied) return denied;
 
-  const county = req.nextUrl.searchParams.get("county");
-  const zones = await db.deliveryZone.findMany({
-    where: county ? { county } : {},
-    orderBy: [{ county: "asc" }, { name: "asc" }],
-    include: { branch: { select: { id: true, name: true, county: true } } },
-  });
-  return ok({ zones });
+  try {
+    const county = req.nextUrl.searchParams.get("county");
+    const zones = await db.deliveryZone.findMany({
+      where: county ? { county } : {},
+      orderBy: [{ county: "asc" }, { name: "asc" }],
+      include: { branch: { select: { id: true, name: true, county: true } } },
+    });
+    return ok({ zones });
+  } catch (e) {
+    reportError(e, { route: "GET /api/admin/delivery-zones", tags: { domain: "delivery-zones" } });
+    console.error("[admin/delivery-zones] GET error", e);
+    return Err.internal();
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -39,6 +46,12 @@ export async function POST(req: NextRequest) {
   const parsed = ZoneSchema.safeParse(body);
   if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
-  const zone = await db.deliveryZone.create({ data: parsed.data });
-  return created({ zone });
+  try {
+    const zone = await db.deliveryZone.create({ data: parsed.data });
+    return created({ zone });
+  } catch (e) {
+    reportError(e, { route: "POST /api/admin/delivery-zones", tags: { domain: "delivery-zones" } });
+    console.error("[admin/delivery-zones] POST error", e);
+    return Err.internal();
+  }
 }

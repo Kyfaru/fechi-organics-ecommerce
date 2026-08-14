@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { verifyOtp } from "@/lib/otp";
 import { getRedis } from "@/lib/redis";
 import { randomBytes } from "crypto";
+import { reportError } from "@/lib/observability";
 
 const MAX_VERIFY_ATTEMPTS = 5;
 const OTP_TTL_SECONDS = 5 * 60;
@@ -38,8 +39,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(GENERIC_ERROR, { status: 400 });
     }
 
-    const otpKey = `admin:pwreset:otp:email:${user.id}`;
-    const attemptsKey = `admin:pwreset:otp:attempts:email:${user.id}`;
+    const otpKey = `admin:pwreset:otp:${user.id}`;
+    const attemptsKey = `admin:pwreset:otp:attempts:${user.id}`;
     const redis = getRedis();
 
     const attempts = await redis.incr(attemptsKey);
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, resetAuth });
   } catch (err) {
     console.error("[admin/forgot-password/verify]", err);
+    reportError(err, { route: "POST /api/admin/forgot-password/verify", tags: { flow: "admin-forgot-password" } });
     return NextResponse.json({ ok: false, error: { message: "Something went wrong" } }, { status: 500 });
   }
 }

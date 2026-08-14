@@ -12,7 +12,7 @@
  * against a live backend yet.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Loader2, Send } from "lucide-react";
 import type { Value as PhoneValue } from "react-phone-number-input";
@@ -21,11 +21,7 @@ import type { PaymentOrderContext } from "@/components/admin/orders/PaymentStep"
 import PaymentWaitingModal from "@/components/admin/orders/PaymentWaitingModal";
 import PaymentSuccessModal from "@/components/admin/orders/PaymentSuccessModal";
 import PaymentErrorModal from "@/components/admin/orders/PaymentErrorModal";
-
-// Cooldown after any send attempt (success or failure) so the admin can't
-// double-fire STK pushes at the customer. Bumped from the earlier 8s
-// placeholder to this phase's explicit 20s spec — this number supersedes it.
-const SEND_COOLDOWN_MS = 20_000;
+import { useSubmitCooldown } from "@/hooks/use-submit-cooldown";
 
 interface MpesaPromptPanelProps {
   orderContext: PaymentOrderContext;
@@ -47,23 +43,11 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
   const router = useRouter();
   const [phone, setPhone] = useState<PhoneValue | undefined>(initialPhone);
   const [sending, setSending] = useState(false);
-  const [cooldown, setCooldown] = useState(false);
+  const { cooldown, startCooldown } = useSubmitCooldown();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<InitiateResult | null>(null);
   const [phase, setPhase] = useState<Phase>(null);
   const [failReason, setFailReason] = useState<string | undefined>();
-  const cooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (cooldownTimer.current) clearTimeout(cooldownTimer.current);
-    };
-  }, []);
-
-  function startCooldown() {
-    setCooldown(true);
-    cooldownTimer.current = setTimeout(() => setCooldown(false), SEND_COOLDOWN_MS);
-  }
 
   async function submitInitiate(retryOrderId?: string) {
     if (!phone || sending || cooldown || !branchReady) return;
@@ -84,6 +68,7 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
           branchId: orderContext.branchId,
           ...(retryOrderId ? { retryOrderId } : {}),
         }),
+        signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as {
         ok: boolean;
@@ -92,17 +77,19 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
       };
       if (!json.ok || !json.data) {
         setError(json.error?.message ?? "Could not send the M-Pesa prompt — please try again");
+        startCooldown("error");
         return;
       }
       setPending(json.data);
       setFailReason(undefined);
       setPhase("waiting");
+      startCooldown("success");
     } catch (err) {
       console.error("[MpesaPromptPanel] initiate failed", err);
       setError("Failed to send the M-Pesa prompt — please try again");
+      startCooldown("error");
     } finally {
       setSending(false);
-      startCooldown();
     }
   }
 

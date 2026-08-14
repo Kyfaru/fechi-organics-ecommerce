@@ -3,6 +3,7 @@ import { ok, created, Err } from "@/lib/api";
 import { connection, NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 /** GET /api/admin/loyalty/tiers
  *  Returns all loyalty tiers + top-20 customers by points for leaderboard.
@@ -25,8 +26,9 @@ export async function GET(req: NextRequest) {
 
     return ok({ tiers, leaderboard });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/loyalty/tiers", tags: { domain: "loyalty" } });
     console.error("[loyalty/tiers/GET]", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }
 
@@ -62,7 +64,8 @@ export async function POST(req: NextRequest) {
     console.info(`[loyalty/tiers/POST] Created tier: ${tier.id} — ${tier.name}`);
     return created(tier);
   } catch (e) {
+    reportError(e, { route: "POST /api/admin/loyalty/tiers", tags: { domain: "loyalty" } });
     console.error("[loyalty/tiers/POST]", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

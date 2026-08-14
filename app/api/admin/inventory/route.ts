@@ -5,6 +5,7 @@ import { connection } from "next/server";
 import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { isGlobalScope } from "@/lib/branch-access";
 import { LOW_STOCK_THRESHOLD } from "@/lib/inventory/constants";
+import { reportError } from "@/lib/observability";
 
 function statusFor(stock: number): "out_of_stock" | "low_stock" | "in_stock" {
   if (stock === 0) return "out_of_stock";
@@ -110,7 +111,8 @@ export async function GET(req: NextRequest) {
 
     return ok({ items, stats, branches });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/inventory", tags: { domain: "inventory" } });
     console.error("[inventory/GET]", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

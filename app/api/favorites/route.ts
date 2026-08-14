@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { r2PublicUrl } from "@/lib/r2";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -62,7 +63,8 @@ export async function GET(req: NextRequest) {
     return ok({ products });
   } catch (e) {
     console.error("[favorites] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/favorites" });
+    return Err.internal();
   }
 }
 
@@ -96,6 +98,7 @@ export async function POST(req: NextRequest) {
     }
   } catch (e) {
     console.error("[favorites] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/favorites" });
+    return Err.internal();
   }
 }

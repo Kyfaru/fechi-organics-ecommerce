@@ -6,6 +6,7 @@ import { ok, Err } from "@/lib/api";
 import { invalidateCategoryCache } from "@/lib/cache-tags";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // PATCH /api/admin/products/categories/[id]
@@ -57,7 +58,8 @@ export async function PATCH(
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("A category with this slug already exists");
     }
-    return Err.internal(e);
+    reportError(e, { route: "PATCH /api/admin/products/categories/[id]" });
+    return Err.internal();
   }
 }
 
@@ -99,6 +101,7 @@ export async function DELETE(
     return ok({ id });
   } catch (e) {
     console.error("[admin/products/categories/[id]] DELETE error", e);
-    return Err.internal(e);
+    reportError(e, { route: "DELETE /api/admin/products/categories/[id]" });
+    return Err.internal();
   }
 }

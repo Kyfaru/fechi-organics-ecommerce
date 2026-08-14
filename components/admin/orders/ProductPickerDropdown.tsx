@@ -74,7 +74,9 @@ export default function ProductPickerDropdown({ onAddProduct }: ProductPickerDro
     queryKey: ["admin-products-picker"],
     queryFn: async () => {
       try {
-        const res = await fetch("/api/admin/products");
+        // activeOnly=true — this picker is for placing new in-store orders,
+        // so inactive (delisted) products must not be selectable.
+        const res = await fetch("/api/admin/products?activeOnly=true");
         const json = await res.json();
         const raw = (json?.data?.products ?? []) as RawProduct[];
         return raw.map((p) => {

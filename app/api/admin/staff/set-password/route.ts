@@ -6,7 +6,9 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { Argon2id } from "oslo/password";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { requirePermission } from "@/lib/require-permission";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
+import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 // POST /api/admin/staff/set-password — directly set a new password for a staff member.
 // Caller must have already verified their own password via /api/admin/verify-password
@@ -22,7 +24,10 @@ export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
 
-  const { userId, newPassword } = await req.json().catch(() => ({}));
+  const { userId, newPassword } = await req.json().catch((parseErr) => {
+    reportError(parseErr, { route: "POST /api/admin/staff/set-password" });
+    return {};
+  });
   if (!userId || !newPassword || newPassword.length < 8) return Err.validation("userId and newPassword (min 8 chars) required");
   if (userId === session.user.id) return Err.validation("Use the profile page to change your own password");
 
@@ -35,6 +40,9 @@ export async function POST(req: NextRequest) {
 
   // Force the user to change on next login
   await db.user.update({ where: { id: userId }, data: { mustChangePassword: true } });
+
+  const ctx = await loadCallerContext();
+  if (!ctx.denied) logActivity(ctx.id, "Set a new password for staff member", "staff", userId, req);
 
   return ok({ updated: true });
 }

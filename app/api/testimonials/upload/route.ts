@@ -4,6 +4,8 @@ import { r2Client } from "@/lib/r2";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { getRedis } from "@/lib/redis";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_SIZE = 8 * 1024 * 1024; // 8 MB (pre-compression)
@@ -59,6 +61,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, objectKey });
   } catch (err) {
     console.error("[testimonials/upload]", err);
+    reportError(err, { route: "/api/testimonials/upload" });
+    trackServerEvent("system", "upload_testimonial_failed");
     return NextResponse.json({ error: "Upload failed" }, { status: 500 });
   }
 }

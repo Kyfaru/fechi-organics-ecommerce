@@ -8,6 +8,7 @@ import { ok, Err } from "@/lib/api";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -22,6 +23,7 @@ export async function GET(req: NextRequest) {
         id: true,
         name: true,
         email: true,
+        phone: true,
         role: true,
         banned: true,
         banReason: true,
@@ -49,6 +51,7 @@ export async function GET(req: NextRequest) {
       id: u.id,
       name: u.name,
       email: u.email,
+      phone: u.phone,
       role: u.role,
       banned: u.banned,
       banReason: u.banReason,
@@ -59,9 +62,14 @@ export async function GET(req: NextRequest) {
       lastActiveAt: u.sessions[0]?.updatedAt ?? null,
     }));
 
-    return ok({ staff: shaped });
+    const activeSessions = await db.session.count({
+      where: { userId: { in: staff.map((u) => u.id) }, expiresAt: { gt: new Date() } },
+    });
+
+    return ok({ staff: shaped, stats: { activeSessions } });
   } catch (err) {
     console.error("[GET /api/admin/staff]", err);
-    return Err.internal(err);
+    reportError(err, { route: "GET /api/admin/staff" });
+    return Err.internal();
   }
 }

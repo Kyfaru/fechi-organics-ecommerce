@@ -4,12 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, Calendar, ChevronDown, ImageIcon, Upload, X } from "lucide-react";
+import { ArrowLeft, Calendar, ChevronDown, ImageIcon, MessageSquare, Upload, X } from "lucide-react";
 import RichTextEditor from "@/components/admin/ui/RichTextEditor";
 import ScheduleModal from "@/components/admin/blog/ScheduleModal";
 import AuthorPicker, { type AuthorOption } from "@/components/admin/blog/AuthorPicker";
 import { useSession } from "@/lib/auth-client";
-import { roles, type RoleName } from "@/lib/permissions";
 import { r2PublicUrl } from "@/lib/r2";
 
 function blogImageUrl(key: string): string {
@@ -31,20 +30,6 @@ interface BlogPost {
   authorIds: string[];
 }
 
-// Raw shape returned by GET /api/admin/staff — trimmed to the fields
-// AuthorPicker needs (see components/admin/blog/AuthorPicker.tsx).
-interface StaffListItem {
-  id: string;
-  name: string;
-  email: string;
-  banned: boolean;
-  adminProfile: {
-    role: string;
-    permissions: Record<string, unknown>;
-    isSuperAdmin: boolean;
-    isActive: boolean;
-  } | null;
-}
 
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -163,26 +148,40 @@ export function BlogEditorClient() {
     setForm((f) => ({ ...f, authorIds: [session.user.id] }));
   }, [isEdit, session?.user?.id]);
 
-  // Staff eligible to be picked as a blog author: active, non-banned admins
-  // with access to the Content page (blog lives under "content" in
-  // lib/permissions.ts) — super-admins always qualify.
+  // Staff eligible to be picked as a blog author, from a content:view-gated
+  // endpoint (not /api/admin/staff, which requires staff:view — a
+  // permission marketing/customer_care admins don't have, which silently
+  // emptied this list for them). Eligibility itself is decided server-side.
+  const authorsQueryKey = ["admin-blog-authors"];
   const { data: staffData } = useQuery({
-    queryKey: ["admin-staff-authors"],
-    queryFn: () => fetch("/api/admin/staff").then((r) => r.json()),
+    queryKey: authorsQueryKey,
+    queryFn: () => fetch("/api/admin/blog/authors").then((r) => r.json()),
     staleTime: 5 * 60 * 1000,
   });
 
-  const authorOptions: AuthorOption[] = ((staffData?.data?.staff ?? []) as StaffListItem[])
-    .filter((s) => !s.banned && (
-      s.adminProfile?.isSuperAdmin ||
-      roles[s.adminProfile?.role as RoleName]?.authorize({ content: ["view"] })?.success
-    ))
-    .map((s) => ({
-      id: s.id,
-      name: s.name,
-      email: s.email,
-      adminProfile: s.adminProfile ? { role: s.adminProfile.role } : null,
-    }));
+  const authorOptions: AuthorOption[] = staffData?.data?.authors ?? [];
+
+  const createAuthorMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await fetch("/api/admin/blog/authors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error?.message ?? "Failed to create author");
+      return json.data.author as AuthorOption;
+    },
+    onSuccess: (author) => {
+      qc.setQueryData(authorsQueryKey, (old: { data?: { authors: AuthorOption[] } } | undefined) => ({
+        ...old,
+        data: { authors: [...(old?.data?.authors ?? []), author] },
+      }));
+      setForm((f) => ({ ...f, authorIds: [...f.authorIds, author.id] }));
+      toast.success(`Added "${author.name}" as a new author`);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   function setTitle(title: string) {
     setForm((f) => ({ ...f, title, slug: slugTouched ? f.slug : slugify(title) }));
@@ -310,6 +309,15 @@ export function BlogEditorClient() {
             <Calendar size={14} />
             Schedule
           </button>
+          {form.status !== "PUBLISHED" && (
+            <button
+              onClick={() => saveMutation.mutate({ status: "PUBLISHED", publishedAt: new Date().toISOString() })}
+              disabled={!canSave}
+              className="h-10 px-5 rounded-[8px] border border-(--green-800) text-(--green-800) font-dm text-[14px] font-medium hover:bg-(--green-50) transition-colors disabled:opacity-50"
+            >
+              Publish Now
+            </button>
+          )}
           <button
             onClick={() => saveMutation.mutate(undefined)}
             disabled={!canSave}
@@ -477,112 +485,23 @@ export function BlogEditorClient() {
               authors={authorOptions}
               value={form.authorIds}
               onChange={(authorIds) => setForm((f) => ({ ...f, authorIds }))}
+              onCreateAuthor={(name) => createAuthorMutation.mutate(name)}
+              creatingAuthor={createAuthorMutation.isPending}
               placeholder="Select authors…"
             />
           </FormField>
 
-          {isEdit && postId && <CommentModerationPanel postId={postId} />}
+          {isEdit && postId && (
+            <a
+              href={`/admin/content/blog/comments?postId=${postId}`}
+              className="flex items-center justify-center gap-2 h-10 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] font-medium text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+            >
+              <MessageSquare size={14} /> View Comments
+            </a>
+          )}
         </div>
       </div>
     </div>
-  );
-}
-
-interface AdminComment {
-  id: string;
-  content: string;
-  status: "VISIBLE" | "HIDDEN" | "FLAGGED";
-  createdAt: string;
-  user: { name: string | null; email: string | null };
-}
-
-function CommentModerationPanel({ postId }: { postId: string }) {
-  const qc = useQueryClient();
-  const queryKey = ["admin-blog-comments", postId];
-
-  const { data, isLoading } = useQuery<{ comments: AdminComment[] }>({
-    queryKey,
-    queryFn: () => fetch(`/api/admin/blog/${postId}/comments`).then((r) => r.json()).then((j) => j.data),
-  });
-
-  const statusMutation = useMutation({
-    mutationFn: async ({ commentId, status }: { commentId: string; status: AdminComment["status"] }) => {
-      const res = await fetch(`/api/admin/blog/comments/${commentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) throw new Error("FAILED");
-      return { commentId, status };
-    },
-    onSuccess: ({ commentId, status }) => {
-      qc.setQueryData<{ comments: AdminComment[] }>(queryKey, (old) => ({
-        comments: (old?.comments ?? []).map((c) => (c.id === commentId ? { ...c, status } : c)),
-      }));
-    },
-    onError: () => toast.error("Could not update comment status"),
-  });
-
-  const comments = data?.comments ?? [];
-
-  return (
-    <FormField label="Comments" hint={`${comments.length} total`}>
-      {isLoading ? (
-        <p className="text-[13px] text-(--neutral-400)">Loading…</p>
-      ) : comments.length === 0 ? (
-        <p className="text-[13px] text-(--neutral-400)">No comments yet.</p>
-      ) : (
-        <div className="space-y-3 max-h-80 overflow-y-auto">
-          {comments.map((c) => (
-            <div key={c.id} className="border border-(--neutral-200) rounded-[10px] p-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-dm text-[12px] font-medium text-(--neutral-700) truncate">
-                  {c.user.name ?? c.user.email ?? "Unknown"}
-                </span>
-                <span
-                  className={`font-dm text-[11px] px-2 py-0.5 rounded-full shrink-0 ${
-                    c.status === "VISIBLE"
-                      ? "bg-(--green-50) text-(--green-800)"
-                      : c.status === "HIDDEN"
-                      ? "bg-(--neutral-100) text-(--neutral-500)"
-                      : "bg-red-50 text-red-600"
-                  }`}
-                >
-                  {c.status}
-                </span>
-              </div>
-              <p className="font-dm text-[13px] text-(--neutral-600) mt-1 line-clamp-3">{c.content}</p>
-              <div className="flex gap-2 mt-2">
-                {c.status !== "VISIBLE" && (
-                  <button
-                    onClick={() => statusMutation.mutate({ commentId: c.id, status: "VISIBLE" })}
-                    className="font-dm text-[12px] text-(--green-800) hover:underline"
-                  >
-                    Restore
-                  </button>
-                )}
-                {c.status !== "HIDDEN" && (
-                  <button
-                    onClick={() => statusMutation.mutate({ commentId: c.id, status: "HIDDEN" })}
-                    className="font-dm text-[12px] text-(--neutral-500) hover:underline"
-                  >
-                    Hide
-                  </button>
-                )}
-                {c.status !== "FLAGGED" && (
-                  <button
-                    onClick={() => statusMutation.mutate({ commentId: c.id, status: "FLAGGED" })}
-                    className="font-dm text-[12px] text-red-600 hover:underline"
-                  >
-                    Flag
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </FormField>
   );
 }
 

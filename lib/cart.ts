@@ -8,7 +8,12 @@ export type CartLine = {
   productId: string;
   slug: string;
   name: string;
+  // Static descriptive subtitle from the product itself (e.g. "250ml"),
+  // unrelated to the customer's own variant pick below.
   variantLabel: string | null;
+  // The color/flavour/etc. the customer selected, if this product is in
+  // variants mode — denormalized onto cartItem at add-to-cart time.
+  selectedVariantLabel: string | null;
   primaryImageUrl: string;
   priceKes: number;
   quantity: number;
@@ -74,6 +79,7 @@ export async function getCartSummary(cartId: string): Promise<CartSummary> {
       slug: ci.product.slug,
       name: ci.product.name,
       variantLabel: ci.product.variantLabel,
+      selectedVariantLabel: ci.variantLabel,
       primaryImageUrl: img ? r2PublicUrl(img.objectKey) : "/img/placeholder.png",
       priceKes: ci.product.priceKes,
       quantity: ci.quantity,

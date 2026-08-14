@@ -1,40 +1,18 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
-import { db } from "@/lib/db"
+import { getAccountUser } from "@/lib/account/get-account-user"
 import PageHeader from "@/components/account/PageHeader"
 import CommunicationToggles from "@/components/account/settings/CommunicationToggles"
 import RegionalSettings from "@/components/account/settings/RegionalSettings"
-import AccountRightPanel from "@/components/account/AccountRightPanel"
-import type { AccountUser } from "@/types/account"
+import AccountRightPanel, { BotanicalDashboardCard } from "@/components/account/AccountRightPanel"
 
 export default async function SettingsPage() {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user) redirect("/login")
 
-  const u = session.user
-  const dbUser = await db.user.findUnique({
-    where: { id: u.id },
-    select: {
-      usernameChanges: true, lastUsernameChange: true, phoneCode: true,
-      langPreference: true, currencyDisplay: true,
-      notifBotanicalUpdates: true, notifOrderTracking: true, notifPersonalized: true,
-    },
-  })
-
-  const user: AccountUser = {
-    id: u.id, name: u.name,
-    firstName: (u as any).firstName ?? null, lastName: (u as any).lastName ?? null,
-    username: (u as any).username ?? null, email: u.email, image: u.image ?? null,
-    phone: (u as any).phone ?? null, phoneCode: dbUser?.phoneCode ?? null,
-    country: (u as any).country ?? null, city: (u as any).city ?? null,
-    usernameChanges: dbUser?.usernameChanges ?? 0, lastUsernameChange: dbUser?.lastUsernameChange ?? null,
-    langPreference: dbUser?.langPreference ?? "en-GB", currencyDisplay: dbUser?.currencyDisplay ?? "KES",
-    notifBotanicalUpdates: dbUser?.notifBotanicalUpdates ?? true,
-    notifOrderTracking: dbUser?.notifOrderTracking ?? true,
-    notifPersonalized: dbUser?.notifPersonalized ?? true,
-    twoFactorEnabled: (u as any).twoFactorEnabled ?? false,
-  }
+  const user = await getAccountUser(session.user.id)
+  if (!user) redirect("/login")
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[1fr_260px] gap-8">
@@ -45,6 +23,10 @@ export default async function SettingsPage() {
           title="Settings"
           description="Manage your communication preferences and regional settings."
         />
+
+        <div className="tablet:hidden">
+          <BotanicalDashboardCard user={user} />
+        </div>
 
         <CommunicationToggles
           notifBotanicalUpdates={user.notifBotanicalUpdates}
@@ -57,7 +39,7 @@ export default async function SettingsPage() {
           currencyDisplay={user.currencyDisplay}
         />
       </div>
-      <AccountRightPanel user={user} />
+      <AccountRightPanel user={user} hideExtras />
     </div>
   )
 }

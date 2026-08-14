@@ -24,4 +24,16 @@ export const NOTIFICATION_TYPE_RESOURCE: Record<NotificationType, AppResource | 
   CONTACT_INQUIRY: "contact_messages",
   DELIVERY_ZONE_REQUEST: "delivery",
   SYSTEM_ALERT: null,
+  APPROVAL_REQUESTED: "approvals",
+  // null, not "approvals" — the requester (who by definition doesn't hold
+  // the approvals permission) needs to see the outcome of their own
+  // request. The notification system has no per-user targeting, so this is
+  // visible to everyone rather than hidden from the one person who needs it.
+  APPROVAL_DECIDED: null,
+  // Same reasoning as APPROVAL_DECIDED — the requester may not hold the
+  // resource's own permission at export-granting level, and there's no
+  // per-user notification targeting. This is just a "something's ready,
+  // check /api/admin/exports/mine" nudge; that endpoint (ownership-scoped)
+  // is the real gate on who can actually reach the file.
+  EXPORT_READY: null,
 };

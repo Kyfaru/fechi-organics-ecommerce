@@ -5,8 +5,12 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { invalidateProductCache } from "@/lib/cache-tags";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { createNotification } from "@/lib/notify";
-import { requirePermission } from "@/lib/require-permission";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { logActivity } from "@/lib/admin-activity";
+import { syncProductVariants } from "@/lib/products/sync-variants";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/products/[id]
@@ -31,6 +35,10 @@ export async function GET(
         images: {
           orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }],
         },
+        variants: {
+          orderBy: { sortOrder: "asc" },
+          include: { image: { select: { objectKey: true } } },
+        },
       },
     });
 
@@ -40,7 +48,8 @@ export async function GET(
     return ok({ product });
   } catch (e) {
     console.error("[admin/products/[id]] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/products/[id]" });
+    return Err.internal();
   }
 }
 
@@ -61,7 +70,6 @@ const UpdateSchema = z.object({
   priceKes: z.number().int().positive().optional(),
   compareAtPriceKes: z.number().int().positive().nullable().optional(),
   variantLabel: z.string().nullable().optional(),
-  stock: z.number().int().min(0).optional(),
   bestSeller: z.boolean().optional(),
   isActive: z.boolean().optional(),
   outOfStock: z.boolean().optional(),
@@ -71,6 +79,14 @@ const UpdateSchema = z.object({
   // imageObjectKeys: ordered array; index 0 = primary.
   // Passing this replaces all existing images with the new set.
   imageObjectKeys: z.array(z.string()).optional(),
+  variantMode: z.enum(["sizes", "variants"]).optional(),
+  variantGroupLabel: z.string().nullable().optional(),
+  variantImagesHidden: z.boolean().optional(),
+  // Passing this replaces all existing variants with the new set.
+  variants: z.array(z.object({
+    label: z.string().min(1),
+    imageObjectKey: z.string().optional(),
+  })).optional(),
 }).strict();
 
 export async function PATCH(
@@ -91,7 +107,7 @@ export async function PATCH(
     const parsed = UpdateSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
-    const { imageObjectKeys, ...productData } = parsed.data;
+    const { imageObjectKeys, variants, ...productData } = parsed.data;
 
     // Verify product exists
     const existing = await db.product.findUnique({ where: { id } });
@@ -122,6 +138,8 @@ export async function PATCH(
       }
     }
 
+    await syncProductVariants(id, variants);
+
     // Re-fetch with images and category for fresh response
     const updated = await db.product.findUnique({
       where: { id },
@@ -129,6 +147,10 @@ export async function PATCH(
         category: { select: { id: true, name: true, slug: true } },
         images: {
           orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }],
+        },
+        variants: {
+          orderBy: { sortOrder: "asc" },
+          include: { image: { select: { objectKey: true } } },
         },
       },
     });
@@ -141,13 +163,17 @@ export async function PATCH(
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("A product with this slug already exists");
     }
-    return Err.internal(e);
+    reportError(e, { route: "PATCH /api/admin/products/[id]" });
+    return Err.internal();
   }
 }
 
 // ---------------------------------------------------------------------------
 // DELETE /api/admin/products/[id]
-// Soft-delete: sets isActive = false
+// Soft-delete: sets isActive = false. Requires a reason (critical action —
+// logged and, for non-admin/super_admin roles, queued for approval instead
+// of executed immediately; see lib/require-approval.ts).
+// Body: { reason: string }
 // ---------------------------------------------------------------------------
 export async function DELETE(
   req: NextRequest,
@@ -160,25 +186,35 @@ export async function DELETE(
   const denied = await requirePermission(req, { products: ["delete"] });
   if (denied) return denied;
 
+  const ctx = await loadCallerContext();
+  if (ctx.denied) return ctx.denied === "auth" ? Err.authRequired() : Err.forbidden();
+
+  let reason: string;
+  try {
+    const body = await req.json();
+    reason = typeof body?.reason === "string" ? body.reason.trim() : "";
+  } catch {
+    reason = "";
+  }
+  if (!reason) return Err.validation("A reason is required to delete a product");
+
   try {
     const { id } = await params;
 
     const existing = await db.product.findUnique({ where: { id } });
     if (!existing) return Err.notFound("Product");
 
-    await db.product.update({ where: { id }, data: { isActive: false } });
+    const outcome = await requireApprovalOrProceed(ctx, "products", "archive", { slug: existing.slug, reason }, id);
+    if (!outcome.proceed) return Approval.queued(outcome.requestId);
+
+    await approvalExecutors["products:archive"]({ slug: existing.slug, reason }, id);
 
     console.info("[admin/products/[id]] DELETE (soft) —", id);
-    invalidateProductCache(existing.slug);
-    createNotification({
-      type: "PRODUCT_DELETED",
-      title: `Product removed: ${existing.name}`,
-      body: `"${existing.name}" has been unpublished from the store.`,
-      link: "/admin/products",
-    }).catch(() => {});
+    logActivity(ctx.id, `Deleted product "${existing.name}"`, "product", id, req, { reason }, "CRITICAL");
     return ok({ id });
   } catch (e) {
     console.error("[admin/products/[id]] DELETE error", e);
-    return Err.internal(e);
+    reportError(e, { route: "DELETE /api/admin/products/[id]" });
+    return Err.internal();
   }
 }

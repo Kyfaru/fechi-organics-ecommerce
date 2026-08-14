@@ -9,7 +9,9 @@ import { StatsCard } from "@/components/ui/stats-card";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
+import { Can } from "@/components/admin/Can";
 import { useAdminMe } from "@/hooks/use-can";
+import { usePersistedFilter } from "@/hooks/use-persisted-filters";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -61,9 +63,9 @@ export function AdminInventoryClient() {
   const qc = useQueryClient();
 
   // Filters
-  const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = usePersistedFilter("inventory:search", "");
+  const [categoryFilter, setCategoryFilter] = usePersistedFilter("inventory:category", "all");
+  const [statusFilter, setStatusFilter] = usePersistedFilter("inventory:status", "all");
 
   // Caller profile — determines whether Zoho sync targets the caller's own
   // branch automatically, or needs a branch picker (global tier).
@@ -101,6 +103,10 @@ export function AdminInventoryClient() {
         body: JSON.stringify({ branchId }),
       });
       const json = await res.json();
+      if (res.status === 202) {
+        toast.info("Sync queued for admin approval.");
+        return;
+      }
       if (!res.ok) throw new Error(json.error?.message ?? "Sync failed");
       toast.success("Zoho sync complete.");
       qc.invalidateQueries({ queryKey: ["admin-inventory"] });
@@ -268,15 +274,17 @@ export function AdminInventoryClient() {
       key: "id",
       label: "Actions",
       render: (_: unknown, row: Record<string, unknown>) => (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            openAdjust(row as unknown as InventoryItem);
-          }}
-          className="h-8 px-3 rounded-[6px] font-dm text-[13px] font-medium bg-(--neutral-100) hover:bg-(--neutral-200) text-(--neutral-700) transition-colors"
-        >
-          Adjust
-        </button>
+        <Can permissions={{ inventory: ["adjust"] }}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              openAdjust(row as unknown as InventoryItem);
+            }}
+            className="h-8 px-3 rounded-[6px] font-dm text-[13px] font-medium bg-(--neutral-100) hover:bg-(--neutral-200) text-(--neutral-700) transition-colors"
+          >
+            Adjust
+          </button>
+        </Can>
       ),
     },
   ];

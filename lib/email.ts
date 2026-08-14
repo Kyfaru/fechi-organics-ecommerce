@@ -11,7 +11,13 @@ import {
   FONT_HEADING,
 } from "@/lib/email-template";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (!_resend) {
+    _resend = new Resend(process.env.RESEND_API_KEY);
+  }
+  return _resend;
+}
 const sendEmail = process.env.EMAIL_FROM
 
 export async function sendOTPEmail(email: string, otp: string, type: string): Promise<void> {
@@ -24,7 +30,7 @@ export async function sendOTPEmail(email: string, otp: string, type: string): Pr
       ? "Your Fechi Organics password reset code"
       : "Your Fechi Organics verification code";
 
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: sendEmail!,
     to: email,
     subject,
@@ -45,7 +51,7 @@ export async function sendOTPEmail(email: string, otp: string, type: string): Pr
  * @throws When Resend fails to deliver the email.
  */
 export async function sendPasswordResetEmail(email: string, resetUrl: string): Promise<void> {
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: sendEmail!,
     to: email,
     subject: "Reset your Fechi Organics password",
@@ -63,7 +69,7 @@ export async function sendPasswordResetEmail(email: string, resetUrl: string): P
  * blocking account creation.
  */
 export async function sendWelcomeEmail(email: string, name: string): Promise<void> {
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: sendEmail!,
     to: email,
     subject: "Welcome to Fechi Organics",
@@ -75,13 +81,38 @@ export async function sendWelcomeEmail(email: string, name: string): Promise<voi
   }
 }
 
+/**
+ * Sends a "confirm this email address" link — used both for the "verify
+ * your new email" nudge (email wasn't previously verified, change already
+ * applied) and the "confirm this change" gate (email was verified, change
+ * only applies once this link is clicked). See lib/auth.ts's
+ * `user.changeEmail` / `emailVerification` config.
+ */
+export async function sendChangeEmailVerification(
+  toEmail: string,
+  url: string,
+  name: string,
+  newEmail?: string
+): Promise<void> {
+  const { error } = await getResend().emails.send({
+    from: sendEmail!,
+    to: toEmail,
+    subject: newEmail ? "Confirm your Fechi Organics email change" : "Verify your Fechi Organics email",
+    html: buildChangeEmailVerificationHTML(url, name, newEmail),
+  });
+  if (error) {
+    console.error("[Resend] Failed to send change-email verification:", error);
+    throw new Error("Failed to send verification email");
+  }
+}
+
 export async function sendOrderConfirmationEmail(args: {
   email: string;
   orderId: string;
   html: string;
   pdfBuffer?: Buffer;
 }): Promise<void> {
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: sendEmail!,
     to: args.email,
     subject: `Your Fechi Organics receipt #${args.orderId.slice(0, 8).toUpperCase()}`,
@@ -104,7 +135,7 @@ export async function sendInvoiceEmail(args: {
   html: string;
   pdfBuffer: Buffer;
 }): Promise<void> {
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: sendEmail!,
     to: args.email,
     subject: `Your Fechi Organics invoice ${args.invoiceNumber}`,
@@ -123,7 +154,7 @@ export async function sendAdminNotificationEmail(args: {
   subject: string;
   html: string;
 }) {
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: sendEmail!,
     to: args.to,
     subject: args.subject,
@@ -154,7 +185,7 @@ export async function sendTicketAcknowledgmentEmail(args: {
   ticketNumber: string;
   subject: string;
 }): Promise<void> {
-  const { error } = await resend.emails.send({
+  const { error } = await getResend().emails.send({
     from: sendEmail!,
     to: args.email,
     subject: `We've received your message — Ticket ${args.ticketNumber}`,
@@ -211,6 +242,29 @@ function buildPasswordResetEmailHTML(resetUrl: string): string {
   ].join("");
 
   return emailShell({ title: "Reset Your Password", sectionsHtml: sections });
+}
+
+function buildChangeEmailVerificationHTML(url: string, name: string, newEmail?: string): string {
+  const firstName = name.split(" ")[0] || name;
+  const body = newEmail
+    ? `Click below to confirm you want to change your account email to <strong>${newEmail}</strong>. This link expires in <strong>1 hour</strong>.`
+    : `Click below to verify your new email address. This link expires in <strong>1 hour</strong>.`;
+  const sections = [
+    emailSection(`
+      ${emailIconCircle("lock")}
+      <h1 style="margin:0 0 16px;text-align:center;font-family:${FONT_HEADING};font-size:26px;font-weight:700;color:${EMAIL_BRAND.textDark};">${newEmail ? "Confirm Email Change" : "Verify Your Email"}</h1>
+      <p style="margin:0 0 16px;font-size:15px;color:${EMAIL_BRAND.textBody};line-height:1.6;">Hi ${firstName},</p>
+      <p style="font-size:15px;color:${EMAIL_BRAND.textBody};line-height:1.6;margin:0 0 32px;text-align:center;">
+        ${body}
+      </p>
+      <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;"><tr><td>${emailButton(newEmail ? "Confirm Change" : "Verify Email", url)}</td></tr></table>
+      <p style="font-size:12px;color:${EMAIL_BRAND.textMuted};margin:32px 0 0;text-align:center;">
+        If you didn't request this, you can safely ignore this email.
+      </p>
+    `, "48px 48px 40px"),
+  ].join("");
+
+  return emailShell({ title: newEmail ? "Confirm Your Email Change" : "Verify Your Email", sectionsHtml: sections });
 }
 
 function buildWelcomeEmailHTML(name: string): string {

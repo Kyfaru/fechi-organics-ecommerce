@@ -2,8 +2,12 @@ import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
-import { requirePermission } from "@/lib/require-permission";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 /** GET /api/admin/campaigns */
 export async function GET(req: NextRequest) {
@@ -33,8 +37,9 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/campaigns", tags: { domain: "campaigns" } });
     console.error("[campaigns/GET]", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }
 
@@ -69,24 +74,21 @@ export async function POST(req: NextRequest) {
   if (!["EMAIL", "SMS", "PUSH", "WHATSAPP", "ALL"].includes(body.type)) return Err.validation("Invalid campaign type");
 
   try {
-    const campaign = await db.campaign.create({
-      data: {
-        name: body.name.trim(),
-        type: body.type,
-        audienceType: body.audienceType ?? "ALL",
-        subject: body.subject ?? null,
-        heading: body.heading ?? null,
-        previewText: body.previewText ?? null,
-        content: body.content ?? null,
-        audienceCustomerIds: body.audienceCustomerIds ?? [],
-        status: body.status ?? "DRAFT",
-        scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
-      },
-    });
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return Err.forbidden();
+
+    const outcome = await requireApprovalOrProceed(ctx, "campaigns", "create", body);
+    if (!outcome.proceed) return Approval.queued(outcome.requestId);
+
+    const campaign = await approvalExecutors["campaigns:create"](body, null) as
+      Awaited<ReturnType<typeof db.campaign.create>>;
+
     console.info(`[campaigns/POST] Created campaign: ${campaign.id} — ${campaign.name}`);
+    logActivity(ctx.id, `Created campaign "${campaign.name}"`, "campaign", campaign.id, req);
     return created(campaign);
   } catch (e) {
+    reportError(e, { route: "POST /api/admin/campaigns", tags: { domain: "campaigns" } });
     console.error("[campaigns/POST]", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

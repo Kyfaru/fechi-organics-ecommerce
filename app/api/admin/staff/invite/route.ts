@@ -21,6 +21,14 @@ import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { appResources, grantsFor, type RoleName } from "@/lib/permissions";
 import { emailShell, emailSection, emailButton, emailInfoBox, emailIconCircle, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template";
+import { reportError } from "@/lib/observability";
+
+// This route creates admin accounts — every catch tags itself as sensitive
+// so account-creation failures are easy to filter for in Sentry.
+const INVITE_ROUTE_CONTEXT = {
+  route: "POST /api/admin/staff/invite",
+  tags: { sensitive: "account_creation" },
+} as const;
 
 const VALID_ROLES = [
   "admin", "manager", "finance", "marketing",
@@ -43,7 +51,8 @@ export async function POST(req: NextRequest) {
   let body: Record<string, unknown>;
   try {
     body = await req.json();
-  } catch {
+  } catch (parseErr) {
+    reportError(parseErr, INVITE_ROUTE_CONTEXT);
     return Err.validation("Invalid JSON body.");
   }
 
@@ -172,6 +181,7 @@ export async function POST(req: NextRequest) {
       } catch (emailErr) {
         // Email failure is non-fatal — account was created; log and continue
         console.error("[staff/invite] Email send failed:", emailErr);
+        reportError(emailErr, INVITE_ROUTE_CONTEXT);
       }
     }
 
@@ -186,6 +196,7 @@ export async function POST(req: NextRequest) {
       } catch (smsErr) {
         // SMS failure is non-fatal — account was created; log and continue
         console.error("[staff/invite] SMS send failed:", smsErr);
+        reportError(smsErr, INVITE_ROUTE_CONTEXT);
       }
     }
 
@@ -197,7 +208,7 @@ export async function POST(req: NextRequest) {
       body: `${name.trim()} (${role}) joined the team`,
       link: "/admin/staff",
       branchId: role === "admin" ? null : (branchId as string | undefined) ?? null,
-    }).catch(() => {});
+    }).catch((notifyErr) => reportError(notifyErr, INVITE_ROUTE_CONTEXT));
 
     console.info("[staff/invite] Staff created:", {
       invitedBy: session.user.email,
@@ -210,7 +221,8 @@ export async function POST(req: NextRequest) {
     return ok({ message: "Staff member invited successfully.", userId });
   } catch (err) {
     console.error("[staff/invite] POST error:", err);
-    return Err.internal(err);
+    reportError(err, INVITE_ROUTE_CONTEXT);
+    return Err.internal();
   }
 }
 

@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Package, ShoppingBag, Users, Warehouse, Truck,
   Mail, Tag, Heart, FileText, Layout, Star, HelpCircle, Image as ImageIcon,
-  BarChart2, CreditCard, Shield, Settings, User, Bell, Building2,
+  BarChart2, CreditCard, Shield, Settings, User, Bell, Building2, ClipboardCheck,
 } from "lucide-react";
 import type { statements, AppResource } from "@/lib/permissions";
 
@@ -57,6 +57,7 @@ export const NAV_GROUPS: NavGroup[] = [
   ]},
   { label: "SETTINGS", items: [
     { href: "/admin/notifications", icon: Bell,    label: "Notifications" },
+    { href: "/admin/approvals", icon: ClipboardCheck, label: "Approvals", resource: "approvals" },
     { href: "/admin/staff",    icon: Shield,  label: "Staff & Roles", resource: "staff" },
     { href: "/admin/profile",  icon: User,    label: "My Profile" },
     { href: "/admin/security", icon: Shield,  label: "Security" },
@@ -69,12 +70,49 @@ export function isActive(pathname: string, href: string, exact?: boolean) {
   return pathname === href || pathname.startsWith(href + "/");
 }
 
+// Pages that need a resource check but aren't (yet) linked from the sidebar —
+// kept separate from NAV_GROUPS so adding them here doesn't also add a
+// visible nav link. resourceForPath still enforces them the same as any
+// listed page; only AdminSidebar.tsx's rendering skips this list.
+const UNLISTED_RESOURCE_PATHS: { href: string; resource: AppResource }[] = [
+  { href: "/admin/transactions", resource: "transactions" },
+  { href: "/admin/users", resource: "customers" },
+  // Not in NAV_GROUPS since it's linked from the sidebar's bottom slot
+  // (replacing "Back to Store"), not a group item. Also hard-restricted to
+  // admin/super_admin in the page itself and in GET /api/admin/activity —
+  // this staff:view check is just the outer resource gate.
+  { href: "/admin/activity", resource: "staff" },
+];
+
+// The only admin paths allowed with NO resource check at all — self-service
+// pages every authenticated staff member keeps regardless of role. Anything
+// under /admin/* that isn't here and isn't covered by NAV_GROUPS or
+// UNLISTED_RESOURCE_PATHS is denied by default (see AdminGuard) — a new page
+// that forgets to register a resource fails closed instead of open.
+export const NO_RESOURCE_REQUIRED_PATHS = [
+  "/admin",
+  "/admin/profile",
+  "/admin/security",
+  "/admin/notifications",
+  // Legacy redirect stubs — zero data, they just forward to an already-gated
+  // page (app/admin/(protected)/contacts/page.tsx and .../testimonials/page.tsx).
+  "/admin/contacts",
+  "/admin/testimonials",
+];
+
+export function isNoResourcePath(pathname: string): boolean {
+  return NO_RESOURCE_REQUIRED_PATHS.some(
+    (p) => pathname === p || (p !== "/admin" && pathname.startsWith(p + "/"))
+  );
+}
+
 /**
  * Resolves which resource (if any) a given admin pathname requires, by
- * matching against the same NAV_GROUPS data the sidebar uses. Returns
- * undefined for routes with no resource requirement (self-service pages,
- * or routes not represented in the nav at all) — the caller should treat
- * that as "always allowed", matching the sidebar's own default.
+ * matching against NAV_GROUPS (the sidebar's own data) plus
+ * UNLISTED_RESOURCE_PATHS (gated pages not linked from the sidebar).
+ * Returns undefined only for genuinely no-resource-required pages — see
+ * isNoResourcePath, which the caller (AdminGuard) uses to fail closed on
+ * anything else.
  */
 export function resourceForPath(pathname: string): AppResource | undefined {
   for (const group of NAV_GROUPS) {
@@ -83,6 +121,11 @@ export function resourceForPath(pathname: string): AppResource | undefined {
       if (pathname === item.href || pathname.startsWith(item.href + "/")) {
         return item.resource as AppResource;
       }
+    }
+  }
+  for (const item of UNLISTED_RESOURCE_PATHS) {
+    if (pathname === item.href || pathname.startsWith(item.href + "/")) {
+      return item.resource;
     }
   }
   return undefined;

@@ -14,6 +14,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
+import { reportError } from "@/lib/observability";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
 import { initiateKcbStkPush } from "@/lib/payments/kcb/kcb-client";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
@@ -43,7 +44,8 @@ export async function POST(req: NextRequest) {
   try {
     const raw = await req.json();
     parsed = bodySchema.parse(raw);
-  } catch {
+  } catch (bodyErr) {
+    reportError(bodyErr, { route: "POST /api/payments/kcb/initiate", tags: { stage: "body_validation" } });
     return Err.validation("Invalid request body");
   }
 
@@ -100,7 +102,8 @@ export async function POST(req: NextRequest) {
         discountCents = r.discountKes;
         if (r.deliveryFree) deliveryCents = 0;
         resolvedPromoId = r.promo.id;
-      } catch {
+      } catch (promoErr) {
+        reportError(promoErr, { route: "POST /api/payments/kcb/initiate", tags: { stage: "promo_resolution" } });
         /* invalid/expired — discount stays 0 */
       }
     }
@@ -148,6 +151,8 @@ export async function POST(req: NextRequest) {
         deliveryCity: deliveryData.city ?? deliveryData.state ?? null,
         deliveryCounty: deliveryData.county || deliveryData.country,
         deliveryZone: deliveryData.deliveryZone ?? pricing.label,
+        deliveryPostalCode: deliveryData.postalCode ?? null,
+        deliveryCountry: deliveryData.countryName ?? null,
         isInternational: deliveryData.country.toUpperCase() !== "KE",
         branchId: branch.id,
         items: {
@@ -156,6 +161,8 @@ export async function POST(req: NextRequest) {
             name: item.product.name,
             priceKes: item.product.priceKes,
             quantity: item.quantity,
+            variantId: item.variantId,
+            variantLabel: item.variantLabel,
           })),
         },
       },
@@ -182,7 +189,7 @@ export async function POST(req: NextRequest) {
     const consumer_secret = branch.consumerSecretEnc || process.env.KCB_CONSUMER_SECRET;
     const consumer_key = branch.consumerKeyEnc || process.env.KCB_CONSUMER_KEY;
     const api_key = branch.apiKeyEnc || process.env.KCB_API_KEY;
-    const shortcode = branch.shortcode || process.env.KCB_SHORTCODE;
+    const shortcode = branch.shortcode || process.env.KCB_SHORTCODE || "null";
     const formatOrderNumber = order.orderNumber?.slice(4,-1);
     const invoiceCode = `${branch.invoiceNumber}-${formatOrderNumber}`;
     if (!branch.invoiceNumber) {
@@ -192,7 +199,7 @@ export async function POST(req: NextRequest) {
     const kcbRes = await initiateKcbStkPush({
       branch: {
         id: branch.id,
-        shortcode: branch.shortcode ?? shortcode,
+        shortcode: branch.shortcode ?? shortcode ?? null,
         invoiceNumber: invoiceCode ?? branch.invoiceNumber,
         consumerKeyEnc:branch.consumerKeyEnc ?? consumer_key,
         consumerSecretEnc: branch.consumerSecretEnc ?? consumer_secret,
@@ -227,7 +234,8 @@ export async function POST(req: NextRequest) {
 
     return ok({ orderId: order.id, message: "Check your phone for the M-Pesa prompt" });
   } catch (e) {
+    reportError(e, { route: "POST /api/payments/kcb/initiate", tags: { stage: "handler" }, extra: { userId } });
     console.error("[kcb/initiate] POST error", e);
-    return Err.internal(e);
+    return Err.internal();
   }
 }

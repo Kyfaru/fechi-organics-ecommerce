@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { exampleZonesForCounty } from "@/lib/delivery-zone-examples";
 import { isPrismaTableMissingError } from "@/lib/prisma-errors";
+import { reportError } from "@/lib/observability";
 
 /**
  * GET /api/delivery-zones?county=<name>
@@ -34,6 +35,7 @@ export async function GET(req: NextRequest) {
     }
 
     console.error("[delivery-zones] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/delivery-zones" });
+    return Err.internal();
   }
 }

@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { PermissionOverrideGrid } from "@/components/admin/PermissionOverrideGrid";
+import { Can } from "@/components/admin/Can";
+import { useAdminMe } from "@/hooks/use-can";
 import type { RoleName } from "@/lib/permissions";
 import { StatsCard } from "@/components/ui/stats-card";
 import { DataTable } from "@/components/admin/ui/DataTable";
@@ -32,6 +34,7 @@ interface StaffMember {
   id: string;
   name: string;
   email: string;
+  phone: string | null;
   role: string;
   banned: boolean;
   banReason: string | null;
@@ -42,6 +45,7 @@ interface StaffMember {
     department: string | null;
     isActive: boolean;
     role: string;
+    isSuperAdmin: boolean;
     permissions?: { deny?: string[] } | null;
   } | null;
 }
@@ -104,6 +108,7 @@ function RowActions({
   onResetPassword,
   onChangeRole,
   onEditPermissions,
+  onEditDetails,
 }: {
   staff: StaffMember;
   onDeactivate: (s: StaffMember) => void;
@@ -111,6 +116,7 @@ function RowActions({
   onResetPassword: (s: StaffMember) => void;
   onChangeRole: (s: StaffMember) => void;
   onEditPermissions: (s: StaffMember) => void;
+  onEditDetails: (s: StaffMember) => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -128,38 +134,54 @@ function RowActions({
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-9 z-50 w-48 bg-white dark:bg-(--dark-surface) rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e2) py-1 overflow-hidden">
-            <button
-              onClick={() => { setOpen(false); onChangeRole(staff); }}
-              className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
-            >
-              Change Role
-            </button>
-            <button
-              onClick={() => { setOpen(false); onEditPermissions(staff); }}
-              className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
-            >
-              Edit Permissions
-            </button>
-            <button
-              onClick={() => { setOpen(false); onResetPassword(staff); }}
-              className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
-            >
-              Reset Password
-            </button>
-            <div className="h-px bg-(--neutral-200) dark:bg-(--dark-border) my-1" />
-            <button
-              onClick={() => { setOpen(false); onDeactivate(staff); }}
-              className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
-            >
-              {staff.banned ? "Reactivate" : "Deactivate"}
-            </button>
-            {staff.banned && (
+            <Can permissions={{ staff: ["update"] }}>
               <button
-                onClick={() => { setOpen(false); onDelete(staff); }}
+                onClick={() => { setOpen(false); onEditDetails(staff); }}
+                className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+              >
+                Edit Details
+              </button>
+            </Can>
+            <Can permissions={{ staff: ["assign_roles"] }}>
+              <button
+                onClick={() => { setOpen(false); onChangeRole(staff); }}
+                className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+              >
+                Change Role
+              </button>
+              <button
+                onClick={() => { setOpen(false); onEditPermissions(staff); }}
+                className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+              >
+                Edit Permissions
+              </button>
+            </Can>
+            <Can permissions={{ staff: ["update"] }}>
+              <button
+                onClick={() => { setOpen(false); onResetPassword(staff); }}
+                className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+              >
+                Reset Password
+              </button>
+            </Can>
+            <Can permissions={{ staff: ["deactivate"] }}>
+              <div className="h-px bg-(--neutral-200) dark:bg-(--dark-border) my-1" />
+              <button
+                onClick={() => { setOpen(false); onDeactivate(staff); }}
                 className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
               >
-                Delete Permanently
+                {staff.banned ? "Reactivate" : "Deactivate"}
               </button>
+            </Can>
+            {staff.banned && (
+              <Can permissions={{ staff: ["delete"] }}>
+                <button
+                  onClick={() => { setOpen(false); onDelete(staff); }}
+                  className="w-full text-left px-4 py-2 font-dm text-[14px] text-(--danger) hover:bg-(--danger-bg) transition-colors"
+                >
+                  Delete Permanently
+                </button>
+              </Can>
             )}
           </div>
         </>
@@ -176,6 +198,14 @@ const INVITE_ROLES = [
   "inventory", "customer_care", "viewer",
 ] as const;
 type InviteRole = (typeof INVITE_ROLES)[number];
+
+// Assignable roles for the Change Role / Edit Details modals — "super_admin"
+// is deliberately excluded; that access is now granted via the separate
+// "Grant Super Admin access" toggle on top of the "admin" role.
+const ASSIGNABLE_ROLES = [
+  "admin", "manager", "finance", "marketing",
+  "inventory", "customer_care", "viewer",
+] as const;
 
 // Expiry presets
 const EXPIRY_OPTIONS = [
@@ -247,7 +277,7 @@ function InviteDrawer({
     queryFn: () => fetch("/api/admin/branches").then((r) => r.json()),
     staleTime: 10 * 60 * 1000,
   });
-  const branches: { id: string; name: string }[] = branchData?.branches ?? [];
+  const branches: { id: string; name: string }[] = branchData?.data?.branches ?? [];
 
   function toggleChannel(channel: string) {
     setForm((p) => ({
@@ -580,6 +610,7 @@ export function AdminStaffClient() {
   // Delete modal
   const [deleteTarget, setDeleteTarget] = useState<StaffMember | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
 
   // Reset password modal
   const [resetTarget, setResetTarget] = useState<StaffMember | null>(null);
@@ -595,7 +626,16 @@ export function AdminStaffClient() {
   const [roleAdminPw, setRoleAdminPw] = useState("");
   const [roleVerified, setRoleVerified] = useState(false);
   const [selectedRole, setSelectedRole] = useState("viewer");
+  const [roleGrantSuperAdmin, setRoleGrantSuperAdmin] = useState(false);
   const [roleLoading, setRoleLoading] = useState(false);
+
+  // Edit details modal (name / email / phone / role)
+  const [detailsTarget, setDetailsTarget] = useState<StaffMember | null>(null);
+  const [detailsAdminPw, setDetailsAdminPw] = useState("");
+  const [detailsVerified, setDetailsVerified] = useState(false);
+  const [detailsForm, setDetailsForm] = useState({ name: "", email: "", phone: "", role: "viewer" });
+  const [detailsGrantSuperAdmin, setDetailsGrantSuperAdmin] = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
 
   // Edit permissions modal — narrows one staff member's access below their
   // role's ceiling. Separate action from "Change Role" on purpose.
@@ -609,14 +649,22 @@ export function AdminStaffClient() {
   const { data, isLoading } = useQuery({
     queryKey: ["admin-staff"],
     queryFn: () =>
-      fetch("/api/admin/staff").then((r) => r.json()).then((j) => j.data?.staff ?? []),
+      fetch("/api/admin/staff").then((r) => r.json()).then(
+        (j) => j.data as { staff: StaffMember[]; stats: { activeSessions: number } } | undefined
+      ),
   });
 
-  const staff: StaffMember[] = data ?? [];
+  const staff: StaffMember[] = data?.staff ?? [];
+  const activeSessions = data?.stats?.activeSessions ?? 0;
+
+  // The caller's own admin profile — used to gate the "Grant Super Admin
+  // access" toggle to callers who are already super admins.
+  const { data: me } = useAdminMe();
+  const isSuperAdmin = me?.isSuperAdmin === true;
 
   // Stat counts
   const totalStaff  = staff.length;
-  const adminCount  = staff.filter((s) => s.role === "admin").length;
+  const adminCount  = staff.filter((s) => s.adminProfile?.role === "admin" || s.adminProfile?.role === "super_admin").length;
   // "managers" = non-admin active staff — placeholder since we only have admin role in DB
   const activeCount = staff.filter((s) => !s.banned).length;
 
@@ -634,20 +682,27 @@ export function AdminStaffClient() {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (target: StaffMember) => {
-      const res = await fetch(`/api/admin/staff/${target.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/staff/${target.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: deleteReason.trim() }),
+      });
       const json = await res.json();
+      if (res.status === 202) return;
       if (!json.ok) throw new Error(json.error?.message ?? "Delete failed");
     },
     onSuccess: (_d, target) => {
       toast.success(`${target.name} deleted.`);
       qc.invalidateQueries({ queryKey: ["admin-staff"] });
       setDeleteTarget(null);
+      setDeleteReason("");
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : "Delete failed"),
   });
 
   async function handleDelete() {
     if (!deleteTarget) return;
+    if (!deleteReason.trim()) { toast.error("A reason is required"); return; }
     setDeleting(true);
     try { await deleteMutation.mutateAsync(deleteTarget); } finally { setDeleting(false); }
   }
@@ -720,7 +775,7 @@ export function AdminStaffClient() {
       const res = await fetch(`/api/admin/staff/${roleTarget.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: selectedRole }),
+        body: JSON.stringify({ role: selectedRole, isSuperAdmin: roleGrantSuperAdmin }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error?.message ?? "Failed");
@@ -734,7 +789,64 @@ export function AdminStaffClient() {
 
   function closeRoleModal() {
     setRoleTarget(null); setRoleAdminPw(""); setRoleVerified(false);
-    setSelectedRole("viewer"); setRoleLoading(false);
+    setSelectedRole("viewer"); setRoleGrantSuperAdmin(false); setRoleLoading(false);
+  }
+
+  // Edit details handlers
+  function openDetailsModal(target: StaffMember) {
+    setDetailsTarget(target);
+    setDetailsAdminPw("");
+    setDetailsVerified(false);
+    const legacyRole = target.adminProfile?.role;
+    setDetailsForm({
+      name: target.name,
+      email: target.email,
+      phone: target.phone ?? "",
+      // "super_admin" is no longer an assignable role — normalize legacy
+      // rows to "admin" so the dropdown shows a valid option.
+      role: legacyRole === "super_admin" ? "admin" : (legacyRole ?? "viewer"),
+    });
+    setDetailsGrantSuperAdmin(legacyRole === "super_admin" || target.adminProfile?.isSuperAdmin === true);
+  }
+
+  async function handleVerifyForDetails() {
+    setDetailsLoading(true);
+    try {
+      const ok = await verifyAdminPassword(detailsAdminPw);
+      if (!ok) { toast.error("Incorrect password"); return; }
+      setDetailsVerified(true);
+    } finally { setDetailsLoading(false); }
+  }
+
+  async function handleSaveDetails() {
+    if (!detailsTarget) return;
+    setDetailsLoading(true);
+    try {
+      const res = await fetch(`/api/admin/staff/${detailsTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: detailsForm.name,
+          email: detailsForm.email,
+          phone: detailsForm.phone,
+          role: detailsForm.role,
+          isSuperAdmin: detailsGrantSuperAdmin,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error?.message ?? "Failed");
+      toast.success("Staff details updated");
+      qc.invalidateQueries({ queryKey: ["admin-staff"] });
+      closeDetailsModal();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally { setDetailsLoading(false); }
+  }
+
+  function closeDetailsModal() {
+    setDetailsTarget(null); setDetailsAdminPw(""); setDetailsVerified(false);
+    setDetailsForm({ name: "", email: "", phone: "", role: "viewer" });
+    setDetailsGrantSuperAdmin(false); setDetailsLoading(false);
   }
 
   function openPermModal(target: StaffMember) {
@@ -828,7 +940,7 @@ export function AdminStaffClient() {
       key: "role",
       label: "Role",
       render: (_: unknown, row: Record<string, unknown>) => (
-        <RolePill role={(row as unknown as StaffMember).role} />
+        <RolePill role={(row as unknown as StaffMember).adminProfile?.role ?? "viewer"} />
       ),
     },
     {
@@ -860,8 +972,16 @@ export function AdminStaffClient() {
             onDeactivate={(target) => setDeactivateTarget(target)}
             onDelete={(target) => setDeleteTarget(target)}
             onResetPassword={(target) => { setResetTarget(target); setResetAdminPw(""); setResetVerified(false); setResetMode("idle"); }}
-            onChangeRole={(target) => { setRoleTarget(target); setRoleAdminPw(""); setRoleVerified(false); setSelectedRole(target.adminProfile?.role ?? "viewer"); }}
+            onChangeRole={(target) => {
+              setRoleTarget(target); setRoleAdminPw(""); setRoleVerified(false);
+              const legacyRole = target.adminProfile?.role;
+              // "super_admin" is no longer an assignable role — normalize
+              // legacy rows to "admin" so the dropdown shows a valid option.
+              setSelectedRole(legacyRole === "super_admin" ? "admin" : (legacyRole ?? "viewer"));
+              setRoleGrantSuperAdmin(legacyRole === "super_admin" || target.adminProfile?.isSuperAdmin === true);
+            }}
             onEditPermissions={openPermModal}
+            onEditDetails={openDetailsModal}
           />
         );
       },
@@ -874,13 +994,15 @@ export function AdminStaffClient() {
         title="Staff & Roles"
         description="Manage admin accounts and permissions"
         action={
-          <button
-            onClick={() => setInviteOpen(true)}
-            className="h-10 px-5 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors flex items-center gap-2"
-          >
-            <UserPlus size={16} />
-            Invite Staff
-          </button>
+          <Can permissions={{ staff: ["invite"] }}>
+            <button
+              onClick={() => setInviteOpen(true)}
+              className="h-10 px-5 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors flex items-center gap-2"
+            >
+              <UserPlus size={16} />
+              Invite Staff
+            </button>
+          </Can>
         }
       />
 
@@ -890,7 +1012,7 @@ export function AdminStaffClient() {
           <StatsCard title="Total Staff" value={String(totalStaff)} icon={<Users className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
           <StatsCard title="Admins" value={String(adminCount)} icon={<ShieldCheck className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
           <StatsCard title="Active" value={String(activeCount)} icon={<UserCog className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
-          <StatsCard title="Active Sessions" value="1" icon={<Activity className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+          <StatsCard title="Active Sessions" value={String(activeSessions)} icon={<Activity className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
         </div>
 
         {/* Staff table */}
@@ -933,14 +1055,21 @@ export function AdminStaffClient() {
       {deleteTarget && (
         <ConfirmModal
           open
-          onClose={() => setDeleteTarget(null)}
+          onClose={() => { setDeleteTarget(null); setDeleteReason(""); }}
           onConfirm={handleDelete}
           title="Permanently delete staff member?"
           description={`This will delete ${deleteTarget.name}'s account, sessions, and profile. This cannot be undone.`}
           confirmLabel="Delete permanently"
           danger
           loading={deleting}
-        />
+        >
+          <textarea
+            value={deleteReason}
+            onChange={(e) => setDeleteReason(e.target.value)}
+            placeholder="Reason for deleting this staff member…"
+            className="w-full h-20 px-3 py-2 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] resize-none outline-none focus:border-(--danger)"
+          />
+        </ConfirmModal>
       )}
 
       {/* Reset password modal */}
@@ -971,7 +1100,7 @@ export function AdminStaffClient() {
                 <p className="font-dm text-[13px] text-(--neutral-500)">Choose how to reset {resetTarget.name}&apos;s password.</p>
                 <div className="flex flex-col gap-2">
                   <button onClick={() => setResetMode("link")} className="w-full h-11 rounded-xl border border-(--green-500) text-(--green-700) font-dm text-[14px] font-medium hover:bg-(--green-50) transition-colors">
-                    Send reset link (expires 45 min)
+                    Send reset link (expires 12 hours)
                   </button>
                   <button onClick={() => setResetMode("set")} className="w-full h-11 rounded-xl bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors">
                     Set new password directly
@@ -981,7 +1110,7 @@ export function AdminStaffClient() {
               </>
             ) : resetMode === "link" ? (
               <>
-                <p className="font-dm text-[13px] text-(--neutral-500)">A reset link will be emailed and/or SMSed to {resetTarget.name}. Link expires in 45 minutes.</p>
+                <p className="font-dm text-[13px] text-(--neutral-500)">A reset link will be emailed to {resetTarget.name}. Link expires in 12 hours.</p>
                 <div className="flex gap-2 justify-end">
                   <button onClick={() => setResetMode("idle")} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Back</button>
                   <button onClick={handleSendResetLink} disabled={resetLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Send Link</button>
@@ -1053,10 +1182,10 @@ export function AdminStaffClient() {
                   <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Role</label>
                   <select
                     value={selectedRole}
-                    onChange={(e) => setSelectedRole(e.target.value)}
+                    onChange={(e) => { setSelectedRole(e.target.value); setRoleGrantSuperAdmin(false); }}
                     className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
                   >
-                    {(["super_admin","admin","manager","finance","marketing","inventory","customer_care","viewer"] as const).map((r) => (
+                    {ASSIGNABLE_ROLES.map((r) => (
                       <option key={r} value={r}>{r.replace("_", " ")}</option>
                     ))}
                   </select>
@@ -1065,9 +1194,108 @@ export function AdminStaffClient() {
                   </p>
                 </div>
 
+                {selectedRole === "admin" && isSuperAdmin && (
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={roleGrantSuperAdmin}
+                      onChange={(e) => setRoleGrantSuperAdmin(e.target.checked)}
+                      className="h-4 w-4 rounded border-(--neutral-300) accent-(--green-800)"
+                    />
+                    <span className="font-dm text-[13px] text-(--neutral-700)">Grant Super Admin access</span>
+                  </label>
+                )}
+
                 <div className="flex gap-2 justify-end">
                   <button onClick={closeRoleModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
                   <button onClick={handleSaveRole} disabled={roleLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Save Role</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit details modal */}
+      {detailsTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
+              Edit details — {detailsTarget.name}
+            </h3>
+
+            {!detailsVerified ? (
+              <>
+                <p className="font-dm text-[13px] text-(--neutral-500)">Enter your own admin password to continue.</p>
+                <input
+                  type="password"
+                  value={detailsAdminPw}
+                  onChange={(e) => setDetailsAdminPw(e.target.value)}
+                  placeholder="Your password"
+                  className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                />
+                <div className="flex gap-2 justify-end">
+                  <button onClick={closeDetailsModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
+                  <button onClick={handleVerifyForDetails} disabled={detailsLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Verify</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Name</label>
+                  <input
+                    type="text"
+                    value={detailsForm.name}
+                    onChange={(e) => setDetailsForm((p) => ({ ...p, name: e.target.value }))}
+                    className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                  />
+                </div>
+                <div>
+                  <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={detailsForm.email}
+                    onChange={(e) => setDetailsForm((p) => ({ ...p, email: e.target.value }))}
+                    className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                  />
+                </div>
+                <div>
+                  <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Phone</label>
+                  <input
+                    type="tel"
+                    value={detailsForm.phone}
+                    onChange={(e) => setDetailsForm((p) => ({ ...p, phone: e.target.value }))}
+                    className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                  />
+                </div>
+                <div>
+                  <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Role</label>
+                  <select
+                    value={detailsForm.role}
+                    onChange={(e) => { setDetailsForm((p) => ({ ...p, role: e.target.value })); setDetailsGrantSuperAdmin(false); }}
+                    className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
+                  >
+                    {ASSIGNABLE_ROLES.map((r) => (
+                      <option key={r} value={r}>{r.replace("_", " ")}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {detailsForm.role === "admin" && isSuperAdmin && (
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={detailsGrantSuperAdmin}
+                      onChange={(e) => setDetailsGrantSuperAdmin(e.target.checked)}
+                      className="h-4 w-4 rounded border-(--neutral-300) accent-(--green-800)"
+                    />
+                    <span className="font-dm text-[13px] text-(--neutral-700)">Grant Super Admin access</span>
+                  </label>
+                )}
+
+                <div className="flex gap-2 justify-end">
+                  <button onClick={closeDetailsModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
+                  <button onClick={handleSaveDetails} disabled={detailsLoading} className="px-4 py-2 rounded-xl bg-(--green-800) text-white font-dm text-[14px] disabled:opacity-60">Save Details</button>
                 </div>
               </>
             )}

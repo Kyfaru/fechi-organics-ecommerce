@@ -2,11 +2,14 @@ import { db } from "@/lib/db";
 import { connection } from "next/server";
 import { ok, created, Err } from "@/lib/api";
 import { r2PublicUrl } from "@/lib/r2";
-import { invalidateTestimonialCache } from "@/lib/cache-tags";
 import { z } from "zod";
 import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { requirePermission } from "@/lib/require-permission";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 const PAGE_SIZE_DEFAULT = 20;
 
@@ -51,7 +54,8 @@ export async function GET(req: NextRequest) {
     return ok({ testimonials: rows.map(withUrls), total, page, pageSize, approvedCount });
   } catch (e) {
     console.error("[admin/testimonials] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/admin/testimonials" });
+    return Err.internal();
   }
 }
 
@@ -84,13 +88,21 @@ export async function POST(req: NextRequest) {
     const parsed = CreateSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
-    const t = await db.testimonial.create({ data: parsed.data });
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return Err.forbidden();
+
+    const outcome = await requireApprovalOrProceed(ctx, "content", "create", { kind: "testimonial", ...parsed.data });
+    if (!outcome.proceed) return Approval.queued(outcome.requestId);
+
+    const t = await approvalExecutors["content:create"]({ kind: "testimonial", ...parsed.data }, null) as
+      Awaited<ReturnType<typeof db.testimonial.create>>;
 
     console.info("[admin/testimonials] created", t.id);
-    invalidateTestimonialCache();
+    logActivity(ctx.id, `Added testimonial from "${t.authorName}"`, "testimonial", t.id, req);
     return created({ testimonial: withUrls(t) });
   } catch (e) {
     console.error("[admin/testimonials] POST error", e);
-    return Err.internal(e);
+    reportError(e, { route: "POST /api/admin/testimonials" });
+    return Err.internal();
   }
 }

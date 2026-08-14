@@ -2,6 +2,7 @@ import { getFxRates } from "@/lib/currency";
 import { ok, Err } from "@/lib/api";
 import { CURRENCIES } from "@/lib/currency";
 import { connection } from "next/server";
+import { reportError } from "@/lib/observability";
 
 export async function GET() {
   await connection();
@@ -13,6 +14,7 @@ export async function GET() {
     });
   } catch (e) {
     console.error("[currency/rates] GET error", e);
-    return Err.internal(e);
+    reportError(e, { route: "GET /api/currency/rates" });
+    return Err.internal();
   }
 }

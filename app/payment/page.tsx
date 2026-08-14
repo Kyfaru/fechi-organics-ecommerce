@@ -11,6 +11,7 @@ import { toast } from "@/lib/toast";
 import { usePaymentStream } from "@/hooks/use-payment-stream";
 import { useCurrency } from "@/app/providers";
 import { StepIndicator } from "@/components/checkout/StepIndicator";
+import { CHECKOUT_FLOW_FLAG_KEY } from "@/lib/checkout-flow";
 
 const PAYSTACK_ERROR_MESSAGES: Record<string, string> = {
   payment_failed: "Payment was not completed. Please try again.",
@@ -70,10 +71,17 @@ export default function PaymentPage() {
     queryKey: ["cart"],
     queryFn: () => fetch("/api/cart").then((r) => r.json()),
     staleTime: 0,
+    refetchOnMount: "always",
   });
 
   useEffect(() => {
     window.setTimeout(() => {
+      // Only reachable via the cart's "Place Order" button (which sets this
+      // flag) — typing/bookmarking /payment directly sends you back to /cart.
+      if (!sessionStorage.getItem(CHECKOUT_FLOW_FLAG_KEY)) {
+        router.push("/cart");
+        return;
+      }
       const raw = sessionStorage.getItem("fechi_delivery");
       if (!raw) {
         router.push("/delivery");

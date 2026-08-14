@@ -20,6 +20,9 @@ const DEFAULT_SEVERITY: Record<NotificationType, NotificationSeverity> = {
   DELIVERY_ZONE_REQUEST: "INFO",
   ADMIN_ADDED: "INFO",
   SYSTEM_ALERT: "CRITICAL",
+  APPROVAL_REQUESTED: "WARNING",
+  APPROVAL_DECIDED: "INFO",
+  EXPORT_READY: "INFO",
 };
 
 interface CreateNotificationInput {

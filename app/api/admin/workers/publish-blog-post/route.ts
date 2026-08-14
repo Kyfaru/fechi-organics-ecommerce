@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyQstashRequest } from "@/lib/qstash";
+import { reportError } from "@/lib/observability";
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
@@ -12,22 +13,27 @@ export async function POST(req: NextRequest) {
 
   const { postId } = JSON.parse(rawBody) as { postId: string };
 
-  const post = await db.blogPost.findUnique({
-    where: { id: postId },
-    select: { status: true },
-  });
-  // Already published, reverted to draft, or archived before the scheduled
-  // time arrived — idempotency guard so a Qstash retry never clobbers a
-  // status an admin already changed by hand.
-  if (!post || post.status !== "SCHEDULED") {
-    return NextResponse.json({ ok: true, skipped: true });
+  try {
+    const post = await db.blogPost.findUnique({
+      where: { id: postId },
+      select: { status: true },
+    });
+    // Already published, reverted to draft, or archived before the scheduled
+    // time arrived — idempotency guard so a Qstash retry never clobbers a
+    // status an admin already changed by hand.
+    if (!post || post.status !== "SCHEDULED") {
+      return NextResponse.json({ ok: true, skipped: true });
+    }
+
+    await db.blogPost.update({
+      where: { id: postId },
+      data: { status: "PUBLISHED" },
+    });
+
+    console.info(`[publish-blog-post] Post ${postId} published`);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    reportError(error, { route: "POST /api/admin/workers/publish-blog-post", extra: { postId } });
+    return NextResponse.json({ error: "Worker failed" }, { status: 500 });
   }
-
-  await db.blogPost.update({
-    where: { id: postId },
-    data: { status: "PUBLISHED" },
-  });
-
-  console.info(`[publish-blog-post] Post ${postId} published`);
-  return NextResponse.json({ ok: true });
 }

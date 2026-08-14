@@ -5,6 +5,7 @@ import { ok, Err } from "@/lib/api";
 import { sendSms, hasSmsConfig } from "@/lib/sms";
 import { combineLegacyPhone } from "@/lib/phone";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 export async function POST(
   req: NextRequest,
@@ -58,6 +59,7 @@ export async function POST(
     }
     inboxOk = true;
   } catch (e) {
+    reportError(e, { route: "POST /api/orders/[id]/notify", extra: { orderId } });
     console.error("[notify] inbox create failed:", e);
   }
 
@@ -70,6 +72,7 @@ export async function POST(
     try {
       await sendSms(phone, messageBody);
     } catch (e) {
+      reportError(e, { route: "POST /api/orders/[id]/notify", extra: { orderId } });
       console.error("[notify] SMS failed:", e);
       smsOk = false;
     }

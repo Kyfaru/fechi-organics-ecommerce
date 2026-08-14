@@ -1,9 +1,11 @@
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { NextRequest } from "next/server";
+import type { NotificationType } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Err } from "@/lib/api";
+import { DEV_ACCESS_COOKIE } from "@/lib/dev-access";
 import type { RoleName, statements } from "@/lib/permissions";
 
 type Statements = typeof statements;
@@ -23,15 +25,28 @@ export type CallerContext =
       isSuperAdmin: boolean;
       branchId: string | null;
       deny: Set<string>;
+      mutedNotificationTypes: NotificationType[];
     };
 
 export async function loadCallerContext(): Promise<CallerContext> {
+  // Developer access bypass — a synthetic super-admin context for whoever
+  // holds the DEV_ACCESS_SECRET cookie (see app/dev/access), entirely
+  // independent of the user/adminProfile tables. Never touches the DB, so
+  // this never creates or resembles a real staff account anywhere.
+  const devSecret = process.env.DEV_ACCESS_SECRET;
+  if (devSecret) {
+    const jar = await cookies();
+    if (jar.get(DEV_ACCESS_COOKIE)?.value === devSecret) {
+      return { id: "dev-access", role: "super_admin", isSuperAdmin: true, branchId: null, deny: new Set(), mutedNotificationTypes: [] };
+    }
+  }
+
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return { denied: "auth" };
 
   const profile = await db.adminProfile.findUnique({
     where: { userId: session.user.id },
-    select: { id: true, role: true, isSuperAdmin: true, isActive: true, accessExpiresAt: true, branchId: true, permissions: true },
+    select: { id: true, role: true, isSuperAdmin: true, isActive: true, accessExpiresAt: true, branchId: true, permissions: true, mutedNotificationTypes: true },
   });
   if (!profile?.isActive) return { denied: "inactive" };
   if (profile.accessExpiresAt && profile.accessExpiresAt < new Date()) return { denied: "expired" };
@@ -43,6 +58,7 @@ export async function loadCallerContext(): Promise<CallerContext> {
     isSuperAdmin: profile.isSuperAdmin,
     branchId: profile.branchId,
     deny: new Set(override?.deny ?? []),
+    mutedNotificationTypes: profile.mutedNotificationTypes,
   };
 }
 

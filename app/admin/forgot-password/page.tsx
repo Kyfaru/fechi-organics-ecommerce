@@ -12,15 +12,20 @@ import OtpPinInput from "@/components/auth/OtpPinInput";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
 import { useOtpResend } from "@/hooks/use-otp-resend";
+import { reportError } from "@/lib/observability";
 
-type Step = "request" | "otp" | "set-password";
+type Step = "request" | "channel" | "otp" | "set-password";
 
 /**
  * Admin Forgot Password page — mirrors app/(auth)/forgot-password/page.tsx
- * for the admin self-service flow. Email-only (no channel toggle — the admin
- * login flow has never supported phone).
+ * for the admin self-service flow.
  *
- * Step 1 "request": email -> POST /api/admin/forgot-password
+ * Step 1 "request": email -> POST /api/admin/forgot-password/channels to
+ *   check whether the admin has a phone on file. If not, skips straight to
+ *   sending the email code. If so, moves to "channel".
+ * Step "channel" (only shown when SMS is available): pick which channel
+ *   gets the code first — POST /api/admin/forgot-password always sends to
+ *   every available channel, "channel" only controls dispatch order.
  * Step 2 "otp": 6-digit Preline pin input -> POST /api/admin/forgot-password/verify
  *   returns a short-lived, single-use `resetAuth` token kept in memory only.
  * Step 3 "set-password": new password -> POST /api/admin/reset-password
@@ -41,6 +46,9 @@ export default function AdminForgotPasswordPage() {
   const [emailError, setEmailError] = useState<string | undefined>(undefined);
   const [isRequesting, setIsRequesting] = useState(false);
 
+  // ---- Step "channel" ----
+  const [channel, setChannel] = useState<"email" | "sms">("email");
+
   // ---- Step 2 ----
   const [otpError, setOtpError] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
@@ -55,12 +63,17 @@ export default function AdminForgotPasswordPage() {
   const [newPasswordError, setNewPasswordError] = useState<string | undefined>(undefined);
   const [confirmPasswordError, setConfirmPasswordError] = useState<string | undefined>(undefined);
   const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
+  const [policyError, setPolicyError] = useState<
+    | { code: "PASSWORD_CHANGE_LIMIT" }
+    | { code: "PASSWORD_CHANGE_TOO_SOON"; nextAllowedAt: string; cooldownDays: number }
+    | null
+  >(null);
 
-  async function sendCode(): Promise<void> {
+  async function sendCode(ch: "email" | "sms" = channel): Promise<void> {
     await fetch("/api/admin/forgot-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email.trim() }),
+      body: JSON.stringify({ email: email.trim(), channel: ch }),
     });
   }
 
@@ -91,10 +104,38 @@ export default function AdminForgotPasswordPage() {
     setEmailError(undefined);
     setIsRequesting(true);
     try {
-      await sendCode();
+      const res = await fetch("/api/admin/forgot-password/channels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const data = await res.json().catch(() => ({ smsAvailable: false }));
+
+      if (data?.smsAvailable) {
+        setStep("channel");
+        return;
+      }
+
+      setChannel("email");
+      await sendCode("email");
       resendState.reset();
       setStep("otp");
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "admin-forgot-password", tags: { step: "request" } });
+      toast.error("Could not send code. Please try again.");
+    } finally {
+      setIsRequesting(false);
+    }
+  }
+
+  async function handleChannelSubmit(): Promise<void> {
+    setIsRequesting(true);
+    try {
+      await sendCode(channel);
+      resendState.reset();
+      setStep("otp");
+    } catch (err) {
+      reportError(err, { route: "admin-forgot-password", tags: { step: "channel" } });
       toast.error("Could not send code. Please try again.");
     } finally {
       setIsRequesting(false);
@@ -124,7 +165,8 @@ export default function AdminForgotPasswordPage() {
 
       setResetAuth(data.resetAuth);
       setStep("set-password");
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "admin-forgot-password", tags: { step: "otp-verify" } });
       setOtpError("Something went wrong. Please try again.");
       setPinResetSignal((n) => n + 1);
     } finally {
@@ -180,13 +222,24 @@ export default function AdminForgotPasswordPage() {
       const data = await res.json();
 
       if (!res.ok || !data.ok) {
-        toast.error(data?.error?.message || "Failed to update password. Please try again.");
+        const code = data?.error?.code;
+        if (code === "PASSWORD_CHANGE_LIMIT" || code === "PASSWORD_CHANGE_TOO_SOON") {
+          setPolicyError(data.error);
+          toast.error(
+            code === "PASSWORD_CHANGE_LIMIT"
+              ? "Password change limit reached"
+              : "Too soon to change your password again"
+          );
+        } else {
+          toast.error(data?.error?.message || "Failed to update password. Please try again.");
+        }
         return;
       }
 
       toast.success("Password updated. Please log in.");
       router.push("/admin/login");
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "admin-forgot-password", tags: { step: "set-password" } });
       toast.error("Failed to update password. Please try again.");
     } finally {
       setIsSubmittingPassword(false);
@@ -209,6 +262,10 @@ export default function AdminForgotPasswordPage() {
         </>
       ),
       subtitle: "Enter your admin email and we'll send you a 6-digit code.",
+    },
+    channel: {
+      title: "Choose Delivery",
+      subtitle: "We'll send your code to both — starting with whichever you pick.",
     },
     otp: {
       title: "Enter Your Code",
@@ -284,6 +341,50 @@ export default function AdminForgotPasswordPage() {
                 Access restricted to authorized staff only.
               </p>
             </form>
+          )}
+
+          {/* ----------------------------------------------------------------
+              Step "channel" — pick which channel gets the code first
+          ---------------------------------------------------------------- */}
+          {step === "channel" && (
+            <div className="flex flex-col gap-5">
+              <div className="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 p-1 gap-1 self-start">
+                {(["email", "sms"] as const).map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setChannel(c)}
+                    className={[
+                      "px-6 py-2 rounded-full text-sm tracking-widest transition-all duration-200",
+                      channel === c
+                        ? "bg-white dark:bg-gray-700 text-[#1a1c1c] dark:text-white shadow-sm font-bold"
+                        : "text-[#40493c] dark:text-gray-400 hover:text-[#1a1c1c] dark:hover:text-white font-normal",
+                    ].join(" ")}
+                    aria-pressed={channel === c}
+                  >
+                    {c === "email" ? "EMAIL" : "SMS"}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleChannelSubmit}
+                disabled={isRequesting}
+                className="w-full py-3.5 rounded-full font-bold text-sm tracking-wide text-[#1a1c1c] transition-all duration-150 hover:brightness-95 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                style={{ backgroundColor: "#FFC800" }}
+              >
+                {isRequesting ? <Spinner size={16} invert /> : "Send Code"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStep("request")}
+                className="text-center text-xs text-[#40493c] dark:text-gray-500 hover:underline"
+              >
+                Use a different email
+              </button>
+            </div>
           )}
 
           {/* ----------------------------------------------------------------
@@ -460,6 +561,48 @@ export default function AdminForgotPasswordPage() {
           Fechi Organics — Admin
         </p>
       </motion.aside>
+
+      {/* ----------------------------------------------------------------
+          Password-policy error modal (limit reached / too soon)
+      ---------------------------------------------------------------- */}
+      {policyError && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-xl">
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-red-50 dark:bg-red-950/40">
+              <AlertTriangle size={20} className="text-red-500" />
+            </div>
+            {policyError.code === "PASSWORD_CHANGE_LIMIT" ? (
+              <>
+                <h3 className="mb-1 text-base font-bold text-[#1a1c1c] dark:text-white">
+                  Password change limit reached
+                </h3>
+                <p className="text-sm text-[#40493c] dark:text-gray-400">
+                  You&apos;ve reached the maximum number of password changes allowed on this
+                  account. Please contact a super admin for help.
+                </p>
+              </>
+            ) : (
+              <>
+                <h3 className="mb-1 text-base font-bold text-[#1a1c1c] dark:text-white">
+                  Too soon to change your password
+                </h3>
+                <p className="text-sm text-[#40493c] dark:text-gray-400">
+                  Your password can only be changed once every {policyError.cooldownDays} day
+                  {policyError.cooldownDays === 1 ? "" : "s"}. You can try again on{" "}
+                  {new Date(policyError.nextAllowedAt).toLocaleString()}.
+                </p>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => setPolicyError(null)}
+              className="mt-5 w-full rounded-full bg-[#f0f0ef] dark:bg-gray-800 py-2.5 text-sm font-semibold text-[#1a1c1c] dark:text-white hover:brightness-95"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

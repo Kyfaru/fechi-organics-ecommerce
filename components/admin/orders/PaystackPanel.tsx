@@ -15,13 +15,14 @@
  * against a live backend yet.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CreditCard, Loader2 } from "lucide-react";
 import type { PaymentOrderContext } from "@/components/admin/orders/PaymentStep";
 import PaymentWaitingModal from "@/components/admin/orders/PaymentWaitingModal";
 import PaymentSuccessModal from "@/components/admin/orders/PaymentSuccessModal";
 import PaymentErrorModal from "@/components/admin/orders/PaymentErrorModal";
+import { useSubmitCooldown } from "@/hooks/use-submit-cooldown";
 
 const PAYSTACK_SCRIPT_SRC = "https://js.paystack.co/v2/inline.js";
 
@@ -72,11 +73,6 @@ interface InitializeResult {
   publicKey: string;
 }
 
-// Cooldown after any charge attempt (submitted, cancelled, or failed) so the
-// admin can't double-fire card charges — matches MpesaPromptPanel's 20s spec
-// for consistency across payment methods.
-const CHARGE_COOLDOWN_MS = 20_000;
-
 // "waiting" — customer submitted card details, PaymentWaitingModal open
 // awaiting the Paystack webhook via SSE.
 // "success" — stream reported payment_success, PaymentSuccessModal open.
@@ -86,23 +82,11 @@ type Phase = "waiting" | "success" | "failed" | null;
 export default function PaystackPanel({ orderContext, branchReady }: PaystackPanelProps) {
   const router = useRouter();
   const [charging, setCharging] = useState(false);
-  const [cooldown, setCooldown] = useState(false);
+  const { cooldown, startCooldown } = useSubmitCooldown();
   const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<InitializeResult | null>(null);
   const [phase, setPhase] = useState<Phase>(null);
   const [failReason, setFailReason] = useState<string | undefined>();
-  const cooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (cooldownTimer.current) clearTimeout(cooldownTimer.current);
-    };
-  }, []);
-
-  function startCooldown() {
-    setCooldown(true);
-    cooldownTimer.current = setTimeout(() => setCooldown(false), CHARGE_COOLDOWN_MS);
-  }
 
   async function submitCharge(retryOrderId?: string) {
     if (!branchReady || charging || cooldown) return;
@@ -122,12 +106,13 @@ export default function PaystackPanel({ orderContext, branchReady }: PaystackPan
           branchId: orderContext.branchId,
           ...(retryOrderId ? { retryOrderId } : {}),
         }),
+        signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as { ok: boolean; data?: InitializeResult; error?: { message: string } };
       if (!json.ok || !json.data) {
         setError(json.error?.message ?? "Could not start the card charge — please try again");
         setCharging(false);
-        startCooldown();
+        startCooldown("error");
         return;
       }
       setOrder(json.data);
@@ -136,7 +121,7 @@ export default function PaystackPanel({ orderContext, branchReady }: PaystackPan
       if (!window.PaystackPop) {
         setError("Card checkout is unavailable right now — please try again");
         setCharging(false);
-        startCooldown();
+        startCooldown("error");
         return;
       }
 
@@ -149,18 +134,32 @@ export default function PaystackPanel({ orderContext, branchReady }: PaystackPan
           setFailReason(undefined);
           setPhase("waiting");
           setCharging(false);
-          startCooldown();
+          startCooldown("success");
         },
         onCancel: () => {
+          // Customer closed the popup before submitting card details — no
+          // webhook will ever arrive for this attempt, so the PENDING
+          // transaction/order rows created by initialize() above would
+          // otherwise sit stuck until the 10-minute SSE timeout. Same call
+          // PaymentWaitingModal's own Cancel button makes; best-effort only,
+          // matching its error handling (not fatal to the admin's flow).
+          // Treated as "success" cooldown (flat 5s), not "error" — nothing
+          // actually failed server-side, the admin just backed out.
+          const orderId = json.data?.inStoreOrderId;
+          if (orderId) {
+            fetch(`/api/admin/orders/instore/${orderId}/cancel-wait`, { method: "POST" }).catch((err) => {
+              console.error("[PaystackPanel] cancel-wait failed", err);
+            });
+          }
           setCharging(false);
-          startCooldown();
+          startCooldown("success");
         },
       });
     } catch (err) {
       console.error("[PaystackPanel] charge failed", err);
       setError("Could not start the card charge — please try again");
       setCharging(false);
-      startCooldown();
+      startCooldown("error");
     }
   }
 
