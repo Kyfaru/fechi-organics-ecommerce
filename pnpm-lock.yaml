@@ -118,12 +118,6 @@ importers:
       '@visx/shape':
         specifier: ^4.0.0
         version: 4.0.0(@types/react@19.2.16)(react@19.2.4)
-<<<<<<< HEAD
-=======
-      africastalking:
-        specifier: ^0.8.0
-        version: 0.8.0(debug@4.4.3(supports-color@8.1.1))
->>>>>>> 1fe7c4d7c51de3a73f1795fdcb89077aca265b8d
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
@@ -4297,6 +4291,7 @@ packages:
 
   crypto-js@4.2.0:
     resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
+    deprecated: Active development of CryptoJS has been discontinued. This library is no longer maintained.
 
   css-line-break@2.1.0:
     resolution: {integrity: sha512-FHcKFCZcAha3LwfVBhCQbW2nCNbkZXn7KVUJcsT5/P8YmfsVja0FMPJr0B903j/E69HUphKiV9iQArX8SDYA4w==}
@@ -11044,22 +11039,8 @@ snapshots:
 
   acorn@8.16.0: {}
 
-<<<<<<< HEAD
   agent-base@6.0.2(supports-color@8.1.1):
     dependencies:
-=======
-  africastalking@0.8.0(debug@4.4.3(supports-color@8.1.1)):
-    dependencies:
-      axios: 1.15.0(debug@4.4.3(supports-color@8.1.1))
-      google-libphonenumber: 3.2.44
-      joi: 18.1.2
-      lodash: 4.18.1
-    transitivePeerDependencies:
-      - debug
-
-  agent-base@6.0.2(supports-color@8.1.1):
-    dependencies:
->>>>>>> 1fe7c4d7c51de3a73f1795fdcb89077aca265b8d
       debug: 4.4.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
@@ -11223,25 +11204,10 @@ snapshots:
 
   axe-core@4.12.0: {}
 
-<<<<<<< HEAD
   axios@1.18.1(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1):
     dependencies:
       follow-redirects: 1.16.0(debug@4.4.3(supports-color@8.1.1))
       form-data: 4.0.6
-=======
-  axios@1.15.0(debug@4.4.3(supports-color@8.1.1)):
-    dependencies:
-      follow-redirects: 1.16.0(debug@4.4.3(supports-color@8.1.1))
-      form-data: 4.0.6
-      proxy-from-env: 2.1.0
-    transitivePeerDependencies:
-      - debug
-
-  axios@1.18.1(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1):
-    dependencies:
-      follow-redirects: 1.16.0(debug@4.4.3(supports-color@8.1.1))
-      form-data: 4.0.6
->>>>>>> 1fe7c4d7c51de3a73f1795fdcb89077aca265b8d
       https-proxy-agent: 5.0.1(supports-color@8.1.1)
       proxy-from-env: 2.1.0
     transitivePeerDependencies:
