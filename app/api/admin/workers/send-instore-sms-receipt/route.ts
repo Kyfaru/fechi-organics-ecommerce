@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyQstashRequest } from "@/lib/qstash";
 import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-invoice";
-import { createInstoreInvoiceToken } from "@/lib/invoice-token";
+import { buildInstoreSmsMessage } from "@/lib/invoice/build-instore-sms";
 import { sendSms } from "@/lib/sms";
 import { reportError } from "@/lib/observability";
 import { trackServerEvent } from "@/lib/observability-server";
@@ -32,11 +32,9 @@ export async function POST(req: NextRequest) {
     const invoice = await getOrCreateInStoreInvoice(inStoreOrderId);
     if (!invoice) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
-    const token = await createInstoreInvoiceToken(inStoreOrderId);
-    const url = `${process.env.NEXT_PUBLIC_APP_URL}/api/invoices/instore/${token}`;
     await sendSms(
       order.customerPhone,
-      `Fechi Organics — your invoice ${invoice.invoiceNumber} for order ${order.orderNumber} is ready: ${url}`,
+      buildInstoreSmsMessage({ invoiceNumber: invoice.invoiceNumber, customerName: order.customerName, url: invoice.url }),
     );
 
     await db.inStoreOrder.update({ where: { id: inStoreOrderId }, data: { receiptSentSms: true } });
