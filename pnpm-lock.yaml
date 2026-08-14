@@ -118,9 +118,12 @@ importers:
       '@visx/shape':
         specifier: ^4.0.0
         version: 4.0.0(@types/react@19.2.16)(react@19.2.4)
+<<<<<<< HEAD
+=======
       africastalking:
         specifier: ^0.8.0
         version: 0.8.0(debug@4.4.3(supports-color@8.1.1))
+>>>>>>> 1fe7c4d7c51de3a73f1795fdcb89077aca265b8d
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
@@ -864,26 +867,6 @@ packages:
 
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
-
-  '@hapi/address@5.1.1':
-    resolution: {integrity: sha512-A+po2d/dVoY7cYajycYI43ZbYMXukuopIsqCjh5QzsBCipDtdofHntljDlpccMjIfTy6UOkg+5KPriwYch2bXA==}
-    engines: {node: '>=14.0.0'}
-
-  '@hapi/formula@3.0.2':
-    resolution: {integrity: sha512-hY5YPNXzw1He7s0iqkRQi+uMGh383CGdyyIGYtB+W5N3KHPXoqychklvHhKCC9M3Xtv0OCs/IHw+r4dcHtBYWw==}
-
-  '@hapi/hoek@11.0.7':
-    resolution: {integrity: sha512-HV5undWkKzcB4RZUusqOpcgxOaq6VOAH7zhhIr2g3G8NF/MlFO75SjOr2NfuSx0Mh40+1FqCkagKLJRykUWoFQ==}
-
-  '@hapi/pinpoint@2.0.1':
-    resolution: {integrity: sha512-EKQmr16tM8s16vTT3cA5L0kZZcTMU5DUOZTuvpnY738m+jyP3JIUj+Mm1xc1rsLkGBQ/gVnfKYPwOmPg1tUR4Q==}
-
-  '@hapi/tlds@1.1.7':
-    resolution: {integrity: sha512-MgNjRwy9Ti92yVAixLmDc8dd1bJIKwO9qlWCfFQRwRmUEDPQHYn4G6hwPFvFGUTzAa0FsS+inMjLin7GnyBRhA==}
-    engines: {node: '>=14.0.0'}
-
-  '@hapi/topo@6.0.2':
-    resolution: {integrity: sha512-KR3rD5inZbGMrHmgPxsJ9dbi6zEK+C3ZwUwTa+eMwWLz7oijWUTWD2pMSNNYJAU6Qq+65NkxXjqHr/7LM2Xkqg==}
 
   '@hono/node-server@1.19.11':
     resolution: {integrity: sha512-dr8/3zEaB+p0D2n/IUrlPF1HZm586qgJNXK1a9fhg/PzdtkK7Ksd5l312tJX2yBuALqDYBlG20QEbayqPyxn+g==}
@@ -3812,6 +3795,7 @@ packages:
   '@xmldom/xmldom@0.8.13':
     resolution: {integrity: sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==}
     engines: {node: '>=10.0.0'}
+    deprecated: this version has critical issues, please update to the latest version
 
   '@xtuc/ieee754@1.2.0':
     resolution: {integrity: sha512-DX8nKgqcGwsc0eJSqYt5lwP4DH5FlHnmuWWBRy7X0NcaGR0ZtuyeESgMwTYVEtxmsNGY+qit4QYT/MIYTOTPeA==}
@@ -3850,10 +3834,6 @@ packages:
     resolution: {integrity: sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw==}
     engines: {node: '>=0.4.0'}
     hasBin: true
-
-  africastalking@0.8.0:
-    resolution: {integrity: sha512-O7s309QvTxGt+CXs3FzA7vxHF5LgDFINmbImYctX14nOlY+zmKrwdvBYiVeCqqq1PuJTueVZQ8+JmOoRb1jLkg==}
-    engines: {node: '>=18', npm: '>=11.12.1', pnpm: '>=10.33.0'}
 
   agent-base@6.0.2:
     resolution: {integrity: sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==}
@@ -3997,9 +3977,6 @@ packages:
   axe-core@4.12.0:
     resolution: {integrity: sha512-FTavr/7Ba0IptwGOPxnQvdyW2tAsdLBMTBXz7rKH6xJ2skpyxpBxyHkDdBs4lf69yRqYpkqCdfhnwS8YULGOmg==}
     engines: {node: '>=4'}
-
-  axios@1.15.0:
-    resolution: {integrity: sha512-wWyJDlAatxk30ZJer+GeCWS209sA42X+N5jU2jy6oHTp7ufw8uzUTVFBX9+wTfAlhiJXGS0Bq7X6efruWjuK9Q==}
 
   axios@1.18.1:
     resolution: {integrity: sha512-3nTvFlvpn9Zu/RkHUqtc7/+al4UpRW5az71ap5zccp6e8RAYEzhMTecX8Dz1wWDYrPpUoB1HAQEGEAEvUr7S9g==}
@@ -5158,10 +5135,6 @@ packages:
     resolution: {integrity: sha512-DpLKbNU4WylpxJykQujfCcwYWiV/Jhm50Goo0wrVILAv5jOr9d+H+UR3PhSCD2rCCEIg0uc+G+muBTwD54JhDQ==}
     engines: {node: '>= 0.4'}
 
-  google-libphonenumber@3.2.44:
-    resolution: {integrity: sha512-9p2TghluF2LTChFMLWsDRD5N78SZDsILdUk4gyqYxBXluCyxoPiOq+Fqt7DKM+LUd33+OgRkdrc+cPR93AypCQ==}
-    engines: {node: '>=0.10'}
-
   gopd@1.2.0:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
     engines: {node: '>= 0.4'}
@@ -5524,10 +5497,6 @@ packages:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
 
-  joi@18.1.2:
-    resolution: {integrity: sha512-rF5MAmps5esSlhCA+N1b6IYHDw9j/btzGaqfgie522jS02Ju/HXBxamlXVlKEHAxoMKQL77HWI8jlqWsFuekZA==}
-    engines: {node: '>= 20'}
-
   jose@5.10.0:
     resolution: {integrity: sha512-s+3Al/p9g32Iq+oqXxkW//7jk2Vig6FF1CFqzVXoTUXt2qz89YWbL+OwS17NFYEvxC35n0FKeGO2LGYSxeM2Gg==}
 
@@ -5756,9 +5725,6 @@ packages:
 
   lodash.once@4.1.1:
     resolution: {integrity: sha512-Sb487aTOCr9drQVL8pIxOzVhafOjZN9UU54hiN8PU3uAiSV7lx1yYNpbNmex2PK6dSJoNTSJUUswT651yww3Mg==}
-
-  lodash@4.18.1:
-    resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
 
   log-symbols@6.0.0:
     resolution: {integrity: sha512-i24m8rpwhmPIS4zscNzK6MSEhk0DUWa/8iYQWxhffV8jkI4Phvs3F+quL5xvS0gdQR0FyTCMMH33Y78dDTzzIw==}
@@ -8294,22 +8260,6 @@ snapshots:
       react-dom: 19.2.4(react@19.2.4)
 
   '@floating-ui/utils@0.2.11': {}
-
-  '@hapi/address@5.1.1':
-    dependencies:
-      '@hapi/hoek': 11.0.7
-
-  '@hapi/formula@3.0.2': {}
-
-  '@hapi/hoek@11.0.7': {}
-
-  '@hapi/pinpoint@2.0.1': {}
-
-  '@hapi/tlds@1.1.7': {}
-
-  '@hapi/topo@6.0.2':
-    dependencies:
-      '@hapi/hoek': 11.0.7
 
   '@hono/node-server@1.19.11(hono@4.12.23)':
     dependencies:
@@ -11094,6 +11044,10 @@ snapshots:
 
   acorn@8.16.0: {}
 
+<<<<<<< HEAD
+  agent-base@6.0.2(supports-color@8.1.1):
+    dependencies:
+=======
   africastalking@0.8.0(debug@4.4.3(supports-color@8.1.1)):
     dependencies:
       axios: 1.15.0(debug@4.4.3(supports-color@8.1.1))
@@ -11105,6 +11059,7 @@ snapshots:
 
   agent-base@6.0.2(supports-color@8.1.1):
     dependencies:
+>>>>>>> 1fe7c4d7c51de3a73f1795fdcb89077aca265b8d
       debug: 4.4.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
@@ -11268,6 +11223,12 @@ snapshots:
 
   axe-core@4.12.0: {}
 
+<<<<<<< HEAD
+  axios@1.18.1(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1):
+    dependencies:
+      follow-redirects: 1.16.0(debug@4.4.3(supports-color@8.1.1))
+      form-data: 4.0.6
+=======
   axios@1.15.0(debug@4.4.3(supports-color@8.1.1)):
     dependencies:
       follow-redirects: 1.16.0(debug@4.4.3(supports-color@8.1.1))
@@ -11280,6 +11241,7 @@ snapshots:
     dependencies:
       follow-redirects: 1.16.0(debug@4.4.3(supports-color@8.1.1))
       form-data: 4.0.6
+>>>>>>> 1fe7c4d7c51de3a73f1795fdcb89077aca265b8d
       https-proxy-agent: 5.0.1(supports-color@8.1.1)
       proxy-from-env: 2.1.0
     transitivePeerDependencies:
@@ -12538,8 +12500,6 @@ snapshots:
       define-properties: 1.2.1
       gopd: 1.2.0
 
-  google-libphonenumber@3.2.44: {}
-
   gopd@1.2.0: {}
 
   graceful-fs@4.2.11: {}
@@ -12861,16 +12821,6 @@ snapshots:
 
   jiti@2.7.0: {}
 
-  joi@18.1.2:
-    dependencies:
-      '@hapi/address': 5.1.1
-      '@hapi/formula': 3.0.2
-      '@hapi/hoek': 11.0.7
-      '@hapi/pinpoint': 2.0.1
-      '@hapi/tlds': 1.1.7
-      '@hapi/topo': 6.0.2
-      '@standard-schema/spec': 1.1.0
-
   jose@5.10.0: {}
 
   jose@6.2.3: {}
@@ -13082,8 +13032,6 @@ snapshots:
   lodash.merge@4.6.2: {}
 
   lodash.once@4.1.1: {}
-
-  lodash@4.18.1: {}
 
   log-symbols@6.0.0:
     dependencies:
