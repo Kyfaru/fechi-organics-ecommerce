@@ -12,12 +12,18 @@
 
 import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { invalidateProductCache, invalidateTestimonialCache } from "@/lib/cache-tags";
 import { createNotification } from "@/lib/notify";
 import { publishQstashJSON } from "@/lib/qstash";
 import { runCampaignSend, markCampaignFailed } from "@/lib/campaigns/send-campaign";
 import type { CampaignStatus } from "@prisma/client";
 import { syncProductVariants, type VariantInput } from "@/lib/products/sync-variants";
+import { runZohoSync } from "@/lib/zoho-sync";
+import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
+import { r2Client } from "@/lib/r2";
+import { generateExportFile } from "@/lib/reports/generate-export";
+import type { ExportFilters } from "@/lib/reports/types";
 
 type Executor = (payload: Record<string, unknown>, resourceId: string | null) => Promise<unknown>;
 
@@ -82,6 +88,23 @@ export const approvalExecutors: Record<string, Executor> = {
     return { id: resourceId };
   },
 
+  // Soft delete (isActive: false) — distinct from "products:delete" (the
+  // permanent, hard delete). Reason is required by the route and stored in
+  // the approvalRequest payload / audit log details, not used here.
+  "products:archive": async (payload, resourceId) => {
+    if (!resourceId) return null;
+    const product = await db.product.update({ where: { id: resourceId }, data: { isActive: false } });
+    const slug = (payload as { slug?: string }).slug ?? product.slug;
+    invalidateProductCache(slug);
+    createNotification({
+      type: "PRODUCT_DELETED",
+      title: `Product removed: ${product.name}`,
+      body: `"${product.name}" has been unpublished from the store.`,
+      link: "/admin/products",
+    }).catch(() => {});
+    return { id: resourceId };
+  },
+
   "branches:update": async (payload, resourceId) => {
     if (!resourceId) return null;
     const { zohoOrganizationId, zohoLocationId, zohoWarehouseId } = payload as {
@@ -99,10 +122,11 @@ export const approvalExecutors: Record<string, Executor> = {
 
   "staff:assign_roles": async (payload, resourceId) => {
     if (!resourceId) return null;
-    const { role, permissions } = payload as { role?: string; permissions?: { deny?: string[] } };
+    const { role, permissions, isSuperAdmin } = payload as { role?: string; permissions?: { deny?: string[] }; isSuperAdmin?: boolean };
     const profileUpdate: Record<string, unknown> = {};
     if (role) profileUpdate.role = role;
     if (permissions) profileUpdate.permissions = permissions;
+    if (typeof isSuperAdmin === "boolean") profileUpdate.isSuperAdmin = isSuperAdmin;
     if (Object.keys(profileUpdate).length > 0) {
       return db.user.update({ where: { id: resourceId }, data: { adminProfile: { update: profileUpdate } } });
     }
@@ -206,6 +230,29 @@ export const approvalExecutors: Record<string, Executor> = {
     return null;
   },
 
+  "content:update": async (payload, resourceId) => {
+    if (!resourceId) return null;
+    const { kind, ...data } = payload as { kind?: string } & Record<string, unknown>;
+    if (kind === "faq") {
+      return db.faq.update({ where: { id: resourceId }, data: data as Prisma.faqUpdateInput });
+    }
+    const t = await db.testimonial.update({ where: { id: resourceId }, data: data as Prisma.testimonialUpdateInput });
+    invalidateTestimonialCache();
+    return t;
+  },
+
+  "content:delete": async (payload, resourceId) => {
+    if (!resourceId) return null;
+    const kind = (payload as { kind?: string }).kind;
+    if (kind === "faq") {
+      await db.faq.delete({ where: { id: resourceId } });
+      return { id: resourceId };
+    }
+    await db.testimonial.delete({ where: { id: resourceId } });
+    invalidateTestimonialCache();
+    return { id: resourceId };
+  },
+
   // Mirrors POST /api/admin/promotions' shaping (app/api/admin/promotions/route.ts).
   "promotions:create": async (payload) => {
     const body = payload as {
@@ -228,6 +275,14 @@ export const approvalExecutors: Record<string, Executor> = {
     });
   },
 
+  "inventory:sync": async (payload, resourceId) => {
+    const branchId = resourceId ?? (payload as { branchId?: string }).branchId;
+    if (!branchId) return null;
+    const organizationId = await resolveZohoOrganizationId(branchId);
+    if (!organizationId) return null;
+    return runZohoSync(organizationId);
+  },
+
   "settings:update": async (payload) => {
     const { key, value } = payload as { key: string; value: unknown };
     return db.systemConfig.upsert({
@@ -236,4 +291,62 @@ export const approvalExecutors: Record<string, Executor> = {
       update: { value: value as never },
     });
   },
+
+  "orders:export": async (payload, resourceId) => runExportExecutor("orders", payload, resourceId),
+  "finance:export": async (payload, resourceId) => runExportExecutor("finance", payload, resourceId),
 };
+
+// Shared body for the two export executors above — generates the file
+// (same lib/reports/generate-export.ts call the admin fast-path routes use
+// directly), uploads it to R2, and flips the exportRequest row from
+// PENDING/GENERATING to READY (or FAILED on error) so the header's polling
+// endpoint (GET /api/admin/exports/mine) can pick it up for the original
+// requester.
+async function runExportExecutor(
+  resource: "orders" | "finance",
+  payload: Record<string, unknown>,
+  resourceId: string | null,
+): Promise<unknown> {
+  if (!resourceId) return null;
+  const exportRequest = await db.exportRequest.findUnique({
+    where: { id: resourceId },
+    include: { requestedBy: { select: { branchId: true, role: true } } },
+  });
+  if (!exportRequest) return null;
+
+  await db.exportRequest.update({ where: { id: resourceId }, data: { status: "GENERATING" } });
+
+  try {
+    const { buffer, fileName, contentType } = await generateExportFile(resource, payload as ExportFilters);
+    const fileKey = `exports/${resource}/${exportRequest.id}.${fileName.split(".").pop()}`;
+    await r2Client.send(new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME!,
+      Key: fileKey,
+      Body: buffer,
+      ContentType: contentType,
+    }));
+
+    await db.exportRequest.update({
+      where: { id: resourceId },
+      data: { status: "READY", fileKey, fileName, fileSizeBytes: buffer.byteLength },
+    });
+
+    createNotification({
+      type: "EXPORT_READY",
+      title: "Your export is ready",
+      body: `Your ${resource} report (${fileName}) has finished generating and is ready to download.`,
+      link: "/admin",
+      branchId: exportRequest.requestedBy.branchId,
+      targetRoles: [exportRequest.requestedBy.role],
+    }).catch(() => {});
+
+    return { exportRequestId: exportRequest.id, fileKey };
+  } catch (e) {
+    console.error("[approval-executors] export generation failed", e);
+    await db.exportRequest.update({
+      where: { id: resourceId },
+      data: { status: "FAILED", errorMessage: e instanceof Error ? e.message : "Generation failed" },
+    });
+    return null;
+  }
+}

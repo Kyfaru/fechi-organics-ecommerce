@@ -17,6 +17,7 @@ import {
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { PermissionOverrideGrid } from "@/components/admin/PermissionOverrideGrid";
 import { Can } from "@/components/admin/Can";
+import { useAdminMe } from "@/hooks/use-can";
 import type { RoleName } from "@/lib/permissions";
 import { StatsCard } from "@/components/ui/stats-card";
 import { DataTable } from "@/components/admin/ui/DataTable";
@@ -44,6 +45,7 @@ interface StaffMember {
     department: string | null;
     isActive: boolean;
     role: string;
+    isSuperAdmin: boolean;
     permissions?: { deny?: string[] } | null;
   } | null;
 }
@@ -196,6 +198,14 @@ const INVITE_ROLES = [
   "inventory", "customer_care", "viewer",
 ] as const;
 type InviteRole = (typeof INVITE_ROLES)[number];
+
+// Assignable roles for the Change Role / Edit Details modals — "super_admin"
+// is deliberately excluded; that access is now granted via the separate
+// "Grant Super Admin access" toggle on top of the "admin" role.
+const ASSIGNABLE_ROLES = [
+  "admin", "manager", "finance", "marketing",
+  "inventory", "customer_care", "viewer",
+] as const;
 
 // Expiry presets
 const EXPIRY_OPTIONS = [
@@ -600,6 +610,7 @@ export function AdminStaffClient() {
   // Delete modal
   const [deleteTarget, setDeleteTarget] = useState<StaffMember | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
 
   // Reset password modal
   const [resetTarget, setResetTarget] = useState<StaffMember | null>(null);
@@ -615,6 +626,7 @@ export function AdminStaffClient() {
   const [roleAdminPw, setRoleAdminPw] = useState("");
   const [roleVerified, setRoleVerified] = useState(false);
   const [selectedRole, setSelectedRole] = useState("viewer");
+  const [roleGrantSuperAdmin, setRoleGrantSuperAdmin] = useState(false);
   const [roleLoading, setRoleLoading] = useState(false);
 
   // Edit details modal (name / email / phone / role)
@@ -622,6 +634,7 @@ export function AdminStaffClient() {
   const [detailsAdminPw, setDetailsAdminPw] = useState("");
   const [detailsVerified, setDetailsVerified] = useState(false);
   const [detailsForm, setDetailsForm] = useState({ name: "", email: "", phone: "", role: "viewer" });
+  const [detailsGrantSuperAdmin, setDetailsGrantSuperAdmin] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
   // Edit permissions modal — narrows one staff member's access below their
@@ -636,14 +649,22 @@ export function AdminStaffClient() {
   const { data, isLoading } = useQuery({
     queryKey: ["admin-staff"],
     queryFn: () =>
-      fetch("/api/admin/staff").then((r) => r.json()).then((j) => j.data?.staff ?? []),
+      fetch("/api/admin/staff").then((r) => r.json()).then(
+        (j) => j.data as { staff: StaffMember[]; stats: { activeSessions: number } } | undefined
+      ),
   });
 
-  const staff: StaffMember[] = data ?? [];
+  const staff: StaffMember[] = data?.staff ?? [];
+  const activeSessions = data?.stats?.activeSessions ?? 0;
+
+  // The caller's own admin profile — used to gate the "Grant Super Admin
+  // access" toggle to callers who are already super admins.
+  const { data: me } = useAdminMe();
+  const isSuperAdmin = me?.isSuperAdmin === true;
 
   // Stat counts
   const totalStaff  = staff.length;
-  const adminCount  = staff.filter((s) => s.role === "admin").length;
+  const adminCount  = staff.filter((s) => s.adminProfile?.role === "admin" || s.adminProfile?.role === "super_admin").length;
   // "managers" = non-admin active staff — placeholder since we only have admin role in DB
   const activeCount = staff.filter((s) => !s.banned).length;
 
@@ -661,20 +682,27 @@ export function AdminStaffClient() {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (target: StaffMember) => {
-      const res = await fetch(`/api/admin/staff/${target.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/staff/${target.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: deleteReason.trim() }),
+      });
       const json = await res.json();
+      if (res.status === 202) return;
       if (!json.ok) throw new Error(json.error?.message ?? "Delete failed");
     },
     onSuccess: (_d, target) => {
       toast.success(`${target.name} deleted.`);
       qc.invalidateQueries({ queryKey: ["admin-staff"] });
       setDeleteTarget(null);
+      setDeleteReason("");
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : "Delete failed"),
   });
 
   async function handleDelete() {
     if (!deleteTarget) return;
+    if (!deleteReason.trim()) { toast.error("A reason is required"); return; }
     setDeleting(true);
     try { await deleteMutation.mutateAsync(deleteTarget); } finally { setDeleting(false); }
   }
@@ -747,7 +775,7 @@ export function AdminStaffClient() {
       const res = await fetch(`/api/admin/staff/${roleTarget.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: selectedRole }),
+        body: JSON.stringify({ role: selectedRole, isSuperAdmin: roleGrantSuperAdmin }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error?.message ?? "Failed");
@@ -761,7 +789,7 @@ export function AdminStaffClient() {
 
   function closeRoleModal() {
     setRoleTarget(null); setRoleAdminPw(""); setRoleVerified(false);
-    setSelectedRole("viewer"); setRoleLoading(false);
+    setSelectedRole("viewer"); setRoleGrantSuperAdmin(false); setRoleLoading(false);
   }
 
   // Edit details handlers
@@ -769,12 +797,16 @@ export function AdminStaffClient() {
     setDetailsTarget(target);
     setDetailsAdminPw("");
     setDetailsVerified(false);
+    const legacyRole = target.adminProfile?.role;
     setDetailsForm({
       name: target.name,
       email: target.email,
       phone: target.phone ?? "",
-      role: target.adminProfile?.role ?? "viewer",
+      // "super_admin" is no longer an assignable role — normalize legacy
+      // rows to "admin" so the dropdown shows a valid option.
+      role: legacyRole === "super_admin" ? "admin" : (legacyRole ?? "viewer"),
     });
+    setDetailsGrantSuperAdmin(legacyRole === "super_admin" || target.adminProfile?.isSuperAdmin === true);
   }
 
   async function handleVerifyForDetails() {
@@ -798,6 +830,7 @@ export function AdminStaffClient() {
           email: detailsForm.email,
           phone: detailsForm.phone,
           role: detailsForm.role,
+          isSuperAdmin: detailsGrantSuperAdmin,
         }),
       });
       const json = await res.json();
@@ -812,7 +845,8 @@ export function AdminStaffClient() {
 
   function closeDetailsModal() {
     setDetailsTarget(null); setDetailsAdminPw(""); setDetailsVerified(false);
-    setDetailsForm({ name: "", email: "", phone: "", role: "viewer" }); setDetailsLoading(false);
+    setDetailsForm({ name: "", email: "", phone: "", role: "viewer" });
+    setDetailsGrantSuperAdmin(false); setDetailsLoading(false);
   }
 
   function openPermModal(target: StaffMember) {
@@ -906,7 +940,7 @@ export function AdminStaffClient() {
       key: "role",
       label: "Role",
       render: (_: unknown, row: Record<string, unknown>) => (
-        <RolePill role={(row as unknown as StaffMember).role} />
+        <RolePill role={(row as unknown as StaffMember).adminProfile?.role ?? "viewer"} />
       ),
     },
     {
@@ -938,7 +972,14 @@ export function AdminStaffClient() {
             onDeactivate={(target) => setDeactivateTarget(target)}
             onDelete={(target) => setDeleteTarget(target)}
             onResetPassword={(target) => { setResetTarget(target); setResetAdminPw(""); setResetVerified(false); setResetMode("idle"); }}
-            onChangeRole={(target) => { setRoleTarget(target); setRoleAdminPw(""); setRoleVerified(false); setSelectedRole(target.adminProfile?.role ?? "viewer"); }}
+            onChangeRole={(target) => {
+              setRoleTarget(target); setRoleAdminPw(""); setRoleVerified(false);
+              const legacyRole = target.adminProfile?.role;
+              // "super_admin" is no longer an assignable role — normalize
+              // legacy rows to "admin" so the dropdown shows a valid option.
+              setSelectedRole(legacyRole === "super_admin" ? "admin" : (legacyRole ?? "viewer"));
+              setRoleGrantSuperAdmin(legacyRole === "super_admin" || target.adminProfile?.isSuperAdmin === true);
+            }}
             onEditPermissions={openPermModal}
             onEditDetails={openDetailsModal}
           />
@@ -971,7 +1012,7 @@ export function AdminStaffClient() {
           <StatsCard title="Total Staff" value={String(totalStaff)} icon={<Users className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
           <StatsCard title="Admins" value={String(adminCount)} icon={<ShieldCheck className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
           <StatsCard title="Active" value={String(activeCount)} icon={<UserCog className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
-          <StatsCard title="Active Sessions" value="1" icon={<Activity className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+          <StatsCard title="Active Sessions" value={String(activeSessions)} icon={<Activity className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
         </div>
 
         {/* Staff table */}
@@ -1014,14 +1055,21 @@ export function AdminStaffClient() {
       {deleteTarget && (
         <ConfirmModal
           open
-          onClose={() => setDeleteTarget(null)}
+          onClose={() => { setDeleteTarget(null); setDeleteReason(""); }}
           onConfirm={handleDelete}
           title="Permanently delete staff member?"
           description={`This will delete ${deleteTarget.name}'s account, sessions, and profile. This cannot be undone.`}
           confirmLabel="Delete permanently"
           danger
           loading={deleting}
-        />
+        >
+          <textarea
+            value={deleteReason}
+            onChange={(e) => setDeleteReason(e.target.value)}
+            placeholder="Reason for deleting this staff member…"
+            className="w-full h-20 px-3 py-2 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] resize-none outline-none focus:border-(--danger)"
+          />
+        </ConfirmModal>
       )}
 
       {/* Reset password modal */}
@@ -1134,10 +1182,10 @@ export function AdminStaffClient() {
                   <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Role</label>
                   <select
                     value={selectedRole}
-                    onChange={(e) => setSelectedRole(e.target.value)}
+                    onChange={(e) => { setSelectedRole(e.target.value); setRoleGrantSuperAdmin(false); }}
                     className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
                   >
-                    {(["super_admin","admin","manager","finance","marketing","inventory","customer_care","viewer"] as const).map((r) => (
+                    {ASSIGNABLE_ROLES.map((r) => (
                       <option key={r} value={r}>{r.replace("_", " ")}</option>
                     ))}
                   </select>
@@ -1145,6 +1193,18 @@ export function AdminStaffClient() {
                     Permissions for each role are fixed and defined in code — see Staff → Roles.
                   </p>
                 </div>
+
+                {selectedRole === "admin" && isSuperAdmin && (
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={roleGrantSuperAdmin}
+                      onChange={(e) => setRoleGrantSuperAdmin(e.target.checked)}
+                      className="h-4 w-4 rounded border-(--neutral-300) accent-(--green-800)"
+                    />
+                    <span className="font-dm text-[13px] text-(--neutral-700)">Grant Super Admin access</span>
+                  </label>
+                )}
 
                 <div className="flex gap-2 justify-end">
                   <button onClick={closeRoleModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>
@@ -1212,14 +1272,26 @@ export function AdminStaffClient() {
                   <label className="font-dm text-[13px] font-medium text-(--neutral-700) block mb-1">Role</label>
                   <select
                     value={detailsForm.role}
-                    onChange={(e) => setDetailsForm((p) => ({ ...p, role: e.target.value }))}
+                    onChange={(e) => { setDetailsForm((p) => ({ ...p, role: e.target.value })); setDetailsGrantSuperAdmin(false); }}
                     className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--green-500)"
                   >
-                    {(["super_admin","admin","manager","finance","marketing","inventory","customer_care","viewer"] as const).map((r) => (
+                    {ASSIGNABLE_ROLES.map((r) => (
                       <option key={r} value={r}>{r.replace("_", " ")}</option>
                     ))}
                   </select>
                 </div>
+
+                {detailsForm.role === "admin" && isSuperAdmin && (
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={detailsGrantSuperAdmin}
+                      onChange={(e) => setDetailsGrantSuperAdmin(e.target.checked)}
+                      className="h-4 w-4 rounded border-(--neutral-300) accent-(--green-800)"
+                    />
+                    <span className="font-dm text-[13px] text-(--neutral-700)">Grant Super Admin access</span>
+                  </label>
+                )}
 
                 <div className="flex gap-2 justify-end">
                   <button onClick={closeDetailsModal} className="px-4 py-2 rounded-xl font-dm text-[14px] text-(--neutral-600) hover:bg-(--neutral-100)">Cancel</button>

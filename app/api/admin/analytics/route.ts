@@ -97,7 +97,6 @@ export async function GET(req: NextRequest) {
     if (tab === "overview") {
       const [
         revenueAgg,
-        ordersCount,
         newCustomers,
         paidOrders,
         topProductsRaw,
@@ -105,7 +104,6 @@ export async function GET(req: NextRequest) {
         revenueChartOrders,
         ordersForChart,
         inStoreRevenueAgg,
-        inStoreOrdersCount,
         inStorePaidOrders,
         inStoreTopProductsRaw,
         inStoreTopCustomersRaw,
@@ -116,7 +114,6 @@ export async function GET(req: NextRequest) {
           _sum: { totalKes: true },
           where: { paymentStatus: "PAID", createdAt: dateFilter },
         }),
-        db.order.count({ where: { createdAt: dateFilter } }),
         db.user.count({ where: { role: "client", createdAt: dateFilter } }),
         db.order.count({ where: { paymentStatus: "PAID", createdAt: dateFilter } }),
         // Top 5 products by number of order items
@@ -151,7 +148,6 @@ export async function GET(req: NextRequest) {
           _sum: { totalKes: true },
           where: { paymentStatus: "PAID", createdAt: dateFilter },
         }),
-        db.inStoreOrder.count({ where: { createdAt: dateFilter } }),
         db.inStoreOrder.count({ where: { paymentStatus: "PAID", createdAt: dateFilter } }),
         db.inStoreOrderItem.groupBy({
           by: ["productId", "name"],
@@ -182,26 +178,31 @@ export async function GET(req: NextRequest) {
         }),
       ]);
 
-      // Build daily revenue chart
+      // Build daily revenue chart — also tracks a per-day order count so the
+      // CSV/PDF export can show real Orders/AOV columns instead of leaving
+      // them blank (the payload used to only carry a daily revenue sum).
       const dailyMap: Record<string, number> = {};
+      const dailyCountMap: Record<string, number> = {};
       for (const ord of [...revenueChartOrders, ...inStoreRevenueChartOrders]) {
         const key = ord.createdAt.toISOString().slice(0, 10);
         dailyMap[key] = (dailyMap[key] ?? 0) + ord.totalKes;
+        dailyCountMap[key] = (dailyCountMap[key] ?? 0) + 1;
       }
 
       const totalRevenue = (revenueAgg._sum.totalKes ?? 0) + (inStoreRevenueAgg._sum.totalKes ?? 0);
-      const combinedOrders = ordersCount + inStoreOrdersCount;
       const combinedPaidOrders = paidOrders + inStorePaidOrders;
       const aov = combinedPaidOrders > 0 ? Math.round(totalRevenue / combinedPaidOrders) : 0;
 
       // Build chart from from→to
-      const revenueChart: { date: string; amount: number }[] = [];
+      const revenueChart: { date: string; amount: number; orders: number; aov: number }[] = [];
       const diffDays = Math.round((to.getTime() - from.getTime()) / 86400000);
       for (let i = 0; i <= diffDays; i++) {
         const d = new Date(from);
         d.setDate(d.getDate() + i);
         const key = d.toISOString().slice(0, 10);
-        revenueChart.push({ date: key, amount: dailyMap[key] ?? 0 });
+        const dayOrders = dailyCountMap[key] ?? 0;
+        const dayAmount = dailyMap[key] ?? 0;
+        revenueChart.push({ date: key, amount: dayAmount, orders: dayOrders, aov: dayOrders > 0 ? Math.round(dayAmount / dayOrders) : 0 });
       }
 
       // Build orders chart (order-status area chart data)
@@ -270,7 +271,7 @@ export async function GET(req: NextRequest) {
         tab: "overview",
         stats: {
           revenue: totalRevenue,
-          orders: combinedOrders,
+          orders: combinedPaidOrders,
           aov,
           conversionRate: 3.2, // placeholder
           newCustomers,

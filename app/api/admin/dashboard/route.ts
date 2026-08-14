@@ -49,9 +49,10 @@ export async function GET(req: NextRequest) {
           createdAt: { gte: thirtyDaysAgo },
         },
       }),
-      // Count of all orders in last 30 days
+      // Count of PAID orders in last 30 days — paired with the PAID revenue
+      // aggregate above so the two stats never disagree.
       db.order.count({
-        where: { createdAt: { gte: thirtyDaysAgo } },
+        where: { paymentStatus: "PAID", createdAt: { gte: thirtyDaysAgo } },
       }),
       // New client users in last 30 days
       db.user.count({
@@ -114,7 +115,7 @@ export async function GET(req: NextRequest) {
         },
       }),
       db.order.count({
-        where: { createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } },
+        where: { paymentStatus: "PAID", createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } },
       }),
       db.user.count({
         where: { role: "client", createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } },
@@ -123,7 +124,9 @@ export async function GET(req: NextRequest) {
         _sum: { totalKes: true },
         where: { paymentStatus: "PAID", createdAt: { gte: thirtyDaysAgo } },
       }),
-      db.inStoreOrder.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
+      db.inStoreOrder.count({
+        where: { paymentStatus: "PAID", createdAt: { gte: thirtyDaysAgo } },
+      }),
       db.inStoreOrder.findMany({
         orderBy: { createdAt: "desc" },
         take: 8,
@@ -148,7 +151,9 @@ export async function GET(req: NextRequest) {
         _sum: { totalKes: true },
         where: { paymentStatus: "PAID", createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } },
       }),
-      db.inStoreOrder.count({ where: { createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } } }),
+      db.inStoreOrder.count({
+        where: { paymentStatus: "PAID", createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } },
+      }),
     ]);
 
     // Build daily revenue chart for last 30 days

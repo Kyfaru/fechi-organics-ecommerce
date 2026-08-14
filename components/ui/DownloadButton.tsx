@@ -4,11 +4,12 @@
  * DownloadButton — animated download pill.
  *
  * States:
- *   idle    → 160px wide pill; blue border (rgb(91,91,240)); circle button on left
+ *   idle    → 108px wide pill; brand green border; circle button on left
  *             with down-arrow icon; "Download" label on right.
- *   loading → pill shrinks to 57px (circle only); circle fills with #3333a8
- *             from bottom over ~3.5 s; square stop icon replaces arrow.
- *   (done)  → onDownload() resolves → smoothly resets back to 160px idle.
+ *   loading → pill shrinks to 38px (circle only); circle fills with the
+ *             darker brand green from bottom over ~3.5 s; square stop icon
+ *             replaces arrow.
+ *   (done)  → onDownload() resolves → smoothly resets back to idle.
  *             NO "Open" / "installed" end-state.
  *
  * Props: { onDownload: () => Promise<void>; label?: string; className?: string }
@@ -29,8 +30,8 @@ export interface DownloadButtonProps {
 
 type BtnState = "idle" | "loading";
 
-const BLUE = "rgb(91, 91, 240)";
-const DARK_BLUE = "#3333a8";
+const GREEN = "#1F6F18"; // --green-800
+const DARK_GREEN = "#103D0C"; // --green-900
 
 // ---------------------------------------------------------------------------
 // SVG icons
@@ -39,7 +40,7 @@ const DARK_BLUE = "#3333a8";
 /** Down-arrow icon */
 function ArrowDown({ color }: { color: string }) {
   return (
-    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+    <svg width="15" height="15" viewBox="0 0 22 22" fill="none" aria-hidden="true">
       <line x1="11" y1="3" x2="11" y2="16" stroke={color} strokeWidth="2" strokeLinecap="round" />
       <polyline points="6,12 11,17 16,12" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
@@ -49,7 +50,7 @@ function ArrowDown({ color }: { color: string }) {
 /** Square stop icon (shown during loading) */
 function StopIcon({ color }: { color: string }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+    <svg width="10" height="10" viewBox="0 0 14 14" fill="none" aria-hidden="true">
       <rect x="1" y="1" width="12" height="12" rx="2" fill={color} />
     </svg>
   );
@@ -92,36 +93,36 @@ export default function DownloadButton({
   }, []);
 
   const isLoading = state === "loading";
-  const iconColor = isLoading ? "white" : BLUE;
+  const iconColor = isLoading ? "white" : GREEN;
 
   return (
     <div
       className={cn(
-        "download-button-pill inline-flex items-center h-[57px] rounded-[30px] overflow-hidden cursor-pointer shrink-0 select-none",
+        "download-button-pill inline-flex items-center h-[38px] rounded-[20px] overflow-hidden cursor-pointer shrink-0 select-none",
         className
       )}
-      style={{ width: isLoading ? "57px" : "160px", border: `2px solid ${BLUE}` }}
+      style={{ width: isLoading ? "38px" : "108px", border: `1.5px solid ${GREEN}` }}
       onClick={handleClick}
       role="button"
       aria-label={label}
     >
-      <div className="relative w-[53px] h-[53px] rounded-full shrink-0 overflow-hidden flex items-center justify-center">
+      <div className="relative w-[35px] h-[35px] rounded-full shrink-0 overflow-hidden flex items-center justify-center">
         <div className="absolute inset-0 rounded-full bg-transparent" />
         <div
           className="download-button-fill absolute inset-0 rounded-full"
           data-active={isLoading}
-          style={{ background: DARK_BLUE, clipPath: "inset(100% 0 0 0)" }}
+          style={{ background: DARK_GREEN, clipPath: "inset(100% 0 0 0)" }}
         />
-        <div className="relative z-10 flex items-center justify-center" style={{ color: BLUE }}>
+        <div className="relative z-10 flex items-center justify-center" style={{ color: GREEN }}>
           {isLoading ? <StopIcon color={iconColor} /> : <ArrowDown color={iconColor} />}
         </div>
       </div>
 
       {/* Label — only meaningful in idle; collapses with the pill when loading */}
       <span
-        className="download-button-label flex-1 text-center text-sm font-semibold whitespace-nowrap pr-3.5"
+        className="download-button-label flex-1 text-center text-[12px] font-semibold whitespace-nowrap pr-2.5"
         style={{
-          color: BLUE,
+          color: GREEN,
           fontFamily: "var(--font-dm-var, system-ui, sans-serif)",
           opacity: isLoading ? 0 : 1,
         }}

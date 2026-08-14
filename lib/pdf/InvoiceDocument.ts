@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { GREEN, GOLD, GRAY_LINE, TEXT_DARK, TEXT_MUTED, STRIPE_TINT, MARGIN_X, PAGE_WIDTH, CONTENT_RIGHT, kes, fmtDate } from "@/lib/pdf/theme";
 
 type InvoiceOrder = {
   id: string;
@@ -26,21 +27,6 @@ type InvoiceOrder = {
   }[];
 };
 
-const GREEN: [number, number, number] = [39, 115, 30]; // #27731e
-const GOLD: [number, number, number] = [254, 199, 0]; // #fec700
-const GRAY_LINE: [number, number, number] = [183, 183, 183]; // #B7B7B7
-const TEXT_DARK: [number, number, number] = [40, 40, 40];
-const TEXT_MUTED: [number, number, number] = [130, 130, 130];
-const STRIPE_TINT: [number, number, number] = [240, 247, 240];
-
-const MARGIN_X = 15;
-const PAGE_WIDTH = 210;
-const CONTENT_RIGHT = PAGE_WIDTH - MARGIN_X;
-
-function kes(cents: number) {
-  return `KES ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 2 })}`;
-}
-
 const PROVIDER_LABELS: Record<string, string> = {
   MPESA: "M-Pesa",
   PAYSTACK: "Paystack",
@@ -59,10 +45,6 @@ function paymentMethodLine(order: InvoiceOrder): string {
 function paidDate(order: InvoiceOrder): Date {
   const tx = order.transactions.find((t) => t.status === "SUCCESS") ?? order.transactions[0];
   return tx?.updatedAt ?? order.createdAt;
-}
-
-function fmtDate(date: Date) {
-  return date.toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" });
 }
 
 export function renderInvoicePdfBuffer(order: InvoiceOrder): Buffer {

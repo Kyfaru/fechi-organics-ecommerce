@@ -113,7 +113,7 @@ export async function pushSaleReceiptToZoho(args: {
       billing_address:
         args.customerName || args.customerPhone
           ? {
-              attention: [args.customerName, args.customerPhone].filter(Boolean).join(", ") || undefined,
+              attention: [args.customerName, args.customerPhone].filter(Boolean).join(" - ") || undefined,
               phone: args.customerPhone ?? undefined,
               ...(args.isInternational
                 ? {

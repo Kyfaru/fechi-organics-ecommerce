@@ -50,15 +50,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     Array.isArray((body.permissions as { deny?: unknown }).deny);
   const isDetailsChange =
     typeof body.name === "string" || typeof body.email === "string" || typeof body.phone === "string";
+  const isSuperAdminGrant = typeof body.isSuperAdmin === "boolean";
 
-  if (!isBanChange && !isRoleChange && !isPermissionChange && !isDetailsChange) {
+  if (!isBanChange && !isRoleChange && !isPermissionChange && !isDetailsChange && !isSuperAdminGrant) {
     return Err.validation("No valid fields to update.");
   }
   if (isBanChange || isDetailsChange) {
     const denied = await requirePermission(req, { staff: ["update"] });
     if (denied) return denied;
   }
-  if (isRoleChange || isPermissionChange) {
+  if (isRoleChange || isPermissionChange || isSuperAdminGrant) {
     const denied = await requirePermission(req, { staff: ["assign_roles"] });
     if (denied) return denied;
   }
@@ -105,7 +106,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return Err.forbidden();
     }
     profileUpdate.role = role;
-    if (role === "super_admin" || role === "admin") profileUpdate.isSuperAdmin = role === "super_admin";
     // A stale deny-list surviving a role swap could over-restrict the new
     // role or reference resources meaningless to it — reset it; the caller
     // can re-narrow via Edit Permissions afterward if needed.
@@ -123,20 +123,30 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     profileUpdate.permissions = sanitizedDeny.length > 0 ? { deny: sanitizedDeny } : {};
   }
 
+  // Super Admin grant/revoke — a separate consent from role selection now
+  // that the UI no longer offers "super_admin" as a role option; granting
+  // it still requires the caller to already be a super admin.
+  if (isSuperAdminGrant) {
+    if (body.isSuperAdmin === true && !caller.user.adminProfile?.isSuperAdmin) {
+      return Err.forbidden();
+    }
+    profileUpdate.isSuperAdmin = body.isSuperAdmin;
+  }
+
   try {
     const ctx = await loadCallerContext();
     if (ctx.denied) return Err.forbidden();
 
-    if (isRoleChange || isPermissionChange) {
-      const outcome = await requireApprovalOrProceed(ctx, "staff", "assign_roles", { role: body.role, permissions: body.permissions }, id);
+    if (isRoleChange || isPermissionChange || isSuperAdminGrant) {
+      const outcome = await requireApprovalOrProceed(ctx, "staff", "assign_roles", { role: body.role, permissions: body.permissions, isSuperAdmin: body.isSuperAdmin }, id);
       if (!outcome.proceed) return Approval.queued(outcome.requestId);
     }
 
     let updated;
-    if (isRoleChange || isPermissionChange) {
+    if (isRoleChange || isPermissionChange || isSuperAdminGrant) {
       // Same profileUpdate this route already built — reuse the shared
       // executor so the approval-decide path performs the identical mutation.
-      await approvalExecutors["staff:assign_roles"]({ role: profileUpdate.role, permissions: profileUpdate.permissions }, id);
+      await approvalExecutors["staff:assign_roles"]({ role: profileUpdate.role, permissions: profileUpdate.permissions, isSuperAdmin: profileUpdate.isSuperAdmin }, id);
       updated = await db.user.update({
         where: { id },
         data: userUpdate,
@@ -162,10 +172,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
 
     if (isBanChange) {
-      await logActivity(ctx.id, typeof body.banned === "boolean" ? (body.banned ? "Deactivated staff member" : "Reactivated staff member") : "Updated ban reason", "staff", id, req);
+      await logActivity(ctx.id, typeof body.banned === "boolean" ? (body.banned ? "Deactivated staff member" : "Reactivated staff member") : "Updated ban reason", "staff", id, req, undefined, "WARNING");
     }
     if (isDetailsChange) await logActivity(ctx.id, "Updated staff details", "staff", id, req);
-    if (isRoleChange || isPermissionChange) await logActivity(ctx.id, "Changed staff role/permissions", "staff", id, req, { role: body.role, permissions: body.permissions });
+    if (isRoleChange || isPermissionChange || isSuperAdminGrant) await logActivity(ctx.id, "Changed staff role/permissions", "staff", id, req, { role: body.role, permissions: body.permissions, isSuperAdmin: body.isSuperAdmin }, "CRITICAL");
 
     return ok({ user: updated });
   } catch (err: unknown) {
@@ -192,6 +202,15 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     return Err.forbidden();
   }
 
+  let reason: string;
+  try {
+    const body = await req.json();
+    reason = typeof body?.reason === "string" ? body.reason.trim() : "";
+  } catch {
+    reason = "";
+  }
+  if (!reason) return Err.validation("A reason is required to delete a staff member");
+
   const { id } = await params;
   if (id === caller.session.user.id) return Err.validation("Cannot delete your own account.");
 
@@ -210,7 +229,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   // Effectively always "proceed" today — staff:delete is hard-restricted to
   // isSuperAdmin above, and super_admin always skips the queue — but wired
   // in case staff:delete permission is ever extended to another role.
-  const outcome = await requireApprovalOrProceed(ctx, "staff", "delete", {}, id);
+  const outcome = await requireApprovalOrProceed(ctx, "staff", "delete", { reason }, id);
   if (!outcome.proceed) return Approval.queued(outcome.requestId);
 
   try {
@@ -227,6 +246,6 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     reportError(e, { route: "DELETE /api/admin/staff/[id]" });
     return Err.internal();
   }
-  await logActivity(ctx.id, "Deleted staff member", "staff", id, req);
+  await logActivity(ctx.id, "Deleted staff member", "staff", id, req, { reason }, "CRITICAL");
   return ok({ deleted: id });
 }

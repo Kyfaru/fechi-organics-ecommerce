@@ -18,6 +18,13 @@ import { Drawer } from "@/components/admin/ui/Drawer";
 import { EmptyState } from "@/components/admin/ui/EmptyState";
 import { DonutChart } from "@/components/ui/donut-chart";
 
+// Walk-in customers created from Create Order without an email get a
+// placeholder address (see lib/customers/find-or-create-walkin.ts) — surface
+// "No email" instead of the fake address until an admin fills in a real one.
+function isPlaceholderEmail(email: string): boolean {
+  return email.endsWith("@instore.local");
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -206,6 +213,28 @@ function CustomerDrawer({
 }) {
   const [tab, setTab] = useState<"orders" | "info" | "notes">("orders");
   const [note, setNote] = useState("");
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [emailDraft, setEmailDraft] = useState("");
+  const qc = useQueryClient();
+
+  const updateEmailMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const res = await fetch(`/api/admin/customers/${customerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      return res.json();
+    },
+    onSuccess: (res) => {
+      if (!res.ok) { toast.error(res.error?.message ?? "Could not save email"); return; }
+      toast.success("Email saved");
+      setEditingEmail(false);
+      qc.invalidateQueries({ queryKey: ["admin-customer-detail", customerId] });
+      qc.invalidateQueries({ queryKey: ["admin-customers"] });
+    },
+    onError: () => toast.error("Could not save email"),
+  });
 
   const { data: detailData, isLoading: detailLoading } = useQuery({
     queryKey: ["admin-customer-detail", customerId],
@@ -264,7 +293,11 @@ function CustomerDrawer({
                 {customer.name}
               </div>
               <div className="font-dm text-[14px] text-(--neutral-500) dark:text-(--dark-muted)">
-                {customer.email}
+                {isPlaceholderEmail(customer.email) ? (
+                  <span className="text-(--gold-700)">No email — add one</span>
+                ) : (
+                  customer.email
+                )}
               </div>
               <div className="mt-1">
                 <StatusPill status={customer.banned ? "banned" : "active"} />
@@ -336,9 +369,45 @@ function CustomerDrawer({
           {/* Tab: Info */}
           {tab === "info" && (
             <div className="space-y-4">
+              {isPlaceholderEmail(customer.email) && (
+                <div className="flex justify-between items-start py-2 border-b border-(--neutral-200) dark:border-(--dark-border)">
+                  <span className="font-dm text-[13px] text-(--neutral-500) dark:text-(--dark-muted) pt-1.5">Email</span>
+                  {editingEmail ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        autoFocus
+                        type="email"
+                        value={emailDraft}
+                        onChange={(e) => setEmailDraft(e.target.value)}
+                        placeholder="customer@email.com"
+                        className="h-8 px-2 rounded-[6px] border border-(--neutral-200) font-dm text-[13px] focus:outline-none focus:border-(--green-800)"
+                      />
+                      <button
+                        type="button"
+                        disabled={updateEmailMutation.isPending}
+                        onClick={() => emailDraft.trim() && updateEmailMutation.mutate(emailDraft.trim())}
+                        className="h-8 px-3 rounded-[6px] bg-(--green-800) text-white font-dm text-[12px] font-medium disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                      <button type="button" onClick={() => setEditingEmail(false)} className="h-8 px-2 font-dm text-[12px] text-(--neutral-500)">
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { setEmailDraft(""); setEditingEmail(true); }}
+                      className="font-dm text-[13px] text-(--gold-700) font-medium hover:underline"
+                    >
+                      No email — add one
+                    </button>
+                  )}
+                </div>
+              )}
               {[
                 { label: "Full Name", value: customer.name },
-                { label: "Email", value: customer.email },
+                ...(isPlaceholderEmail(customer.email) ? [] : [{ label: "Email", value: customer.email }]),
                 { label: "Phone", value: customer.phone ?? "—" },
                 { label: "Country", value: customer.country ?? "—" },
                 { label: "City", value: customer.city ?? "—" },
@@ -498,7 +567,11 @@ export function AdminCustomersClient() {
                 {c.name}
               </div>
               <div className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted)">
-                {c.email}
+                {isPlaceholderEmail(c.email) ? (
+                  <span className="text-(--gold-700)">No email — add one</span>
+                ) : (
+                  c.email
+                )}
               </div>
             </div>
           </div>

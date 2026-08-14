@@ -20,6 +20,9 @@ import { Drawer } from "@/components/admin/ui/Drawer";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import CheckboxGreen from "@/components/ui/CheckboxGreen";
 import { PrelineSelect } from "@/components/admin/ui/PrelineSelect";
+import { PrelineDatePicker } from "@/components/admin/ui/PrelineDatePicker";
+import { usePersistedFilter } from "@/hooks/use-persisted-filters";
+import { ExportModal } from "@/components/admin/exports/ExportModal";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -226,6 +229,17 @@ function isThisMonth(iso: string) {
   const d = new Date(iso);
   const now = new Date();
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+}
+
+// Mon-Sun week, matching this file's en-KE convention elsewhere (see
+// shortOrderNumber, which treats Sunday as day 7 rather than day 0).
+function isThisWeek(iso: string) {
+  const d = new Date(iso);
+  const now = new Date();
+  const day = now.getDay() === 0 ? 7 : now.getDay();
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (day - 1));
+  monday.setHours(0, 0, 0, 0);
+  return d >= monday && d <= now;
 }
 
 // ---------------------------------------------------------------------------
@@ -1028,9 +1042,17 @@ function OrderDetailDrawer({
 // ---------------------------------------------------------------------------
 export function AdminOrdersClient() {
   const router = useRouter();
-  const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"" | OrderStatus>("");
-  const [branchFilter, setBranchFilter] = useState("");
+  const [search, setSearch] = usePersistedFilter("orders:search", "");
+  const [filterStatus, setFilterStatus] = usePersistedFilter<"" | OrderStatus>("orders:status", "");
+  const [filterPayment, setFilterPayment] = usePersistedFilter<"" | PaymentStatus>("orders:payment", "");
+  const [dateFilter, setDateFilter] = usePersistedFilter<"" | "today" | "week" | "month" | "custom">(
+    "orders:date",
+    ""
+  );
+  const [customFrom, setCustomFrom] = usePersistedFilter("orders:date-from", "");
+  const [customTo, setCustomTo] = usePersistedFilter("orders:date-to", "");
+  const [branchFilter, setBranchFilter] = usePersistedFilter("orders:branch", "");
+  const [exportOpen, setExportOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<AdminOrderRow | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -1074,6 +1096,19 @@ export function AdminOrdersClient() {
     if (filterStatus) {
       if (o.kind === "order" && o.status !== filterStatus) return false;
       if (o.kind === "instore" && o.fulfillmentStatus !== filterStatus) return false;
+    }
+    if (filterPayment && o.paymentStatus !== filterPayment) return false;
+    if (dateFilter === "today" && !isToday(o.createdAt)) return false;
+    if (dateFilter === "week" && !isThisWeek(o.createdAt)) return false;
+    if (dateFilter === "month" && !isThisMonth(o.createdAt)) return false;
+    if (dateFilter === "custom") {
+      const created = new Date(o.createdAt);
+      if (customFrom && created < new Date(customFrom)) return false;
+      if (customTo) {
+        const toEnd = new Date(customTo);
+        toEnd.setHours(23, 59, 59, 999);
+        if (created > toEnd) return false;
+      }
     }
     if (search) {
       const q = search.toLowerCase();
@@ -1300,6 +1335,44 @@ export function AdminOrdersClient() {
           />
         </div>
 
+        <div className="w-[180px]">
+          <PrelineSelect
+            value={filterPayment}
+            onChange={(v) => setFilterPayment(v as "" | PaymentStatus)}
+            placeholder="All payments"
+            options={[
+              { value: "PAID", label: "Paid" },
+              { value: "PENDING", label: "Pending" },
+              { value: "FAILED", label: "Failed" },
+            ]}
+          />
+        </div>
+
+        <div className="w-[180px]">
+          <PrelineSelect
+            value={dateFilter}
+            onChange={(v) => setDateFilter(v as "" | "today" | "week" | "month" | "custom")}
+            placeholder="All dates"
+            options={[
+              { value: "today", label: "Today" },
+              { value: "week", label: "This Week" },
+              { value: "month", label: "This Month" },
+              { value: "custom", label: "Custom" },
+            ]}
+          />
+        </div>
+
+        {dateFilter === "custom" && (
+          <>
+            <div className="w-[180px]">
+              <PrelineDatePicker value={customFrom} onChange={setCustomFrom} placeholder="From" />
+            </div>
+            <div className="w-[180px]">
+              <PrelineDatePicker value={customTo} onChange={setCustomTo} placeholder="To" />
+            </div>
+          </>
+        )}
+
         {scope?.isSuperAdmin && (
           <div className="w-[200px]">
             <PrelineSelect
@@ -1318,12 +1391,14 @@ export function AdminOrdersClient() {
         )}
 
         <button
-          onClick={() => toast.info("Export coming soon")}
+          onClick={() => setExportOpen(true)}
           className="ml-auto h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center gap-2 transition-colors"
         >
           <Download size={14} /> Export
         </button>
       </div>
+
+      <ExportModal resource="orders" open={exportOpen} onClose={() => setExportOpen(false)} />
 
       {/* ── Table ── */}
       <motion.div

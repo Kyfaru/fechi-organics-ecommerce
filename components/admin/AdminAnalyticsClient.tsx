@@ -46,7 +46,7 @@ type TabId = "overview" | "sales" | "products" | "customers" | "marketing" | "in
 type RangeId = "7D" | "30D" | "90D" | "12M" | "custom";
 type OrderTrendFilter = "all" | "successful" | "failed" | "cancelled";
 
-type RevenueChartRow = { date: string; amount: number };
+type RevenueChartRow = { date: string; amount: number; orders?: number; aov?: number };
 type OrderChartRow = {
   date: string;
   all: number;
@@ -153,12 +153,11 @@ const RANGES: RangeId[] = ["7D", "30D", "90D", "12M"];
 // CSV export helper
 // ---------------------------------------------------------------------------
 function downloadCSV(revenueData: RevenueChartRow[]) {
-  const header = "Date,Revenue (KES),Orders,AOV\n";
-  // Each revenueChart row only has date + amount (KES cents) — AOV and order
-  // count are not per-day in this payload, so we surface what we have.
+  const header = "Date,Revenue (KES),Orders,AOV (KES)\n";
   const rows = revenueData.map((r) => {
     const kes = (r.amount / 100).toFixed(2);
-    return `${r.date},${kes},,`;
+    const aovKes = r.aov != null ? (r.aov / 100).toFixed(2) : "";
+    return `${r.date},${kes},${r.orders ?? ""},${aovKes}`;
   });
   const csv = header + rows.join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
@@ -179,24 +178,36 @@ async function downloadPDF(revenueData: RevenueChartRow[]) {
     // Dynamic import keeps jsPDF out of the initial bundle (client-only)
     const jsPDF = (await import("jspdf")).default;
     const autoTable = (await import("jspdf-autotable")).default;
+    const { GREEN, STRIPE_TINT } = await import("@/lib/pdf/theme");
 
     const doc = new jsPDF();
     doc.setFontSize(16);
+    doc.setTextColor(...GREEN);
     doc.text("Fechi Organics — Analytics Report", 14, 16);
+    doc.setTextColor(80, 80, 80);
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 24);
 
+    const totalRevenue = revenueData.reduce((s, r) => s + r.amount, 0);
+    const totalOrders = revenueData.reduce((s, r) => s + (r.orders ?? 0), 0);
+    doc.text(
+      `Total revenue: KES ${(totalRevenue / 100).toLocaleString("en-KE")} · Total orders: ${totalOrders}`,
+      14,
+      30,
+    );
+
     autoTable(doc, {
-      startY: 30,
-      head: [["Date", "Revenue (KES)", "Orders", "AOV"]],
+      startY: 36,
+      head: [["Date", "Revenue (KES)", "Orders", "AOV (KES)"]],
       body: revenueData.map((r) => [
         r.date,
         (r.amount / 100).toFixed(2),
-        "",
-        "",
+        String(r.orders ?? ""),
+        r.aov != null ? (r.aov / 100).toFixed(2) : "",
       ]),
-      styles: { font: "helvetica", fontSize: 10 },
-      headStyles: { fillColor: [39, 93, 56] }, // --green-800 approximate
+      styles: { font: "helvetica", fontSize: 9.5 },
+      headStyles: { fillColor: GREEN, textColor: [255, 255, 255], fontStyle: "bold" },
+      alternateRowStyles: { fillColor: STRIPE_TINT },
     });
 
     doc.save("fechi-analytics.pdf");

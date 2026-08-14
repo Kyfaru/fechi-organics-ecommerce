@@ -952,15 +952,19 @@ export function AdminTestimonialsClient() {
     },
     onSuccess: (result, { approved }) => {
       if (result.ok) {
-        toast.success(approved ? "Testimonial approved" : "Approval removed");
+        toast.success(
+          result.data?.queued
+            ? "Approval change submitted for review"
+            : approved ? "Testimonial approved" : "Approval removed"
+        );
         qc.invalidateQueries({ queryKey: ["admin-testimonials"] });
       } else {
-        toast.error("Failed to update approval");
+        toast.error(result.error?.message ?? "Failed to update approval");
       }
     },
     onError: (err) => {
       console.error("[AdminTestimonialsClient] approve error", err);
-      toast.error("Failed to update approval");
+      toast.error("Network error — check your connection and try again");
     },
   });
 
@@ -977,14 +981,15 @@ export function AdminTestimonialsClient() {
     onMutate: ({ id }) => setPendingSortId(id),
     onSuccess: (result) => {
       if (result.ok) {
+        if (result.data?.queued) toast.success("Sort order change submitted for review");
         qc.invalidateQueries({ queryKey: ["admin-testimonials"] });
       } else {
-        toast.error("Failed to update sort order");
+        toast.error(result.error?.message ?? "Failed to update sort order");
       }
     },
     onError: (err) => {
       console.error("[AdminTestimonialsClient] sort error", err);
-      toast.error("Failed to update sort order");
+      toast.error("Network error — check your connection and try again");
     },
     onSettled: () => setPendingSortId(null),
   });
@@ -999,16 +1004,16 @@ export function AdminTestimonialsClient() {
     },
     onSuccess: (result) => {
       if (result.ok) {
-        toast.success("Testimonial deleted");
+        toast.success(result.data?.queued ? "Delete request submitted for approval" : "Testimonial deleted");
         qc.invalidateQueries({ queryKey: ["admin-testimonials"] });
         setDeleteTarget(null);
       } else {
-        toast.error("Failed to delete testimonial");
+        toast.error(result.error?.message ?? "Failed to delete testimonial");
       }
     },
     onError: (err) => {
       console.error("[AdminTestimonialsClient] delete error", err);
-      toast.error("Failed to delete testimonial");
+      toast.error("Network error — check your connection and try again");
     },
   });
 

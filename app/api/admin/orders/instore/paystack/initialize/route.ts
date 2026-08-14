@@ -21,9 +21,15 @@ import { getRedis } from "@/lib/redis";
 import { makeRatelimit } from "@/lib/ratelimit";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { buildInStoreOrderNumber } from "@/lib/orders/generate-instore-order-number";
+import { findOrCreateWalkInCustomer } from "@/lib/customers/find-or-create-walkin";
 import { requirePermission } from "@/lib/require-permission";
+import { logActivity } from "@/lib/admin-activity";
 import { reportError } from "@/lib/observability";
 import { publishQstashJSON } from "@/lib/qstash";
+
+// Gives the client's 60s AbortSignal.timeout room to fire before the
+// serverless function itself gets cut off mid-request.
+export const maxDuration = 60;
 
 const PAYMENT_TIMEOUT_SECONDS = 15 * 60; // abandon unpaid in-store orders 15 minutes after checkout init
 
@@ -163,6 +169,18 @@ export async function POST(req: NextRequest) {
     }
     const totalKes = Math.max(0, subtotalKes - discountKes);
 
+    // Resolve the walk-in to a real customer record (find-by-phone or
+    // create) so they appear on /admin/customers — skip on retry (already
+    // resolved) and when no phone was captured (nothing to dedup/identify by).
+    let resolvedCustomerUserId = customerUserId ?? null;
+    if (!retryOrderId && !resolvedCustomerUserId && customerPhone) {
+      resolvedCustomerUserId = await findOrCreateWalkInCustomer({
+        name: customerName,
+        phone: customerPhone,
+        email: customerEmail,
+      });
+    }
+
     let order;
     if (retryOrderId) {
       const existingOrder = await db.inStoreOrder.findUnique({ where: { id: retryOrderId } });
@@ -195,7 +213,7 @@ export async function POST(req: NextRequest) {
           branchId: branch.id,
           createdByAdminId: admin.id,
           createdByAdminName: admin.name,
-          customerUserId: customerUserId ?? null,
+          customerUserId: resolvedCustomerUserId,
           customerName: customerName ?? null,
           customerPhone,
           customerEmail: customerEmail ?? null,
@@ -220,8 +238,8 @@ export async function POST(req: NextRequest) {
 
       // Only on the initial creation path — retries reuse the same order and
       // must not record a second redemption for one order.
-      if (resolvedPromoId && normalizedPromoCode && customerUserId) {
-        await recordCouponRedemption(resolvedPromoId, customerUserId, order.id);
+      if (resolvedPromoId && normalizedPromoCode && resolvedCustomerUserId) {
+        await recordCouponRedemption(resolvedPromoId, resolvedCustomerUserId, order.id);
       }
     }
 
@@ -244,12 +262,14 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    console.info(`[instore/paystack/initialize] Calling Paystack initialize — order=${order.orderNumber} reference=${reference}`);
     const paystackRes = await initializeTransaction({
       email: customerEmail || "walkin@fechiorganics.com",
       amount: totalKes,
       reference,
       metadata: { inStoreOrderId: order.id, adminId: admin.id },
     });
+    console.info(`[instore/paystack/initialize] Paystack initialize succeeded — order=${order.orderNumber} reference=${reference}`);
 
     // Schedule a timeout: if the walk-in customer abandons the card charge
     // and no webhook arrives within 15 minutes, flip the order to FAILED.
@@ -262,6 +282,15 @@ export async function POST(req: NextRequest) {
     console.info(
       `[instore/paystack/initialize] transaction initialized — order=${order.orderNumber} tx=${transaction.id} reference=${reference}`,
     );
+
+    if (!retryOrderId && admin.adminProfile) {
+      logActivity(admin.adminProfile.id, `Created in-store order ${order.orderNumber}`, "order", order.id, req, {
+        branchId: branch.id,
+        itemCount: items.length,
+        totalKes,
+        paymentMethod: "PAYSTACK",
+      });
+    }
 
     return ok({
       inStoreOrderId: order.id,
@@ -276,6 +305,14 @@ export async function POST(req: NextRequest) {
       tags: { stage: "handler" },
     });
     console.error("[instore/paystack/initialize] POST error", e);
+
+    const prismaCode = (e as { code?: string })?.code;
+    if (typeof prismaCode === "string" && prismaCode.startsWith("P")) {
+      return err("DB_ERROR", `Database operation failed (${prismaCode})`, 500);
+    }
+    if (e instanceof Error && e.message.startsWith("Paystack")) {
+      return err("PAYSTACK_ERROR", e.message, 502);
+    }
     return Err.internal();
   }
 }
