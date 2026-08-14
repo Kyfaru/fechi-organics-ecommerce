@@ -62,3 +62,14 @@ export function decrypt(encoded: string): string {
 
   return decrypted.toString("utf8");
 }
+
+/**
+ * Safe-to-log fingerprint of a secret: length + masked prefix/suffix, never
+ * the value itself. Lets logs distinguish "empty", "wrong key entirely", and
+ * "right key, trailing whitespace" without leaking the secret.
+ */
+export function fingerprint(value: string): string {
+  if (!value) return "empty";
+  if (value.length <= 8) return `len=${value.length} (too short to mask)`;
+  return `len=${value.length} ${value.slice(0, 4)}...${value.slice(-4)}`;
+}
