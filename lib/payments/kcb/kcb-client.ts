@@ -1,4 +1,4 @@
-import { decrypt } from "@/lib/crypto";
+import { decrypt, fingerprint } from "@/lib/crypto";
 import { getRedis } from "@/lib/redis";
 
 export interface KcbStkPushOpts {
@@ -29,6 +29,10 @@ async function getKcbToken(branch: KcbStkPushOpts["branch"]): Promise<string> {
   const consumerSecret = decrypt(branch.consumerSecretEnc);
   const credentials = Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64");
 
+  console.info(
+    `[kcb-client] token request — branch=${branch.id} base=${KCB_BASE} consumerKey=${fingerprint(consumerKey)} consumerSecret=${fingerprint(consumerSecret)}`,
+  );
+
   // KCB Buni: grant_type as query param, Basic auth header
   const res = await fetch(`${KCB_BASE}/token?grant_type=client_credentials`, {
     method: "POST",
@@ -38,12 +42,22 @@ async function getKcbToken(branch: KcbStkPushOpts["branch"]): Promise<string> {
     },
   });
 
+  const rawBody = await res.text();
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`KCB token fetch failed: ${res.status} ${body}`);
+    console.error(`[kcb-client] token fetch failed — branch=${branch.id} status=${res.status} body="${rawBody}"`);
+    throw new Error(`KCB token fetch failed: ${res.status} ${rawBody}`);
   }
 
-  const data = (await res.json()) as { access_token: string; expires_in: number };
+  let data: { access_token: string; expires_in: number };
+  try {
+    data = JSON.parse(rawBody);
+  } catch {
+    // A non-JSON 2xx body means KCB_BASE_URL is pointing at something that
+    // isn't the API gateway (e.g. a marketing page) — surface the raw body
+    // instead of letting JSON.parse's cryptic "Unexpected token '<'" hide it.
+    console.error(`[kcb-client] token response wasn't JSON — branch=${branch.id} base=${KCB_BASE} body="${rawBody.slice(0, 300)}"`);
+    throw new Error(`KCB token response wasn't JSON (check KCB_BASE_URL=${KCB_BASE}): ${rawBody.slice(0, 200)}`);
+  }
   const ttl = Math.max(60, (data.expires_in ?? 3600) - 60);
   await redis.set(cacheKey, data.access_token, { ex: ttl });
 
@@ -55,6 +69,10 @@ export async function initiateKcbStkPush(
 ): Promise<{ CheckoutRequestID: string; ResponseCode: string }> {
   const token = await getKcbToken(opts.branch);
   const apiKey = opts.branch.apiKeyEnc ? decrypt(opts.branch.apiKeyEnc) : "";
+
+  console.info(
+    `[kcb-client] stkpush request — branch=${opts.branch.id} base=${KCB_BASE} invoiceNumber=${opts.branch.invoiceNumber} apiKey=${fingerprint(apiKey)}`,
+  );
 
   // KCB Buni expects 2547XXXXXXXX international format (no + prefix)
   const phone = opts.phone.replace(/\D/g, "").replace(/^0/, "254").replace(/^\+/, "");
@@ -79,12 +97,19 @@ export async function initiateKcbStkPush(
     }),
   });
 
+  const rawBody = await res.text();
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`KCB STK push failed: ${res.status} ${body}`);
+    console.error(`[kcb-client] stkpush failed — branch=${opts.branch.id} status=${res.status} apiKey=${fingerprint(apiKey)} body="${rawBody}"`);
+    throw new Error(`KCB STK push failed: ${res.status} ${rawBody}`);
   }
 
-  const data = await res.json() as Record<string, unknown>;
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(rawBody);
+  } catch {
+    console.error(`[kcb-client] stkpush response wasn't JSON — branch=${opts.branch.id} base=${KCB_BASE} body="${rawBody.slice(0, 300)}"`);
+    throw new Error(`KCB STK push response wasn't JSON (check KCB_BASE_URL=${KCB_BASE}): ${rawBody.slice(0, 200)}`);
+  }
 
   // KCB Buni wraps the payload under a "response" envelope
   const inner = (data.response ?? data) as Record<string, unknown>;
