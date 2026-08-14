@@ -23,7 +23,15 @@ async function getKcbToken(branch: KcbStkPushOpts["branch"]): Promise<string> {
   const cacheKey = `kcb_token:${branch.id}`;
 
   const cached = await redis.get(cacheKey);
-  if (typeof cached === "string" && cached.length > 0) return cached;
+  if (typeof cached === "string" && cached.length > 0) {
+    // A token cached before consumerKey/consumerSecret were last changed in
+    // the DB (e.g. a re-run of prisma/set-daraja-creds.ts) would still be
+    // served here and paired with today's apiKey — that mismatch reads as a
+    // 401 "Invalid Credentials" downstream with no obvious cause, so log the
+    // cache hit itself rather than silently skipping straight to the request.
+    console.info(`[kcb-client] using cached token — branch=${branch.id} token=${fingerprint(cached)}`);
+    return cached;
+  }
 
   const consumerKey = decrypt(branch.consumerKeyEnc);
   const consumerSecret = decrypt(branch.consumerSecretEnc);
