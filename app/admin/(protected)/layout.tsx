@@ -9,9 +9,10 @@ import { AdminFooter } from "@/components/admin/AdminFooter";
 import { AdminSessionGuard } from "@/components/admin/AdminSessionGuard";
 import { Admin403 } from "@/components/admin/Admin403";
 import { Spinner } from "@/components/ui/spinner";
-import { checkPermissionPage } from "@/lib/require-permission";
+import { checkPermissionPage, loadCallerContext } from "@/lib/require-permission";
 import { resourceForPath, isNoResourcePath } from "@/lib/admin-nav";
 import { DEV_ACCESS_COOKIE } from "@/lib/dev-access";
+import { logPageView } from "@/lib/admin-activity";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -69,6 +70,12 @@ async function AdminGuard({ children }: { children: React.ReactNode }) {
     // is denied by default rather than silently allowed.
     return <Admin403 />;
   }
+
+  // Page-view audit log — fire-and-forget, never blocks rendering. Shared
+  // instrumentation point for every /admin/* page rather than one-off calls
+  // per page, so it can't be forgotten on new routes.
+  const ctx = await loadCallerContext();
+  if (!ctx.denied) void logPageView(ctx.id, pathname);
 
   return <>{children}</>;
 }

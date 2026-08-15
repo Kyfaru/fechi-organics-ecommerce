@@ -17,7 +17,7 @@ import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-invoice";
-import { createInstoreInvoiceToken } from "@/lib/invoice-token";
+import { buildInstoreSmsMessage } from "@/lib/invoice/build-instore-sms";
 import { sendInvoiceEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
 import { publishQstashJSON } from "@/lib/qstash";
@@ -56,10 +56,6 @@ function buildInvoiceEmailHtml(args: { invoiceNumber: string; totalKes: number; 
   ].join("");
 
   return emailShell({ title: "Your Invoice Is Ready", sectionsHtml: sections });
-}
-
-function buildSmsMessage(args: { invoiceNumber: string; orderNumber: string | null; url: string }) {
-  return `Fechi Organics — your invoice ${args.invoiceNumber} for order ${args.orderNumber} is ready: ${args.url}`;
 }
 
 export async function POST(
@@ -105,9 +101,7 @@ export async function POST(
       if (!order.customerPhone) {
         return err("NO_PHONE", "No phone number on file for this order", 400);
       }
-      const token = await createInstoreInvoiceToken(id);
-      const url = `${process.env.NEXT_PUBLIC_APP_URL}/api/invoices/instore/${token}`;
-      await sendSms(order.customerPhone, buildSmsMessage({ invoiceNumber: invoice.invoiceNumber, orderNumber: order.orderNumber, url }));
+      await sendSms(order.customerPhone, buildInstoreSmsMessage({ invoiceNumber: invoice.invoiceNumber, customerName: order.customerName, url: invoice.url }));
       await db.inStoreOrder.update({ where: { id }, data: { receiptSentSms: true } });
       return ok({ sent: ["sms"] });
     }

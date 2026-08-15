@@ -11,8 +11,9 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { requireStaffSession } from "@/lib/require-permission";
+import { requireStaffSession, loadCallerContext } from "@/lib/require-permission";
 import { reportError } from "@/lib/observability";
+import { logActivity } from "@/lib/admin-activity";
 
 const BodySchema = z.object({
   method: z.enum(["totp", "email", "sms"]),
@@ -36,6 +37,11 @@ export async function POST(req: NextRequest) {
 
     const { method, phone } = parsed.data;
 
+    const previous = await db.adminProfile.findUnique({
+      where: { userId: session.user.id },
+      select: { id: true, twoFaMethod: true },
+    });
+
     // Update the adminProfile twoFaMethod
     await db.adminProfile.update({
       where: { userId: session.user.id },
@@ -48,6 +54,10 @@ export async function POST(req: NextRequest) {
         where: { id: session.user.id },
         data: { phone: phone.trim() },
       });
+    }
+
+    if (previous) {
+      logActivity(previous.id, `Changed 2FA method to ${method}`, "profile", previous.id, req, { from: previous.twoFaMethod, to: method }, "WARNING");
     }
 
     console.info("[admin/2fa/method] POST — userId", session.user.id, "→ method", method);

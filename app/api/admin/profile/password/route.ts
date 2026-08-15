@@ -13,8 +13,9 @@ import { headers } from "next/headers";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { requireStaffSession } from "@/lib/require-permission";
+import { requireStaffSession, loadCallerContext } from "@/lib/require-permission";
 import { reportError } from "@/lib/observability";
+import { logActivity } from "@/lib/admin-activity";
 
 export async function PATCH(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
@@ -59,6 +60,9 @@ export async function PATCH(req: NextRequest) {
     if (!result) {
       return Err.validation("Current password is incorrect.");
     }
+
+    const ctx = await loadCallerContext();
+    if (!ctx.denied) logActivity(ctx.id, "Changed own password", "profile", ctx.id, req, undefined, "WARNING");
 
     return ok({ message: "Password updated successfully." });
   } catch (err) {

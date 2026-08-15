@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
       Math.max(1, parseInt(searchParams.get("pageSize") ?? "50", 10)),
     );
 
-    const [transactions, total, orderRevenueAgg, inStoreRevenueAgg, pendingCount] = await Promise.all([
+    const [transactions, total, orderRevenueAgg, inStoreRevenueAgg, pendingCount, inStoreTxCount] = await Promise.all([
       db.transaction.findMany({
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
@@ -58,6 +58,9 @@ export async function GET(req: NextRequest) {
       // Finance revenue excluded every walk-in sale.
       db.inStoreOrder.aggregate({ _sum: { totalKes: true }, where: { paymentStatus: "PAID" } }),
       db.transaction.count({ where: { status: "PENDING" } }),
+      // In-store payment attempts — same "count every attempt" convention as
+      // the online `total` above, merged into stats.totalTransactions.
+      db.inStoreTransaction.count(),
     ]);
 
     console.info(
@@ -78,6 +81,7 @@ export async function GET(req: NextRequest) {
         // client's formatKes(), which divides by 100 — so no scaling needed.
         totalRevenue: (orderRevenueAgg._sum.totalKes ?? 0) + (inStoreRevenueAgg._sum.totalKes ?? 0),
         pending: pendingCount,
+        totalTransactions: total + inStoreTxCount,
       },
     });
   } catch (e) {

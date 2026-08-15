@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { CONSENT_COOKIE } from "@/lib/cookie-consent";
 import { GoogleAnalyticsScripts } from "./GoogleAnalyticsScripts";
+import { GoogleTagManagerScripts } from "./GoogleTagManagerScripts";
 import { CookieConsentBanner } from "./CookieConsentBanner";
 
 /** Reads the consent cookie once and drives both the banner's visibility
@@ -15,6 +16,7 @@ export async function ConsentGate() {
   return (
     <>
       {hasConsented && <GoogleAnalyticsScripts />}
+      {hasConsented && <GoogleTagManagerScripts />}
       <CookieConsentBanner initiallyConsented={hasConsented} />
     </>
   );

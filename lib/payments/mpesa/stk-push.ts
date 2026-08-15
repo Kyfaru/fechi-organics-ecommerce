@@ -10,7 +10,7 @@
  */
 
 import { getDarajaToken } from "./daraja-client";
-import { decrypt } from "@/lib/crypto";
+import { decrypt, fingerprint } from "@/lib/crypto";
 import type { branch } from "@prisma/client";
 
 const DARAJA_BASE =
@@ -112,6 +112,10 @@ export async function initiateSTKPush(params: {
   const normalised = normalisePhone(phone);
   const password = buildPassword(branch.shortcode, passkey, timestamp);
 
+  console.info(
+    `[stk-push] branch=${branch.id} shortcode=${branch.shortcode} passkey=${fingerprint(passkey)}`,
+  );
+
   // Sandbox only supports CustomerPayBillOnline with test shortcode 174379.
   // In production, use the correct type based on branch mpesaType.
   const isProduction = process.env.DARAJA_ENV === "production";
@@ -146,6 +150,9 @@ export async function initiateSTKPush(params: {
 
   if (!res.ok) {
     const body = await res.text();
+    console.error(
+      `[stk-push] request failed — branch=${branch.id} status=${res.status} shortcode=${branch.shortcode} passkey=${fingerprint(passkey)} body="${body}"`,
+    );
     throw new Error(
       `[stk-push] Daraja request failed: ${res.status} ${res.statusText} — ${body}`,
     );

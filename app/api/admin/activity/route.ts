@@ -48,6 +48,17 @@ export async function GET(req: NextRequest) {
 
   const where: Prisma.auditLogWhereInput = {};
 
+  // Visibility: super admins see everything. A branch-scoped admin never
+  // sees a super admin's activity, and only sees their own branch's staff.
+  // An unscoped (branchId === null) admin sees every non-super-admin log
+  // across every branch — treated as global scope. actorIsSuperAdmin/
+  // branchId are write-time snapshots on auditLog itself (see
+  // lib/admin-activity.ts), so this is a flat filter, not a join.
+  if (!caller.isSuperAdmin) {
+    where.actorIsSuperAdmin = false;
+    if (caller.branchId) where.branchId = caller.branchId;
+  }
+
   if (staffId) where.adminProfileId = staffId;
   if (resource) {
     const resources = resource.split(",").map((r) => r.trim()).filter(Boolean);

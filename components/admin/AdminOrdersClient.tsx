@@ -338,12 +338,15 @@ function InStoreOrderDrawerContent({
   order,
   open,
   onClose,
+  isSuperAdmin,
 }: {
   order: AdminInStoreOrder;
   open: boolean;
   onClose: () => void;
+  isSuperAdmin?: boolean;
 }) {
   const qc = useQueryClient();
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   const pickupMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -533,6 +536,17 @@ function InStoreOrderDrawerContent({
             >
               <Printer size={13} /> Print Invoice
             </button>
+            {isSuperAdmin && (
+              <>
+                <div className="h-px bg-(--neutral-200) my-1" />
+                <button
+                  onClick={() => setDeleteModalOpen(true)}
+                  className="w-full h-9 rounded-[8px] font-dm text-[12px] text-(--danger) hover:bg-(--danger-bg) flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <X size={13} /> Delete Permanently
+                </button>
+              </>
+            )}
           </div>
 
           {/* Date info */}
@@ -542,7 +556,102 @@ function InStoreOrderDrawerContent({
           </div>
         </div>
       </div>
+      <DeleteOrderModal
+        order={order}
+        kind="instore"
+        open={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onDeleted={onClose}
+      />
     </Drawer>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Delete order modal — super-admin only, requires a reason and typing the
+// order number back to confirm. Shared by both the online-order and
+// in-store-order drawer variants.
+// ---------------------------------------------------------------------------
+function DeleteOrderModal({
+  order,
+  kind,
+  open,
+  onClose,
+  onDeleted,
+}: {
+  order: { id: string; orderNumber: string | null } | null;
+  kind: "order" | "instore";
+  open: boolean;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const qc = useQueryClient();
+  const [reason, setReason] = useState("");
+  const [confirmText, setConfirmText] = useState("");
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/admin/orders/${order!.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason, kind }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error?.message ?? "Delete failed");
+      return json;
+    },
+    onSuccess: () => {
+      toast.success("Order permanently deleted");
+      qc.invalidateQueries({ queryKey: ["admin-orders"] });
+      setReason("");
+      setConfirmText("");
+      onClose();
+      onDeleted();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  if (!order) return null;
+  const expected = order.orderNumber ?? order.id;
+  const canConfirm = reason.trim().length > 0 && confirmText.trim() === expected;
+
+  return (
+    <ConfirmModal
+      open={open}
+      onClose={() => { onClose(); setReason(""); setConfirmText(""); }}
+      onConfirm={() => {
+        if (!canConfirm) { toast.error("Enter a reason and type the order number exactly to confirm"); return; }
+        deleteMutation.mutate();
+      }}
+      title="Permanently delete this order?"
+      description="This deletes the order, its items, transactions, and invoice. This cannot be undone. The customer record is not affected."
+      confirmLabel="Delete Permanently"
+      danger
+      loading={deleteMutation.isPending}
+    >
+      <div className="flex flex-col gap-3">
+        <div>
+          <label className="font-dm text-[12px] font-medium text-(--neutral-700) block mb-1">Reason</label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={2}
+            className="w-full rounded-[8px] border border-(--neutral-200) px-3 py-2 font-dm text-[13px] resize-none"
+            placeholder="Why is this order being deleted?"
+          />
+        </div>
+        <div>
+          <label className="font-dm text-[12px] font-medium text-(--neutral-700) block mb-1">
+            Type <span className="font-mono font-semibold">{expected}</span> to confirm
+          </label>
+          <input
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            className="w-full h-9 rounded-[8px] border border-(--neutral-200) px-3 font-dm text-[13px]"
+          />
+        </div>
+      </div>
+    </ConfirmModal>
   );
 }
 
@@ -553,15 +662,18 @@ function OrderDetailDrawer({
   order,
   open,
   onClose,
+  isSuperAdmin,
 }: {
   order: AdminOrderRow | null;
   open: boolean;
   onClose: () => void;
+  isSuperAdmin?: boolean;
 }) {
   const qc = useQueryClient();
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [confirmModal1Open, setConfirmModal1Open] = useState(false);
   const [confirmModal2Open, setConfirmModal2Open] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [pendingGateAction, setPendingGateAction] = useState<"set_processing" | "set_packaging" | null>(null);
   const [noteText, setNoteText] = useState("");
 
@@ -586,7 +698,7 @@ function OrderDetailDrawer({
 
   if (!order) return null;
   if (order.kind === "instore") {
-    return <InStoreOrderDrawerContent order={order} open={open} onClose={onClose} />;
+    return <InStoreOrderDrawerContent order={order} open={open} onClose={onClose} isSuperAdmin={isSuperAdmin} />;
   }
 
   const totalQty = order.items.reduce((s, i) => s + i.quantity, 0);
@@ -979,6 +1091,17 @@ function OrderDetailDrawer({
                   </button>
                 </>
               )}
+              {isSuperAdmin && (
+                <>
+                  <div className="h-px bg-(--neutral-200) my-1" />
+                  <button
+                    onClick={() => setDeleteModalOpen(true)}
+                    className="w-full h-9 rounded-[8px] font-dm text-[12px] text-(--danger) hover:bg-(--danger-bg) flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <X size={13} /> Delete Permanently
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Date info */}
@@ -1032,6 +1155,15 @@ function OrderDetailDrawer({
           setPendingGateAction(null);
         }}
         loading={fulfillMutation.isPending}
+      />
+
+      {/* Delete permanently */}
+      <DeleteOrderModal
+        order={order}
+        kind="order"
+        open={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onDeleted={onClose}
       />
     </>
   );
@@ -1423,6 +1555,7 @@ export function AdminOrdersClient() {
         order={liveSelectedOrder}
         open={drawerOpen}
         onClose={() => { setDrawerOpen(false); setTimeout(() => setSelectedOrder(null), 250); }}
+        isSuperAdmin={scope?.isSuperAdmin}
       />
     </div>
   );

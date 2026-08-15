@@ -7,8 +7,10 @@ import { ok, Err } from "@/lib/api";
 import { sendSms, hasSmsConfig } from "@/lib/sms";
 import { combineLegacyPhone } from "@/lib/phone";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { requirePermission } from "@/lib/require-permission";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { reportError } from "@/lib/observability";
+import { deleteOrder, type OrderKind } from "@/lib/orders/delete-order";
+import { logActivity } from "@/lib/admin-activity";
 
 const STATUS_MESSAGES: Record<string, string> = {
   CONFIRMED:  "has been confirmed",
@@ -153,6 +155,8 @@ export async function PATCH(
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session?.user) return Err.authRequired();
 
+  const ctx = await loadCallerContext();
+
   try {
     const { id } = await params;
 
@@ -160,7 +164,7 @@ export async function PATCH(
 
     // Route to fulfillment handler when "action" key is present
     if ("action" in body) {
-      return handleFulfillmentAction(id, body, session.user.id);
+      return handleFulfillmentAction(id, body, session.user.id, ctx.denied ? null : ctx.id, req);
     }
 
     // Legacy path — direct status / paymentStatus update
@@ -180,6 +184,9 @@ export async function PATCH(
     });
 
     console.info("[admin/orders/[id]] PATCH (legacy) —", id, "→", parsed.data.status);
+    if (!ctx.denied) {
+      logActivity(ctx.id, `Updated order ${order.orderNumber ?? id} (legacy)`, "order", id, req, { status: parsed.data.status, paymentStatus: parsed.data.paymentStatus }, "INFO");
+    }
     return ok({ order: updated });
   } catch (e) {
     reportError(e, { route: "PATCH /api/admin/orders/[id]", tags: { domain: "orders" } });
@@ -196,7 +203,15 @@ async function handleFulfillmentAction(
   orderId: string,
   body: unknown,
   adminUserId: string,
+  adminProfileId: string | null,
+  req: NextRequest,
 ): Promise<Response> {
+  function logFulfillment(action: string, orderRef: string, from: string, to: string) {
+    if (adminProfileId) {
+      logActivity(adminProfileId, `Order ${action} — ${orderRef}`, "order", orderId, req, { action, from, to }, "INFO");
+    }
+  }
+
   const parsed = FulfillmentSchema.safeParse(body);
   if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
@@ -238,6 +253,7 @@ async function handleFulfillmentAction(
       await db.orderStatusEvent.create({ data: { orderId, status: "PROCESSING", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] set_processing —", orderId);
       notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "PROCESSING", order.user?.phone, order.user?.phoneCode);
+      logFulfillment("set_processing", order.orderNumber ?? orderId, order.status, "PROCESSING");
       return ok({ order: updated });
     }
 
@@ -255,6 +271,7 @@ async function handleFulfillmentAction(
         include: ORDER_INCLUDE,
       });
       console.info("[admin/orders/[id]] unset_processing —", orderId);
+      logFulfillment("unset_processing", order.orderNumber ?? orderId, order.status, "CONFIRMED");
       return ok({ order: updated });
     }
 
@@ -277,6 +294,7 @@ async function handleFulfillmentAction(
       await db.orderStatusEvent.create({ data: { orderId, status: "SHIPPED", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] ship —", orderId);
       notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "SHIPPED", order.user?.phone, order.user?.phoneCode);
+      logFulfillment("ship", order.orderNumber ?? orderId, order.status, "SHIPPED");
       return ok({ order: updated });
     }
 
@@ -296,6 +314,7 @@ async function handleFulfillmentAction(
       await db.orderStatusEvent.create({ data: { orderId, status: "CANCELLED", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] cancel —", orderId);
       notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "CANCELLED", order.user?.phone, order.user?.phoneCode);
+      logFulfillment("cancel", order.orderNumber ?? orderId, order.status, "CANCELLED");
       return ok({ order: updated });
     }
 
@@ -324,6 +343,7 @@ async function handleFulfillmentAction(
       await db.orderStatusEvent.create({ data: { orderId, status: "WAITING_TO_PACKAGE", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] set_packaging —", orderId);
       notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "WAITING_TO_PACKAGE", order.user?.phone, order.user?.phoneCode);
+      logFulfillment("set_packaging", order.orderNumber ?? orderId, order.status, "WAITING_TO_PACKAGE");
       return ok({ order: updated });
     }
 
@@ -356,6 +376,7 @@ async function handleFulfillmentAction(
           }
         });
       }
+      logFulfillment("set_ready", order.orderNumber ?? orderId, order.status, "READY_FOR_PICKUP");
       return ok({ order: updated });
     }
 
@@ -384,6 +405,7 @@ async function handleFulfillmentAction(
         await db.orderStatusEvent.create({ data: { orderId, status: "PICKED_UP", occurredAt: new Date() } });
         console.info("[admin/orders/[id]] set_picked_up — completed —", orderId);
         notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "PICKED_UP", order.user?.phone, order.user?.phoneCode);
+        logFulfillment("set_picked_up", order.orderNumber ?? orderId, order.status, "PICKED_UP");
       } else {
         console.info("[admin/orders/[id]] set_picked_up — staff confirmed, waiting on customer —", orderId);
       }
@@ -392,5 +414,62 @@ async function handleFulfillmentAction(
 
     default:
       return Err.validation("Unknown action");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /api/admin/orders/[id]
+// Permanently deletes an order and everything connected to it (items, status
+// events, transactions, invoice) — the customer record is never touched.
+// Super-admin only, direct isSuperAdmin check (not routed through
+// requirePermission/roles — this must be stricter than any grantable role).
+// ---------------------------------------------------------------------------
+const DeleteSchema = z.object({
+  reason: z.string().trim().min(1, "A reason is required"),
+  kind: z.enum(["order", "instore"]),
+}).strict();
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
+  await connection();
+
+  const ctx = await loadCallerContext();
+  if (ctx.denied) return ctx.denied === "auth" ? Err.authRequired() : Err.forbidden();
+  if (!ctx.isSuperAdmin) return Err.forbidden();
+
+  try {
+    const { id } = await params;
+    const parsed = DeleteSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
+    const { reason, kind } = parsed.data;
+
+    let orderNumber: string | null;
+    try {
+      ({ orderNumber } = await deleteOrder({ id, kind: kind as OrderKind, reason, actorAdminProfileId: ctx.id }));
+    } catch (e) {
+      if (e instanceof Error && e.message === "Order not found") return Err.notFound("Order");
+      throw e;
+    }
+
+    await logActivity(
+      ctx.id,
+      `Permanently deleted ${kind === "instore" ? "in-store " : ""}order ${orderNumber ?? id}`,
+      "order",
+      id,
+      req,
+      { reason, kind },
+      "CRITICAL",
+    );
+
+    console.info("[admin/orders/[id]] DELETE —", id, kind);
+    return ok({ id });
+  } catch (e) {
+    reportError(e, { route: "DELETE /api/admin/orders/[id]", tags: { domain: "orders" } });
+    console.error("[admin/orders/[id]] DELETE error", e);
+    return Err.internal();
   }
 }

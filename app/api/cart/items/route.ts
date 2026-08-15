@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { reportError } from "@/lib/observability";
+import { readUtmCookie } from "@/lib/attribution";
 
 const AddSchema = z.object({
   productId: z.string().uuid(),
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
     const session = await auth.api.getSession({ headers: req.headers });
     const userId = session?.user?.id ?? null;
 
-    const { cartId, isNew } = await resolveCart(userId);
+    const { cartId, isNew } = await resolveCart(userId, readUtmCookie(req)?.source);
 
     // Prisma's compound-unique where-input doesn't accept `null` for a
     // nullable member field, so a null variantId (sizes-mode/no-variant

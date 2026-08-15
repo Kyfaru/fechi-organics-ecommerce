@@ -12,6 +12,8 @@ import { db } from "@/lib/db";
 import { markPaymentSuccess, markPaymentFailed } from "@/lib/payments/post-payment";
 import { reportError } from "@/lib/observability";
 import { trackServerEvent } from "@/lib/observability-server";
+import { createNotification } from "@/lib/notify";
+import { createOrderDetailToken } from "@/lib/order-detail-token";
 
 export async function POST(req: NextRequest) {
   let body: {
@@ -49,7 +51,7 @@ export async function POST(req: NextRequest) {
   try {
     const tx = await db.transaction.findFirst({
       where: { checkoutRequestId },
-      select: { id: true, orderId: true, status: true, order: { select: { userId: true } } },
+      select: { id: true, orderId: true, status: true, order: { select: { userId: true, branchId: true, guestEmail: true, user: { select: { name: true } } } } },
     });
 
     if (!tx) return Response.json({ ResultCode: 0, ResultDesc: "Accepted" });
@@ -85,6 +87,14 @@ export async function POST(req: NextRequest) {
         orderId,
         transactionId: tx.id,
         reason: `${resultCode}:${callback.ResultDesc ?? 'Payment failed'}`,
+      });
+      const customerLabel = tx.order?.user?.name ?? tx.order?.guestEmail ?? "A customer";
+      await createNotification({
+        type: "PAYMENT_ERROR",
+        title: `Payment failed — order #${orderId.slice(0, 8).toUpperCase()}`,
+        body: `${customerLabel}'s KCB payment failed: ${callback.ResultDesc ?? "Payment failed"}`,
+        link: `/admin/orders/payment-failed/${await createOrderDetailToken(orderId, "order")}`,
+        branchId: tx.order?.branchId ?? null,
       });
     }
   } catch (e) {

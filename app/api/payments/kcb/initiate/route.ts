@@ -24,6 +24,7 @@ import { markPaymentFailed } from "@/lib/payments/post-payment";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { deliveryDataSchema } from "@/lib/payments/delivery-schema";
 import { buildTimestampOrderNumber } from "@/lib/orders/generate-order-number";
+import { readUtmCookie } from "@/lib/attribution";
 
 const bodySchema = z.object({
   phone: z.string().min(9),
@@ -133,6 +134,7 @@ export async function POST(req: NextRequest) {
 
     // 6. Create order
     const now = new Date();
+    const utm = readUtmCookie(req);
     const order = await db.order.create({
       data: {
         userId,
@@ -155,6 +157,9 @@ export async function POST(req: NextRequest) {
         deliveryCountry: deliveryData.countryName ?? null,
         isInternational: deliveryData.country.toUpperCase() !== "KE",
         branchId: branch.id,
+        utmSource: utm?.source ?? null,
+        utmMedium: utm?.medium ?? null,
+        utmCampaign: utm?.campaign ?? null,
         items: {
           create: activeItems.map((item) => ({
             productId: item.product.id,

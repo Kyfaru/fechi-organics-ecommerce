@@ -210,7 +210,7 @@ export async function POST(req: NextRequest) {
       });
     } else {
       const now = new Date();
-      const orderNumber = buildInStoreOrderNumber(now, branch.shortcode);
+      const orderNumber = buildInStoreOrderNumber(now, branch.id);
       order = await db.inStoreOrder.create({
         data: {
           orderNumber,

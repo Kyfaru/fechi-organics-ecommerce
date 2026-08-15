@@ -12,6 +12,8 @@ import { db } from "@/lib/db";
 import { markPaymentSuccess, markPaymentFailed } from "@/lib/payments/post-payment";
 import { verifyTransaction } from "@/lib/paystack/client";
 import { reportError } from "@/lib/observability";
+import { createNotification } from "@/lib/notify";
+import { createOrderDetailToken } from "@/lib/order-detail-token";
 
 export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -23,7 +25,7 @@ export async function GET(req: NextRequest) {
   try {
     const tx = await db.transaction.findFirst({
       where: { paystackReference: reference },
-      include: { order: { select: { id: true, userId: true } } },
+      include: { order: { select: { id: true, userId: true, branchId: true, guestEmail: true, user: { select: { name: true } } } } },
     });
 
     if (!tx) return NextResponse.redirect(new URL("/payment?error=not_found", req.url));
@@ -52,7 +54,16 @@ export async function GET(req: NextRequest) {
       });
       return NextResponse.redirect(new URL(`/order-success/${orderId}`, req.url));
     } else {
-      await markPaymentFailed({ transactionId: tx.id, orderId });
+      const reason = paystackRes.data.gateway_response || "Card payment declined";
+      await markPaymentFailed({ transactionId: tx.id, orderId, reason });
+      const customerLabel = tx.order.user?.name ?? tx.order.guestEmail ?? "A customer";
+      await createNotification({
+        type: "PAYMENT_ERROR",
+        title: `Payment failed — order #${orderId.slice(0, 8).toUpperCase()}`,
+        body: `${customerLabel}'s card payment failed: ${reason}`,
+        link: `/admin/orders/payment-failed/${await createOrderDetailToken(orderId, "order")}`,
+        branchId: tx.order.branchId ?? null,
+      });
       return NextResponse.redirect(new URL("/payment?error=payment_failed", req.url));
     }
   } catch (e) {

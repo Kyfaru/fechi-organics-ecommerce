@@ -7,10 +7,10 @@ import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { SkeletonStatCard, SkeletonChart } from "@/components/admin/ui/Skeleton";
 import { Download } from "lucide-react";
-import { ProgressMetricCard } from "@/components/ui/progress-metric-card";
 import { DonutChart, type DonutChartSegment } from "@/components/ui/donut-chart";
 import { VisxBarChart } from "@/components/ui/bar-chart-visx";
-import { toSeriesPoints } from "@/lib/chart-transforms";
+import { ChannelStatCard } from "@/components/ui/channel-stat-card";
+import { StatSetSlider } from "@/components/ui/stat-set-slider";
 import { ExportModal } from "@/components/admin/exports/ExportModal";
 
 // ---------------------------------------------------------------------------
@@ -50,6 +50,7 @@ type ApiResponse = {
     stats: {
       totalRevenue: number;
       pending: number;
+      totalTransactions: number;
     };
   };
 };
@@ -62,6 +63,13 @@ function formatKes(cents: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+function formatKesCompact(cents: number) {
+  const v = cents / 100;
+  if (v >= 1_000_000) return `KES ${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `KES ${(v / 1_000).toFixed(1)}K`;
+  return `KES ${v.toLocaleString()}`;
 }
 
 function shortId(id: string) {
@@ -151,6 +159,7 @@ export function AdminTransactionsClient() {
   // Filter state for the payment methods pie chart (F4)
   const [pieFilter, setPieFilter] = useState<PieFilter>("SUCCESSFUL");
   const [exportOpen, setExportOpen] = useState(false);
+  const [statSet, setStatSet] = useState(0);
 
   const { data, isLoading } = useQuery<ApiResponse>({
     queryKey: ["admin-finance"],
@@ -161,12 +170,6 @@ export function AdminTransactionsClient() {
   });
 
   const transactions = data?.data?.transactions ?? [];
-  const total = data?.data?.pagination?.total ?? 0;
-
-  // Real, all-time figures from the API's aggregate query — not derived from
-  // the current paginated page (see app/api/admin/transactions/route.ts).
-  const totalRevenue = data?.data?.stats?.totalRevenue ?? 0;
-  const pendingCount = data?.data?.stats?.pending ?? 0;
 
   const monthlyRevenue = buildMonthlyRevenue(transactions);
 
@@ -284,6 +287,22 @@ export function AdminTransactionsClient() {
     { id: "CANCELLED", label: "Cancelled" },
   ];
 
+  const statSet1 = (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <ChannelStatCard title="Total Revenue" metric="revenue" scope="total" accent="emerald" valueFormatter={formatKesCompact} />
+      <ChannelStatCard title="Website Revenue" metric="revenue" scope="website" accent="blue" valueFormatter={formatKesCompact} />
+      <ChannelStatCard title="Total Transactions" metric="transactions" accent="violet" valueFormatter={(v) => v.toLocaleString()} />
+    </div>
+  );
+
+  const statSet2 = (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <ChannelStatCard title="Home Delivery Revenue" metric="revenue" scope="home-delivery" accent="amber" valueFormatter={formatKesCompact} />
+      <ChannelStatCard title="Store Pickup Revenue" metric="revenue" scope="store-pickup" accent="rose" valueFormatter={formatKesCompact} />
+      <ChannelStatCard title="Instore Revenue" metric="revenue" scope="instore" accent="neutral" valueFormatter={formatKesCompact} />
+    </div>
+  );
+
   return (
     <div>
       <PageHeader
@@ -302,49 +321,22 @@ export function AdminTransactionsClient() {
       <ExportModal resource="finance" open={exportOpen} onClose={() => setExportOpen(false)} />
 
       <div className="px-6 pb-8 space-y-6">
-        {/* ── Stat cards ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-          {isLoading ? (
-            Array.from({ length: 3 }).map((_, i) => <SkeletonStatCard key={i} />)
-          ) : (
-            <>
-              <ProgressMetricCard
-                title="Total Revenue"
-                value={totalRevenue}
-                change={2.4}
-                changeLabel="vs last month"
-                accent="emerald"
-                valueFormatter={(v) => `KES ${(v / 100).toLocaleString()}`}
-                series={monthlyRevenue.length > 0 ? [{ name: "Revenue", data: toSeriesPoints(monthlyRevenue) }] : []}
-              />
-              <ProgressMetricCard
-                title="Total Transactions"
-                value={total}
-                target={500}
-                change={1.8}
-                changeLabel="vs last month"
-                accent="blue"
-                series={[]}
-              />
-              <ProgressMetricCard
-                title="Pending"
-                value={pendingCount}
-                change={-2.1}
-                changeLabel="vs last month"
-                accent="amber"
-                series={[]}
-              />
-            </>
-          )}
-        </div>
+        {/* ── Stat cards — two transitioning sets ── */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => <SkeletonStatCard key={i} />)}
+          </div>
+        ) : (
+          <StatSetSlider sets={[statSet1, statSet2]} index={statSet} onChange={setStatSet} />
+        )}
 
-        {/* ── Charts row ── */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {/* Monthly revenue bar chart — 2/3 */}
+        {/* ── Charts row — 2-column ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Monthly revenue bar chart */}
           {isLoading ? (
-            <div className="xl:col-span-2"><SkeletonChart /></div>
+            <SkeletonChart />
           ) : (
-            <div className="xl:col-span-2 bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+            <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
               <h2 className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-1">
                 Monthly Revenue
               </h2>
@@ -360,7 +352,7 @@ export function AdminTransactionsClient() {
             </div>
           )}
 
-          {/* Payment methods donut with filter toggles — 1/3 (F4) */}
+          {/* Payment methods donut with filter toggles (F4) */}
           {isLoading ? (
             <SkeletonChart />
           ) : (

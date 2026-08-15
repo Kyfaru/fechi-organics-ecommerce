@@ -9,7 +9,7 @@
  * buffer so we never use an about-to-expire token.
  */
 
-import { decrypt } from "@/lib/crypto";
+import { decrypt, fingerprint } from "@/lib/crypto";
 import { getRedis } from "@/lib/redis";
 
 const DARAJA_BASE =
@@ -51,6 +51,13 @@ export async function getDarajaToken(branch: {
   const secret = decrypt(branch.consumerSecretEnc);
   const basicAuth = Buffer.from(`${key}:${secret}`).toString("base64");
 
+  // The token step only ever uses consumerKey/consumerSecret (Basic Auth) —
+  // the passkey is never involved here, only later in the STK push password.
+  // So a failure logged here always points at one of these two, never the passkey.
+  console.info(
+    `[daraja] token request — branch=${branch.id} base=${DARAJA_BASE} consumerKey=${fingerprint(key)} consumerSecret=${fingerprint(secret)}`,
+  );
+
   const res = await fetch(
     `${DARAJA_BASE}/oauth/v1/generate?grant_type=client_credentials`,
     {
@@ -62,6 +69,9 @@ export async function getDarajaToken(branch: {
 
   if (!res.ok) {
     const body = await res.text();
+    console.error(
+      `[daraja] token fetch failed — branch=${branch.id} status=${res.status} consumerKey=${fingerprint(key)} consumerSecret=${fingerprint(secret)} body="${body}"`,
+    );
     throw new Error(
       `[daraja] Token fetch failed: ${res.status} ${res.statusText} — ${body}`,
     );

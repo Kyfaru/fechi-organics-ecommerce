@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import type { PeriodChange } from "@/lib/stats";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -16,32 +15,15 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
 } from "recharts";
-import {
-  TrendingUp,
-  ShoppingCart,
-  Users,
-  AlertTriangle,
-  Package,
-} from "lucide-react";
-import { StatCard } from "@/components/admin/ui/StatCard";
+import { AlertTriangle, Users } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { SkeletonStatCard, SkeletonChart } from "@/components/admin/ui/Skeleton";
-import { ProgressMetricCard } from "@/components/ui/progress-metric-card";
-import { StatsWidget } from "@/components/ui/stats-widget";
-import { DonutChart, type DonutChartSegment } from "@/components/ui/donut-chart";
-import { VisxBarChart } from "@/components/ui/bar-chart-visx";
-import { VisxAreaChart } from "@/components/ui/area-chart-visx";
-import { RechartsAreaChart } from "@/components/ui/area-chart-recharts";
-import { ChartFilter } from "@/components/ui/chart-filter";
-import { Badge2 } from "@/components/ui/badge-2";
-import { toSeriesPoints } from "@/lib/chart-transforms";
+import { ChannelStatCard } from "@/components/ui/channel-stat-card";
+import { StatSetSlider } from "@/components/ui/stat-set-slider";
+import { TIME_RANGE_PRESETS } from "@/components/ui/time-range-tabs";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -55,28 +37,29 @@ type RecentOrder = {
   user: { name: string; email: string } | null;
 };
 
-type LowStockProduct = {
-  id: string;
-  name: string;
-  stock: number;
-  images: { objectKey: string; isPrimary: boolean }[];
-};
-
 type DashboardData = {
-  stats: { revenue: number; orders: number; newCustomers: number; lowStock: number };
-  statsChange: Record<"revenue" | "orders" | "newCustomers", PeriodChange>;
   recentOrders: RecentOrder[];
-  lowStockProducts: LowStockProduct[];
+  ordersByStatus: { status: string; count: number }[];
 };
 
 type AnalyticsData = {
   granularity: "hourly" | "daily" | "weekly" | "monthly";
   buckets: string[];
   series: { orders: number[]; revenue: number[]; clients: number[] };
-  productSales: { productId: string; name: string; value: number; percent: number }[];
 };
 
 type AnalyticsPoint = { label: string; value: number };
+
+type Ticket = {
+  id: string;
+  subject: string;
+  status: string;
+  createdAt: string;
+  lastActivityAt: string;
+  user: { name: string; email: string } | null;
+};
+
+type Notification = { id: string; title: string; message: string; type: string; createdAt: string };
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -84,18 +67,15 @@ type AnalyticsPoint = { label: string; value: number };
 const RANGES = ["24h", "7d", "14d", "30d", "3m", "6m", "12m", "All"] as const;
 type RangeKey = typeof RANGES[number] | "custom";
 
-const PIE_COLORS = [
-  "#43A935",
-  "#FFC800",
-  "#3B82C4",
-  "#F97316",
-  "#D64545",
-  "#8B5CF6",
-  "#EC4899",
-  "#14B8A6",
-  "#F59E0B",
-  "#6366F1",
-];
+const ORDER_STATUS_COLORS: Record<string, string> = {
+  DELIVERED: "var(--green-500)",
+  PICKED_UP: "var(--green-500)",
+  SHIPPED: "var(--info)",
+  PROCESSING: "var(--gold-500)",
+  CONFIRMED: "#8B5CF6",
+  PENDING: "var(--neutral-400)",
+  CANCELLED: "var(--danger)",
+};
 
 const QUICK_ACTIONS = [
   { href: "/admin/products?action=new", label: "＋ New Product" },
@@ -116,6 +96,13 @@ function formatKes(cents: number) {
   })}`;
 }
 
+function formatKesCompact(cents: number) {
+  const v = cents / 100;
+  if (v >= 1_000_000) return `KES ${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `KES ${(v / 1_000).toFixed(1)}K`;
+  return `KES ${v.toLocaleString()}`;
+}
+
 function shortId(id: string) {
   return `#${id.slice(0, 8).toUpperCase()}`;
 }
@@ -134,8 +121,14 @@ function chartDateLabel(iso: string) {
   return d.toLocaleDateString("en-KE", { month: "short", day: "numeric" });
 }
 
-function truncate(text: string, max: number) {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+function timeAgo(iso: string) {
+  const ms = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(ms / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 // ---------------------------------------------------------------------------
@@ -197,62 +190,6 @@ function ChartTooltip({
   );
 }
 
-function PieTooltip({
-  active,
-  payload,
-}: {
-  active?: boolean;
-  payload?: { payload: AnalyticsData["productSales"][number] }[];
-}) {
-  if (!active || !payload?.length) return null;
-  const slice = payload[0].payload;
-  return (
-    <div className="bg-white dark:bg-(--dark-surface) border border-(--neutral-200) dark:border-(--dark-border) rounded-[8px] px-3 py-2 shadow-(--e2)">
-      <p className="font-dm text-[13px] font-medium text-(--neutral-900) dark:text-(--dark-text)">
-        {slice.name} &mdash; {slice.percent}%
-      </p>
-    </div>
-  );
-}
-
-function LowStockCard({ product }: { product: LowStockProduct }) {
-  const primary = product.images.find((i) => i.isPrimary) ?? product.images[0];
-  const imageUrl = primary
-    ? `https://pub-fechi.b-cdn.net/${primary.objectKey}`
-    : null;
-
-  return (
-    <div className="bg-white dark:bg-(--dark-surface) rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 flex items-center gap-3">
-      <div className="w-12 h-12 rounded-[8px] bg-(--neutral-100) dark:bg-(--dark-bg) flex-shrink-0 overflow-hidden">
-        {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={imageUrl}
-            alt={product.name}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Package size={20} className="text-(--neutral-300)" />
-          </div>
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="font-dm text-[13px] font-medium text-(--neutral-900) dark:text-(--dark-text) truncate">
-          {product.name}
-        </p>
-        <p
-          className={`font-dm text-[12px] font-semibold mt-0.5 ${
-            product.stock < 5 ? "text-(--danger)" : "text-(--gold-700)"
-          }`}
-        >
-          {product.stock} in stock
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function ChartError() {
   return (
     <div className="rounded-[8px] bg-(--danger)/10 border border-(--danger)/30 px-4 py-3">
@@ -274,18 +211,12 @@ function ChartHeader({ title, subtitle }: { title: string; subtitle: string }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Range pill class helper
-// ---------------------------------------------------------------------------
 function rangePillClass(active: boolean) {
   return active
     ? "bg-(--green-800) text-white dark:bg-(--dark-accent) dark:text-(--dark-bg) rounded-full px-3 h-8 font-dm text-[13px] font-medium transition-colors flex items-center"
     : "bg-transparent text-(--neutral-500) dark:text-(--dark-muted) hover:bg-(--green-50) dark:hover:bg-(--dark-border) rounded-full px-3 h-8 font-dm text-[13px] font-medium transition-colors flex items-center";
 }
 
-// ---------------------------------------------------------------------------
-// Card class (used inline via template literals)
-// ---------------------------------------------------------------------------
 const cardClass =
   "bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6";
 
@@ -303,6 +234,7 @@ export function AdminDashboardClient() {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [showCustom, setShowCustom] = useState(false);
+  const [statSet, setStatSet] = useState(0);
 
   const {
     data: analyticsResp,
@@ -323,58 +255,35 @@ export function AdminDashboardClient() {
   const analytics = analyticsResp?.data;
 
   const { data: ticketsData } = useQuery({
-    queryKey: ["admin-tickets-waiting"],
+    queryKey: ["admin-tickets-open"],
     queryFn: async () => {
       try {
-        const res = await fetch("/api/admin/tickets?sort=waiting&limit=5");
-        if (!res.ok) return { tickets: [] };
+        const res = await fetch("/api/admin/tickets?status=open");
+        if (!res.ok) return { data: { tickets: [] } };
         return res.json();
-      } catch { return { tickets: [] }; }
+      } catch { return { data: { tickets: [] } }; }
     },
     staleTime: 60_000,
   });
-  const tickets: Array<{ id: string; subject: string; customerName: string; waitTime: string; priority: string }> = ticketsData?.data?.tickets ?? ticketsData?.tickets ?? [];
+  const tickets: Ticket[] = ticketsData?.data?.tickets ?? [];
+  const newTicketsCount = tickets.filter(
+    (t) => Date.now() - new Date(t.createdAt).getTime() < 24 * 60 * 60 * 1000,
+  ).length;
 
   const { data: criticalNotifs } = useQuery({
     queryKey: ["admin-notifications-critical"],
     queryFn: async () => {
       try {
         const res = await fetch("/api/admin/notifications?limit=5&type=error");
-        if (!res.ok) return { notifications: [] };
+        if (!res.ok) return { data: { notifications: [] } };
         return res.json();
-      } catch { return { notifications: [] }; }
+      } catch { return { data: { notifications: [] } }; }
     },
     staleTime: 30_000,
   });
-  const notifications: Array<{ id: string; title: string; message: string; type: string; createdAt: string }> = criticalNotifs?.data?.notifications ?? criticalNotifs?.notifications ?? [];
+  const notifications: Notification[] = criticalNotifs?.data?.notifications ?? [];
 
   const dashboard = data?.data;
-  const stats = dashboard?.stats;
-  const statsChange = dashboard?.statsChange;
-
-  // Build a monthlyRevenue-shaped array from analytics buckets for chart helpers
-  const monthlyRevenue: { month: string; amount: number }[] = analytics
-    ? analytics.buckets.map((b, i) => ({ month: b, amount: analytics.series.revenue[i] ?? 0 }))
-    : [];
-
-  // Order status donut data - calculate from recentOrders
-  const statusCounts = (dashboard?.recentOrders ?? []).reduce(
-    (acc: Record<string, number>, o: { status: string }) => {
-      acc[o.status] = (acc[o.status] ?? 0) + 1;
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
-
-  const orderStatusData: DonutChartSegment[] = [
-    { label: "Delivered", value: (stats as unknown as Record<string, number>)?.delivered ?? statusCounts["delivered"] ?? 0, color: "var(--green-500, #22c55e)" },
-    { label: "Shipped", value: (stats as unknown as Record<string, number>)?.shipped ?? statusCounts["shipped"] ?? 0, color: "var(--info, #3b82f6)" },
-    { label: "Processing", value: (stats as unknown as Record<string, number>)?.processing ?? statusCounts["processing"] ?? 0, color: "var(--gold-500, #eab308)" },
-    { label: "Pending", value: (stats as unknown as Record<string, number>)?.pending ?? statusCounts["pending"] ?? 0, color: "var(--neutral-400, #9ca3af)" },
-    { label: "Cancelled", value: (stats as unknown as Record<string, number>)?.cancelled ?? statusCounts["cancelled"] ?? 0, color: "var(--danger, #ef4444)" },
-  ];
-
-  const [chartDateRange, setChartDateRange] = useState<{ start: string; end: string } | null>(null);
 
   const today = new Date().toLocaleDateString("en-KE", {
     weekday: "long",
@@ -442,6 +351,36 @@ export function AdminDashboardClient() {
     },
   ];
 
+  const statSet1 = (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <ChannelStatCard title="Total Revenue" metric="revenue" scope="total" accent="emerald" valueFormatter={formatKesCompact} />
+      <ChannelStatCard title="Website Revenue" metric="revenue" scope="website" accent="blue" valueFormatter={formatKesCompact} />
+      <ChannelStatCard title="Home Delivery Revenue" metric="revenue" scope="home-delivery" accent="violet" valueFormatter={formatKesCompact} />
+      <ChannelStatCard title="Store Pickup Revenue" metric="revenue" scope="store-pickup" accent="amber" valueFormatter={formatKesCompact} />
+    </div>
+  );
+
+  const statSet2 = (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <ChannelStatCard title="Instore Revenue" metric="revenue" scope="instore" accent="rose" valueFormatter={formatKesCompact} />
+      <ChannelStatCard title="Total Orders" metric="orders" scope="total" accent="blue" presets={TIME_RANGE_PRESETS.dashboard} valueFormatter={(v) => v.toLocaleString()} />
+      <ChannelStatCard title="New Customers" metric="customers" accent="emerald" presets={TIME_RANGE_PRESETS.dashboard} valueFormatter={(v) => v.toLocaleString()} />
+      <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:bg-dark-surface dark:border-dark-border">
+        <span className="text-sm font-medium text-neutral-500 dark:text-neutral-400">Open &amp; New Tickets</span>
+        <div className="mt-3 flex items-end gap-6">
+          <div>
+            <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{tickets.length}</p>
+            <p className="text-xs text-neutral-400">Open</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{newTicketsCount}</p>
+            <p className="text-xs text-neutral-400">New (24h)</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div>
       <PageHeader
@@ -466,44 +405,14 @@ export function AdminDashboardClient() {
       </div>
 
       <div className="px-6 pb-8 space-y-6">
-        {/* Stat Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {isLoading ? (
-            Array.from({ length: 4 }).map((_, i) => <SkeletonStatCard key={i} />)
-          ) : (
-            <>
-              <ProgressMetricCard
-                title="Total Revenue"
-                value={stats?.revenue ?? 0}
-                change={statsChange?.revenue.pct ?? 0}
-                changeLabel="vs last month"
-                accent="emerald"
-                valueFormatter={(v) => `KES ${(v / 100).toLocaleString()}`}
-                series={monthlyRevenue.length ? [{ name: "Revenue", data: toSeriesPoints(monthlyRevenue) }] : []}
-              />
-              <ProgressMetricCard
-                title="Total Orders"
-                value={stats?.orders ?? 0}
-                change={statsChange?.orders.pct ?? 0}
-                changeLabel="vs last month"
-                accent="blue"
-                series={[]}
-              />
-              <StatsWidget
-                title="New Customers"
-                metric={String(stats?.newCustomers ?? 0)}
-                change={statsChange?.newCustomers.pct ?? 0}
-                changeLabel="vs last month"
-                color="green"
-              />
-              <StatsWidget
-                title="Low Stock Alerts"
-                metric={String(stats?.lowStock ?? 0)}
-                color="danger"
-              />
-            </>
-          )}
-        </div>
+        {/* Stat Cards — two transitioning sets */}
+        {isLoading ? (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => <SkeletonStatCard key={i} />)}
+          </div>
+        ) : (
+          <StatSetSlider sets={[statSet1, statSet2]} index={statSet} onChange={setStatSet} />
+        )}
 
         {/* Shared Range Picker */}
         <div className={cardClass}>
@@ -561,17 +470,12 @@ export function AdminDashboardClient() {
           )}
         </div>
 
-        {/* Row 1: Orders Bar Chart (2/3) + Product Sales Pie (1/3) */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {/* Orders — Bar Chart */}
-          <div className={`xl:col-span-2 ${cardClass}`}>
+        {/* Orders + Revenue — 2-column */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className={cardClass}>
             <ChartHeader
               title="Orders"
-              subtitle={
-                analytics
-                  ? `Order count per ${analytics.granularity} period`
-                  : "Order count"
-              }
+              subtitle={analytics ? `Order count per ${analytics.granularity} period` : "Order count"}
             />
             {analyticsError ? (
               <ChartError />
@@ -580,23 +484,15 @@ export function AdminDashboardClient() {
             ) : (
               (() => {
                 const ordersData: AnalyticsPoint[] = analytics
-                  ? analytics.buckets.map((b, i) => ({
-                      label: b,
-                      value: analytics.series.orders[i] ?? 0,
-                    }))
+                  ? analytics.buckets.map((b, i) => ({ label: b, value: analytics.series.orders[i] ?? 0 }))
                   : [];
                 return ordersData.length === 0 ? (
-                  <div className="h-[320px] flex items-center justify-center">
-                    <p className="font-dm text-[13px] text-(--neutral-400)">
-                      No data for this range
-                    </p>
+                  <div className="h-[280px] flex items-center justify-center">
+                    <p className="font-dm text-[13px] text-(--neutral-400)">No data for this range</p>
                   </div>
                 ) : (
-                  <ResponsiveContainer width="100%" height={320}>
-                    <BarChart
-                      data={ordersData}
-                      margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
-                    >
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={ordersData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                       {sharedGrid}
                       {sharedXAxis()}
                       {sharedYAxis((v) => v.toLocaleString())}
@@ -604,13 +500,7 @@ export function AdminDashboardClient() {
                         content={<ChartTooltip format={(v) => v.toLocaleString()} />}
                         cursor={{ fill: "var(--neutral-100)", opacity: 0.4 }}
                       />
-                      <Bar
-                        dataKey="value"
-                        fill="var(--green-500)"
-                        radius={[4, 4, 0, 0]}
-                        isAnimationActive
-                        animationDuration={700}
-                      />
+                      <Bar dataKey="value" fill="var(--green-500)" radius={[4, 4, 0, 0]} isAnimationActive animationDuration={700} />
                     </BarChart>
                   </ResponsiveContainer>
                 );
@@ -618,16 +508,96 @@ export function AdminDashboardClient() {
             )}
           </div>
 
-          {/* Notifications — Critical alerts */}
+          <div className={cardClass}>
+            <ChartHeader title="Revenue" subtitle="KES from paid orders" />
+            {analyticsError ? (
+              <ChartError />
+            ) : analyticsLoading ? (
+              <SkeletonChart />
+            ) : (
+              (() => {
+                const revenueData: AnalyticsPoint[] = analytics
+                  ? analytics.buckets.map((b, i) => ({ label: b, value: analytics.series.revenue[i] ?? 0 }))
+                  : [];
+                return revenueData.length === 0 ? (
+                  <div className="h-[280px] flex items-center justify-center">
+                    <p className="font-dm text-[13px] text-(--neutral-400)">No data for this range</p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <AreaChart data={revenueData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                      <defs>
+                        <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="var(--green-500)" stopOpacity={0.25} />
+                          <stop offset="100%" stopColor="var(--green-500)" stopOpacity={0.02} />
+                        </linearGradient>
+                      </defs>
+                      {sharedGrid}
+                      {sharedXAxis()}
+                      {sharedYAxis((v) => `KES ${(v / 100).toLocaleString()}`, 80)}
+                      <Tooltip
+                        content={<ChartTooltip format={(v) => `KES ${(v / 100).toLocaleString()}`} />}
+                        cursor={{ fill: "var(--neutral-100)", opacity: 0.4 }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        stroke="var(--green-500)"
+                        strokeWidth={2.5}
+                        fill="url(#revenueGrad)"
+                        isAnimationActive
+                        animationDuration={700}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                );
+              })()
+            )}
+          </div>
+        </div>
+
+        {/* New Clients — full width (single series, no natural pairing) */}
+        <div className={cardClass}>
+          <ChartHeader title="New Clients" subtitle="Client registrations over time" />
+          {analyticsError ? (
+            <ChartError />
+          ) : analyticsLoading ? (
+            <SkeletonChart />
+          ) : (
+            (() => {
+              const clientsData: AnalyticsPoint[] = analytics
+                ? analytics.buckets.map((b, i) => ({ label: b, value: analytics.series.clients[i] ?? 0 }))
+                : [];
+              return clientsData.length === 0 ? (
+                <div className="h-[220px] flex items-center justify-center">
+                  <p className="font-dm text-[13px] text-(--neutral-400)">No data for this range</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={clientsData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                    {sharedGrid}
+                    {sharedXAxis()}
+                    {sharedYAxis((v) => v.toLocaleString())}
+                    <Tooltip content={<ChartTooltip format={(v) => v.toLocaleString()} />} cursor={{ fill: "var(--neutral-100)", opacity: 0.4 }} />
+                    <Line type="monotone" dataKey="value" stroke="var(--info)" strokeWidth={2.5} dot={false} isAnimationActive animationDuration={700} />
+                  </LineChart>
+                </ResponsiveContainer>
+              );
+            })()
+          )}
+        </div>
+
+        {/* Notifications / Open Tickets / Order Status — one row, three columns */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className={cardClass}>
             <ChartHeader title="Notifications" subtitle="Latest critical alerts" />
             {notifications.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-[220px] text-center">
-                <AlertTriangle size={32} className="text-(--neutral-300) mb-2" />
+              <div className="flex flex-col items-center justify-center h-[180px] text-center">
+                <AlertTriangle size={28} className="text-(--neutral-300) mb-2" />
                 <p className="font-dm text-[13px] text-(--neutral-400)">No critical alerts</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2 max-h-[220px] overflow-y-auto">
                 {notifications.map((n) => (
                   <div key={n.id} className="flex items-start gap-3 p-3 rounded-[10px] bg-(--neutral-50) dark:bg-(--dark-bg) border border-(--neutral-100) dark:border-(--dark-border)">
                     <div className="w-2 h-2 rounded-full bg-(--danger) mt-1.5 shrink-0" />
@@ -645,107 +615,25 @@ export function AdminDashboardClient() {
               </Link>
             </div>
           </div>
-        </div>
 
-
-        {/* Row 2: Revenue Area Chart — Full Width */}
-        <div className={cardClass}>
-          <ChartHeader title="Revenue" subtitle="KES from paid orders" />
-          {analyticsError ? (
-            <ChartError />
-          ) : analyticsLoading ? (
-            <SkeletonChart />
-          ) : (
-            (() => {
-              const revenueData: AnalyticsPoint[] = analytics
-                ? analytics.buckets.map((b, i) => ({
-                    label: b,
-                    value: analytics.series.revenue[i] ?? 0,
-                  }))
-                : [];
-              return revenueData.length === 0 ? (
-                <div className="h-[320px] flex items-center justify-center">
-                  <p className="font-dm text-[13px] text-(--neutral-400)">
-                    No data for this range
-                  </p>
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={320}>
-                  <AreaChart
-                    data={revenueData}
-                    margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
-                  >
-                    <defs>
-                      <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop
-                          offset="0%"
-                          stopColor="var(--green-500)"
-                          stopOpacity={0.25}
-                        />
-                        <stop
-                          offset="100%"
-                          stopColor="var(--green-500)"
-                          stopOpacity={0.02}
-                        />
-                      </linearGradient>
-                    </defs>
-                    {sharedGrid}
-                    {sharedXAxis()}
-                    {sharedYAxis(
-                      (v) => `KES ${(v / 100).toLocaleString()}`,
-                      80,
-                    )}
-                    <Tooltip
-                      content={
-                        <ChartTooltip
-                          format={(v) => `KES ${(v / 100).toLocaleString()}`}
-                        />
-                      }
-                      cursor={{ fill: "var(--neutral-100)", opacity: 0.4 }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke="var(--green-500)"
-                      strokeWidth={2.5}
-                      fill="url(#revenueGrad)"
-                      isAnimationActive
-                      animationDuration={700}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              );
-            })()
-          )}
-        </div>
-
-        {/* Row 3: Customer Tickets (1/3) + Order Status DonutChart (2/3) */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {/* Customer Tickets — longest waiting */}
           <div className={cardClass}>
-            <ChartHeader title="Open Tickets" subtitle="Longest waiting first" />
+            <ChartHeader title="Open Tickets" subtitle="Most recently active first" />
             {tickets.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-[220px] text-center">
-                <Users size={32} className="text-(--neutral-300) mb-2" />
+              <div className="flex flex-col items-center justify-center h-[180px] text-center">
+                <Users size={28} className="text-(--neutral-300) mb-2" />
                 <p className="font-dm text-[13px] text-(--neutral-400)">No open tickets</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {tickets.map((t) => (
+              <div className="space-y-2 max-h-[220px] overflow-y-auto">
+                {tickets.slice(0, 5).map((t) => (
                   <div key={t.id} className="flex items-center justify-between gap-2 p-3 rounded-[10px] bg-(--neutral-50) dark:bg-(--dark-bg) border border-(--neutral-100) dark:border-(--dark-border)">
                     <div className="min-w-0 flex-1">
                       <p className="font-dm text-[13px] font-medium text-(--neutral-900) dark:text-(--dark-text) truncate">{t.subject}</p>
-                      <p className="font-dm text-[11px] text-(--neutral-400)">{t.customerName}</p>
+                      <p className="font-dm text-[11px] text-(--neutral-400)">{t.user?.name ?? "Guest"}</p>
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className="font-dm text-[11px] text-(--neutral-400)">{t.waitTime}</p>
-                      <Badge2
-                        variant={t.priority === "urgent" ? "destructive" : t.priority === "high" ? "warning" : "outline"}
-                        size="xs"
-                        className="mt-0.5"
-                      >
-                        {t.priority}
-                      </Badge2>
+                      <p className="font-dm text-[11px] text-(--neutral-400)">{timeAgo(t.lastActivityAt)}</p>
+                      <StatusPill status={t.status} />
                     </div>
                   </div>
                 ))}
@@ -758,85 +646,44 @@ export function AdminDashboardClient() {
             </div>
           </div>
 
-          {/* Order Status — DonutChart (2/3) */}
-          <div className={`xl:col-span-2 ${cardClass}`}>
-            <ChartHeader title="Order Status" subtitle="Distribution of current orders" />
+          <div className={cardClass}>
+            <ChartHeader title="Order Status" subtitle="Current order breakdown" />
             {isLoading ? (
               <SkeletonChart />
-            ) : (
-              <div className="flex flex-col items-center justify-center gap-6">
-                <DonutChart
-                  data={[
-                    { label: "Delivered", value: statusCounts["DELIVERED"] ?? 0, color: "var(--green-500)" },
-                    { label: "Shipped", value: statusCounts["SHIPPED"] ?? 0, color: "var(--info)" },
-                    { label: "Processing", value: statusCounts["PROCESSING"] ?? 0, color: "var(--gold-500)" },
-                    { label: "Confirmed", value: statusCounts["CONFIRMED"] ?? 0, color: "#8B5CF6" },
-                    { label: "Pending", value: statusCounts["PENDING"] ?? 0, color: "var(--neutral-400)" },
-                    { label: "Cancelled", value: statusCounts["CANCELLED"] ?? 0, color: "var(--danger)" },
-                  ].filter((d) => d.value > 0)}
-                  size={260}
-                  strokeWidth={32}
-                  centerContent={
-                    <div className="text-center">
-                      <p className="font-syne text-[28px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
-                        {(dashboard?.recentOrders ?? []).length}
-                      </p>
-                      <p className="font-dm text-[12px] text-(--neutral-400)">Orders</p>
-                    </div>
-                  }
-                />
-                <div className="flex flex-wrap justify-center gap-x-6 gap-y-2">
-                  {[
-                    { label: "Delivered", color: "var(--green-500)" },
-                    { label: "Shipped", color: "var(--info)" },
-                    { label: "Processing", color: "var(--gold-500)" },
-                    { label: "Confirmed", color: "#8B5CF6" },
-                    { label: "Pending", color: "var(--neutral-400)" },
-                    { label: "Cancelled", color: "var(--danger)" },
-                  ].map((item) => (
-                    <div key={item.label} className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                      <span className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted)">{item.label}</span>
-                    </div>
-                  ))}
-                </div>
+            ) : (dashboard?.ordersByStatus ?? []).length === 0 ? (
+              <div className="flex items-center justify-center h-[180px]">
+                <p className="font-dm text-[13px] text-(--neutral-400)">No orders yet</p>
               </div>
+            ) : (
+              (() => {
+                const rows = dashboard!.ordersByStatus;
+                const total = rows.reduce((s, r) => s + r.count, 0) || 1;
+                return (
+                  <div className="space-y-2.5 max-h-[220px] overflow-y-auto">
+                    {rows
+                      .sort((a, b) => b.count - a.count)
+                      .map((r) => (
+                        <div key={r.status} className="flex items-center gap-2">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: ORDER_STATUS_COLORS[r.status] ?? "var(--neutral-400)" }}
+                          />
+                          <span className="font-dm text-[12px] text-(--neutral-600) dark:text-(--dark-muted) flex-1 truncate">
+                            {r.status}
+                          </span>
+                          <span className="font-dm text-[12px] font-medium text-(--neutral-900) dark:text-(--dark-text)">
+                            {r.count}
+                          </span>
+                          <span className="font-dm text-[11px] text-(--neutral-400) w-9 text-right">
+                            {Math.round((r.count / total) * 100)}%
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                );
+              })()
             )}
           </div>
-        </div>
-
-        {/* Row 4: New Clients Line Chart — Full Width */}
-        <div className={cardClass}>
-          <ChartHeader title="New Clients" subtitle="Client registrations over time" />
-          {analyticsError ? (
-            <ChartError />
-          ) : analyticsLoading ? (
-            <SkeletonChart />
-          ) : (
-            (() => {
-              const clientsData: AnalyticsPoint[] = analytics
-                ? analytics.buckets.map((b, i) => ({
-                    label: b,
-                    value: analytics.series.clients[i] ?? 0,
-                  }))
-                : [];
-              return clientsData.length === 0 ? (
-                <div className="h-[260px] flex items-center justify-center">
-                  <p className="font-dm text-[13px] text-(--neutral-400)">No data for this range</p>
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={260}>
-                  <LineChart data={clientsData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                    {sharedGrid}
-                    {sharedXAxis()}
-                    {sharedYAxis((v) => v.toLocaleString())}
-                    <Tooltip content={<ChartTooltip format={(v) => v.toLocaleString()} />} cursor={{ fill: "var(--neutral-100)", opacity: 0.4 }} />
-                    <Line type="monotone" dataKey="value" stroke="var(--info)" strokeWidth={2.5} dot={false} isAnimationActive animationDuration={700} />
-                  </LineChart>
-                </ResponsiveContainer>
-              );
-            })()
-          )}
         </div>
 
         {/* Recent Orders — Full Width */}
@@ -854,106 +701,6 @@ export function AdminDashboardClient() {
             emptyDescription="Orders will appear here once customers start checking out."
             pageSize={8}
           />
-        </div>
-
-        {/* New chart rows */}
-        <div className="mt-6 space-y-6">
-          {/* Row A: Bar chart + Notifications */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:bg-dark-surface dark:border-dark-border">
-                <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-4">Monthly Revenue</h3>
-                <VisxBarChart
-                  data={monthlyRevenue.map((r) => ({ label: r.month, value: r.amount / 100 }))}
-                  color="var(--green-500, #22c55e)"
-                  height={200}
-                  formatY={(v) => `KES ${(v / 1000).toFixed(0)}K`}
-                />
-              </div>
-            </div>
-            <div>
-              <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:bg-dark-surface dark:border-dark-border h-full">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Notifications</h3>
-                  <Badge2 variant="destructive" size="xs">{notifications.length}</Badge2>
-                </div>
-                {notifications.length === 0 ? (
-                  <p className="text-sm text-neutral-400 text-center py-8">No critical notifications</p>
-                ) : (
-                  <div className="space-y-2">
-                    {notifications.map((n) => (
-                      <div key={n.id} className="rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 p-2.5">
-                        <p className="text-xs font-medium text-red-800 dark:text-red-400 truncate">{n.title}</p>
-                        <p className="text-xs text-red-600 dark:text-red-500 truncate mt-0.5">{n.message}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="border-t border-neutral-100 dark:border-dark-border mt-3 pt-3">
-                  <a href="/admin/notifications" className="text-xs text-green-600 hover:text-green-700 dark:text-green-400">View all notifications →</a>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Row B: Customer Tickets + Donut */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div>
-              <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:bg-dark-surface dark:border-dark-border h-full">
-                <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-4">Customer Tickets</h3>
-                {tickets.length === 0 ? (
-                  <p className="text-sm text-neutral-400 text-center py-8">No open tickets</p>
-                ) : (
-                  <div className="space-y-2">
-                    {tickets.map((ticket) => (
-                      <div key={ticket.id} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-neutral-50 dark:bg-neutral-800">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium truncate text-neutral-800 dark:text-neutral-200">{ticket.subject}</p>
-                          <p className="text-xs text-neutral-400">{ticket.customerName}</p>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="text-xs text-neutral-400">{ticket.waitTime}</span>
-                          <Badge2 variant={ticket.priority === "urgent" ? "destructive" : ticket.priority === "high" ? "warning" : "outline"} size="xs">
-                            {ticket.priority}
-                          </Badge2>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="border-t border-neutral-100 dark:border-dark-border mt-3 pt-3">
-                  <a href="/admin/support" className="text-xs text-green-600 hover:text-green-700 dark:text-green-400">View all tickets →</a>
-                </div>
-              </div>
-            </div>
-            <div className="lg:col-span-2">
-              <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:bg-dark-surface dark:border-dark-border">
-                <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-4">Order Status Distribution</h3>
-                <div className="flex justify-center">
-                  <DonutChart
-                    data={orderStatusData.filter((d) => d.value > 0)}
-                    size={220}
-                    strokeWidth={32}
-                    valueFormatter={(v) => v.toLocaleString()}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Row C: Revenue Trend with date filter */}
-          <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:bg-dark-surface dark:border-dark-border">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Revenue Trend</h3>
-              <ChartFilter value={chartDateRange} onChange={setChartDateRange} />
-            </div>
-            <VisxAreaChart
-              data={monthlyRevenue.map((r) => ({ date: r.month, value: r.amount / 100 }))}
-              color="var(--green-500, #22c55e)"
-              height={220}
-              valueFormatter={(v) => `KES ${(v / 1000).toFixed(0)}K`}
-            />
-          </div>
         </div>
       </div>
     </div>

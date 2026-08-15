@@ -209,7 +209,7 @@ export async function POST(req: NextRequest) {
       const now = new Date();
       order = await db.inStoreOrder.create({
         data: {
-          orderNumber: buildInStoreOrderNumber(now, branch.shortcode),
+          orderNumber: buildInStoreOrderNumber(now, branch.id),
           branchId: branch.id,
           createdByAdminId: admin.id,
           createdByAdminName: admin.name,

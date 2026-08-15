@@ -26,7 +26,7 @@ export async function generateExportFile(
     return { buffer: Buffer.from(renderXml(data), "utf-8"), fileName: `${resource}-report-${stamp}.xml`, contentType: "application/xml; charset=utf-8" };
   }
   return {
-    buffer: renderExportReportPdf(data, { title, resource }),
+    buffer: await renderExportReportPdf(data, { title, resource }),
     fileName: `${resource}-report-${stamp}.pdf`,
     contentType: "application/pdf",
   };

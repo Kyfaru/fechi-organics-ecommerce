@@ -28,14 +28,17 @@ export type CartSummary = {
 };
 
 /** Resolve or create a cart for the current request.
- *  Logged-in users → user cart. Guests → cookie-token cart. */
+ *  Logged-in users → user cart. Guests → cookie-token cart.
+ *  `utmSource`, if given, is stamped only when a cart is newly created — the
+ *  conversion-rate denominator for the Reports social-channel section. */
 export async function resolveCart(
-  userId: string | null
+  userId: string | null,
+  utmSource?: string | null,
 ): Promise<{ cartId: string; isNew: boolean }> {
   if (userId) {
     const existing = await db.cart.findUnique({ where: { userId } });
     if (existing) return { cartId: existing.id, isNew: false };
-    const created = await db.cart.create({ data: { userId } });
+    const created = await db.cart.create({ data: { userId, utmSource: utmSource ?? null } });
     return { cartId: created.id, isNew: true };
   }
 
@@ -49,7 +52,7 @@ export async function resolveCart(
 
   // Create guest cart with new token
   const newToken = crypto.randomUUID();
-  const created = await db.cart.create({ data: { token: newToken } });
+  const created = await db.cart.create({ data: { token: newToken, utmSource: utmSource ?? null } });
   return { cartId: created.id, isNew: true };
 }
 

@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date();
-    const orderNumber = buildInStoreOrderNumber(now, branch.shortcode);
+    const orderNumber = buildInStoreOrderNumber(now, branch.id);
 
     let result: { orderId: string; orderNumber: string | null };
     try {
