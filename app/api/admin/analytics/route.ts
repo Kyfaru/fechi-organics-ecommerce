@@ -12,6 +12,25 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { requirePermission } from "@/lib/require-permission";
 import { reportError } from "@/lib/observability";
+import { TRACKED_UTM_SOURCES, type UtmSource } from "@/lib/attribution";
+
+const TRAFFIC_SOURCE_LABELS: Record<UtmSource, string> = {
+  facebook: "Facebook",
+  instagram: "Instagram",
+  google: "Google",
+  tiktok: "TikTok",
+  other: "Other",
+};
+
+/** Real order-count share by utmSource, replacing the old hardcoded split. Empty until orders carry attribution. */
+function buildTrafficSources(groups: { utmSource: string | null; _count: { _all: number } }[]): { source: string; pct: number }[] {
+  const total = groups.reduce((s, g) => s + g._count._all, 0);
+  if (total === 0) return [];
+  return TRACKED_UTM_SOURCES.map((source) => {
+    const count = groups.find((g) => g.utmSource === source)?._count._all ?? 0;
+    return { source: TRAFFIC_SOURCE_LABELS[source], pct: Math.round((count / total) * 1000) / 10 };
+  }).filter((s) => s.pct > 0);
+}
 
 // ---------------------------------------------------------------------------
 // Helper: bucket a list of orders by day into ordersChart shape
@@ -109,6 +128,7 @@ export async function GET(req: NextRequest) {
         inStoreTopCustomersRaw,
         inStoreRevenueChartOrders,
         inStoreOrdersForChart,
+        trafficSourceGroups,
       ] = await Promise.all([
         db.order.aggregate({
           _sum: { totalKes: true },
@@ -175,6 +195,12 @@ export async function GET(req: NextRequest) {
         db.inStoreOrder.findMany({
           where: { createdAt: dateFilter },
           select: { createdAt: true, fulfillmentStatus: true, paymentStatus: true },
+        }),
+        // Real marketing-source attribution — replaces the old hardcoded split.
+        db.order.groupBy({
+          by: ["utmSource"],
+          _count: { _all: true },
+          where: { paymentStatus: "PAID", createdAt: dateFilter, utmSource: { not: null } },
         }),
       ]);
 
@@ -281,13 +307,7 @@ export async function GET(req: NextRequest) {
         ordersChart,
         topProducts,
         topCustomers,
-        // Placeholder traffic data — replace with real source tracking when available
-        trafficSources: [
-          { source: "Direct", pct: 40 },
-          { source: "Social", pct: 30 },
-          { source: "Email", pct: 20 },
-          { source: "Other", pct: 10 },
-        ],
+        trafficSources: buildTrafficSources(trafficSourceGroups),
       });
     }
 

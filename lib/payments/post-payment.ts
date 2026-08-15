@@ -175,7 +175,7 @@ export async function markPaymentFailed(args: {
 
     await tx.transaction.update({
       where: { id: args.transactionId },
-      data: { status: "FAILED" },
+      data: { status: "FAILED", failureReason: args.reason ?? null },
     });
 
     await tx.order.update({

@@ -1,4 +1,4 @@
-import { S3Client } from "@aws-sdk/client-s3";
+import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 /** Singleton S3-compatible client for Cloudflare R2.
  * Credentials are read from env vars at module load time.
@@ -33,4 +33,20 @@ export function r2PublicUrl(objectKey: string): string {
     return `/${objectKey}`;
   }
   return `/${objectKey}`;
+}
+
+/**
+ * Best-effort delete of an R2 object. Never throws — callers (e.g. order
+ * deletion) should treat a failed R2 delete as an acceptable orphaned-object
+ * storage leak, not a reason to fail an otherwise-successful DB operation.
+ */
+export async function deleteR2Object(objectKey: string): Promise<void> {
+  try {
+    await r2Client.send(new DeleteObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME!,
+      Key: objectKey,
+    }));
+  } catch (e) {
+    console.error("[r2] Failed to delete object", objectKey, e);
+  }
 }

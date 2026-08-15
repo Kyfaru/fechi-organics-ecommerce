@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { resolveCart, getCartSummary } from "@/lib/cart";
 import { ok, Err } from "@/lib/api";
 import { reportError } from "@/lib/observability";
+import { readUtmCookie } from "@/lib/attribution";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest) {
     const session = await auth.api.getSession({ headers: req.headers });
     const userId = session?.user?.id ?? null;
 
-    const { cartId, isNew } = await resolveCart(userId);
+    const { cartId, isNew } = await resolveCart(userId, readUtmCookie(req)?.source);
     const summary = await getCartSummary(cartId);
 
     const res = ok(summary);

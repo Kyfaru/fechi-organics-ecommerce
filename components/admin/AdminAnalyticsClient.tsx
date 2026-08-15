@@ -31,9 +31,11 @@ import { SkeletonStatCard, SkeletonChart } from "@/components/admin/ui/Skeleton"
 import DownloadButton from "@/components/ui/DownloadButton";
 import { ProgressMetricCard } from "@/components/ui/progress-metric-card";
 import { StatCardAnimated } from "@/components/ui/stat-card-animated";
-import { DonutChart } from "@/components/ui/donut-chart";
+import { DonutChart, type DonutChartSegment } from "@/components/ui/donut-chart";
 import { FunnelChart } from "@/components/ui/funnel-chart";
-import { VisxBarChart } from "@/components/ui/bar-chart-visx";
+import { ChannelStatCard } from "@/components/ui/channel-stat-card";
+import { StatSetSlider } from "@/components/ui/stat-set-slider";
+import { TimeRangeTabs, TIME_RANGE_PRESETS } from "@/components/ui/time-range-tabs";
 import { VisxAreaChart } from "@/components/ui/area-chart-visx";
 import { ChartFilter } from "@/components/ui/chart-filter";
 import { WorldOrdersMap, generateMockWorldOrdersData } from "@/components/ui/world-orders-map";
@@ -90,9 +92,6 @@ function rangeToFromTo(range: RangeId): { from: string; to: string } {
   else from.setDate(from.getDate() - 30);
   return { from: from.toISOString().slice(0, 10), to };
 }
-
-// Traffic sources pie: only show if data is non-empty and has any nonzero value
-const TRAFFIC_COLORS = ["var(--green-500)", "var(--gold-500)", "var(--info)", "var(--neutral-400)"];
 
 // Order trend filter color map
 const ORDER_TREND_COLORS: Record<OrderTrendFilter, string> = {
@@ -459,7 +458,154 @@ function WorldOrdersMapSection() {
 // ---------------------------------------------------------------------------
 // Overview tab
 // ---------------------------------------------------------------------------
+const CHANNEL_LABELS: Record<string, string> = {
+  website: "Website",
+  "home-delivery": "Home Delivery",
+  "store-pickup": "Store Pickup",
+  instore: "Instore",
+};
+const CHANNEL_COLORS: Record<string, string> = {
+  website: "var(--info, #3b82f6)",
+  "home-delivery": "#8b5cf6",
+  "store-pickup": "var(--gold-500, #eab308)",
+  instore: "var(--green-500, #22c55e)",
+};
+
+type ChannelSeriesResult = { value: number; series: { date: string; value: number }[] };
+
+function ChannelRevenueSection() {
+  const [range, setRange] = useState("30d");
+  const { data, isLoading } = useQuery<{ ok: boolean; data: { scopes: Record<string, ChannelSeriesResult> } }>({
+    queryKey: ["channel-summary", range],
+    queryFn: () => fetch(`/api/admin/stats/channel-summary?range=${range}`).then((r) => r.json()),
+    staleTime: 60_000,
+  });
+
+  const scopes = data?.data?.scopes ?? {};
+  const channelKeys = Object.keys(CHANNEL_LABELS).filter((k) => scopes[k]);
+
+  const pieSegments: DonutChartSegment[] = channelKeys
+    .map((k) => ({ label: CHANNEL_LABELS[k], value: scopes[k].value, color: CHANNEL_COLORS[k] }))
+    .filter((s) => s.value > 0);
+
+  const buckets = scopes[channelKeys[0]]?.series.map((p) => p.date) ?? [];
+  const chartData = buckets.map((date, i) => {
+    const row: Record<string, unknown> = { date };
+    for (const k of channelKeys) row[k] = scopes[k].series[i]?.value ?? 0;
+    return row;
+  });
+
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div className="xl:col-span-2 bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">Channel Revenue</h3>
+          <TimeRangeTabs value={range} onChange={setRange} options={TIME_RANGE_PRESETS.reports} />
+        </div>
+        {isLoading || chartData.length === 0 ? (
+          <div className="h-[240px] flex items-center justify-center">
+            <p className="font-dm text-[13px] text-(--neutral-400)">{isLoading ? "Loading…" : "No revenue data for this period"}</p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={240}>
+            <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+              <defs>
+                {channelKeys.map((k) => (
+                  <linearGradient key={k} id={`chGrad-${k}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={CHANNEL_COLORS[k]} stopOpacity={0.25} />
+                    <stop offset="100%" stopColor={CHANNEL_COLORS[k]} stopOpacity={0.02} />
+                  </linearGradient>
+                ))}
+              </defs>
+              <XAxis dataKey="date" tickFormatter={chartLabel} tick={{ fontFamily: "var(--font-dm)", fontSize: 11, fill: "var(--neutral-400)" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+              <YAxis tickFormatter={(v) => `KES ${(v / 100).toLocaleString()}`} tick={{ fontFamily: "var(--font-dm)", fontSize: 11, fill: "var(--neutral-400)" }} axisLine={false} tickLine={false} width={80} />
+              <Tooltip content={<KesTooltip />} />
+              {channelKeys.map((k) => (
+                <Area key={k} type="monotone" dataKey={k} name={CHANNEL_LABELS[k]} stroke={CHANNEL_COLORS[k]} strokeWidth={2} fill={`url(#chGrad-${k})`} isAnimationActive animationDuration={600} />
+              ))}
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+        <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">Revenue by Channel</h3>
+        {isLoading || pieSegments.length === 0 ? (
+          <div className="h-[220px] flex items-center justify-center">
+            <p className="font-dm text-[13px] text-(--neutral-400)">{isLoading ? "Loading…" : "No revenue data"}</p>
+          </div>
+        ) : (
+          <DonutChart data={pieSegments} size={200} strokeWidth={30} valueFormatter={(v) => formatKes(v)} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+const SOCIAL_SOURCES = [
+  { id: "facebook", label: "Facebook", color: "#1877F2" },
+  { id: "instagram", label: "Instagram", color: "#E1306C" },
+  { id: "google", label: "Google", color: "#4285F4" },
+  { id: "tiktok", label: "TikTok", color: "#000000" },
+] as const;
+
+type ConversionSource = { source: string; orders: number; revenue: number; carts: number; conversionRate: number; series: { date: string; value: number }[] };
+
+function SocialConversionSection() {
+  const [range, setRange] = useState("30d");
+  const { data, isLoading } = useQuery<{ ok: boolean; data: { sources: ConversionSource[] } }>({
+    queryKey: ["conversion-summary", range],
+    queryFn: () => fetch(`/api/admin/stats/conversion?range=${range}`).then((r) => r.json()),
+    staleTime: 60_000,
+  });
+  const sources = data?.data?.sources ?? [];
+
+  return (
+    <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">Conversion by Social Channel</h3>
+          <p className="font-dm text-[13px] text-(--neutral-400)">Paid orders ÷ carts, by last-touch UTM source</p>
+        </div>
+        <TimeRangeTabs value={range} onChange={setRange} options={TIME_RANGE_PRESETS.reports} />
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {SOCIAL_SOURCES.map((s) => {
+          const row = sources.find((r) => r.source === s.id);
+          const chartData = (row?.series ?? []).map((p) => ({ date: p.date, value: p.value }));
+          return (
+            <div key={s.id} className="rounded-xl border border-neutral-200 dark:border-dark-border p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                <span className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{s.label}</span>
+              </div>
+              {isLoading ? (
+                <div className="h-16 animate-pulse rounded-lg bg-neutral-100 dark:bg-neutral-800" />
+              ) : (
+                <>
+                  <p className="text-xl font-bold text-neutral-900 dark:text-neutral-100">{(row?.conversionRate ?? 0).toFixed(1)}%</p>
+                  <p className="text-xs text-neutral-400 mb-2">{row?.orders ?? 0} orders / {row?.carts ?? 0} carts</p>
+                  {chartData.some((p) => p.value > 0) && (
+                    <div className="h-12">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={chartData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                          <Area type="monotone" dataKey="value" stroke={s.color} strokeWidth={1.5} fill={s.color} fillOpacity={0.12} dot={false} isAnimationActive={false} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>; isLoading: boolean }) {
+  const [statSet, setStatSet] = useState(0);
   const stats = (payload.stats ?? {}) as Record<string, number>;
   const revenueChart = (payload.revenueChart ?? []) as RevenueChartRow[];
   const ordersChart = (payload.ordersChart ?? []) as OrderChartRow[];
@@ -506,105 +652,84 @@ function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>;
 
   return (
     <div className="space-y-6">
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        {isLoading ? (
-          Array.from({ length: 6 }).map((_, i) => <SkeletonStatCard key={i} />)
-        ) : (
-          <>
-            <ProgressMetricCard
-              title="Total Revenue"
-              value={stats.revenue ?? 0}
-              change={2.4}
-              changeLabel="vs last period"
-              accent="emerald"
-              valueFormatter={(v) => `KES ${(v / 100).toLocaleString()}`}
-              series={revenueChart.length ? [{ name: "Revenue", data: toSeriesPoints(revenueChart) }] : []}
-            />
-            <ProgressMetricCard
-              title="Total Orders"
-              value={stats.orders ?? 0}
-              change={1.8}
-              changeLabel="vs last period"
-              accent="blue"
-              series={[]}
-            />
-            <ProgressMetricCard
-              title="Avg Order Value"
-              value={stats.aov ?? 0}
-              change={0.5}
-              changeLabel="vs last period"
-              accent="amber"
-              valueFormatter={(v) => `KES ${(v / 100).toFixed(0)}`}
-              series={[]}
-            />
-            <StatCardAnimated
-              title="Conversion Rate"
-              value={Math.round(Number(stats.conversionRate ?? 3.2) * 10)}
-              change={0.3}
-              changeDescription="vs last period"
-              icon={<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>}
-              valueFormatter={(v) => `${(v / 10).toFixed(1)}%`}
-            />
-            <StatCardAnimated
-              title="New Customers"
-              value={stats.newCustomers ?? 0}
-              change={5.1}
-              changeDescription="vs last period"
-              icon={<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>}
-            />
-            <StatCardAnimated
-              title="Returning Rate"
-              value={Math.round(Number(stats.returningRate ?? 42) * 10)}
-              change={-1.2}
-              changeDescription="vs last period"
-              icon={<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
-              valueFormatter={(v) => `${(v / 10).toFixed(1)}%`}
-            />
-          </>
-        )}
-      </div>
+      {/* Stat cards — two transitioning sets */}
+      {isLoading ? (
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonStatCard key={i} />)}
+        </div>
+      ) : (
+        <StatSetSlider
+          index={statSet}
+          onChange={setStatSet}
+          sets={[
+            <div key="set1" className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+              <ProgressMetricCard
+                title="Total Revenue"
+                value={stats.revenue ?? 0}
+                change={2.4}
+                changeLabel="vs last period"
+                accent="emerald"
+                valueFormatter={(v) => `KES ${(v / 100).toLocaleString()}`}
+                series={revenueChart.length ? [{ name: "Revenue", data: toSeriesPoints(revenueChart) }] : []}
+              />
+              <ProgressMetricCard
+                title="Total Orders"
+                value={stats.orders ?? 0}
+                change={1.8}
+                changeLabel="vs last period"
+                accent="blue"
+                series={[]}
+              />
+              <ChannelStatCard
+                title="Total Website Orders"
+                metric="orders"
+                scope="website"
+                accent="amber"
+                presets={TIME_RANGE_PRESETS.reports}
+                valueFormatter={(v) => v.toLocaleString()}
+              />
+              <StatCardAnimated
+                title="Conversion Rate"
+                value={Math.round(Number(stats.conversionRate ?? 3.2) * 10)}
+                change={0.3}
+                changeDescription="vs last period"
+                icon={<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>}
+                valueFormatter={(v) => `${(v / 10).toFixed(1)}%`}
+              />
+              <StatCardAnimated
+                title="New Customers"
+                value={stats.newCustomers ?? 0}
+                change={5.1}
+                changeDescription="vs last period"
+                icon={<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>}
+              />
+              <StatCardAnimated
+                title="Returning Rate"
+                value={Math.round(Number(stats.returningRate ?? 42) * 10)}
+                change={-1.2}
+                changeDescription="vs last period"
+                icon={<svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
+                valueFormatter={(v) => `${(v / 10).toFixed(1)}%`}
+              />
+            </div>,
+            <div key="set2" className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <ChannelStatCard title="Instore Orders" metric="orders" scope="instore" accent="rose" presets={TIME_RANGE_PRESETS.reports} valueFormatter={(v) => v.toLocaleString()} />
+              <ChannelStatCard title="Home Delivery Orders" metric="orders" scope="home-delivery" accent="violet" presets={TIME_RANGE_PRESETS.reports} valueFormatter={(v) => v.toLocaleString()} />
+              <ChannelStatCard title="Store Pickup Orders" metric="orders" scope="store-pickup" accent="amber" presets={TIME_RANGE_PRESETS.reports} valueFormatter={(v) => v.toLocaleString()} />
+              <ChannelStatCard title="Average Orders" metric="orders" scope="total" averagePerDay accent="blue" presets={TIME_RANGE_PRESETS.reports} valueFormatter={(v) => v.toFixed(1)} changeLabel="orders/day" />
+            </div>,
+          ]}
+        />
+      )}
 
-      {/* Revenue + traffic charts */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {isLoading ? (
-          <div className="xl:col-span-2"><SkeletonChart /></div>
-        ) : (
-          <div className="xl:col-span-2 bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
-            <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">Revenue Trend</h3>
-            {revenueChart.length === 0 ? (
-              <div className="h-[240px] flex items-center justify-center">
-                <p className="font-dm text-[13px] text-(--neutral-400)">No revenue data for this period</p>
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={240}>
-                <AreaChart data={revenueChart} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                  <defs>
-                    <linearGradient id="analyticsGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--green-500)" stopOpacity={0.25} />
-                      <stop offset="100%" stopColor="var(--green-500)" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="date" tickFormatter={chartLabel} tick={{ fontFamily: "var(--font-dm)", fontSize: 11, fill: "var(--neutral-400)" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
-                  <YAxis tickFormatter={(v) => `KES ${(v / 100).toLocaleString()}`} tick={{ fontFamily: "var(--font-dm)", fontSize: 11, fill: "var(--neutral-400)" }} axisLine={false} tickLine={false} width={80} />
-                  <Tooltip content={<KesTooltip />} />
-                  <Area type="monotone" dataKey="amount" stroke="var(--green-500)" strokeWidth={2.5} fill="url(#analyticsGrad)" isAnimationActive animationDuration={800} />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-            {revenueChart.length > 0 && (
-              <div className="mt-4">
-                <VisxBarChart
-                  data={revenueChart.map((r) => ({ label: r.date, value: r.amount / 100 }))}
-                  color="var(--green-500, #22c55e)"
-                  height={200}
-                  formatY={(v) => `KES ${(v / 1000).toFixed(0)}K`}
-                />
-              </div>
-            )}
-          </div>
-        )}
+      {/* Channel revenue trend + share of revenue */}
+      <ChannelRevenueSection />
 
+      {/* Conversion rate by social channel */}
+      <SocialConversionSection />
+
+      {/* Traffic sources + Order Trends — 2-column */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {/* Traffic Sources — FunnelChart */}
         {isLoading ? (
           <SkeletonChart />
@@ -635,14 +760,14 @@ function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>;
             )}
           </div>
         )}
-      </div>
 
-      {/* Order Trends area chart (F2) — beside revenue in overview */}
-      {isLoading ? (
-        <SkeletonChart />
-      ) : (
-        <OrderTrendsChart ordersChart={ordersChart} />
-      )}
+        {/* Order Trends area chart (F2) */}
+        {isLoading ? (
+          <SkeletonChart />
+        ) : (
+          <OrderTrendsChart ordersChart={ordersChart} />
+        )}
+      </div>
 
       {/* Top tables */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">

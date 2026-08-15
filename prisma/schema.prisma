@@ -452,6 +452,9 @@ model cart {
   user      user?      @relation(fields: [userId], references: [id], onDelete: Cascade)
   token     String?    @unique
   items     cartItem[]
+  // Attribution snapshot at cart creation — the conversion-rate denominator
+  // (paid orders ÷ carts) for the Reports social-channel section.
+  utmSource String?
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
@@ -577,12 +580,19 @@ model order {
   reviewedAt                DateTime?
   invoiceNumber             String?            @unique
   invoicePdfKey             String?
+  // Last-touch marketing attribution, stamped from the fechi_utm cookie
+  // (set by PostHogProvider on landing) — powers the Reports conversion-rate
+  // by social channel section. Nullable: most historical orders predate this.
+  utmSource                 String?            @db.VarChar(64)
+  utmMedium                 String?            @db.VarChar(64)
+  utmCampaign               String?            @db.VarChar(128)
   createdAt                 DateTime           @default(now())
   updatedAt                 DateTime           @updatedAt
   statusEvents              orderStatusEvent[]
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
+  @@index([utmSource])
   @@schema("public")
 }
 
@@ -652,6 +662,7 @@ model branch {
   notifications        notification[]
   branchProductStocks  branchProductStock[]
   zohoPushLogs         zohoPushLog[]
+  auditLogs            auditLog[]
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 
@@ -908,20 +919,29 @@ model adminProfile {
 }
 
 model auditLog {
-  id             String               @id @default(uuid())
-  adminProfileId String
-  adminProfile   adminProfile         @relation(fields: [adminProfileId], references: [id])
-  action         String
-  resource       String
-  resourceId     String?
-  severity       NotificationSeverity @default(INFO)
-  details        Json?
-  ipAddress      String?
-  userAgent      String?
-  path           String?
-  createdAt      DateTime             @default(now())
+  id                String               @id @default(uuid())
+  adminProfileId    String
+  adminProfile      adminProfile         @relation(fields: [adminProfileId], references: [id])
+  action            String
+  resource          String
+  resourceId        String?
+  severity          NotificationSeverity @default(INFO)
+  details           Json?
+  ipAddress         String?
+  userAgent         String?
+  path              String?
+  // Write-time snapshot of the actor's adminProfile.branchId/isSuperAdmin —
+  // not a live join. Preserves "what branch was this admin in when they did
+  // this" even if they're reassigned later, and lets the activity-log
+  // visibility filter (GET /api/admin/activity) query flat columns instead
+  // of joining through adminProfile on every read.
+  branchId          String?
+  branch            branch?              @relation(fields: [branchId], references: [id])
+  actorIsSuperAdmin Boolean              @default(false)
+  createdAt         DateTime             @default(now())
 
   @@index([adminProfileId, createdAt])
+  @@index([branchId, createdAt])
   @@index([severity, createdAt])
   @@schema("admin")
 }

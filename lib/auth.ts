@@ -8,6 +8,7 @@ import { combineLegacyPhone } from "@/lib/phone";
 import { splitName } from "@/lib/name";
 import { Argon2id } from "oslo/password";
 import { ac, roles } from "@/lib/permissions";
+import { logActivity } from "@/lib/admin-activity";
 
 // ---------------------------------------------------------------------------
 // Admin sessions are anchored to the next midnight in Africa/Nairobi (EAT,
@@ -145,6 +146,21 @@ export const auth = betterAuth({
             where: { id: session.userId },
             select: { role: true },
           });
+
+          // Sign-in audit log — admin only. Fire-and-forget: a session is
+          // only ever created here once a sign-in is genuinely complete
+          // (the twoFactor plugin's own hook swaps in a scoped two-factor
+          // cookie and deletes the real session before a 2FA challenge is
+          // resolved — see the sendOTP comment below), so this can't
+          // double-log or log an incomplete challenge. Never awaited: a
+          // logging failure must not block session creation.
+          if (user?.role === "admin") {
+            db.adminProfile.findUnique({ where: { userId: session.userId }, select: { id: true } })
+              .then((profile) => {
+                if (profile) void logActivity(profile.id, "Signed in", "auth", undefined, undefined, { path: context?.path }, "INFO");
+              })
+              .catch((e) => console.warn("[auth] sign-in activity log failed:", e));
+          }
 
           // captchaVerifiedAt: set when this request itself carried a
           // validated x-captcha-response header (signIn.email / signUp.email,

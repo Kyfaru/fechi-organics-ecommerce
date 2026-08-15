@@ -39,6 +39,8 @@ import {
 } from "@/lib/payments/instore-post-payment";
 import { reportError } from "@/lib/observability";
 import { trackServerEvent } from "@/lib/observability-server";
+import { createNotification } from "@/lib/notify";
+import { createOrderDetailToken } from "@/lib/order-detail-token";
 
 function safaricomOk() {
   return Response.json({ ResultCode: 0, ResultDesc: "Accepted" }, { status: 200 });
@@ -121,7 +123,7 @@ export async function POST(req: NextRequest) {
         inStoreOrderId: true,
         status: true,
         inStoreOrder: {
-          select: { branch: { select: { mpesaGateway: true } }, customerUserId: true },
+          select: { branch: { select: { mpesaGateway: true } }, branchId: true, customerUserId: true, customerName: true },
         },
       },
     });
@@ -174,6 +176,13 @@ export async function POST(req: NextRequest) {
         inStoreOrderId: transaction.inStoreOrderId,
         transactionId: transaction.id,
         reason: `${resultCode}:${resultDesc}`,
+      });
+      await createNotification({
+        type: "PAYMENT_ERROR",
+        title: `Payment failed — order #${transaction.inStoreOrderId.slice(0, 8).toUpperCase()}`,
+        body: `${transaction.inStoreOrder.customerName ?? "A customer"}'s M-Pesa payment failed: ${resultDesc}`,
+        link: `/admin/orders/payment-failed/${await createOrderDetailToken(transaction.inStoreOrderId, "instore")}`,
+        branchId: transaction.inStoreOrder.branchId,
       });
     }
 
