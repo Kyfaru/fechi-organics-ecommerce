@@ -36,6 +36,7 @@ interface Transaction {
   amount: number
   status: string
   mpesaReceiptNumber?: string | null
+  failureReason?: string | null
   createdAt: string
 }
 

@@ -70,6 +70,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ or
       amount: t.amount,
       status: t.status,
       mpesaReceiptNumber: (t as any).mpesaReceiptNumber ?? null,
+      failureReason: t.failureReason ?? null,
       createdAt: t.createdAt.toISOString(),
     })),
     statusEvents: order.statusEvents.map((e) => ({

@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import Image from "next/image";
 import { motion } from "framer-motion";
+import { Icon } from "@iconify/react";
 import {
   ShoppingBag, Clock, Truck, CheckCircle, Search, Download,
   ChevronDown, MoreHorizontal, X, Tag, User, CreditCard, Printer, Link2,
@@ -572,7 +574,7 @@ function InStoreOrderDrawerContent({
 // order number back to confirm. Shared by both the online-order and
 // in-store-order drawer variants.
 // ---------------------------------------------------------------------------
-function DeleteOrderModal({
+export function DeleteOrderModal({
   order,
   kind,
   open,
@@ -1062,6 +1064,12 @@ function OrderDetailDrawer({
 
             {/* Action buttons */}
             <div className="flex flex-col gap-2">
+              <Link
+                href={`/admin/orders/${order.id}`}
+                className="w-full h-9 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <Icon icon="lucide:external-link" width={13} /> View Full Details
+              </Link>
               <button
                 onClick={() => { window.open(`/api/admin/orders/${order.id}/invoice`, "_blank"); }}
                 disabled={order.status === "FAILED" || order.status === "CANCELLED" || order.paymentStatus !== "PAID"}
