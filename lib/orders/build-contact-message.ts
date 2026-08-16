@@ -11,8 +11,9 @@ export function buildContactMessage(args: {
   customerName: string | null;
   body: string;
   branchPhone?: string | null;
+  ctaLink?: string;
 }): string {
-  const signature = [`— The Fechi Organics Team`, `${SITE_URL}/contact`];
+  const signature = [`— The Fechi Organics Team`, args.ctaLink ?? `${SITE_URL}/contact`];
   if (args.branchPhone) signature.push(args.branchPhone);
   return `${args.greeting} ${firstName(args.customerName)},\n\n${args.body.trim()}\n\n${signature.join("\n")}`;
 }
@@ -24,12 +25,15 @@ export function buildContactEmailHtml(args: {
   body: string;
   branchPhone?: string | null;
   orderRef: string;
+  ctaLink?: string;
 }): string {
   const paragraphs = args.body
     .trim()
     .split(/\n+/)
     .map((p) => `<p style="margin:0 0 16px;font-size:15px;color:${EMAIL_BRAND.textBody};line-height:1.6;">${p}</p>`)
     .join("");
+
+  const link = args.ctaLink ?? `${SITE_URL}/contact`;
 
   const sections = [
     emailSection(`
@@ -38,7 +42,7 @@ export function buildContactEmailHtml(args: {
       ${paragraphs}
       <p style="margin:24px 0 0;font-size:13px;color:${EMAIL_BRAND.textMuted};line-height:1.6;">
         — The Fechi Organics Team<br/>
-        <a href="${SITE_URL}/contact" style="color:${EMAIL_BRAND.darkGreen};text-decoration:underline;">${SITE_URL.replace(/^https?:\/\//, "")}/contact</a>
+        <a href="${link}" style="color:${EMAIL_BRAND.darkGreen};text-decoration:underline;">${link.replace(/^https?:\/\//, "")}</a>
         ${args.branchPhone ? `<br/>${args.branchPhone}` : ""}
       </p>
     `),

@@ -24,6 +24,72 @@ import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { r2Client } from "@/lib/r2";
 import { generateExportFile } from "@/lib/reports/generate-export";
 import type { ExportFilters } from "@/lib/reports/types";
+import { sendSms, hasSmsConfig } from "@/lib/sms";
+import { combineLegacyPhone, normalizePhoneE164 } from "@/lib/phone";
+import { sendOrderContactEmail } from "@/lib/email";
+import { buildContactMessage, buildContactEmailHtml } from "@/lib/orders/build-contact-message";
+
+export type ContactChannel = "SMS" | "INBOX" | "EMAIL";
+export type ContactChannelResult = { channel: ContactChannel; ok: boolean; error?: string };
+export type ContactPayload = { channels: ContactChannel[]; greeting: string; body: string; ctaLink?: string };
+
+/**
+ * Shared by the contact route's fast path (allowed roles send immediately)
+ * and the approval executor below (queued roles' request, once approved) —
+ * single source of truth for what "send this customer-contact message"
+ * actually does, per lib/approval-executors.ts's own file-level convention.
+ */
+export async function sendOrderContactMessage(
+  orderId: string,
+  { channels, greeting, body, ctaLink }: ContactPayload,
+): Promise<{ results: ContactChannelResult[]; orderRef: string } | null> {
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    include: {
+      user: { select: { id: true, name: true, email: true, phone: true, phoneCode: true } },
+      branch: { select: { id: true, phone: true } },
+    },
+  });
+  if (!order) return null;
+
+  const customerName = order.user?.name ?? null;
+  const orderRef = order.orderNumber ?? `#FO-${order.id.slice(0, 8).toUpperCase()}`;
+  const messageBody = buildContactMessage({ greeting, customerName, body, branchPhone: order.branch?.phone ?? null, ctaLink });
+
+  const results: ContactChannelResult[] = [];
+
+  for (const channel of channels) {
+    try {
+      if (channel === "SMS") {
+        const phone = order.user?.phone
+          ? combineLegacyPhone(order.user.phone, order.user.phoneCode ?? null)
+          : order.deliveryPhone
+          ? normalizePhoneE164(order.deliveryPhone)
+          : null;
+        if (!hasSmsConfig() || !phone) throw new Error("SMS not available for this order");
+        await sendSms(phone, messageBody);
+        results.push({ channel, ok: true });
+      } else if (channel === "INBOX") {
+        if (!order.userId) throw new Error("Guest order has no inbox");
+        await db.inboxMessage.create({
+          data: { userId: order.userId, type: "ORDER_UPDATE", title: `Message about order ${orderRef}`, body: messageBody, orderId: order.id },
+        });
+        results.push({ channel, ok: true });
+      } else {
+        const email = order.user?.email ?? order.guestEmail;
+        if (!email) throw new Error("No email on file");
+        const html = buildContactEmailHtml({ greeting, customerName, body, branchPhone: order.branch?.phone ?? null, orderRef, ctaLink });
+        await sendOrderContactEmail(email, `Order ${orderRef} — Fechi Organics`, html);
+        results.push({ channel, ok: true });
+      }
+    } catch (e) {
+      console.error("[order-contact] channel failed:", channel, e);
+      results.push({ channel, ok: false, error: e instanceof Error ? e.message : "Failed" });
+    }
+  }
+
+  return { results, orderRef };
+}
 
 type Executor = (payload: Record<string, unknown>, resourceId: string | null) => Promise<unknown>;
 
@@ -294,6 +360,11 @@ export const approvalExecutors: Record<string, Executor> = {
 
   "orders:export": async (payload, resourceId) => runExportExecutor("orders", payload, resourceId),
   "finance:export": async (payload, resourceId) => runExportExecutor("finance", payload, resourceId),
+
+  "order:contact": async (payload, resourceId) => {
+    if (!resourceId) return null;
+    return sendOrderContactMessage(resourceId, payload as unknown as ContactPayload);
+  },
 };
 
 // Shared body for the two export executors above — generates the file
