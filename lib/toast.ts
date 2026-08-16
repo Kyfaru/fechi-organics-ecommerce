@@ -66,7 +66,7 @@ export const toast = {
    * "Details" deep-link. Reserved for CRITICAL-severity admin notifications
    * (failed payments, system alerts) surfaced while an admin is logged in.
    */
-  critical(title: string, options?: { message?: string; actionUrl?: string; duration?: number }) {
+  critical(title: string, options?: { message?: string; actionUrl?: string; duration?: number; notificationId?: string }) {
     const duration = options?.duration ?? 8000;
     sonnerToast.custom(
       (id) =>
@@ -76,6 +76,7 @@ export const toast = {
           message: options?.message,
           actionUrl: options?.actionUrl,
           duration,
+          notificationId: options?.notificationId,
         }),
       { duration, position: 'top-right' }
     );

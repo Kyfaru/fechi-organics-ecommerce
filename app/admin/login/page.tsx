@@ -131,9 +131,22 @@ export default function AdminLoginPage() {
     const role = (sessionData.user as { role?: string } | undefined)?.role;
     if (role === "admin") {
       router.replace("/admin");
-    } else {
-      authClient.signOut();
+      return;
     }
+
+    // The cached useSession() value can be stale for up to the 5-minute
+    // cookieCache window — re-verify with a cache-bypassing read before
+    // destroying the session, so a stale non-admin read (right after a role
+    // change, or a lagging second tab) doesn't sign out a session that's
+    // actually an admin's by now.
+    let cancelled = false;
+    authClient.getSession({ query: { disableCookieCache: true } }).then(({ data: fresh }) => {
+      if (cancelled) return;
+      if ((fresh?.user as { role?: string } | undefined)?.role !== "admin") {
+        authClient.signOut();
+      }
+    });
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionPending, sessionData, step]);
 
@@ -181,7 +194,7 @@ export default function AdminLoginPage() {
       // AdminGuard (app/admin/(protected)/layout.tsx) re-verifies server-side.
       reportError(err, { route: "admin-login", tags: { step: "finish-login" } });
     }
-    router.push("/admin");
+    router.replace("/admin");
   }
 
   // ---------------------------------------------------------------------------
@@ -372,12 +385,15 @@ export default function AdminLoginPage() {
       }
 
       // method === "email" | "sms" (new-admin setup, picking a channel for
-      // the first time) | "otp" (returning admin, channel already decided
-      // server-side by adminProfile.twoFaMethod).
+      // the first time, or a returning admin picking a channel for THIS
+      // login) | "otp" (legacy — no longer offered; renderMethodChoice now
+      // shows explicit email/sms cards for returning admins too).
       if (isNewUser) {
         // Persist the chosen channel to the admin profile first — Better
-        // Auth's sendOTP (lib/auth.ts) reads it from there, it isn't passed
-        // per-request.
+        // Auth's sendOTP (lib/auth.ts) reads it from there by default, it
+        // isn't passed per-request. Requires a real session, which only
+        // exists here for a brand-new admin (2FA wasn't enabled yet, so
+        // signIn.email() above never got intercepted).
         const body =
           method === "sms"
             ? { method: "sms", phone: adminMe?.phone ?? undefined }
@@ -392,14 +408,21 @@ export default function AdminLoginPage() {
           toast.error(json.error?.message ?? "Failed to set 2FA method.");
           return;
         }
-        setOtpMethod(method as "email" | "sms");
-      } else {
-        // Channel unknown on this returning-admin path — see otpMethod's
-        // declaration comment. renderOtpVerify falls back to generic copy.
-        setOtpMethod(null);
       }
+      setOtpMethod(method as "email" | "sms");
 
-      const sendResult = await authClient.twoFactor.sendOtp({});
+      // Returning admins have no real session at this point (Better Auth
+      // swapped it for a scoped two-factor cookie before this screen ever
+      // rendered — see the handleCredentialsSubmit comment above), so their
+      // channel choice can't be persisted via /api/admin/2fa/method. Instead
+      // it rides along as a per-request header — lib/auth.ts's sendOTP
+      // callback reads x-2fa-channel as an override before falling back to
+      // the stored adminProfile.twoFaMethod default. Harmless no-op for the
+      // isNewUser path too (the freshly-persisted method already matches).
+      const sendResult = await authClient.twoFactor.sendOtp(
+        {},
+        { headers: { "x-2fa-channel": method } },
+      );
       if (sendResult?.error) {
         toast.error(sendResult.error.message ?? "Failed to send code. Please try again.");
         return;
@@ -680,20 +703,34 @@ export default function AdminLoginPage() {
       ];
     } else {
       // Returning admin — Better Auth only reports "totp" and/or "otp" (its
-      // one generic OTP channel; email vs SMS was decided at setup time and
-      // lives server-side), so the card list is built straight from
-      // twoFactorMethods rather than re-deriving email/SMS here.
+      // one generic OTP channel; it can't tell us which channel was set up
+      // before). Offer both Email and SMS explicitly rather than one generic
+      // card — the chosen one rides along as a per-request header (see
+      // handleMethodChoice), so this works without needing a real session.
+      // lib/auth.ts's sendOTP falls back to email if SMS turns out not to be
+      // viable (no phone on file), so it's safe to always offer the SMS card
+      // here even though we can't check phone-on-file pre-session.
       cards = [
         ...(twoFactorMethods.includes("totp") ? [totpCard] : []),
         ...(twoFactorMethods.includes("otp")
-          ? [{
-              method: "otp" as const,
-              icon: Mail,
-              iconBg: "bg-blue-50",
-              iconColor: "text-blue-700",
-              title: "One-Time Code",
-              description: "Receive a one-time code via your registered email or phone.",
-            }]
+          ? [
+              {
+                method: "email" as const,
+                icon: Mail,
+                iconBg: "bg-blue-50",
+                iconColor: "text-blue-700",
+                title: "Email OTP",
+                description: "Receive a one-time code at your email address.",
+              },
+              {
+                method: "sms" as const,
+                icon: MessageSquare,
+                iconBg: "bg-purple-50",
+                iconColor: "text-purple-700",
+                title: "SMS OTP",
+                description: "Receive a one-time code via text message.",
+              },
+            ]
           : []),
       ];
     }

@@ -574,7 +574,7 @@ export default function SignupPage() {
       </section>
 
       {showSignupLoader && (
-        <SignupLoader onDone={() => router.push("/")} />
+        <SignupLoader onDone={() => router.replace("/")} />
       )}
     </main>
   );

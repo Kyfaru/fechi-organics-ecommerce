@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useTransition, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { Icon } from "@iconify/react"
 import { toast } from "sonner"
-import { authClient } from "@/lib/auth-client"
+import { authClient, signOut } from "@/lib/auth-client"
 
 function inputClass(hasError?: boolean) {
   return hasError
@@ -62,6 +63,7 @@ export default function PasswordForm({
   // if the user already dismissed it once by typing.
   setupRequiredTrigger?: number
 }) {
+  const router = useRouter()
   const [current, setCurrent] = useState("")
   const [newPw, setNewPw] = useState("")
   const [confirm, setConfirm] = useState("")
@@ -105,8 +107,10 @@ export default function PasswordForm({
         const res = await authClient.changePassword({ currentPassword: current, newPassword: newPw, revokeOtherSessions: false })
         if (res.error) { toast.error(res.error.message ?? "Failed to update password"); return }
       }
-      toast.success("Password updated")
+      toast.success("Password updated", { description: "Signing you out for a fresh login…" })
       setCurrent(""); setNewPw(""); setConfirm("")
+      await signOut()
+      router.replace("/login")
     })
   }
 

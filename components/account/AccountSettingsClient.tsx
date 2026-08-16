@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
-import { useSession } from "@/lib/auth-client";
+import { useSession, signOut } from "@/lib/auth-client";
 import { AccountLayout } from "@/components/account/AccountLayout";
 import FormInput from "@/components/auth/FormInput";
 import PasswordInput from "@/components/auth/PasswordInput";
@@ -130,6 +131,7 @@ function ToggleSwitch({
  *   3. Notifications — localStorage only (v1)
  */
 export function AccountSettingsClient() {
+  const router = useRouter();
   const { data: session } = useSession();
   const user = session?.user;
 
@@ -243,11 +245,13 @@ export function AccountSettingsClient() {
       if (!res.ok) {
         toast.error(json?.message ?? json?.error ?? "Failed to change password.");
       } else {
-        toast.success("Password changed.");
+        toast.success("Password changed.", { message: "Signing you out for a fresh login…" });
         setCurrentPassword("");
         setNewPassword("");
         setConfirmPassword("");
         setPasswordSubmitted(false);
+        await signOut();
+        router.replace("/login");
       }
     } catch (err) {
       console.error("[settings] Password change error", err);

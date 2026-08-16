@@ -20,13 +20,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: { message: "No phone number on your account. Add one in Profile settings." } }, { status: 400 })
     }
 
+    if (!hasSmsConfig()) {
+      console.error("[2fa/phone/send] SMS not configured — cannot send to", session.user.id)
+      return NextResponse.json({ ok: false, error: { message: "SMS is not available right now. Try email instead." } }, { status: 503 })
+    }
+
     const otp = generateOtp()
     await storeOtp(`2fa:otp:phone:${session.user.id}`, otp, 600)
 
-    if (hasSmsConfig()) {
+    try {
       await sendSms(phone, `Your Fechi Organics 2FA code: ${otp}. Expires in 10 minutes.`)
-    } else {
-      console.warn("[2fa/phone/send] SMS not configured — OTP:", otp)
+    } catch (e) {
+      reportError(e, { route: "POST /api/account/2fa/phone/send", tags: { flow: "account-2fa" } })
+      console.error("[2fa/phone/send] SMS send failed for", session.user.id, e)
+      return NextResponse.json({ ok: false, error: { message: "Failed to send SMS. Try email instead." } }, { status: 502 })
     }
 
     console.info("[2fa/phone/send] OTP sent to phone for", session.user.id)

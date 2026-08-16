@@ -1055,6 +1055,7 @@ model notificationRecipientState {
   userId         String
   readAt         DateTime?
   pinned         Boolean      @default(false)
+  dismissed      Boolean      @default(false)
 
   @@unique([notificationId, userId])
   @@index([userId, readAt])

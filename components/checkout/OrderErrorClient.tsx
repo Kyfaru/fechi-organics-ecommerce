@@ -38,7 +38,7 @@ export function OrderErrorClient({ order }: { order: Order }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#fbfbfa] dark:bg-gray-950">
+    <div className="h-screen overflow-hidden bg-[#fbfbfa] dark:bg-gray-950">
       <Navbar />
       <main className="mx-auto flex min-h-[640px] max-w-[720px] flex-col items-center px-4 py-16 text-center md:py-24">
         <div className="flex h-22 w-22 items-center justify-center rounded-full border border-red-200 bg-red-50 shadow-[0_20px_60px_rgba(220,38,38,0.12)]">

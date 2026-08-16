@@ -31,7 +31,9 @@ interface OTPModalProps {
 // The timer starts at 15 s for the initial send, then escalates on each resend.
 // ---------------------------------------------------------------------------
 
-const OTP_LENGTH = 5;
+// 6, matching the twoFactor plugin's otpOptions.digits (lib/auth.ts) — this
+// modal is only ever used for that flow (its one caller, LoginForm.tsx).
+const OTP_LENGTH = 6;
 
 /** Timer durations (seconds) for each resend attempt (index = resendCount). */
 const RESEND_STEPS = [30, 60, 90, 120, 150] as const;
@@ -274,7 +276,7 @@ export default function OTPModal({
             Verify Your Identity
           </h2>
           <p className="text-sm text-[#40493c] dark:text-gray-400 leading-relaxed">
-            A 5-digit code was sent to
+            A 6-digit code was sent to
             <br />
             <span className="font-semibold text-[#1a1c1c] dark:text-white">{email}</span>
           </p>

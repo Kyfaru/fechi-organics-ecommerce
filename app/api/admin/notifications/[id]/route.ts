@@ -41,3 +41,35 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return Err.internal();
   }
 }
+
+// DELETE /api/admin/notifications/[id] — dismisses FOR THE CALLING USER ONLY.
+// The underlying `notification` row is shared across recipients, so this
+// never deletes it — it just hides it from this admin's own feed via
+// recipientState.dismissed, same per-user upsert pattern as PATCH/pin.
+export async function DELETE(req: NextRequest, { params }: Params) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
+  await connection();
+  try {
+    const denied = await requirePermission(req, { notifications: ["manage"] });
+    if (denied) return denied;
+
+    const resolved = await resolveNotificationScope(req);
+    if (resolved instanceof Response) return resolved;
+    const { userId } = resolved;
+
+    const { id } = await params;
+
+    const state = await db.notificationRecipientState.upsert({
+      where: { notificationId_userId: { notificationId: id, userId } },
+      update: { dismissed: true },
+      create: { notificationId: id, userId, dismissed: true },
+    });
+
+    await bumpNotificationVersion();
+    return ok({ state });
+  } catch (err) {
+    reportError(err, { route: "DELETE /api/admin/notifications/[id]", tags: { domain: "notifications" } });
+    return Err.internal();
+  }
+}
