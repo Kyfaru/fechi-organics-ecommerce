@@ -149,7 +149,11 @@ export function NotificationBell() {
           )}
           <Link
             href="/admin/notifications"
-            onMouseDown={() => setOpen(false)}
+            // onClick, not onMouseDown — mousedown fires before the browser's
+            // click event, so closing the dropdown there unmounts this Link
+            // before Next.js's router ever sees the click, and the "click"
+            // silently just closes the dropdown instead of navigating.
+            onClick={() => setOpen(false)}
             className="block px-4 py-2.5 text-center text-[13px] font-medium text-(--green-700) hover:bg-(--green-50) dark:hover:bg-(--dark-border) border-t border-(--neutral-200) dark:border-(--dark-border) transition-colors"
           >
             Show all notifications
