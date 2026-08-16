@@ -121,10 +121,19 @@ const AUTH_API_PREFIX = "/api/auth";
 const SESSION_COOKIE = "better-auth.session_token";
 
 /**
+ * Auth pages a signed-in user gets redirected away from client-side (see the
+ * file-header comment) — the redirect only fires after this page has already
+ * rendered once, so the browser's bfcache/history can otherwise restore a
+ * cached copy of it on Back with no network round trip at all, skipping that
+ * redirect entirely. Cache-Control: no-store forces a fresh request instead.
+ */
+const NO_STORE_PATHS = ["/login", "/signup", "/admin/login"];
+
+/**
  * Apply security headers to every response that passes through to the app.
  * These are defence-in-depth headers; they complement (not replace) CSP.
  */
-function withSecurityHeaders(response: NextResponse): NextResponse {
+function withSecurityHeaders(response: NextResponse, pathname?: string): NextResponse {
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -136,6 +145,9 @@ function withSecurityHeaders(response: NextResponse): NextResponse {
     "Strict-Transport-Security",
     "max-age=31536000; includeSubDomains"
   );
+  if (pathname && NO_STORE_PATHS.includes(pathname)) {
+    response.headers.set("Cache-Control", "no-store, must-revalidate");
+  }
   return response;
 }
 
@@ -226,10 +238,10 @@ export function proxy(request: NextRequest): NextResponse {
   if (pathname.startsWith("/admin")) {
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-pathname", pathname);
-    return withSecurityHeaders(NextResponse.next({ request: { headers: requestHeaders } }));
+    return withSecurityHeaders(NextResponse.next({ request: { headers: requestHeaders } }), pathname);
   }
 
-  return withSecurityHeaders(NextResponse.next());
+  return withSecurityHeaders(NextResponse.next(), pathname);
 }
 
 export const config = {

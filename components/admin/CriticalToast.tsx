@@ -11,6 +11,9 @@ interface CriticalToastProps {
   message?: string;
   actionUrl?: string;
   duration: number;
+  /** The underlying notification's DB id — distinct from `id` above, which
+   * is sonner's own per-toast-instance id. Needed to mark it read on click. */
+  notificationId?: string;
 }
 
 /**
@@ -19,7 +22,7 @@ interface CriticalToastProps {
  * notifications design doc's critical-alert spec. Every other toast in the
  * app keeps sonner's defaults (lib/toast.ts).
  */
-export function CriticalToast({ id, title, message, actionUrl, duration }: CriticalToastProps) {
+export function CriticalToast({ id, title, message, actionUrl, duration, notificationId }: CriticalToastProps) {
   const [shrink, setShrink] = useState(false);
 
   useEffect(() => {
@@ -37,7 +40,12 @@ export function CriticalToast({ id, title, message, actionUrl, duration }: Criti
           {actionUrl && (
             <Link
               href={actionUrl}
-              onClick={() => sonnerToast.dismiss(id)}
+              onClick={() => {
+                sonnerToast.dismiss(id);
+                if (notificationId) {
+                  fetch(`/api/admin/notifications/${notificationId}`, { method: "PATCH" }).catch(() => {});
+                }
+              }}
               className="mt-2 inline-block text-[13px] font-semibold text-red-600 hover:underline"
             >
               Details →

@@ -3,7 +3,7 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { emailOTP, admin, twoFactor, captcha } from "better-auth/plugins";
 import { db } from "@/lib/db";
 import { sendOTPEmail, sendWelcomeEmail, sendChangeEmailVerification } from "@/lib/email";
-import { sendSms } from "@/lib/sms";
+import { sendSms, hasSmsConfig } from "@/lib/sms";
 import { combineLegacyPhone } from "@/lib/phone";
 import { splitName } from "@/lib/name";
 import { Argon2id } from "oslo/password";
@@ -310,15 +310,43 @@ export const auth = betterAuth({
         // routes ever ran, so they always 401'd on a returning admin.
         //
         // Channel (email vs SMS) isn't a Better Auth concept — there's only
-        // one generic "otp" method — so it's resolved here from the admin's
-        // stored preference (adminProfile.twoFaMethod), exactly like the
-        // retired /api/admin/otp/send route did.
-        sendOTP: async ({ user, otp }) => {
-          const profile = await db.adminProfile.findUnique({
-            where: { userId: user.id },
-            select: { twoFaMethod: true },
-          });
-          const method = profile?.twoFaMethod ?? "email";
+        // one generic "otp" method. Resolution order: an explicit per-login
+        // override sent by the client as the x-2fa-channel header (lets a
+        // RETURNING admin/customer pick a different channel than their
+        // stored default without needing a real session to persist it —
+        // Better Auth deletes the real session before this fires, see the
+        // method-choice screen's handleMethodChoice) — else the admin's
+        // stored preference (adminProfile.twoFaMethod), else email.
+        //
+        // Better Auth's /two-factor/send-otp always responds { status: true }
+        // regardless of what this callback does (fire-and-forget — see
+        // otp/index.mjs), so a thrown/failed send here is otherwise
+        // completely invisible to the client. Every path below is wrapped so
+        // a failure never means "no code, no error, nothing" — SMS failures
+        // fall back to email (when an email is on file) instead.
+        sendOTP: async ({ user, otp }, ctx) => {
+          const headerChannel = ctx?.headers?.get?.("x-2fa-channel");
+          const requestedChannel = headerChannel === "sms" || headerChannel === "email" ? headerChannel : null;
+
+          let method: "email" | "sms" = "email";
+          if (requestedChannel) {
+            method = requestedChannel;
+          } else {
+            // null for customers (no adminProfile row) — falls through to "email".
+            const profile = await db.adminProfile.findUnique({
+              where: { userId: user.id },
+              select: { twoFaMethod: true },
+            });
+            method = profile?.twoFaMethod === "sms" ? "sms" : "email";
+          }
+
+          async function sendViaEmail() {
+            if (!user.email) {
+              console.error("[auth] 2FA OTP: no email on file for user", user.id);
+              return;
+            }
+            await sendOTPEmail(user.email, otp, "sign-in");
+          }
 
           if (method === "sms") {
             const dbUser = await db.user.findUnique({
@@ -326,28 +354,21 @@ export const auth = betterAuth({
               select: { phone: true, phoneCode: true },
             });
             const phone = dbUser?.phone ? combineLegacyPhone(dbUser.phone, dbUser.phoneCode) : null;
-            if (!phone) {
-              // Better Auth's /two-factor/send-otp always responds
-              // { status: true } regardless of what sendOTP does (it's
-              // fire-and-forget — see otp/index.mjs) so there's no way to
-              // surface this to the client here. The method-choice screen
-              // only ever lets an admin pick SMS when a phone is already on
-              // file, so this should be unreachable in practice; logged so
-              // a real occurrence (e.g. phone removed after enrollment)
-              // isn't silent in the server logs even though it's silent to
-              // the admin waiting on the code.
-              console.error("[auth] admin 2FA OTP: no phone on file for user", user.id);
-              return;
+            if (phone && hasSmsConfig()) {
+              try {
+                await sendSms(phone, `Your Fechi Organics login code: ${otp}. Valid for 10 minutes.`);
+                return;
+              } catch (e) {
+                console.error("[auth] 2FA OTP: SMS send failed for user", user.id, "— falling back to email:", e);
+              }
+            } else {
+              console.error("[auth] 2FA OTP: SMS unavailable (no phone on file or not configured) for user", user.id, "— falling back to email");
             }
-            await sendSms(phone, `Your Fechi Organics admin login code: ${otp}. Valid for 10 minutes.`);
+            await sendViaEmail();
             return;
           }
 
-          if (!user.email) {
-            console.error("[auth] admin 2FA OTP: no email on file for user", user.id);
-            return;
-          }
-          await sendOTPEmail(user.email, otp, "sign-in");
+          await sendViaEmail();
         },
       },
     }),

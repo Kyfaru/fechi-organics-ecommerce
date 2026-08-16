@@ -26,7 +26,10 @@ export async function GET(req: NextRequest) {
         reviewedBy: { select: { fullName: true, user: { select: { name: true, email: true } } } },
       },
       orderBy: { createdAt: "desc" },
-      take: 100,
+      // Was 100, no client-side pagination beyond this fetch — same bug as
+      // /admin/orders: viewing APPROVED/REJECTED history could silently hide
+      // anything past the most recent 100 decisions.
+      take: 10000,
     });
 
     const shaped = requests.map((r) => ({

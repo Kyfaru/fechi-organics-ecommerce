@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { ChevronUp, ChevronDown, Package } from "lucide-react";
 import { SkeletonTableRow } from "./Skeleton";
 import { EmptyState } from "./EmptyState";
@@ -32,6 +32,21 @@ export function DataTable({
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
 
+  // Reset to page 1 whenever the result COUNT changes — a filter/search
+  // change that shrinks the set out from under the current page previously
+  // left `page` pointing past the new last page, so `paged` sliced to an
+  // empty array and the table showed "No orders found" even though matches
+  // existed on earlier pages (the actual bug report). Keyed on length, not
+  // `data` itself, so an unrelated re-render/background refetch that
+  // returns the same count doesn't reset the admin's place mid-browse.
+  const prevLengthRef = useRef(data.length);
+  useEffect(() => {
+    if (data.length !== prevLengthRef.current) {
+      setPage(0);
+      prevLengthRef.current = data.length;
+    }
+  }, [data.length]);
+
   function handleSort(key: string) {
     if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortKey(key); setSortDir("asc"); }
@@ -52,6 +67,14 @@ export function DataTable({
   const paged = sorted.slice(page * pageSize, (page + 1) * pageSize);
   const from = page * pageSize + 1;
   const to = Math.min((page + 1) * pageSize, sorted.length);
+
+  // Slide the visible page-number window to stay centered on the current
+  // page instead of always showing pages 1–7 — with 47+ pages of filtered
+  // results, the admin needs to actually reach page 47, not click "next" 40
+  // times to get there.
+  const WINDOW = 7;
+  const windowStart = Math.max(0, Math.min(page - Math.floor(WINDOW / 2), totalPages - WINDOW));
+  const pageButtons = Array.from({ length: Math.min(totalPages, WINDOW) }, (_, i) => windowStart + i);
 
   return (
     <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1)">
@@ -118,15 +141,15 @@ export function DataTable({
             >
               ‹
             </button>
-            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => (
+            {pageButtons.map((p) => (
               <button
-                key={i}
-                onClick={() => setPage(i)}
+                key={p}
+                onClick={() => setPage(p)}
                 className={`h-8 w-8 flex items-center justify-center rounded-[6px] font-dm text-[13px] transition-colors ${
-                  i === page ? "bg-(--green-800) text-white dark:bg-(--dark-accent) dark:text-(--dark-bg)" : "text-(--green-800) dark:text-(--dark-text) hover:bg-(--green-100) dark:hover:bg-(--dark-border)"
+                  p === page ? "bg-(--green-800) text-white dark:bg-(--dark-accent) dark:text-(--dark-bg)" : "text-(--green-800) dark:text-(--dark-text) hover:bg-(--green-100) dark:hover:bg-(--dark-border)"
                 }`}
               >
-                {i + 1}
+                {p + 1}
               </button>
             ))}
             <button

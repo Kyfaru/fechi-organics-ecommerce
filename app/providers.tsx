@@ -183,9 +183,23 @@ function PortalSessionGuard() {
   useEffect(() => {
     if (pathname.startsWith("/admin")) return;
     if (isPending || !data?.session) return;
-    if ((data.user as { role?: string } | undefined)?.role === "admin") {
-      authClient.signOut();
-    }
+    if ((data.user as { role?: string } | undefined)?.role !== "admin") return;
+
+    // The cached useSession() value can be stale for up to the 5-minute
+    // cookieCache window — re-verify with a cache-bypassing read before
+    // actually destroying the session, so a stale "admin" read doesn't sign
+    // out a session that's genuinely fine by now. This extra request only
+    // fires in this already-rare branch (role looked like "admin" on a
+    // client path), not on every navigation, so it doesn't reintroduce the
+    // rate-limit issue the file-header comment above describes.
+    let cancelled = false;
+    authClient.getSession({ query: { disableCookieCache: true } }).then(({ data: fresh }) => {
+      if (cancelled) return;
+      if ((fresh?.user as { role?: string } | undefined)?.role === "admin") {
+        authClient.signOut();
+      }
+    });
+    return () => { cancelled = true; };
   }, [pathname, data, isPending]);
 
   return null;

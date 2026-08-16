@@ -65,16 +65,23 @@ export function NotificationBell() {
 
   // In-session toast for newly-appeared CRITICAL+unread items. Skips the
   // first render (seenCriticalRef starts null) so opening the app doesn't
-  // replay every pre-existing critical item as a toast.
+  // replay every pre-existing critical item as a toast. Also skips anything
+  // older than 24h — an unread item that's just now entering the "preview"
+  // top-N (e.g. once older unread items get cleared) shouldn't pop up as if
+  // it just happened; the notification is still there, just silently, in
+  // the bell dropdown and /admin/notifications.
   useEffect(() => {
-    const criticalUnread = preview.filter((n) => n.severity === "CRITICAL" && !n.isRead);
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+    const criticalUnread = preview.filter(
+      (n) => n.severity === "CRITICAL" && !n.isRead && Date.now() - new Date(n.createdAt).getTime() < ONE_DAY_MS
+    );
     if (seenCriticalRef.current === null) {
       seenCriticalRef.current = new Set(criticalUnread.map((n) => n.id));
       return;
     }
     for (const n of criticalUnread) {
       if (!seenCriticalRef.current.has(n.id)) {
-        toast.critical(n.title, { message: n.body, actionUrl: n.link ?? undefined });
+        toast.critical(n.title, { message: n.body, actionUrl: n.link ?? undefined, notificationId: n.id });
       }
     }
     seenCriticalRef.current = new Set(criticalUnread.map((n) => n.id));
@@ -142,7 +149,11 @@ export function NotificationBell() {
           )}
           <Link
             href="/admin/notifications"
-            onMouseDown={() => setOpen(false)}
+            // onClick, not onMouseDown — mousedown fires before the browser's
+            // click event, so closing the dropdown there unmounts this Link
+            // before Next.js's router ever sees the click, and the "click"
+            // silently just closes the dropdown instead of navigating.
+            onClick={() => setOpen(false)}
             className="block px-4 py-2.5 text-center text-[13px] font-medium text-(--green-700) hover:bg-(--green-50) dark:hover:bg-(--dark-border) border-t border-(--neutral-200) dark:border-(--dark-border) transition-colors"
           >
             Show all notifications

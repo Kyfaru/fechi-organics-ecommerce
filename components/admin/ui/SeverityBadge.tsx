@@ -1,9 +1,12 @@
-type Severity = "CRITICAL" | "WARNING" | "INFO";
+export type Severity = "CRITICAL" | "WARNING" | "INFO";
 
 // Severity colors are the one deliberate exception to the brand palette
 // (design doc Section 10) — red/amber/blue are near-universal danger/caution
 // /info signals, kept recognizable rather than forced into green/gold.
-const SEVERITY_MAP: Record<Severity, { label: string; text: string; bg: string; dot: string }> = {
+// Exported so other severity-aware UI (e.g. the notifications feed's icon
+// circles/accent bars) stays visually consistent with this badge instead of
+// picking its own shades.
+export const SEVERITY_MAP: Record<Severity, { label: string; text: string; bg: string; dot: string }> = {
   CRITICAL: { label: "Critical", text: "text-red-700 dark:text-red-400", bg: "bg-red-100 dark:bg-red-950/40", dot: "bg-red-600" },
   WARNING: { label: "Warning", text: "text-amber-700 dark:text-amber-400", bg: "bg-amber-100 dark:bg-amber-950/40", dot: "bg-amber-500" },
   INFO: { label: "Info", text: "text-blue-700 dark:text-blue-400", bg: "bg-blue-100 dark:bg-blue-950/40", dot: "bg-blue-500" },

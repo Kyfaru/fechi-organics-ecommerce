@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import Image from "next/image";
 import { motion } from "framer-motion";
+import { Icon } from "@iconify/react";
 import {
   ShoppingBag, Clock, Truck, CheckCircle, Search, Download,
   ChevronDown, MoreHorizontal, X, Tag, User, CreditCard, Printer, Link2,
@@ -529,6 +531,12 @@ function InStoreOrderDrawerContent({
           {/* Action buttons — Print Invoice only, no Copy Link, no Cancel
               (in-store orders are final once paid) */}
           <div className="flex flex-col gap-2">
+            <Link
+              href={`/admin/orders/instore/${order.id}`}
+              className="w-full h-9 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center justify-center gap-1.5 transition-colors"
+            >
+              <Icon icon="lucide:external-link" width={13} /> View Full Details
+            </Link>
             <button
               onClick={() => { window.open(`/api/admin/orders/instore/${order.id}/invoice`, "_blank"); }}
               disabled={!canDownload}
@@ -572,7 +580,7 @@ function InStoreOrderDrawerContent({
 // order number back to confirm. Shared by both the online-order and
 // in-store-order drawer variants.
 // ---------------------------------------------------------------------------
-function DeleteOrderModal({
+export function DeleteOrderModal({
   order,
   kind,
   open,
@@ -1062,6 +1070,12 @@ function OrderDetailDrawer({
 
             {/* Action buttons */}
             <div className="flex flex-col gap-2">
+              <Link
+                href={`/admin/orders/${order.id}`}
+                className="w-full h-9 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <Icon icon="lucide:external-link" width={13} /> View Full Details
+              </Link>
               <button
                 onClick={() => { window.open(`/api/admin/orders/${order.id}/invoice`, "_blank"); }}
                 disabled={order.status === "FAILED" || order.status === "CANCELLED" || order.paymentStatus !== "PAID"}
@@ -1184,6 +1198,7 @@ export function AdminOrdersClient() {
   const [customFrom, setCustomFrom] = usePersistedFilter("orders:date-from", "");
   const [customTo, setCustomTo] = usePersistedFilter("orders:date-to", "");
   const [branchFilter, setBranchFilter] = usePersistedFilter("orders:branch", "");
+  const [channelFilter, setChannelFilter] = usePersistedFilter<"" | "pickup" | "delivery" | "instore">("orders:channel", "");
   const [exportOpen, setExportOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<AdminOrderRow | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -1230,6 +1245,9 @@ export function AdminOrdersClient() {
       if (o.kind === "instore" && o.fulfillmentStatus !== filterStatus) return false;
     }
     if (filterPayment && o.paymentStatus !== filterPayment) return false;
+    if (channelFilter === "pickup" && !(o.kind === "order" && o.deliveryType === "PICKUP")) return false;
+    if (channelFilter === "delivery" && !(o.kind === "order" && o.deliveryType === "DELIVERY")) return false;
+    if (channelFilter === "instore" && o.kind !== "instore") return false;
     if (dateFilter === "today" && !isToday(o.createdAt)) return false;
     if (dateFilter === "week" && !isThisWeek(o.createdAt)) return false;
     if (dateFilter === "month" && !isThisMonth(o.createdAt)) return false;
@@ -1476,6 +1494,19 @@ export function AdminOrdersClient() {
               { value: "PAID", label: "Paid" },
               { value: "PENDING", label: "Pending" },
               { value: "FAILED", label: "Failed" },
+            ]}
+          />
+        </div>
+
+        <div className="w-[180px]">
+          <PrelineSelect
+            value={channelFilter}
+            onChange={(v) => setChannelFilter(v as "" | "pickup" | "delivery" | "instore")}
+            placeholder="All channels"
+            options={[
+              { value: "pickup", label: "Store Pickup" },
+              { value: "delivery", label: "Home Delivery" },
+              { value: "instore", label: "In-Store" },
             ]}
           />
         </div>

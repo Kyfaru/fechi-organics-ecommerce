@@ -17,7 +17,10 @@ export async function GET(req: NextRequest) {
     const [tiers, topCustomers] = await Promise.all([
       db.loyaltyTier.findMany({ orderBy: { minSpend: "asc" } }),
       db.loyaltyPoints.findMany({
-        take: 50,
+        // Was 50 — same bug as /admin/orders: this doubles as the full member
+        // list (a customer outside the top 50 by points was simply invisible
+        // here, not just excluded from a "leaderboard").
+        take: 10000,
         orderBy: { points: "desc" },
         include: {
           user: {

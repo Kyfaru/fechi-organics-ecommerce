@@ -166,6 +166,20 @@ export async function sendAdminNotificationEmail(args: {
   }
 }
 
+/** Sends an admin's ad-hoc message to a customer about a specific order (contact-customer panel). */
+export async function sendOrderContactEmail(to: string, subject: string, html: string): Promise<void> {
+  const { error } = await getResend().emails.send({
+    from: sendEmail!,
+    to,
+    subject,
+    html,
+  });
+  if (error) {
+    console.error("[Resend] Failed to send order contact email:", error);
+    throw new Error("Failed to send order contact email");
+  }
+}
+
 /**
  * Sends a branded acknowledgment email after a contact-form submission turns
  * into a support ticket (matched-account submitters only — see

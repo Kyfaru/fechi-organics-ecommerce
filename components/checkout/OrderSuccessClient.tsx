@@ -109,7 +109,7 @@ export function OrderSuccessClient({ order }: { order: Order }) {
   if (!ready) return null;
 
   return (
-    <div className="min-h-screen bg-[#fbfbfa] dark:bg-gray-950">
+    <div className="h-screen overflow-hidden bg-[#fbfbfa] dark:bg-gray-950">
       <Navbar />
       <main className="mx-auto flex min-h-[690px] max-w-[760px] flex-col items-center px-4 py-16 text-center md:py-24">
         <div className="flex h-22 w-22 items-center justify-center rounded-full border border-[#b9ddb7] bg-[#e6f4e5] shadow-[0_20px_60px_rgba(39,115,30,0.16)]">

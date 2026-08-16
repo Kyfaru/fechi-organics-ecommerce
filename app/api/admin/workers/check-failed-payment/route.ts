@@ -11,7 +11,6 @@ import { sendAdminNotificationEmail } from "@/lib/email";
 import { emailShell, emailSection, emailInfoBox, emailIconCircle, emailLineItem, emailTotalRow, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template";
 import { markPaymentFailed } from "@/lib/payments/post-payment";
 import { createNotification } from "@/lib/notify";
-import { createOrderDetailToken } from "@/lib/order-detail-token";
 import { reportError } from "@/lib/observability";
 import { trackServerEvent } from "@/lib/observability-server";
 
@@ -84,7 +83,7 @@ export async function POST(req: NextRequest) {
       type: "PAYMENT_ERROR",
       title: `Payment failed — order #${order.id.slice(0, 8).toUpperCase()}`,
       body: `${order.user?.name ?? order.guestEmail ?? "A customer"}'s payment of ${kes(order.totalKes)} timed out with no callback.`,
-      link: `/admin/orders/payment-failed/${await createOrderDetailToken(order.id, "order")}`,
+      link: `/admin/orders/${order.id}`,
       branchId: order.branchId,
     });
 

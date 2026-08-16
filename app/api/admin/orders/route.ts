@@ -31,7 +31,13 @@ export async function GET(req: NextRequest) {
     const search = url.searchParams.get("search");
     const branchId = url.searchParams.get("branchId");
     const page = Math.max(0, parseInt(url.searchParams.get("page") ?? "0", 10));
-    const pageSize = 50;
+    // The admin UI never sends ?page= — it fetches once and paginates
+    // client-side (DataTable, 25/page) on top of this single response (see
+    // the merge comment below), so this has to be "effectively everything",
+    // not a real page size. Was hardcoded to 50, which silently hid every
+    // order beyond the 50 most recent — years of order history became
+    // invisible with no error, just an empty-looking table past page 2.
+    const pageSize = 10000;
 
     const where: Record<string, unknown> = {};
 

@@ -333,6 +333,10 @@ export function AdminZohoStagedItemsClient({ status }: { status: StagedStatus })
   return (
     <div className="min-h-screen bg-(--neutral-50)">
       <PageHeader
+        breadcrumbs={[
+          { label: "Products", href: "/admin/products" },
+          { label: status === "PENDING" ? "Zoho Products" : "Expelled Zoho Products", href: status === "PENDING" ? "/admin/products/zoho" : "/admin/products/zoho/expelled" },
+        ]}
         title={status === "PENDING" ? "Zoho Products" : "Expelled Zoho Products"}
         description={
           status === "PENDING"

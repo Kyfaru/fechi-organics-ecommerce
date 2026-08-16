@@ -15,8 +15,10 @@
  */
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { User, Settings, Bell, Lock, Eye, EyeOff } from "lucide-react";
+import { signOut } from "@/lib/auth-client";
 
 const R2_BASE = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "").replace(/\/$/, "");
 
@@ -426,6 +428,7 @@ function PwInput({ id, value, show, onToggle, onChange, placeholder, error }: {
 }
 
 function PasswordTab() {
+  const router = useRouter();
   const [form, setForm] = useState({ current: "", next: "", confirm: "" });
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNext,    setShowNext]    = useState(false);
@@ -457,8 +460,10 @@ function PasswordTab() {
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error?.message ?? "Password update failed.");
-      toast.success("Password updated successfully.");
+      toast.success("Password updated successfully.", { message: "Signing you out for a fresh login…" });
       setForm({ current: "", next: "", confirm: "" });
+      await signOut();
+      router.replace("/admin/login");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to update password.";
       if (msg.toLowerCase().includes("current") || msg.toLowerCase().includes("incorrect")) {

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { Err, ok } from "@/lib/api";
 import { loadCallerContext, requirePermission } from "@/lib/require-permission";
 import { visibleNotificationTypes, resolveNotificationScope, buildNotificationWhere } from "@/lib/notifications/scope";
+import { typesForCategory } from "@/lib/notifications/categories";
 import type { NotificationSeverity, NotificationType, Prisma } from "@prisma/client";
 import { reportError } from "@/lib/observability";
 
@@ -25,24 +26,33 @@ export async function GET(req: NextRequest) {
     const params = req.nextUrl.searchParams;
     const search = params.get("search")?.trim();
     const type = params.get("type") as NotificationType | null;
-    const severity = params.get("severity") as NotificationSeverity | null;
+    const category = params.get("category");
+    // Comma-separated for the Filters panel's severity checkboxes (same
+    // pattern as the activity route's ?resource=a,b,c), single value works too.
+    const severityParam = params.get("severity");
+    const severities = severityParam ? (severityParam.split(",") as NotificationSeverity[]) : [];
     const status = params.get("status"); // "unread" | "read" | "pinned"
     const branchIdParam = params.get("branchId");
     const cursor = params.get("cursor");
+    const from = params.get("from") ?? undefined;
+    const to = params.get("to") ?? undefined;
 
-    // Security boundary (allowedTypes) always applies; the client's ?type=
-    // filter narrows further within it — never widens past it.
+    // Security boundary (allowedTypes) always applies; ?category= and ?type=
+    // narrow further within it — neither ever widens past it.
+    const scopedTypes = category
+      ? allowedTypes.filter((t) => typesForCategory(category).includes(t))
+      : allowedTypes;
     const typeFilter: Prisma.notificationWhereInput =
       type
-        ? allowedTypes.includes(type)
+        ? scopedTypes.includes(type)
           ? { type }
           : { type: { in: [] } }
-        : { type: { in: allowedTypes } };
+        : { type: { in: scopedTypes } };
 
     const where: Prisma.notificationWhereInput = {
       ...buildNotificationWhere(scope),
       ...typeFilter,
-      ...(severity ? { severity } : {}),
+      ...(severities.length > 0 ? { severity: { in: severities } } : {}),
       ...(search
         ? {
             OR: [
@@ -54,15 +64,26 @@ export async function GET(req: NextRequest) {
       // Branch override only ever honored for the global tier — resolved from
       // the session, never trusted from the query string for manager/staff.
       ...(branchIdParam && scope.tier === "global" ? { branchId: branchIdParam } : {}),
+      ...(from || to
+        ? { createdAt: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) } }
+        : {}),
     };
 
+    // Dismissed-for-me notifications are always excluded, alongside whatever
+    // status filter applies — combined via NOT array so neither clobbers the
+    // other.
+    const notClauses: Prisma.notificationWhereInput[] = [
+      { recipientStates: { some: { userId, dismissed: true } } },
+    ];
+
     if (status === "unread") {
-      where.NOT = { recipientStates: { some: { userId, readAt: { not: null } } } };
+      notClauses.push({ recipientStates: { some: { userId, readAt: { not: null } } } });
     } else if (status === "read") {
       where.recipientStates = { some: { userId, readAt: { not: null } } };
     } else if (status === "pinned") {
       where.recipientStates = { some: { userId, pinned: true } };
     }
+    where.NOT = notClauses;
 
     const notifications = await db.notification.findMany({
       where,
