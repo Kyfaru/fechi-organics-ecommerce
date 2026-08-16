@@ -27,18 +27,30 @@ const TEMPLATES: Record<Exclude<OrderOutcome, "neutral">, { label: string; text:
   ],
 };
 
+// In-store success templates skip the "browse online" framing (there's no
+// online cart to return to for a walk-in) in favor of a branch-visit note.
+const INSTORE_SUCCESS_TEMPLATES = [
+  { label: "Thank you", text: "Thank you for shopping with us in-store! You can always pass by any of our branches for any enquiry." },
+  { label: "Coupon offer", text: "Thanks for visiting us! Here's a treat: use code THANKYOU10 for 10% off your next purchase." },
+  { label: "Feedback", text: "Thank you! We'd love to hear your feedback on your in-store experience — it helps us keep improving." },
+];
+
 export function ContactCustomerPanel({
   orderId,
   hasPhone,
   hasEmail,
   isGuest,
   orderOutcome,
+  isInStore = false,
 }: {
   orderId: string;
   hasPhone: boolean;
   hasEmail: boolean;
   isGuest: boolean;
   orderOutcome: OrderOutcome;
+  /** In-store orders post to a different endpoint and get a branch-visit-
+   * flavored success template set instead of the "continue shopping" one. */
+  isInStore?: boolean;
 }) {
   const [channels, setChannels] = useState<Set<Channel>>(new Set());
   const [greeting, setGreeting] = useState<string>(GREETINGS[0]);
@@ -54,8 +66,10 @@ export function ContactCustomerPanel({
     EMAIL: "No email on file",
   };
   const effectiveGreeting = useCustomGreeting ? customGreeting.trim() : greeting;
-  const templates = orderOutcome === "neutral" ? null : TEMPLATES[orderOutcome];
-  const linkPreview = orderOutcome === "success" ? "fechiorganics.shop/shop" : "fechiorganics.shop/contact";
+  const templates =
+    orderOutcome === "neutral" ? null : orderOutcome === "success" && isInStore ? INSTORE_SUCCESS_TEMPLATES : TEMPLATES[orderOutcome];
+  const linkPreview = orderOutcome === "success" && !isInStore ? "fechiorganics.shop/shop" : "fechiorganics.shop/contact";
+  const apiPath = isInStore ? `/api/admin/orders/instore/${orderId}/contact` : `/api/admin/orders/${orderId}/contact`;
 
   function toggle(channel: Channel) {
     if (!availability[channel]) return;
@@ -80,7 +94,7 @@ export function ContactCustomerPanel({
 
     setSending(true);
     try {
-      const res = await fetch(`/api/admin/orders/${orderId}/contact`, {
+      const res = await fetch(apiPath, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ channels: Array.from(channels), greeting: effectiveGreeting, body: body.trim() }),
