@@ -65,6 +65,24 @@ export async function GET(req: NextRequest) {
       },
     });
 
+    // Combined online + successful in-store order count under the same
+    // `_count.orders` key the client already reads/sorts on — a walk-in
+    // customer created via in-store order creation (see
+    // lib/customers/find-or-create-walkin.ts) previously showed 0 orders
+    // here even after paying, since only the online `order` relation was
+    // counted. inStoreOrder.customerUserId has no back-relation declared on
+    // `user`, so this is a separate grouped count, not a nested Prisma _count.
+    const inStoreCounts = await db.inStoreOrder.groupBy({
+      by: ["customerUserId"],
+      where: { customerUserId: { in: users.map((u) => u.id) }, paymentStatus: "PAID" },
+      _count: { _all: true },
+    });
+    const inStoreCountByUserId = new Map(inStoreCounts.map((c) => [c.customerUserId, c._count._all]));
+    const shapedUsers = users.map((u) => ({
+      ...u,
+      _count: { orders: u._count.orders + (inStoreCountByUserId.get(u.id) ?? 0) },
+    }));
+
     // Derive stats on the fetched set (always unfiltered for stat cards)
     const allUsers = await db.user.findMany({
       select: { banned: true, createdAt: true },
@@ -96,8 +114,8 @@ export async function GET(req: NextRequest) {
       newThisMonth: getPeriodChange(stats.newThisMonth, newLastMonth),
     };
 
-    console.info("[admin/customers] GET — returned", users.length, "users");
-    return ok({ users, stats, statsChange });
+    console.info("[admin/customers] GET — returned", shapedUsers.length, "users");
+    return ok({ users: shapedUsers, stats, statsChange });
   } catch (e) {
     reportError(e, { route: "GET /api/admin/customers", tags: { domain: "customers" } });
     console.error("[admin/customers] GET error", e);

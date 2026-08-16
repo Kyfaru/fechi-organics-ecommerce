@@ -7,8 +7,11 @@ import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/customers/[id]/orders
-// Returns the customer's orders, newest first, with item count.
-// Capped at 50 — cursor pagination can be added when needed.
+// Returns the customer's orders, newest first, with item count — online
+// orders plus successful (PAID) in-store orders, merged and re-sorted, so a
+// walk-in customer resolved via lib/customers/find-or-create-walkin.ts shows
+// their in-store purchase history here too, not just online orders.
+// Capped at 10,000 combined — effectively unbounded for real customer volumes.
 // ---------------------------------------------------------------------------
 export async function GET(
   req: NextRequest,
@@ -21,21 +24,51 @@ export async function GET(
 
     const { id } = await params;
 
-    const orders = await db.order.findMany({
-      where: { userId: id },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-      select: {
-        id: true,
-        status: true,
-        paymentStatus: true,
-        totalKes: true,
-        createdAt: true,
-        _count: { select: { items: true } },
-      },
-    });
+    const [orders, inStoreOrders] = await Promise.all([
+      db.order.findMany({
+        where: { userId: id },
+        orderBy: { createdAt: "desc" },
+        take: 10000,
+        select: {
+          id: true,
+          status: true,
+          paymentStatus: true,
+          totalKes: true,
+          createdAt: true,
+          _count: { select: { items: true } },
+        },
+      }),
+      db.inStoreOrder.findMany({
+        where: { customerUserId: id, paymentStatus: "PAID" },
+        orderBy: { createdAt: "desc" },
+        take: 10000,
+        select: {
+          id: true,
+          fulfillmentStatus: true,
+          paymentStatus: true,
+          totalKes: true,
+          createdAt: true,
+          _count: { select: { items: true } },
+        },
+      }),
+    ]);
 
-    return ok({ orders });
+    const merged = [
+      ...orders.map((o) => ({ ...o, kind: "order" as const })),
+      ...inStoreOrders.map((o) => ({
+        id: o.id,
+        status: o.fulfillmentStatus,
+        paymentStatus: o.paymentStatus,
+        totalKes: o.totalKes,
+        createdAt: o.createdAt,
+        _count: o._count,
+        kind: "instore" as const,
+      })),
+    ]
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, 10000);
+
+    return ok({ orders: merged });
   } catch (e) {
     reportError(e, { route: "GET /api/admin/customers/[id]/orders", tags: { domain: "customers" } });
     console.error("[admin/customers/[id]/orders] GET error", e);

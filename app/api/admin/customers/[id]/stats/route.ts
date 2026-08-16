@@ -22,10 +22,14 @@ export async function GET(
 
     const { id } = await params;
 
-    const [testimonialsCount, spendResult, channelGroups] = await Promise.all([
+    const [testimonialsCount, spendResult, inStoreSpendResult, channelGroups] = await Promise.all([
       db.testimonial.count({ where: { userId: id } }),
       db.order.aggregate({
         where: { userId: id, paymentStatus: "PAID" },
+        _sum: { totalKes: true },
+      }),
+      db.inStoreOrder.aggregate({
+        where: { customerUserId: id, paymentStatus: "PAID" },
         _sum: { totalKes: true },
       }),
       db.campaignRecipient.groupBy({
@@ -37,7 +41,7 @@ export async function GET(
 
     return ok({
       testimonialsCount,
-      totalSpendKes: spendResult._sum.totalKes ?? 0,
+      totalSpendKes: (spendResult._sum.totalKes ?? 0) + (inStoreSpendResult._sum.totalKes ?? 0),
       channelUsage: channelGroups.map((g) => ({ channel: g.channel, count: g._count._all })),
     });
   } catch (e) {

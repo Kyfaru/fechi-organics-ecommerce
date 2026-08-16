@@ -50,7 +50,17 @@ export async function GET(
 
     if (!user) return Err.notFound("Customer");
 
-    return ok({ user });
+    // Combined online + successful in-store order count under the same
+    // `_count.orders` key the client already reads. inStoreOrder.customerUserId
+    // is a plain string field with no back-relation declared on `user` (see
+    // lib/customers/find-or-create-walkin.ts's "best-effort, not DB-enforced"
+    // comment), so this can't be a nested Prisma _count — a separate count is required.
+    const inStoreOrderCount = await db.inStoreOrder.count({
+      where: { customerUserId: id, paymentStatus: "PAID" },
+    });
+    const shaped = { ...user, _count: { orders: user._count.orders + inStoreOrderCount } };
+
+    return ok({ user: shaped });
   } catch (e) {
     reportError(e, { route: "GET /api/admin/customers/[id]", tags: { domain: "customers" } });
     console.error("[admin/customers/[id]] GET error", e);

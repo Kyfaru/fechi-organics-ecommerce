@@ -60,6 +60,7 @@ type CustomerOrder = {
   totalKes: number;
   createdAt: string;
   _count: { items: number };
+  kind: "order" | "instore";
 };
 
 type Stats = {
@@ -346,8 +347,15 @@ function CustomerDrawer({
                       className="flex items-center justify-between p-3 rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg)"
                     >
                       <div>
-                        <div className="font-dm text-[13px] font-semibold text-(--neutral-900) dark:text-(--dark-text) font-mono">
-                          #{order.id.slice(0, 8).toUpperCase()}
+                        <div className="flex items-center gap-1.5">
+                          <div className="font-dm text-[13px] font-semibold text-(--neutral-900) dark:text-(--dark-text) font-mono">
+                            #{order.id.slice(0, 8).toUpperCase()}
+                          </div>
+                          {order.kind === "instore" && (
+                            <span className="font-dm text-[10px] font-semibold uppercase tracking-[0.4px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                              In-Store
+                            </span>
+                          )}
                         </div>
                         <div className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted) mt-0.5">
                           {order._count.items} item{order._count.items !== 1 ? "s" : ""} &middot; {formatDate(order.createdAt)}
