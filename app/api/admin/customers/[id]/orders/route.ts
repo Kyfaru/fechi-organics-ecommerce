@@ -35,7 +35,7 @@ export async function GET(
           paymentStatus: true,
           totalKes: true,
           createdAt: true,
-          _count: { select: { items: true } },
+          items: { select: { quantity: true } },
         },
       }),
       db.inStoreOrder.findMany({
@@ -48,20 +48,28 @@ export async function GET(
           paymentStatus: true,
           totalKes: true,
           createdAt: true,
-          _count: { select: { items: true } },
+          items: { select: { quantity: true } },
         },
       }),
     ]);
 
+    // itemsCount is total UNITS purchased (sum of line quantities), not the
+    // number of order lines — a single line of qty 6 is 6 items, not 1.
+    // `_count: { select: { items: true } }` (the previous approach) counted
+    // rows, so a customer who bought 6 of one product showed "1 item".
     const merged = [
-      ...orders.map((o) => ({ ...o, kind: "order" as const })),
+      ...orders.map((o) => ({
+        id: o.id, status: o.status, paymentStatus: o.paymentStatus, totalKes: o.totalKes, createdAt: o.createdAt,
+        itemsCount: o.items.reduce((s, i) => s + i.quantity, 0),
+        kind: "order" as const,
+      })),
       ...inStoreOrders.map((o) => ({
         id: o.id,
         status: o.fulfillmentStatus,
         paymentStatus: o.paymentStatus,
         totalKes: o.totalKes,
         createdAt: o.createdAt,
-        _count: o._count,
+        itemsCount: o.items.reduce((s, i) => s + i.quantity, 0),
         kind: "instore" as const,
       })),
     ]
