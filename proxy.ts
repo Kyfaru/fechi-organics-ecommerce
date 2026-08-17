@@ -127,7 +127,11 @@ const SESSION_COOKIE = "better-auth.session_token";
  * cached copy of it on Back with no network round trip at all, skipping that
  * redirect entirely. Cache-Control: no-store forces a fresh request instead.
  */
-const NO_STORE_PATHS = ["/login", "/signup", "/admin/login"];
+const NO_STORE_PATHS = [
+  "/login", "/signup", "/admin/login",
+  "/forgot-password", "/reset-password",
+  "/admin/forgot-password", "/admin/reset-password",
+];
 
 /**
  * Apply security headers to every response that passes through to the app.

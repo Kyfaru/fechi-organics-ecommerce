@@ -13,6 +13,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
 import { useOtpResend } from "@/hooks/use-otp-resend";
 import { reportError } from "@/lib/observability";
+import { useReloadOnBfcacheRestore } from "@/hooks/use-reload-on-bfcache-restore";
 
 type Step = "request" | "channel" | "otp" | "set-password";
 
@@ -38,6 +39,7 @@ type Step = "request" | "channel" | "otp" | "set-password";
  */
 export default function AdminForgotPasswordPage() {
   const router = useRouter();
+  useReloadOnBfcacheRestore();
 
   const [step, setStep] = useState<Step>("request");
 

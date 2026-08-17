@@ -10,6 +10,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
 import { PWRESET_COMPLETION_FLAG_KEY } from "@/lib/pwreset-flag";
 import { reportError } from "@/lib/observability";
+import { useReloadOnBfcacheRestore } from "@/hooks/use-reload-on-bfcache-restore";
 
 /**
  * Reset Password page — user-facing.
@@ -212,6 +213,7 @@ function ResetPasswordForm() {
 // Page shell — provides the two-panel layout and Suspense boundary
 // ---------------------------------------------------------------------------
 export default function ResetPasswordPage() {
+  useReloadOnBfcacheRestore();
   return (
     <main className="flex min-h-screen">
       {/* ======================================================================
