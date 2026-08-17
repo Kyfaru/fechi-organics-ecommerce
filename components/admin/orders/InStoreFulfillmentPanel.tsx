@@ -6,6 +6,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@iconify/react";
 import { toast } from "@/lib/toast";
 import { Spinner } from "@/components/ui/spinner";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { DeleteOrderModal } from "@/components/admin/AdminOrdersClient";
 
 export type InStoreFulfillmentOrder = {
@@ -28,6 +29,7 @@ export function InStoreFulfillmentPanel({
   const router = useRouter();
   const qc = useQueryClient();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [confirmPickupOpen, setConfirmPickupOpen] = useState(false);
 
   const pickupMutation = useMutation({
     mutationFn: async () => {
@@ -73,9 +75,7 @@ export function InStoreFulfillmentPanel({
             ) : (
               <button
                 disabled={!isPaid || pickupMutation.isPending}
-                onClick={() => {
-                  if (window.confirm("Confirm you have handed over this order to the customer?")) pickupMutation.mutate();
-                }}
+                onClick={() => setConfirmPickupOpen(true)}
                 className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-[#15803D] text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#16A34A] transition-colors flex items-center gap-1.5"
               >
                 {pickupMutation.isPending ? <Spinner size={12} /> : <Icon icon="lucide:check" width={13} />}
@@ -96,6 +96,16 @@ export function InStoreFulfillmentPanel({
           </button>
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmPickupOpen}
+        onClose={() => setConfirmPickupOpen(false)}
+        onConfirm={() => { pickupMutation.mutate(); setConfirmPickupOpen(false); }}
+        title="Confirm handover?"
+        description="Confirm you have handed over this order to the customer."
+        confirmLabel="Confirm Pickup"
+        loading={pickupMutation.isPending}
+      />
 
       <DeleteOrderModal
         order={{ id: order.id, orderNumber: order.orderNumber }}

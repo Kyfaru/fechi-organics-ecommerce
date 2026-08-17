@@ -59,7 +59,7 @@ type CustomerOrder = {
   paymentStatus: string;
   totalKes: number;
   createdAt: string;
-  _count: { items: number };
+  itemsCount: number;
   kind: "order" | "instore";
 };
 
@@ -358,7 +358,7 @@ function CustomerDrawer({
                           )}
                         </div>
                         <div className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted) mt-0.5">
-                          {order._count.items} item{order._count.items !== 1 ? "s" : ""} &middot; {formatDate(order.createdAt)}
+                          {order.itemsCount} item{order.itemsCount !== 1 ? "s" : ""} &middot; {formatDate(order.createdAt)}
                         </div>
                       </div>
                       <div className="flex items-center gap-3">

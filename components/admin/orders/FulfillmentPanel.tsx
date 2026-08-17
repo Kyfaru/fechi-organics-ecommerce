@@ -116,6 +116,10 @@ export function FulfillmentPanel({
   const [confirmModal2Open, setConfirmModal2Open] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [pendingGateAction, setPendingGateAction] = useState<"set_processing" | "set_packaging" | null>(null);
+  // Drives a single shared ConfirmModal for the three one-step fulfillment
+  // actions below — was window.confirm() (a native browser dialog, visually
+  // inconsistent with the rest of the app's own confirm UI).
+  const [simpleConfirm, setSimpleConfirm] = useState<{ action: string; title: string; description: string; confirmLabel: string } | null>(null);
 
   const fulfillMutation = useMutation({
     mutationFn: async ({ action, orderNumber }: { action: string; orderNumber?: string }) => {
@@ -192,7 +196,12 @@ export function FulfillmentPanel({
               <div className="flex items-center gap-3 pl-[52px]">
                 <button
                   disabled={order.status !== "WAITING_TO_PACKAGE" || fulfillMutation.isPending}
-                  onClick={() => { if (window.confirm("Mark this order as ready for pickup?")) handleFulfillment("set_ready"); }}
+                  onClick={() => setSimpleConfirm({
+                    action: "set_ready",
+                    title: "Ready for pickup?",
+                    description: "This marks the order as ready and notifies the customer to come collect it.",
+                    confirmLabel: "Mark Ready",
+                  })}
                   className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-amber-500 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-amber-600 transition-colors flex items-center gap-1.5"
                 >
                   {fulfillMutation.isPending ? <Spinner size={12} /> : <Icon icon="lucide:map-pin" width={13} />}
@@ -213,7 +222,12 @@ export function FulfillmentPanel({
                 <div className="flex items-center gap-3 pl-[52px]">
                   <button
                     disabled={order.status !== "READY_FOR_PICKUP" || fulfillMutation.isPending}
-                    onClick={() => { if (window.confirm("Confirm you have handed over this order to the customer?")) handleFulfillment("set_picked_up"); }}
+                    onClick={() => setSimpleConfirm({
+                      action: "set_picked_up",
+                      title: "Confirm handover?",
+                      description: "Confirm you have handed over this order to the customer.",
+                      confirmLabel: "Confirm Pickup",
+                    })}
                     className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-[#15803D] text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#16A34A] transition-colors flex items-center gap-1.5"
                   >
                     {fulfillMutation.isPending ? <Spinner size={12} /> : <Icon icon="lucide:check" width={13} />}
@@ -253,7 +267,12 @@ export function FulfillmentPanel({
               <div className="flex items-center gap-3 pl-[52px]">
                 <button
                   disabled={order.status !== "PROCESSING" || fulfillMutation.isPending}
-                  onClick={() => { if (window.confirm("Mark this order as shipped?")) handleFulfillment("ship"); }}
+                  onClick={() => setSimpleConfirm({
+                    action: "ship",
+                    title: "Mark as shipped?",
+                    description: "This marks the order as shipped and notifies the customer.",
+                    confirmLabel: "Mark Shipped",
+                  })}
                   className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors flex items-center gap-1.5"
                 >
                   {fulfillMutation.isPending ? <Spinner size={12} /> : <Icon icon="lucide:truck" width={13} />}
@@ -305,6 +324,16 @@ export function FulfillmentPanel({
         description="This will mark the order as cancelled. The customer will need to be notified separately."
         confirmLabel="Cancel Order"
         danger
+        loading={fulfillMutation.isPending}
+      />
+
+      <ConfirmModal
+        open={!!simpleConfirm}
+        onClose={() => setSimpleConfirm(null)}
+        onConfirm={() => { if (simpleConfirm) handleFulfillment(simpleConfirm.action); setSimpleConfirm(null); }}
+        title={simpleConfirm?.title ?? ""}
+        description={simpleConfirm?.description ?? ""}
+        confirmLabel={simpleConfirm?.confirmLabel ?? "Confirm"}
         loading={fulfillMutation.isPending}
       />
 

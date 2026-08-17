@@ -47,6 +47,12 @@ export async function POST(req: NextRequest) {
     });
     if (!order) return NextResponse.json({ ok: true });
 
+    // Same fallback convention as the order detail page (app/admin/(protected)/
+    // orders/[id]/page.tsx) — orderNumber is only assigned once payment
+    // succeeds, so a genuinely-failed order won't have one yet, but this
+    // still keeps the format consistent with everywhere else this ref shows up.
+    const orderRef = order.orderNumber ?? `#FO-${order.id.slice(0, 8).toUpperCase()}`;
+
     const superAdmins = await db.adminProfile.findMany({
       where: { isSuperAdmin: true, isActive: true },
       include: { user: true },
@@ -74,14 +80,14 @@ export async function POST(req: NextRequest) {
 
       await sendAdminNotificationEmail({
         to: [...new Set(recipients)],
-        subject: `Failed payment #${order.id.slice(0, 8).toUpperCase()}`,
+        subject: `Failed payment ${orderRef}`,
         html: emailShell({ title: "Payment Failed", sectionsHtml: sections }),
       });
     }
 
     await createNotification({
       type: "PAYMENT_ERROR",
-      title: `Payment failed — order #${order.id.slice(0, 8).toUpperCase()}`,
+      title: `Payment failed — order ${orderRef}`,
       body: `${order.user?.name ?? order.guestEmail ?? "A customer"}'s payment of ${kes(order.totalKes)} timed out with no callback.`,
       link: `/admin/orders/${order.id}`,
       branchId: order.branchId,

@@ -2278,13 +2278,23 @@ export function AdminProductsClient() {
             <p className="font-dm text-[14px] text-(--neutral-600) dark:text-(--dark-muted)">
               Type <span className="font-semibold text-(--neutral-900) dark:text-(--dark-text)">{permanentSlugTarget.slug}</span> to confirm.
             </p>
-            <input
-              type="text"
-              value={permanentSlugInput}
-              onChange={(e) => setPermanentSlugInput(e.target.value)}
-              placeholder={permanentSlugTarget.slug}
-              className="w-full h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--danger)"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={permanentSlugInput}
+                onChange={(e) => setPermanentSlugInput(e.target.value)}
+                placeholder={permanentSlugTarget.slug}
+                className="flex-1 h-10 px-3 rounded-xl border border-(--neutral-200) font-dm text-[14px] outline-none focus:border-(--danger)"
+              />
+              <button
+                type="button"
+                onClick={() => { navigator.clipboard.writeText(permanentSlugTarget.slug); toast.success("Copied"); }}
+                className="h-10 w-10 shrink-0 rounded-xl border border-(--neutral-200) flex items-center justify-center text-(--neutral-500) hover:bg-(--neutral-100) hover:text-(--neutral-700) transition-colors"
+                title="Copy slug"
+              >
+                <Copy size={15} />
+              </button>
+            </div>
             <textarea
               value={permanentDeleteReason}
               onChange={(e) => setPermanentDeleteReason(e.target.value)}

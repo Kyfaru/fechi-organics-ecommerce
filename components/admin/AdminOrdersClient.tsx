@@ -349,6 +349,7 @@ function InStoreOrderDrawerContent({
 }) {
   const qc = useQueryClient();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [confirmPickupOpen, setConfirmPickupOpen] = useState(false);
 
   const pickupMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -422,11 +423,7 @@ function InStoreOrderDrawerContent({
                 ) : (
                   <button
                     disabled={!isPaid || pickupMutation.isPending}
-                    onClick={() => {
-                      if (window.confirm("Confirm you have handed over this order to the customer?")) {
-                        pickupMutation.mutate(order.id);
-                      }
-                    }}
+                    onClick={() => setConfirmPickupOpen(true)}
                     className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-[#15803D] text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#16A34A] transition-colors flex items-center gap-1.5"
                   >
                     {pickupMutation.isPending ? <Spinner size={12} /> : <Check size={13} />}
@@ -564,6 +561,16 @@ function InStoreOrderDrawerContent({
           </div>
         </div>
       </div>
+      <ConfirmModal
+        open={confirmPickupOpen}
+        onClose={() => setConfirmPickupOpen(false)}
+        onConfirm={() => { pickupMutation.mutate(order.id); setConfirmPickupOpen(false); }}
+        title="Confirm handover?"
+        description="Confirm you have handed over this order to the customer."
+        confirmLabel="Confirm Pickup"
+        loading={pickupMutation.isPending}
+      />
+
       <DeleteOrderModal
         order={order}
         kind="instore"
@@ -640,28 +647,61 @@ export function DeleteOrderModal({
       <div className="flex flex-col gap-3">
         <div>
           <label className="font-dm text-[12px] font-medium text-(--neutral-700) block mb-1">Reason</label>
+          {/* Quick-fill templates — only super admins ever reach this modal
+              (every trigger button is isSuperAdmin-gated), matching "admin
+              and super admin only, everyone else writes it manually". */}
+          <div className="flex flex-wrap gap-1.5 mb-1.5">
+            {DELETE_REASON_TEMPLATES.map((t) => (
+              <button
+                key={t.label}
+                type="button"
+                onClick={() => setReason(t.text)}
+                className="px-2.5 h-6 rounded-full border border-(--neutral-200) bg-(--neutral-50) font-dm text-[11px] font-medium text-(--neutral-700) hover:bg-(--neutral-100) transition-colors"
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
           <textarea
             value={reason}
-            onChange={(e) => setReason(e.target.value)}
+            onChange={(e) => setReason(e.target.value.slice(0, 200))}
             rows={2}
+            maxLength={200}
             className="w-full rounded-[8px] border border-(--neutral-200) px-3 py-2 font-dm text-[13px] resize-none"
             placeholder="Why is this order being deleted?"
           />
+          <p className="font-dm text-[11px] text-(--neutral-400) text-right mt-0.5">{reason.length}/200</p>
         </div>
         <div>
           <label className="font-dm text-[12px] font-medium text-(--neutral-700) block mb-1">
             Type <span className="font-mono font-semibold">{expected}</span> to confirm
           </label>
-          <input
-            value={confirmText}
-            onChange={(e) => setConfirmText(e.target.value)}
-            className="w-full h-9 rounded-[8px] border border-(--neutral-200) px-3 font-dm text-[13px]"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              className="flex-1 h-9 rounded-[8px] border border-(--neutral-200) px-3 font-dm text-[13px]"
+            />
+            <button
+              type="button"
+              onClick={() => { navigator.clipboard.writeText(expected); toast.success("Copied"); }}
+              className="h-9 w-9 shrink-0 rounded-[8px] border border-(--neutral-200) flex items-center justify-center text-(--neutral-500) hover:bg-(--neutral-50) hover:text-(--neutral-700) transition-colors"
+              title="Copy order number"
+            >
+              <Icon icon="lucide:copy" width={15} />
+            </button>
+          </div>
         </div>
       </div>
     </ConfirmModal>
   );
 }
+
+const DELETE_REASON_TEMPLATES = [
+  { label: "Test case", text: "Created as a test order during development/QA — not a real customer order, safe to remove." },
+  { label: "Clearing failed orders", text: "Failed payment order being cleared out during routine cleanup of abandoned checkout attempts." },
+  { label: "Other", text: "Removed for reasons not captured by the standard categories — see admin activity log for context." },
+];
 
 // ---------------------------------------------------------------------------
 // Order Detail Drawer
@@ -680,6 +720,7 @@ function OrderDetailDrawer({
   const qc = useQueryClient();
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [confirmModal1Open, setConfirmModal1Open] = useState(false);
+  const [simpleConfirm, setSimpleConfirm] = useState<{ action: string; title: string; description: string; confirmLabel: string } | null>(null);
   const [confirmModal2Open, setConfirmModal2Open] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [pendingGateAction, setPendingGateAction] = useState<"set_processing" | "set_packaging" | null>(null);
@@ -800,11 +841,12 @@ function OrderDetailDrawer({
                     <div className="flex items-center gap-3 pl-[52px]">
                       <button
                         disabled={order.status !== "WAITING_TO_PACKAGE" || fulfillMutation.isPending}
-                        onClick={() => {
-                          if (window.confirm("Mark this order as ready for pickup?")) {
-                            handleFulfillment("set_ready");
-                          }
-                        }}
+                        onClick={() => setSimpleConfirm({
+                          action: "set_ready",
+                          title: "Ready for pickup?",
+                          description: "This marks the order as ready and notifies the customer to come collect it.",
+                          confirmLabel: "Mark Ready",
+                        })}
                         className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-amber-500 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-amber-600 transition-colors flex items-center gap-1.5"
                       >
                         {fulfillMutation.isPending ? <Spinner size={12} /> : <MapPin size={13} />}
@@ -826,11 +868,12 @@ function OrderDetailDrawer({
                       <div className="flex items-center gap-3 pl-[52px]">
                         <button
                           disabled={order.status !== "READY_FOR_PICKUP" || fulfillMutation.isPending}
-                          onClick={() => {
-                            if (window.confirm("Confirm you have handed over this order to the customer?")) {
-                              handleFulfillment("set_picked_up");
-                            }
-                          }}
+                          onClick={() => setSimpleConfirm({
+                            action: "set_picked_up",
+                            title: "Confirm handover?",
+                            description: "Confirm you have handed over this order to the customer.",
+                            confirmLabel: "Confirm Pickup",
+                          })}
                           className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-[#15803D] text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#16A34A] transition-colors flex items-center gap-1.5"
                         >
                           {fulfillMutation.isPending ? <Spinner size={12} /> : <Check size={13} />}
@@ -877,11 +920,12 @@ function OrderDetailDrawer({
                     <div className="flex items-center gap-3 pl-[52px]">
                       <button
                         disabled={order.status !== "PROCESSING" || fulfillMutation.isPending}
-                        onClick={() => {
-                          if (window.confirm("Mark this order as shipped?")) {
-                            handleFulfillment("ship");
-                          }
-                        }}
+                        onClick={() => setSimpleConfirm({
+                          action: "ship",
+                          title: "Mark as shipped?",
+                          description: "This marks the order as shipped and notifies the customer.",
+                          confirmLabel: "Mark Shipped",
+                        })}
                         className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors flex items-center gap-1.5"
                       >
                         {fulfillMutation.isPending ? <Spinner size={12} /> : <Truck size={13} />}
@@ -1128,6 +1172,16 @@ function OrderDetailDrawer({
           </div>
         </div>
       </Drawer>
+
+      <ConfirmModal
+        open={!!simpleConfirm}
+        onClose={() => setSimpleConfirm(null)}
+        onConfirm={() => { if (simpleConfirm) handleFulfillment(simpleConfirm.action); setSimpleConfirm(null); }}
+        title={simpleConfirm?.title ?? ""}
+        description={simpleConfirm?.description ?? ""}
+        confirmLabel={simpleConfirm?.confirmLabel ?? "Confirm"}
+        loading={fulfillMutation.isPending}
+      />
 
       {/* Cancel confirm */}
       <ConfirmModal
