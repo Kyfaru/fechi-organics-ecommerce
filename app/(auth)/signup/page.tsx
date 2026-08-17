@@ -20,6 +20,7 @@ import { toast } from "@/lib/toast";
 import { SignupLoader } from "@/components/ui/signup-loader";
 import { posthog } from "@/lib/posthog";
 import { reportError } from "@/lib/observability";
+import { useReloadOnBfcacheRestore } from "@/hooks/use-reload-on-bfcache-restore";
 
 // Isolated component so useSearchParams is inside a Suspense boundary.
 // Better Auth redirects OAuth errors (e.g. a banned user) back here as
@@ -56,6 +57,7 @@ interface SignupErrors {
 
 export default function SignupPage() {
   const router = useRouter();
+  useReloadOnBfcacheRestore();
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");

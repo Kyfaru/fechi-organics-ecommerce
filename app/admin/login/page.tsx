@@ -16,6 +16,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { toast } from "@/lib/toast";
 import { checkPortalMatch } from "@/lib/portal-check";
 import { reportError } from "@/lib/observability";
+import { useReloadOnBfcacheRestore } from "@/hooks/use-reload-on-bfcache-restore";
 
 // ---------------------------------------------------------------------------
 // State machine for the admin login flow:
@@ -52,6 +53,7 @@ interface AdminMeResponse {
 
 export default function AdminLoginPage() {
   const router = useRouter();
+  useReloadOnBfcacheRestore();
 
   // Step 1 — credential fields
   const [email, setEmail] = useState("");

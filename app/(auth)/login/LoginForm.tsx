@@ -18,6 +18,7 @@ import { toast } from "@/lib/toast";
 import { posthog } from "@/lib/posthog";
 import { checkPortalMatch } from "@/lib/portal-check";
 import { reportError } from "@/lib/observability";
+import { useReloadOnBfcacheRestore } from "@/hooks/use-reload-on-bfcache-restore";
 
 interface LoginErrors {
   email?: string;
@@ -66,6 +67,7 @@ function LoginSearchParamsReader() {
 
 export default function LoginForm() {
   const router = useRouter();
+  useReloadOnBfcacheRestore();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
