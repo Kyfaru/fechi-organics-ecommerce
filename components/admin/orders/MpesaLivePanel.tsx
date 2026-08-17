@@ -135,6 +135,7 @@ export default function MpesaLivePanel({ orderContext, branchReady }: MpesaLiveP
           items: orderContext.items,
           promoCode: orderContext.promoCode,
           branchId: orderContext.branchId,
+          deliveryZoneId: orderContext.deliveryZoneId,
         }),
       });
       const json = await res.json() as {

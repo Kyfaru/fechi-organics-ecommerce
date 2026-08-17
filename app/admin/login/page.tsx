@@ -196,6 +196,15 @@ export default function AdminLoginPage() {
       // AdminGuard (app/admin/(protected)/layout.tsx) re-verifies server-side.
       reportError(err, { route: "admin-login", tags: { step: "finish-login" } });
     }
+    // Reset the page's own state immediately, before navigating away — so if
+    // this exact instance is ever shown again (bfcache/history restore), it
+    // reflects a fresh credentials step instead of a completed 2FA step with
+    // stale typed credentials/codes still sitting in memory.
+    setStep("credentials");
+    setEmail("");
+    setPassword("");
+    setCode("");
+    setErrors({});
     router.replace("/admin");
   }
 

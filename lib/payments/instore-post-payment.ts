@@ -135,6 +135,7 @@ export async function markInStorePaymentSuccess(args: {
             customerEmail: true,
             customerPhone: true,
             discountKes: true,
+            deliveryKes: true,
             orderNumber: true,
           },
         });
@@ -155,6 +156,7 @@ export async function markInStorePaymentSuccess(args: {
           paymentMode: paymentModeForInStore(provider!),
           items: paidItems,
           discountKes: order?.discountKes,
+          shippingKes: order?.deliveryKes,
           paymentReference,
           notes: `Fechi Organics in-store order ${order?.orderNumber ?? args.inStoreOrderId}`,
         });

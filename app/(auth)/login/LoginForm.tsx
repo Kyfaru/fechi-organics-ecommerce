@@ -138,15 +138,29 @@ export default function LoginForm() {
   // ---------------------------------------------------------------------------
   // Login completion — shared by the TOTP and OTP verify paths, plus the
   // no-2FA-configured branch of credential submit.
+  //
+  // Resets step/credentials/code FIRST, before doing anything else — this is
+  // what actually fixes the modal-still-open-with-stale-credentials bug:
+  // navigating away doesn't unmount this component instantly, so if the page
+  // is ever shown again (bfcache/history restore) while that navigation is
+  // still settling, it must already reflect a fresh, empty credentials step
+  // rather than a completed OTP/TOTP step. The pageshow-reload hook is a
+  // second layer, not a replacement for this.
   // ---------------------------------------------------------------------------
-  function completeLogin(user: Record<string, unknown> | undefined) {
+  function completeLogin(user: Record<string, unknown> | undefined, method: "totp" | "otp") {
+    setStep("credentials");
+    setEmail("");
+    setPassword("");
+    setCode("");
+    setErrors({});
+    setCaptchaToken(null);
+
     if (user) {
       // Defense-in-depth fallback — reject an admin account here too, in
       // case checkPortalMatch (handleCredentialsSubmit) was ever bypassed.
       if (user.role === "admin") {
         signOut();
         toast.error("An account with this email already exists.");
-        setStep("credentials");
         return;
       }
       storeUser({
@@ -159,7 +173,7 @@ export default function LoginForm() {
         image: (user.image as string | null) ?? null,
       });
       posthog.identify(user.id as string, { email: user.email as string, name: user.name as string });
-      posthog.capture("login_completed", { method: step === "totp-verify" || step === "totp-setup" ? "totp" : "otp" });
+      posthog.capture("login_completed", { method });
     }
     toast.success("Welcome back!");
     router.replace("/");
@@ -312,7 +326,7 @@ export default function LoginForm() {
         setErrors({ code: step === "totp-setup" ? "Invalid code. Make sure your authenticator is synced and try again." : "Invalid or expired code. Try again." });
         return;
       }
-      completeLogin(result?.data?.user as Record<string, unknown> | undefined);
+      completeLogin(result?.data?.user as Record<string, unknown> | undefined, "totp");
     } catch (err) {
       reportError(err, { route: "login", tags: { step } });
       setErrors({ code: "Verification failed. Please try again." });
@@ -328,7 +342,7 @@ export default function LoginForm() {
     try {
       const result = await authClient.twoFactor.verifyOtp({ code: otp });
       if (result?.error) return { success: false, error: result.error.message ?? "Invalid or expired code." };
-      completeLogin(result?.data?.user as Record<string, unknown> | undefined);
+      completeLogin(result?.data?.user as Record<string, unknown> | undefined, "otp");
       return { success: true };
     } catch (err) {
       reportError(err, { route: "login", tags: { step: "otp-verify" } });

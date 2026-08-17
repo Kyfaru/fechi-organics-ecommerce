@@ -21,6 +21,7 @@
 
 import React, { useRef, useState, useEffect } from "react";
 import { Search, UserPlus, Check, ChevronDown, Loader2 } from "lucide-react";
+import { isPlaceholderEmail } from "@/lib/customers/placeholder-email";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -160,7 +161,9 @@ export default function CustomerPicker({
               <div className="font-dm text-[13px] font-medium text-(--neutral-900) dark:text-(--dark-text) truncate">
                 {selectedCustomer.name}
               </div>
-              <div className="font-dm text-[11px] text-(--neutral-400) truncate">{selectedCustomer.email}</div>
+              <div className="font-dm text-[11px] text-(--neutral-400) truncate">
+                {isPlaceholderEmail(selectedCustomer.email) ? "No email" : selectedCustomer.email}
+              </div>
             </div>
           </>
         ) : (
@@ -268,7 +271,9 @@ export default function CustomerPicker({
                       <div className="font-dm text-[13px] font-medium text-(--neutral-900) dark:text-(--dark-text) truncate">
                         {customer.name}
                       </div>
-                      <div className="font-dm text-[11px] text-(--neutral-400) truncate">{customer.email}</div>
+                      <div className="font-dm text-[11px] text-(--neutral-400) truncate">
+                        {isPlaceholderEmail(customer.email) ? "No email" : customer.email}
+                      </div>
                     </div>
                     {isSelected && <Check size={15} className="text-(--green-800) shrink-0" />}
                   </div>

@@ -51,6 +51,7 @@ const bodySchema = z
     // previous attempt already failed — reuses that order instead of
     // creating a new one.
     retryOrderId: z.string().optional(),
+    deliveryZoneId: z.string().optional(),
   })
   .strict();
 
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
     return Err.validation("Invalid request body");
   }
 
-  const { customerUserId, customerName, customerPhone, customerEmail, items, promoCode, branchId, retryOrderId } =
+  const { customerUserId, customerName, customerPhone, customerEmail, items, promoCode, branchId, retryOrderId, deliveryZoneId } =
     parsed;
 
   try {
@@ -167,7 +168,16 @@ export async function POST(req: NextRequest) {
         /* invalid/expired — discount stays 0 */
       }
     }
-    const totalKes = Math.max(0, subtotalKes - discountKes);
+    // Never trust a client-submitted delivery fee — resolve it from the real
+    // DeliveryZone row, same "recompute from the DB" principle as product
+    // prices above. An unknown/inactive zone id is treated as no delivery
+    // (fail closed) rather than erroring the whole order.
+    const deliveryZone = deliveryZoneId
+      ? await db.deliveryZone.findUnique({ where: { id: deliveryZoneId, isActive: true } })
+      : null;
+    const deliveryKes = deliveryZone?.deliveryFeeKes ?? 0;
+
+    const totalKes = Math.max(0, subtotalKes - discountKes + deliveryKes);
 
     // Resolve the walk-in to a real customer record (find-by-phone or
     // create) so they appear on /admin/customers — skip on retry (already
@@ -221,6 +231,10 @@ export async function POST(req: NextRequest) {
           discountKes,
           promoCode: normalizedPromoCode ?? null,
           totalKes,
+          deliveryKes,
+          deliveryZoneId: deliveryZone?.id ?? null,
+          deliveryLocation: deliveryZone?.name ?? null,
+          deliveryCounty: deliveryZone?.county ?? null,
           paymentStatus: "PENDING",
           items: {
             create: items.map((item) => {

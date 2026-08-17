@@ -87,6 +87,8 @@ type AdminInStoreOrder = {
   subtotalKes: number;
   discountKes: number;
   totalKes: number;
+  deliveryKes: number;
+  deliveryLocation: string | null;
   createdByAdminId: string;
   createdByAdminName: string;
   customerUserId: string | null;
@@ -462,12 +464,17 @@ function InStoreOrderDrawerContent({
               })}
             </div>
 
-            {/* Price summary — no delivery line, in-store orders never have one */}
             <div className="mt-4 bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200) flex flex-col gap-2">
               <div className="flex justify-between font-dm text-[13px] text-(--neutral-500)">
                 <span>Subtotal</span>
                 <span>{formatKes(order.subtotalKes)}</span>
               </div>
+              {order.deliveryKes > 0 && (
+                <div className="flex justify-between font-dm text-[13px] text-(--neutral-500)">
+                  <span>Delivery Fee{order.deliveryLocation ? ` — ${order.deliveryLocation}` : ""}</span>
+                  <span>{formatKes(order.deliveryKes)}</span>
+                </div>
+              )}
               {order.discountKes > 0 && (
                 <div className="flex justify-between font-dm text-[13px] text-(--success)">
                   <span>Discount</span>

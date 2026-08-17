@@ -371,23 +371,26 @@ function NotificationsTab({ settings, onSave, saving }: { settings: Settings; on
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader title="Email Notifications" description="Choose which events trigger admin email alerts" />
-        <div className="divide-y divide-(--neutral-100) dark:divide-(--dark-border)">
-          {NOTIFICATION_ITEMS.map((item) => (
-            <div key={item.key} className="flex items-center justify-between py-4">
-              <div>
-                <div className="font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">{item.label}</div>
-                <div className="font-dm text-[12px] text-(--neutral-400) mt-0.5">{item.description}</div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+        <Card>
+          <CardHeader title="Email Notifications" description="Choose which events trigger admin email alerts" />
+          <div className="divide-y divide-(--neutral-100) dark:divide-(--dark-border)">
+            {NOTIFICATION_ITEMS.map((item) => (
+              <div key={item.key} className="flex items-center justify-between py-4">
+                <div>
+                  <div className="font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">{item.label}</div>
+                  <div className="font-dm text-[12px] text-(--neutral-400) mt-0.5">{item.description}</div>
+                </div>
+                <Switch
+                  checked={local[item.key]}
+                  onChange={(v) => setLocal((p) => ({ ...p, [item.key]: v }))}
+                />
               </div>
-              <Switch
-                checked={local[item.key]}
-                onChange={(v) => setLocal((p) => ({ ...p, [item.key]: v }))}
-              />
-            </div>
-          ))}
-        </div>
-      </Card>
+            ))}
+          </div>
+        </Card>
+        <NotificationPreferencesCard />
+      </div>
       <div className="flex justify-end">
         <SaveBtn onClick={handleSave} saving={saving} />
       </div>
@@ -546,8 +549,6 @@ function SecurityTab({
           <SaveBtn onClick={handleSavePolicy} saving={saving} />
         </div>
       )}
-
-      <NotificationPreferencesCard />
     </div>
   );
 }

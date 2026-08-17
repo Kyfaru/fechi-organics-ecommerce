@@ -184,6 +184,7 @@ enum NotificationSeverity {
 enum NotificationType {
   ORDER_NEW
   ORDER_FAILED
+  ORDER_CANCELLED
   PAYMENT_ERROR
   PRODUCT_ADDED
   PRODUCT_DELETED
@@ -580,6 +581,10 @@ model order {
   reviewedAt                DateTime?
   invoiceNumber             String?            @unique
   invoicePdfKey             String?
+  // Idempotency flag for the queued order-cancellation-notify worker (same
+  // boolean-flag convention as receiptSent) — set once email/SMS/inbox/admin
+  // notification fan-out has run for this order's cancellation.
+  cancellationNotifiedAt    DateTime?
   // Last-touch marketing attribution, stamped from the fechi_utm cookie
   // (set by PostHogProvider on landing) — powers the Reports conversion-rate
   // by social channel section. Nullable: most historical orders predate this.
@@ -1491,6 +1496,14 @@ model inStoreOrder {
   discountKes        Int                      @default(0)
   promoCode          String?
   totalKes           Int
+  // Optional delivery, priced from an existing DeliveryZone at order time —
+  // denormalized snapshot (no relation), same reasoning as the online
+  // `order` model's deliveryZone/deliveryCounty fields: a zone can be
+  // edited/deleted later without invalidating past orders.
+  deliveryKes        Int                      @default(0)
+  deliveryZoneId     String?
+  deliveryLocation   String?
+  deliveryCounty     String?
   fulfillmentStatus  InStoreFulfillmentStatus @default(CONFIRMED)
   paymentStatus      PaymentStatus            @default(PENDING)
   transactions       inStoreTransaction[]

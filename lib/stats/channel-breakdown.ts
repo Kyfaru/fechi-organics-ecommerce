@@ -71,13 +71,13 @@ async function fetchRows(scope: ChannelScope, gte: Date | null, lte: Date) {
             createdAt: dateFilter,
             ...(deliveryType ? { deliveryType } : {}),
           },
-          select: { createdAt: true, totalKes: true },
+          select: { createdAt: true, totalKes: true, deliveryKes: true },
         })
       : Promise.resolve([]),
     wantsInStore
       ? db.inStoreOrder.findMany({
           where: { paymentStatus: "PAID", createdAt: dateFilter },
-          select: { createdAt: true, totalKes: true },
+          select: { createdAt: true, totalKes: true, deliveryKes: true },
         })
       : Promise.resolve([]),
   ]);
@@ -100,20 +100,22 @@ async function getChannelSeries(opts: {
     prevGte ? fetchRows(scope, prevGte, prevLte!) : Promise.resolve([]),
   ]);
 
+  // Revenue excludes delivery fee (both channels) — it's tracked separately
+  // (see getDeliveryFeesSeries) rather than counted as store revenue.
   const bucketMap: Record<string, number> = {};
   for (const row of currentRows) {
     const key = bucketKey(row.createdAt, granularity);
-    bucketMap[key] = (bucketMap[key] ?? 0) + (metric === "revenue" ? row.totalKes : 1);
+    bucketMap[key] = (bucketMap[key] ?? 0) + (metric === "revenue" ? row.totalKes - row.deliveryKes : 1);
   }
 
   const buckets = generateBuckets(gte, now, granularity);
   const series = buckets.map((date) => ({ date, value: bucketMap[date] ?? 0 }));
 
   const value = metric === "revenue"
-    ? currentRows.reduce((sum, r) => sum + r.totalKes, 0)
+    ? currentRows.reduce((sum, r) => sum + r.totalKes - r.deliveryKes, 0)
     : currentRows.length;
   const previousValue = metric === "revenue"
-    ? previousRows.reduce((sum, r) => sum + r.totalKes, 0)
+    ? previousRows.reduce((sum, r) => sum + r.totalKes - r.deliveryKes, 0)
     : previousRows.length;
 
   return { value, change: getPeriodChange(value, previousValue), series };
@@ -125,6 +127,39 @@ export function getRevenueSeries(opts: { scope: ChannelScope; range: StatRange }
 
 export function getOrderSeries(opts: { scope: ChannelScope; range: StatRange }): Promise<ChannelSeriesResult> {
   return getChannelSeries({ ...opts, metric: "count" });
+}
+
+/** Total delivery fees collected — in-store orders only, no channel scope (mirrors getRevenueSeries's shape). */
+export async function getDeliveryFeesSeries(opts: { range: StatRange }): Promise<ChannelSeriesResult> {
+  const now = new Date();
+  const granularity = granularityFor(opts.range);
+  const { gte, prevGte, prevLte } = resolveWindow(opts.range, now);
+
+  async function fetchDeliveryRows(from: Date | null, to: Date) {
+    const dateFilter = from ? { gte: from, lte: to } : { lte: to };
+    return db.inStoreOrder.findMany({
+      where: { paymentStatus: "PAID", createdAt: dateFilter },
+      select: { createdAt: true, deliveryKes: true },
+    });
+  }
+
+  const [currentRows, previousRows] = await Promise.all([
+    fetchDeliveryRows(gte, now),
+    prevGte ? fetchDeliveryRows(prevGte, prevLte!) : Promise.resolve([]),
+  ]);
+
+  const bucketMap: Record<string, number> = {};
+  for (const row of currentRows) {
+    const key = bucketKey(row.createdAt, granularity);
+    bucketMap[key] = (bucketMap[key] ?? 0) + row.deliveryKes;
+  }
+  const buckets = generateBuckets(gte, now, granularity);
+  const series = buckets.map((date) => ({ date, value: bucketMap[date] ?? 0 }));
+
+  const value = currentRows.reduce((sum, r) => sum + r.deliveryKes, 0);
+  const previousValue = previousRows.reduce((sum, r) => sum + r.deliveryKes, 0);
+
+  return { value, change: getPeriodChange(value, previousValue), series };
 }
 
 async function fetchTransactionRows(gte: Date | null, lte: Date) {

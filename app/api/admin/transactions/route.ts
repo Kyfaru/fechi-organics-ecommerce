@@ -53,10 +53,10 @@ export async function GET(req: NextRequest) {
       // Real, all-time revenue — sum of PAID order totals, not a page-limited
       // sum of payment-attempt amounts (a transaction is a single payment
       // attempt, not a sale; multiple can exist per order via retries).
-      db.order.aggregate({ _sum: { totalKes: true }, where: { paymentStatus: "PAID" } }),
+      db.order.aggregate({ _sum: { totalKes: true, deliveryKes: true }, where: { paymentStatus: "PAID" } }),
       // In-store sales use a separate table entirely — omitting this was why
       // Finance revenue excluded every walk-in sale.
-      db.inStoreOrder.aggregate({ _sum: { totalKes: true }, where: { paymentStatus: "PAID" } }),
+      db.inStoreOrder.aggregate({ _sum: { totalKes: true, deliveryKes: true }, where: { paymentStatus: "PAID" } }),
       db.transaction.count({ where: { status: "PENDING" } }),
       // In-store payment attempts — same "count every attempt" convention as
       // the online `total` above, merged into stats.totalTransactions.
@@ -79,7 +79,10 @@ export async function GET(req: NextRequest) {
         // order/inStoreOrder.totalKes is stored in the same smallest-unit
         // (cents) convention as transaction.amount — both go through the
         // client's formatKes(), which divides by 100 — so no scaling needed.
-        totalRevenue: (orderRevenueAgg._sum.totalKes ?? 0) + (inStoreRevenueAgg._sum.totalKes ?? 0),
+        // Revenue excludes delivery fee (both channels) — tracked separately on Finance.
+        totalRevenue:
+          (orderRevenueAgg._sum.totalKes ?? 0) - (orderRevenueAgg._sum.deliveryKes ?? 0) +
+          (inStoreRevenueAgg._sum.totalKes ?? 0) - (inStoreRevenueAgg._sum.deliveryKes ?? 0),
         pending: pendingCount,
         totalTransactions: total + inStoreTxCount,
       },

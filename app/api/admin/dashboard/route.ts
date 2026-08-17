@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
     ] = await Promise.all([
       // Sum of totalKes for PAID orders in last 30 days
       db.order.aggregate({
-        _sum: { totalKes: true },
+        _sum: { totalKes: true, deliveryKes: true },
         where: {
           paymentStatus: "PAID",
           createdAt: { gte: thirtyDaysAgo },
@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
           paymentStatus: "PAID",
           createdAt: { gte: thirtyDaysAgo },
         },
-        select: { createdAt: true, totalKes: true },
+        select: { createdAt: true, totalKes: true, deliveryKes: true },
       }),
       // Order counts grouped by status
       db.order.groupBy({
@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
       }),
       // Previous 30-day period, for real "vs last month" stats-card deltas
       db.order.aggregate({
-        _sum: { totalKes: true },
+        _sum: { totalKes: true, deliveryKes: true },
         where: {
           paymentStatus: "PAID",
           createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo },
@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
         where: { role: "client", createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } },
       }),
       db.inStoreOrder.aggregate({
-        _sum: { totalKes: true },
+        _sum: { totalKes: true, deliveryKes: true },
         where: { paymentStatus: "PAID", createdAt: { gte: thirtyDaysAgo } },
       }),
       db.inStoreOrder.count({
@@ -142,13 +142,13 @@ export async function GET(req: NextRequest) {
       }),
       db.inStoreOrder.findMany({
         where: { paymentStatus: "PAID", createdAt: { gte: thirtyDaysAgo } },
-        select: { createdAt: true, totalKes: true },
+        select: { createdAt: true, totalKes: true, deliveryKes: true },
       }),
       // fulfillmentStatus only has CONFIRMED/PICKED_UP, both literal OrderStatus
       // values too, so counts merge straight into ordersByStatus below.
       db.inStoreOrder.groupBy({ by: ["fulfillmentStatus"], _count: { _all: true } }),
       db.inStoreOrder.aggregate({
-        _sum: { totalKes: true },
+        _sum: { totalKes: true, deliveryKes: true },
         where: { paymentStatus: "PAID", createdAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo } },
       }),
       db.inStoreOrder.count({
@@ -161,7 +161,7 @@ export async function GET(req: NextRequest) {
     const dailyMap: Record<string, number> = {};
     for (const ord of [...allOrders30d, ...allInStore30d]) {
       const dateKey = ord.createdAt.toISOString().slice(0, 10);
-      dailyMap[dateKey] = (dailyMap[dateKey] ?? 0) + ord.totalKes;
+      dailyMap[dateKey] = (dailyMap[dateKey] ?? 0) + ord.totalKes - ord.deliveryKes;
     }
 
     const revenueChart: { date: string; amount: number }[] = [];
@@ -197,8 +197,13 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, 8);
 
-    const revenue = (revenueAgg._sum.totalKes ?? 0) + (inStoreRevenueAgg._sum.totalKes ?? 0);
-    const prevRevenue = (prevRevenueAgg._sum.totalKes ?? 0) + (prevInStoreRevenueAgg._sum.totalKes ?? 0);
+    // Revenue excludes delivery fee (both channels) — tracked separately on Finance.
+    const revenue =
+      (revenueAgg._sum.totalKes ?? 0) - (revenueAgg._sum.deliveryKes ?? 0) +
+      (inStoreRevenueAgg._sum.totalKes ?? 0) - (inStoreRevenueAgg._sum.deliveryKes ?? 0);
+    const prevRevenue =
+      (prevRevenueAgg._sum.totalKes ?? 0) - (prevRevenueAgg._sum.deliveryKes ?? 0) +
+      (prevInStoreRevenueAgg._sum.totalKes ?? 0) - (prevInStoreRevenueAgg._sum.deliveryKes ?? 0);
     const orders = ordersCount + inStoreOrdersCount;
     const prevOrders = prevOrdersCount + prevInStoreOrdersCount;
 

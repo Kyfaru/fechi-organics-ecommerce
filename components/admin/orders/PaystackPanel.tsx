@@ -104,6 +104,7 @@ export default function PaystackPanel({ orderContext, branchReady }: PaystackPan
           items: orderContext.items,
           promoCode: orderContext.promoCode,
           branchId: orderContext.branchId,
+          deliveryZoneId: orderContext.deliveryZoneId,
           ...(retryOrderId ? { retryOrderId } : {}),
         }),
         signal: AbortSignal.timeout(60_000),

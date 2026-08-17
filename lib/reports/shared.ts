@@ -41,12 +41,13 @@ export const itemsSummaryFromOnline = summarizeItems;
 export const itemsSummaryFromInStore = summarizeItems;
 
 export function buildSummary(rows: ReportRow[], from: Date, to: Date): ReportSummary {
-  const totalRevenueKes = rows.reduce((s, r) => s + r.totalKes, 0);
+  // Revenue excludes delivery fee (both channels) — tracked separately on Finance.
+  const totalRevenueKes = rows.reduce((s, r) => s + r.totalKes - r.deliveryKes, 0);
 
   const dailyMap: Record<string, number> = {};
   for (const r of rows) {
     const key = r.date.toISOString().slice(0, 10);
-    dailyMap[key] = (dailyMap[key] ?? 0) + r.totalKes;
+    dailyMap[key] = (dailyMap[key] ?? 0) + r.totalKes - r.deliveryKes;
   }
   const dailySeries = Object.entries(dailyMap)
     .sort(([a], [b]) => a.localeCompare(b))

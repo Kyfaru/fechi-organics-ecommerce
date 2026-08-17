@@ -17,13 +17,7 @@ import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { EmptyState } from "@/components/admin/ui/EmptyState";
 import { DonutChart } from "@/components/ui/donut-chart";
-
-// Walk-in customers created from Create Order without an email get a
-// placeholder address (see lib/customers/find-or-create-walkin.ts) — surface
-// "No email" instead of the fake address until an admin fills in a real one.
-function isPlaceholderEmail(email: string): boolean {
-  return email.endsWith("@instore.local");
-}
+import { isPlaceholderEmail } from "@/lib/customers/placeholder-email";
 
 // ---------------------------------------------------------------------------
 // Types

@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { User, ShoppingBag, CreditCard } from "lucide-react";
+import { User, ShoppingBag, CreditCard, ArrowLeft } from "lucide-react";
 import type { Value as PhoneValue } from "react-phone-number-input";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { NewOrderStepper, type NewOrderStep, type NewOrderStepKey } from "@/components/admin/orders/NewOrderStepper";
@@ -11,8 +12,11 @@ import CustomerPicker, { type CustomerPickerOption } from "@/components/admin/or
 import ProductPickerDropdown, { type PickerProduct } from "@/components/admin/orders/ProductPickerDropdown";
 import OrderCartList, { type OrderCartLine } from "@/components/admin/orders/OrderCartList";
 import OrderSummary from "@/components/admin/orders/OrderSummary";
+import DeliveryCard, { type DeliveryZoneSelection } from "@/components/admin/orders/DeliveryCard";
 import PaymentStep from "@/components/admin/orders/PaymentStep";
 import PhoneInput from "@/components/ui/PhoneInput";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { isPlaceholderEmail } from "@/lib/customers/placeholder-email";
 
 // ---------------------------------------------------------------------------
 // Normalizes a stored phone number (which may be missing the "+" country
@@ -40,7 +44,9 @@ const STEPS: NewOrderStep[] = [
  * stubbed out here.
  */
 export function NewOrderClient() {
+  const router = useRouter();
   const [activeStep, setActiveStep] = useState<NewOrderStepKey>("customer");
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   // ---------------------------------------------------------------------
   // Customer Details step — real state, driven by CustomerPicker.
@@ -90,7 +96,7 @@ export function NewOrderClient() {
     setSelectedCustomerId(customer.id);
     setCustomerName(customer.name ?? "");
     setCustomerPhone(normalizePhone(customer.phone));
-    setCustomerEmail(customer.email ?? "");
+    setCustomerEmail(customer.email && !isPlaceholderEmail(customer.email) ? customer.email : "");
   }
 
   // ---------------------------------------------------------------------
@@ -194,7 +200,17 @@ export function NewOrderClient() {
   }
 
   const discountKes = appliedCoupon?.discountKes ?? 0;
-  const totalKes = Math.max(subtotalKes - discountKes, 0);
+
+  // ---------------------------------------------------------------------
+  // Delivery — off by default (DeliveryCard.tsx). Fee is priced from an
+  // existing DeliveryZone, never a synthetic cart item — it's a price-
+  // breakdown line only (see OrderSummary.tsx).
+  // ---------------------------------------------------------------------
+  const [deliveryEnabled, setDeliveryEnabled] = useState(false);
+  const [selectedDeliveryZone, setSelectedDeliveryZone] = useState<DeliveryZoneSelection | null>(null);
+  const deliveryKes = deliveryEnabled ? (selectedDeliveryZone?.deliveryFeeKes ?? 0) : 0;
+
+  const totalKes = Math.max(subtotalKes - discountKes, 0) + deliveryKes;
 
   // Same validation contract the stepper already relies on: complete once
   // the phone field has a value (regardless of whether it came from an
@@ -287,6 +303,9 @@ export function NewOrderClient() {
               </div>
 
               <StepFooter
+                backLabel="Back to Orders"
+                backVariant="outline-danger"
+                onBack={() => setShowLeaveConfirm(true)}
                 nextLabel="Continue to Products"
                 nextDisabled={!customerComplete}
                 onNext={() => goToStep("products")}
@@ -308,11 +327,21 @@ export function NewOrderClient() {
                   />
                 </div>
 
-                {/* Right column — order summary */}
-                <div className="w-full lg:w-[320px] shrink-0">
+                {/* Right column — delivery + order summary */}
+                <div className="w-full lg:w-[320px] shrink-0 flex flex-col gap-4">
+                  <DeliveryCard
+                    enabled={deliveryEnabled}
+                    onEnabledChange={(v) => {
+                      setDeliveryEnabled(v);
+                      if (!v) setSelectedDeliveryZone(null);
+                    }}
+                    selectedZone={selectedDeliveryZone}
+                    onZoneChange={setSelectedDeliveryZone}
+                  />
                   <OrderSummary
                     itemCount={itemCount}
                     subtotalKes={subtotalKes}
+                    deliveryKes={deliveryKes}
                     discountKes={discountKes}
                     totalKes={totalKes}
                     appliedCoupon={appliedCoupon?.code ?? null}
@@ -346,6 +375,7 @@ export function NewOrderClient() {
                 customerPhone={customerPhone}
                 customerEmail={customerEmail}
                 selectedCustomerId={selectedCustomerId}
+                deliveryZoneId={deliveryEnabled ? selectedDeliveryZone?.id : undefined}
               />
 
               <StepFooter backLabel="Back to Products" onBack={() => goToStep("products")} />
@@ -353,6 +383,16 @@ export function NewOrderClient() {
           )}
         </div>
       </div>
+
+      <ConfirmModal
+        open={showLeaveConfirm}
+        onClose={() => setShowLeaveConfirm(false)}
+        onConfirm={() => router.push("/admin/orders")}
+        title="Cancel this order?"
+        description="You'll lose the customer and cart details entered so far — this can't be undone."
+        confirmLabel="Cancel Order"
+        danger
+      />
     </div>
   );
 }
@@ -373,12 +413,15 @@ function StepSection({ title, description, children }: { title: string; descript
 function StepFooter({
   backLabel,
   onBack,
+  backVariant = "default",
   nextLabel,
   nextDisabled,
   onNext,
 }: {
   backLabel?: string;
   onBack?: () => void;
+  /** "outline-danger" — red outline / black text, for a "leave the wizard" action rather than in-flow step navigation. */
+  backVariant?: "default" | "outline-danger";
   nextLabel?: string;
   nextDisabled?: boolean;
   onNext?: () => void;
@@ -390,8 +433,13 @@ function StepFooter({
         <button
           type="button"
           onClick={onBack}
-          className="h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+          className={
+            backVariant === "outline-danger"
+              ? "flex items-center gap-1.5 h-9 px-4 rounded-[8px] border border-(--danger) bg-white text-black font-dm text-[13px] hover:bg-(--danger-bg) transition-colors"
+              : "h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+          }
         >
+          {backVariant === "outline-danger" && <ArrowLeft size={14} className="text-(--danger)" />}
           {backLabel ?? "Back"}
         </button>
       ) : (

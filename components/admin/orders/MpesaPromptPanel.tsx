@@ -66,6 +66,7 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
           items: orderContext.items,
           promoCode: orderContext.promoCode,
           branchId: orderContext.branchId,
+          deliveryZoneId: orderContext.deliveryZoneId,
           ...(retryOrderId ? { retryOrderId } : {}),
         }),
         signal: AbortSignal.timeout(60_000),

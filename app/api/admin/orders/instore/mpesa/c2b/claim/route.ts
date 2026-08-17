@@ -42,6 +42,7 @@ const bodySchema = z
       .min(1),
     promoCode: z.string().optional(),
     branchId: z.string().uuid().optional(),
+    deliveryZoneId: z.string().optional(),
   })
   .strict();
 
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
     return Err.validation("Invalid request body");
   }
 
-  const { c2bTransactionId, customerUserId, customerName, customerPhone, customerEmail, items, promoCode, branchId } =
+  const { c2bTransactionId, customerUserId, customerName, customerPhone, customerEmail, items, promoCode, branchId, deliveryZoneId } =
     parsed;
 
   try {
@@ -139,7 +140,16 @@ export async function POST(req: NextRequest) {
         /* invalid/expired — discount stays 0 */
       }
     }
-    const totalKes = Math.max(0, subtotalKes - discountKes);
+    // Never trust a client-submitted delivery fee — resolve it from the real
+    // DeliveryZone row, same "recompute from the DB" principle as product
+    // prices above. An unknown/inactive zone id is treated as no delivery
+    // (fail closed) rather than erroring the whole order.
+    const deliveryZone = deliveryZoneId
+      ? await db.deliveryZone.findUnique({ where: { id: deliveryZoneId, isActive: true } })
+      : null;
+    const deliveryKes = deliveryZone?.deliveryFeeKes ?? 0;
+
+    const totalKes = Math.max(0, subtotalKes - discountKes + deliveryKes);
 
     // The admin can only claim a C2B row whose amount exactly matches the
     // computed order total — this is the only signal tying a till payment
@@ -177,6 +187,10 @@ export async function POST(req: NextRequest) {
             discountKes,
             promoCode: normalizedPromoCode ?? null,
             totalKes,
+            deliveryKes,
+            deliveryZoneId: deliveryZone?.id ?? null,
+            deliveryLocation: deliveryZone?.name ?? null,
+            deliveryCounty: deliveryZone?.county ?? null,
             paymentStatus: "PAID",
             items: {
               create: items.map((item) => {
@@ -301,6 +315,7 @@ export async function POST(req: NextRequest) {
             return { productId: product.id, name: product.name, priceKes: product.priceKes, quantity: item.quantity };
           }),
           discountKes,
+          shippingKes: deliveryKes,
           notes: `Fechi Organics in-store order ${result.orderNumber ?? result.orderId}`,
         });
 

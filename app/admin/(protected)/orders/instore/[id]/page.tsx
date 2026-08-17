@@ -150,11 +150,16 @@ export default async function AdminInStoreOrderDetailPage({ params }: { params: 
                   </div>
                 ))}
               </div>
-              {/* No delivery line — in-store orders never have one */}
               <div className="mt-4 pt-4 border-t border-(--neutral-100) flex flex-col gap-2">
                 <div className="flex justify-between font-dm text-[13px] text-(--neutral-500)">
                   <span>Subtotal</span><span>{kes(order.subtotalKes)}</span>
                 </div>
+                {order.deliveryKes > 0 && (
+                  <div className="flex justify-between font-dm text-[13px] text-(--neutral-500)">
+                    <span>Delivery Fee{order.deliveryLocation ? ` — ${order.deliveryLocation}` : ""}</span>
+                    <span>{kes(order.deliveryKes)}</span>
+                  </div>
+                )}
                 {order.discountKes > 0 && (
                   <div className="flex justify-between font-dm text-[13px] text-(--success)">
                     <span>Discount</span><span>-{kes(order.discountKes)}</span>

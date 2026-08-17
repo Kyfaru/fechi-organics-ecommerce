@@ -12,6 +12,7 @@ import type { AppResource } from "@/lib/permissions";
 export const NOTIFICATION_TYPE_RESOURCE: Record<NotificationType, AppResource | null> = {
   ORDER_NEW: "orders",
   ORDER_FAILED: "orders",
+  ORDER_CANCELLED: "orders",
   PAYMENT_ERROR: "finance",
   PRODUCT_ADDED: "products",
   PRODUCT_DELETED: "products",

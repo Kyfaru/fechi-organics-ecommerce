@@ -40,6 +40,7 @@ export interface PaymentOrderContext {
   promoCode: string | undefined;
   branchId: string | undefined;
   totalKes: number;
+  deliveryZoneId: string | undefined;
 }
 
 interface AdminMeResponse {
@@ -79,6 +80,7 @@ interface PaymentStepProps {
   customerPhone: PhoneValue | undefined;
   customerEmail: string;
   selectedCustomerId: string | null;
+  deliveryZoneId: string | undefined;
 }
 
 export default function PaymentStep({
@@ -89,6 +91,7 @@ export default function PaymentStep({
   customerPhone,
   customerEmail,
   selectedCustomerId,
+  deliveryZoneId,
 }: PaymentStepProps) {
   const [method, setMethod] = useState<PaymentMethod>("mpesa-prompt");
   const [selectedBranchId, setSelectedBranchId] = useState("");
@@ -99,9 +102,11 @@ export default function PaymentStep({
   // as the rest of the codebase's usage of this route for the login 2FA
   // flow. isSuperAdmin === false pins the branch to whatever the admin's
   // profile has; isSuperAdmin === true requires an explicit pick below.
+  // Shared query key with DeliveryCard.tsx so the wizard only fetches
+  // /api/admin/me once across both steps.
   // -------------------------------------------------------------------
   const { data: me, isLoading: meLoading } = useQuery<AdminMeResponse>({
-    queryKey: ["admin-me-payment-step"],
+    queryKey: ["admin-me-instore"],
     queryFn: async () => {
       try {
         const res = await fetch("/api/admin/me");
@@ -152,6 +157,7 @@ export default function PaymentStep({
       promoCode: appliedCoupon?.code,
       branchId: effectiveBranchId,
       totalKes,
+      deliveryZoneId,
     }),
     [
       selectedCustomerId,
@@ -162,6 +168,7 @@ export default function PaymentStep({
       appliedCoupon,
       effectiveBranchId,
       totalKes,
+      deliveryZoneId,
     ]
   );
 
