@@ -13,7 +13,6 @@ import { Err } from "@/lib/api";
 import { resolvePromo } from "@/lib/promo";
 import { reportError } from "@/lib/observability";
 import { getBalance, CENTS_PER_POINT } from "@/lib/points/ledger";
-import { resolveReferralDiscount } from "@/lib/points/referral-discount";
 
 export type ComputeTotalsInput = {
   subtotalCents: number;
@@ -102,23 +101,14 @@ export async function computeOrderTotals(input: ComputeTotalsInput): Promise<Ord
       if (r.deliveryFree) deliveryCents = 0;
       promoId = r.promo.id;
     } catch (promoErr) {
-      // Not a promotion — it may be somebody's referral code, which grants a
-      // first-order discount instead. The referral link itself is recorded at
-      // payment success, not here.
-      const referral = await resolveReferralDiscount({
-        code: promoCode,
-        subtotalCents,
-        userId,
+      // Referral codes are real promotion rows now (created alongside each
+      // customer's loyalty account), so resolvePromo finds them natively — the
+      // special-case fallback that used to live here is gone.
+      reportError(promoErr, {
+        route: route ?? "computeOrderTotals",
+        tags: { stage: "promo_resolution" },
       });
-      if (referral) {
-        discountCents = referral.discountCents;
-      } else {
-        reportError(promoErr, {
-          route: route ?? "computeOrderTotals",
-          tags: { stage: "promo_resolution" },
-        });
-        /* invalid or expired — discount stays 0 */
-      }
+      /* invalid or expired — discount stays 0 */
     }
   }
 

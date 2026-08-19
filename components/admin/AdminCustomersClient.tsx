@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -533,6 +534,20 @@ export function AdminCustomersClient() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sort, setSort] = useState("newest");
   const [activeCustomerId, setActiveCustomerId] = useState<string | null>(null);
+
+  // Deep links into this page. `?customer=` opens that customer's drawer (used
+  // by the coupon redemption list); `?q=` seeds the search box (used by admin
+  // global search, which has always linked here and been silently ignored).
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const customer = searchParams.get("customer");
+    if (customer) setActiveCustomerId(customer);
+    const q = searchParams.get("q");
+    if (q) setSearch(q);
+    // Read once on mount — after that the drawer is driven by clicks, and
+    // re-running would reopen it every time the user closed it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data, isLoading } = useQuery<ApiResponse>({
     queryKey: ["admin-customers"],

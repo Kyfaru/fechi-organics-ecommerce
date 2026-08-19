@@ -33,6 +33,10 @@ function promo(over: Record<string, unknown> = {}) {
     maxUsesPerUser: 0,
     usedCount: 0,
     maxDiscountKes: null,
+    ownerUserId: null,
+    pointsAward: 0,
+    approvalStatus: "APPROVED",
+    disabledAt: null,
     status: "active",
     ...over,
   };
@@ -94,5 +98,35 @@ describe("resolvePromo — maxDiscountKes", () => {
     const r = await resolvePromo("FREESHIP", 50_000 * KES);
     expect(r.deliveryFree).toBe(true);
     expect(r.discountKes).toBe(0);
+  });
+});
+
+describe("resolvePromo — coupon state guards", () => {
+  it("rejects a coupon an admin disabled", async () => {
+    findFirst.mockResolvedValue(promo({ disabledAt: new Date() }));
+    await expect(resolvePromo("DEAD", 10_000 * KES)).rejects.toBeInstanceOf(Response);
+  });
+
+  it("rejects a points-carrying coupon still awaiting approval", async () => {
+    // Otherwise a queued coupon could mint points before anyone approved it.
+    findFirst.mockResolvedValue(promo({ approvalStatus: "PENDING", pointsAward: 3000 }));
+    await expect(resolvePromo("QUEUED", 10_000 * KES)).rejects.toBeInstanceOf(Response);
+  });
+
+  it("rejects a customer using their own referral code", async () => {
+    findFirst.mockResolvedValue(promo({ ownerUserId: "alice", value: 10 }));
+    await expect(resolvePromo("REF-ALICE", 10_000 * KES, "alice")).rejects.toBeInstanceOf(Response);
+  });
+
+  it("accepts someone else using that referral code", async () => {
+    findFirst.mockResolvedValue(promo({ ownerUserId: "alice", value: 10 }));
+    const r = await resolvePromo("REF-ALICE", 10_000 * KES, "bob");
+    expect(r.discountKes).toBe(1_000 * KES);
+    expect(r.promo.ownerUserId).toBe("alice");
+  });
+
+  it("still enforces the five-use cap on a referral code", async () => {
+    findFirst.mockResolvedValue(promo({ ownerUserId: "alice", maxUses: 5, usedCount: 5 }));
+    await expect(resolvePromo("REF-ALICE", 10_000 * KES, "bob")).rejects.toBeInstanceOf(Response);
   });
 });

@@ -16,10 +16,10 @@ import { verifyQstashRequest } from "@/lib/qstash";
 import { awardPointsForOrder } from "@/lib/points/award-order";
 import { unlockJoiningBonus } from "@/lib/points/anti-abuse";
 import { convertReferral, attachReferral } from "@/lib/points/referrals";
-import { looksLikeReferralCode } from "@/lib/points/referral-discount";
+import { referralOwnerForCode } from "@/lib/points/referral-discount";
 import { evaluateBadges } from "@/lib/points/evaluate-badges";
 import { getUserStats } from "@/lib/points/stats";
-import { getBalance } from "@/lib/points/ledger";
+import { getBalance, awardPoints } from "@/lib/points/ledger";
 import { sendSms, hasSmsConfig } from "@/lib/sms";
 import { combineLegacyPhone } from "@/lib/phone";
 import { reportError } from "@/lib/observability";
@@ -55,8 +55,30 @@ export async function POST(req: NextRequest) {
         : (await db.inStoreOrder.findUnique({ where: { id: orderId }, select: { promoCode: true } }))
             ?.promoCode;
 
-    if (promoCode && looksLikeReferralCode(promoCode)) {
+    if (promoCode && (await referralOwnerForCode(promoCode))) {
       await attachReferral({ userId, code: promoCode, ignoreOrderId: orderId });
+    }
+
+    // A coupon may carry points of its own. Credited here, not at checkout, so
+    // an abandoned order never pays out. The ledger's unique key on
+    // (userId, reason, refType, refId) makes a replayed job a no-op.
+    let couponPoints = 0;
+    if (promoCode) {
+      const coupon = await db.promotion.findUnique({
+        where: { code: promoCode },
+        select: { id: true, pointsAward: true, approvalStatus: true },
+      });
+      if (coupon && coupon.pointsAward > 0 && coupon.approvalStatus === "APPROVED") {
+        const entry = await awardPoints({
+          userId,
+          delta: coupon.pointsAward,
+          reason: "COUPON_BONUS",
+          refType: "coupon",
+          refId: coupon.id,
+          meta: { orderId, code: promoCode },
+        });
+        if (entry) couponPoints = coupon.pointsAward;
+      }
     }
 
     const referral = await convertReferral({ userId, orderId });
@@ -66,7 +88,11 @@ export async function POST(req: NextRequest) {
 
     const badgePoints = unlocked.reduce((s, b) => s + b.points, 0);
     const totalThisOrder =
-      summary.totalPoints + badgePoints + (unlock.unlockedPoints ?? 0) + (referral.referredPoints ?? 0);
+      summary.totalPoints +
+      badgePoints +
+      couponPoints +
+      (unlock.unlockedPoints ?? 0) +
+      (referral.referredPoints ?? 0);
 
     const balance = await getBalance(userId);
 
@@ -75,6 +101,7 @@ export async function POST(req: NextRequest) {
     if (summary.tierLabel) lines.push(`${summary.tierLabel} bonus included.`);
     if (summary.streakPoints > 0) lines.push(`Streak bonus: ${summary.streakPoints.toLocaleString()} points.`);
     if (unlock.unlockedPoints) lines.push(`Your ${unlock.unlockedPoints.toLocaleString()} welcome points are now unlocked.`);
+    if (couponPoints > 0) lines.push(`Coupon bonus: ${couponPoints.toLocaleString()} points.`);
     if (badgePoints > 0) lines.push(`${unlocked.length} new achievement${unlocked.length === 1 ? "" : "s"} unlocked.`);
     if (summary.vipCouponCode) lines.push(`VIP reward unlocked — use code ${summary.vipCouponCode} on your next orders.`);
     lines.push(`Balance: ${balance.available.toLocaleString()} points.`);

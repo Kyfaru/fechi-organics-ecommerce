@@ -13,7 +13,8 @@
     "seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
     "seed:badges": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed-badges.ts",
     "points:verify": "node scripts/run-ts.js scripts/verify-points-ledger.ts",
-    "points:backfill": "node scripts/run-ts.js scripts/backfill-points.ts"
+    "points:backfill": "node scripts/run-ts.js scripts/backfill-points.ts",
+    "points:backfill-coupons": "node scripts/run-ts.js scripts/backfill-referral-coupons.ts"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"

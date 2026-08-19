@@ -6,7 +6,11 @@ export async function resolvePromo(
   promoCode: string,
   subtotalKes: number,
   userId?: string,
-): Promise<{ promo: { id: string; type: string; value: number }; discountKes: number; deliveryFree: boolean }> {
+): Promise<{
+  promo: { id: string; type: string; value: number; ownerUserId: string | null; pointsAward: number };
+  discountKes: number;
+  deliveryFree: boolean;
+}> {
   const now = new Date();
   const promo = await db.promotion.findFirst({
     where: {
@@ -18,6 +22,22 @@ export async function resolvePromo(
   });
 
   if (!promo) throw Err.validation("Invalid or expired coupon code");
+
+  // Soft-deleted by an admin. Kept in the table for the audit trail, but dead
+  // at checkout.
+  if (promo.disabledAt !== null) throw Err.validation("This code is no longer active");
+
+  // Carries loyalty points and hasn't been approved yet. A coupon that mints
+  // points must not be usable while its approval is still queued.
+  if (promo.approvalStatus === "PENDING") {
+    throw Err.validation("This code is awaiting approval");
+  }
+
+  // Customer coupons are referral codes — you cannot refer yourself.
+  if (promo.ownerUserId !== null && promo.ownerUserId === userId) {
+    throw Err.validation("You can't use your own referral code");
+  }
+
   if (promo.maxUses !== null && promo.usedCount >= promo.maxUses) {
     throw Err.validation("Coupon usage limit reached");
   }

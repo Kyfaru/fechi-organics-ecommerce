@@ -1163,6 +1163,7 @@ enum PointsReason {
   STREAK_6M_MONTHLY
   BADGE_AWARD
   SUPER_ADMIN_GRANT
+  COUPON_BONUS
   REDEEM
   REDEEM_REVERSED
   ORDER_REFUND_CLAWBACK
@@ -1396,11 +1397,28 @@ model promotion {
   startDate      DateTime?
   endDate        DateTime?
   status         String    @default("active")
-  // Caps the absolute discount a PERCENTAGE coupon may produce, in cents.
-  // Null = uncapped. Used by the auto-issued VIP coupons.
+  // Caps the absolute discount a PERCENTAGE or FIXED coupon may produce, in
+  // cents. Null = uncapped. Used by the auto-issued VIP coupons.
   maxDiscountKes Int?
+  // Null = a store coupon, created by staff. Set = a customer coupon: that
+  // customer's personal referral code, created automatically alongside their
+  // loyalty account. This one column is the Store/Customer tab discriminator
+  // and the link that lets payment success credit the right referrer.
+  ownerUserId    String?
+  // Loyalty points the coupon grants the customer who redeems it, credited at
+  // payment success. Capped at 3000 and gated by the approval queue.
+  pointsAward    Int       @default(0)
+  // Only PENDING blocks redemption. Defaults to APPROVED so every pre-existing
+  // coupon keeps working untouched.
+  approvalStatus ApprovalStatus @default(APPROVED)
+  // Soft delete. The row and its redemption history survive so the audit trail
+  // stays intact — couponRedemption has no FK to cascade from anyway.
+  disabledAt     DateTime?
+  disabledByAdminProfileId String?
   createdAt      DateTime  @default(now())
 
+  @@index([ownerUserId])
+  @@index([approvalStatus])
   @@schema("admin")
 }
 

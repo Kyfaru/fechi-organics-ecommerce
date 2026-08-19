@@ -25,7 +25,7 @@ import { evaluateBadges } from "@/lib/points/evaluate-badges";
 import { getUserStats } from "@/lib/points/stats";
 import { unlockJoiningBonus } from "@/lib/points/anti-abuse";
 import { convertReferral, attachReferral } from "@/lib/points/referrals";
-import { looksLikeReferralCode } from "@/lib/points/referral-discount";
+import { referralOwnerForCode } from "@/lib/points/referral-discount";
 
 async function main() {
   const apply = process.argv.includes("--apply");
@@ -82,7 +82,7 @@ async function main() {
 
       await unlockJoiningBonus({ userId: o.userId, orderId: o.id, refType: o.refType });
 
-      if (o.promoCode && looksLikeReferralCode(o.promoCode)) {
+      if (o.promoCode && (await referralOwnerForCode(o.promoCode))) {
         await attachReferral({ userId: o.userId, code: o.promoCode, ignoreOrderId: o.id });
       }
       await convertReferral({ userId: o.userId, orderId: o.id });
