@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
     "seed:badges": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed-badges.ts",
-    "points:verify": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/verify-points-ledger.ts"
+    "points:verify": "node scripts/run-ts.js scripts/verify-points-ledger.ts",
+    "points:backfill": "node scripts/run-ts.js scripts/backfill-points.ts"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"

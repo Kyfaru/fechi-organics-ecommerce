@@ -66,6 +66,9 @@ const PUBLIC_PATHS = [
   "/terms",
   "/privacy-policy",
   "/faq",
+  // Explains the points programme — must be readable before signing up, since
+  // it is what persuades someone to.
+  "/loyalty-points",
   "/testimonials",
   "/shipping",
   "/403",

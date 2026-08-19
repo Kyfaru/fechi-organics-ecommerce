@@ -24,6 +24,7 @@ const SHOP_LINKS = [
 ];
 
 const SUPPORT_LINKS = [
+  { label: "Fechi Points", href: "/loyalty-points" },
   { label: "Privacy Policy", href: "/privacy-policy" },
   { label: "Terms & Conditions", href: "/terms" },
   { label: "Shipping", href: "/shipping" },

@@ -49,11 +49,30 @@ const NON_PURCHASE_REASONS: ReadonlySet<PointsReason> = new Set([
 /** 4,000 signup + 500 referred + 5 x 1,000 referrals. */
 export const NON_PURCHASE_POINTS_CAP = 9500;
 
+/**
+ * Shouts at module load rather than waiting for the first order.
+ *
+ * This exact gap already cost a staging cycle: without the key every
+ * awardPoints() threw, every call site caught it (a loyalty failure must never
+ * block a signup or a payment), and the only visible symptom was customers
+ * silently not earning points. A missing env var should be obvious in the
+ * deploy log, not discovered by a customer.
+ */
+if (process.env.NODE_ENV === "production" && !process.env.POINTS_LEDGER_SECRET) {
+  console.error(
+    "[points] FATAL CONFIG: POINTS_LEDGER_SECRET is not set. No customer can earn " +
+      "or spend points until it is. See .env.example.",
+  );
+}
+
 function secret(): string {
   const s = process.env.POINTS_LEDGER_SECRET;
   if (!s) {
     if (process.env.NODE_ENV === "production") {
-      throw new Error("[points] POINTS_LEDGER_SECRET is not set");
+      throw new Error(
+        "POINTS_LEDGER_SECRET is not set — the points ledger cannot sign entries. " +
+          "Generate one with `openssl rand -hex 32` and add it to the deployment environment.",
+      );
     }
     return "dev-points-secret-not-for-production";
   }

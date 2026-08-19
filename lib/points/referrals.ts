@@ -48,7 +48,16 @@ export type AttachResult =
  * Only ever applies to a genuinely new customer: someone who has already paid
  * for an order cannot retroactively claim to have been referred.
  */
-export async function attachReferral(args: { userId: string; code: string }): Promise<AttachResult> {
+export async function attachReferral(args: {
+  userId: string;
+  code: string;
+  /**
+   * The order being paid for right now, excluded from the "have you ordered
+   * before?" check. The award worker attaches referrals AFTER payment, so
+   * without this the very order carrying the code would disqualify it.
+   */
+  ignoreOrderId?: string;
+}): Promise<AttachResult> {
   const code = args.code.trim().toUpperCase();
 
   const referrer = await db.loyaltyPoints.findUnique({
@@ -65,7 +74,11 @@ export async function attachReferral(args: { userId: string; code: string }): Pr
   if (existing) return { attached: false, reason: "ALREADY_REFERRED" };
 
   const paidOrders = await db.order.count({
-    where: { userId: args.userId, paymentStatus: "PAID" },
+    where: {
+      userId: args.userId,
+      paymentStatus: "PAID",
+      ...(args.ignoreOrderId ? { id: { not: args.ignoreOrderId } } : {}),
+    },
   });
   if (paidOrders > 0) return { attached: false, reason: "NOT_NEW" };
 

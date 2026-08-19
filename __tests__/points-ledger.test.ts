@@ -80,6 +80,43 @@ function withChain(rows: Row[], cache?: { points: number; lockedPoints: number }
   );
 }
 
+describe("POINTS_LEDGER_SECRET", () => {
+  // Regression guard. This exact gap silently broke every award on staging:
+  // the key was in neither .env.local nor .env.example, so entryHash() threw on
+  // every call, every call site caught it (a loyalty failure must never block a
+  // signup or a payment), and the only symptom was customers not earning points.
+  it("refuses to sign an entry in production when unset", () => {
+    const prevSecret = process.env.POINTS_LEDGER_SECRET;
+    const prevEnv = process.env.NODE_ENV;
+    try {
+      delete process.env.POINTS_LEDGER_SECRET;
+      // vi.stubEnv, not defineProperty — Vitest guards process.env with a proxy
+      // that rejects non-enumerable descriptors.
+      vi.stubEnv("NODE_ENV", "production");
+
+      expect(() =>
+        entryHash({
+          prevHash: GENESIS,
+          userId: USER,
+          seq: 1,
+          delta: 100,
+          lockedDelta: 0,
+          balanceAfter: 100,
+          lockedAfter: 0,
+          reason: "ORDER_BASE" as never,
+          refType: "order",
+          refId: "o1",
+          createdAt: new Date(0),
+        }),
+      ).toThrow(/POINTS_LEDGER_SECRET/);
+    } finally {
+      if (prevSecret !== undefined) process.env.POINTS_LEDGER_SECRET = prevSecret;
+      vi.stubEnv("NODE_ENV", prevEnv ?? "test");
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
 describe("point/cash conversion", () => {
   it("values a point at KSh 0.40", () => {
     expect(CENTS_PER_POINT).toBe(40);

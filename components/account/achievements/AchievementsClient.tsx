@@ -8,6 +8,7 @@ import CircularProgress from "@/components/ui/CircularProgress";
 import PageHeader from "@/components/account/PageHeader";
 import { GenericSkeleton } from "@/components/account/AccountSkeleton";
 import { useDeviceSignal } from "@/hooks/use-device-signal";
+import { buildInviteMessage, buildWhatsAppShareUrl } from "@/lib/points/invite-message";
 import { toast } from "@/lib/toast";
 
 export const ACHIEVEMENTS_QUERY_KEY = ["achievements"] as const;
@@ -105,6 +106,13 @@ export default function AchievementsClient() {
 
   const { points, level } = data;
 
+  // window.location.origin, not NEXT_PUBLIC_APP_URL — the link should point at
+  // whatever host the customer is actually on.
+  const inviteMessage = buildInviteMessage({
+    referralCode: data.referralCode,
+    baseUrl: typeof window !== "undefined" ? window.location.origin : "",
+  });
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -175,9 +183,10 @@ export default function AchievementsClient() {
             <h2 className="text-sm font-bold text-neutral-900">Invite friends</h2>
           </div>
           <p className="text-sm text-neutral-500">
-            You earn 1,000 points each time someone you invite makes their first order. They get 500
-            to start with.
+            They get 10% off their first order. You earn 1,000 points when they buy, and they start
+            with 500 of their own.
           </p>
+
           <div className="mt-3 flex items-center gap-2">
             <code className="flex-1 rounded-lg bg-[#F0FDF4] border border-[#DCFCE7] px-3 py-2 font-mono text-sm text-[#15803D]">
               {data.referralCode}
@@ -187,14 +196,44 @@ export default function AchievementsClient() {
               onClick={() => {
                 navigator.clipboard
                   .writeText(data.referralCode)
-                  .then(() => toast.success("Referral code copied"))
+                  .then(() => toast.success("Code copied"))
                   .catch(() => toast.error("Could not copy — select the code manually"));
               }}
-              className="rounded-lg bg-[#15803D] px-3 py-2 text-sm font-medium text-white hover:bg-[#166534] transition-colors"
+              className="rounded-lg border border-[#15803D] px-3 py-2 text-sm font-medium text-[#15803D] hover:bg-[#F0FDF4] transition-colors"
             >
-              Copy
+              Code
             </button>
           </div>
+
+          {/* The whole invite, ready to paste into WhatsApp or SMS. */}
+          <p className="mt-3 rounded-lg bg-neutral-50 border border-neutral-200 p-3 text-xs leading-relaxed text-neutral-600">
+            {inviteMessage}
+          </p>
+
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard
+                  .writeText(inviteMessage)
+                  .then(() => toast.success("Invite copied — paste it into WhatsApp or SMS"))
+                  .catch(() => toast.error("Could not copy — select the message manually"));
+              }}
+              className="flex-1 rounded-lg bg-[#15803D] px-3 py-2 text-sm font-medium text-white hover:bg-[#166534] transition-colors"
+            >
+              Copy invite
+            </button>
+            <a
+              href={buildWhatsAppShareUrl(inviteMessage)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 transition-colors"
+            >
+              <Icon icon="lucide:message-circle" width={15} />
+              WhatsApp
+            </a>
+          </div>
+
           <p className="mt-2 text-xs text-neutral-400">
             {data.referralsRemaining} of 5 invites left
             {data.referralsPending > 0 ? ` · ${data.referralsPending} yet to order` : ""}

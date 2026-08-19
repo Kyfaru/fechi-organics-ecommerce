@@ -11,8 +11,9 @@
  * Exits non-zero when anything is wrong, so CI or a cron wrapper can alert.
  */
 
-import { verifyChain } from "../lib/points/ledger";
-import { db } from "../lib/db";
+// Env is loaded by scripts/run-ts.js before this module is required.
+import { verifyChain } from "@/lib/points/ledger";
+import { db } from "@/lib/db";
 
 async function main() {
   const only = process.argv[2];

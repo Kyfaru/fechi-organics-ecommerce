@@ -15,7 +15,8 @@ import { db } from "@/lib/db";
 import { verifyQstashRequest } from "@/lib/qstash";
 import { awardPointsForOrder } from "@/lib/points/award-order";
 import { unlockJoiningBonus } from "@/lib/points/anti-abuse";
-import { convertReferral } from "@/lib/points/referrals";
+import { convertReferral, attachReferral } from "@/lib/points/referrals";
+import { looksLikeReferralCode } from "@/lib/points/referral-discount";
 import { evaluateBadges } from "@/lib/points/evaluate-badges";
 import { getUserStats } from "@/lib/points/stats";
 import { getBalance } from "@/lib/points/ledger";
@@ -44,6 +45,20 @@ export async function POST(req: NextRequest) {
     // this being the customer's first paid order, so they run before badges
     // (which count points earned) and before the summary message.
     const unlock = await unlockJoiningBonus({ userId, orderId, refType });
+
+    // A referral code entered in the coupon box is only linked once the order
+    // it discounted is actually paid — a code typed into an abandoned checkout
+    // must not burn anybody's referral slot. No-ops if already linked.
+    const promoCode =
+      refType === "order"
+        ? (await db.order.findUnique({ where: { id: orderId }, select: { promoCode: true } }))?.promoCode
+        : (await db.inStoreOrder.findUnique({ where: { id: orderId }, select: { promoCode: true } }))
+            ?.promoCode;
+
+    if (promoCode && looksLikeReferralCode(promoCode)) {
+      await attachReferral({ userId, code: promoCode, ignoreOrderId: orderId });
+    }
+
     const referral = await convertReferral({ userId, orderId });
 
     const stats = await getUserStats(userId);
