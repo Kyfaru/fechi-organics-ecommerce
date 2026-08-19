@@ -26,6 +26,10 @@ const DEFAULT_SEVERITY: Record<NotificationType, NotificationSeverity> = {
   APPROVAL_REQUESTED: "WARNING",
   APPROVAL_DECIDED: "INFO",
   EXPORT_READY: "INFO",
+  LOYALTY_GRANT_REQUESTED: "WARNING",
+  LOYALTY_GRANT_RELEASED: "INFO",
+  LOYALTY_ABUSE_FLAG: "WARNING",
+  LOYALTY_LEDGER_BREACH: "CRITICAL",
 };
 
 // Maps a NotificationType to the systemConfig boolean key (Settings →

@@ -53,5 +53,18 @@ export function buildSummary(rows: ReportRow[], from: Date, to: Date): ReportSum
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, amountKes]) => ({ date, amountKes }));
 
-  return { totalRevenueKes, orderCount: rows.length, from, to, dailySeries };
+  // Points-funded value is already netted out of totalKes, so it is NOT part
+  // of revenue above — reported separately so the two never get conflated.
+  const totalPointsRedeemed = rows.reduce((s, r) => s + r.pointsRedeemed, 0);
+  const totalPointsValueKes = rows.reduce((s, r) => s + r.pointsDiscountKes, 0);
+
+  return {
+    totalRevenueKes,
+    orderCount: rows.length,
+    totalPointsRedeemed,
+    totalPointsValueKes,
+    from,
+    to,
+    dailySeries,
+  };
 }

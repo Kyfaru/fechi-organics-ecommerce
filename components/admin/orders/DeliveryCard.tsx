@@ -2,10 +2,12 @@
 
 /**
  * DeliveryCard — optional delivery for the in-store order wizard's Products
- * step. Off by default; toggling it on reveals Country (constant) / County
- * (locked to the admin's own branch unless super admin) / Location (a
- * searchable dropdown over the existing branch-scoped DeliveryZone pricing
- * table, GET /api/admin/delivery-zones).
+ * step. Off by default; toggling it on reveals Country (constant) / Location
+ * (a searchable dropdown over the branch's own DeliveryZone pricing rows,
+ * GET /api/admin/delivery-zones) / County (read-only, follows whichever
+ * location is picked). A branch's zones routinely span many counties (e.g.
+ * a Nakuru-based branch delivering as far as Mombasa), so county is never a
+ * pre-filter — it's just descriptive metadata shown once a zone is chosen.
  *
  * The "+" custom-area button is deliberately inert for now — per the design
  * brief, custom delivery areas need an approval workflow that doesn't exist
@@ -18,8 +20,6 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Plus, Check, ChevronDown, Loader2, MapPin } from "lucide-react";
 import Switch from "@/components/ui/Switch";
-import { PrelineSelect } from "@/components/admin/ui/PrelineSelect";
-import { KENYA_COUNTIES } from "@/lib/kenya-counties";
 import { toast } from "@/lib/toast";
 
 export interface DeliveryZoneSelection {
@@ -40,12 +40,6 @@ interface AdminMeResponse {
   branchId: string | null;
   branchName: string | null;
   isSuperAdmin: boolean;
-}
-
-interface BranchOption {
-  id: string;
-  name: string;
-  county: string;
 }
 
 interface ZoneRow {
@@ -79,20 +73,6 @@ export default function DeliveryCard({ enabled, onEnabledChange, selectedZone, o
   });
   const isSuperAdmin = me?.isSuperAdmin ?? false;
 
-  const { data: branches = [] } = useQuery<BranchOption[]>({
-    queryKey: ["admin-branches-instore"],
-    queryFn: async () => {
-      const res = await fetch("/api/branches");
-      const json = await res.json();
-      return (json?.data?.branches ?? []) as BranchOption[];
-    },
-    enabled: enabled && !isSuperAdmin,
-  });
-  const myBranch = branches.find((b) => b.id === me?.branchId) ?? null;
-
-  const [superAdminCounty, setSuperAdminCounty] = useState("");
-  const county = isSuperAdmin ? superAdminCounty : (myBranch?.county ?? "");
-
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [customMode, setCustomMode] = useState(false);
@@ -113,19 +93,26 @@ export default function DeliveryCard({ enabled, onEnabledChange, selectedZone, o
     if (open) requestAnimationFrame(() => searchRef.current?.focus());
   }, [open]);
 
+  // No county pre-filter — a branch's delivery zones routinely span many
+  // counties (a Nakuru-based branch can deliver as far as Mombasa or
+  // Kiambu), so `county` on a zone is just descriptive metadata about that
+  // zone's destination, not a partition matching the branch's own home
+  // county. Fetch the branch's full zone list once and let the searchable
+  // Location list do the narrowing; County (below) just displays whatever
+  // the selected zone's own county is.
   const { data: zones = [], isLoading: zonesLoading } = useQuery<ZoneRow[]>({
-    queryKey: ["admin-delivery-zones-instore", county],
+    queryKey: ["admin-delivery-zones-instore"],
     queryFn: async () => {
-      const res = await fetch(`/api/admin/delivery-zones?county=${encodeURIComponent(county)}`);
+      const res = await fetch("/api/admin/delivery-zones");
       const json = await res.json();
       return (json?.data?.zones ?? []) as ZoneRow[];
     },
-    enabled: enabled && Boolean(county),
+    enabled,
   });
 
   const effectiveBranchId = isSuperAdmin ? undefined : me?.branchId;
   const zoneOptions = zones
-    .filter((z) => z.isActive && (z.branchId === null || z.branchId === effectiveBranchId))
+    .filter((z) => z.isActive && (isSuperAdmin || z.branchId === null || z.branchId === effectiveBranchId))
     .filter((z) => !query.trim() || z.name.toLowerCase().includes(query.trim().toLowerCase()))
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -133,11 +120,6 @@ export default function DeliveryCard({ enabled, onEnabledChange, selectedZone, o
     onZoneChange({ id: zone.id, name: zone.name, county: zone.county, deliveryFeeKes: zone.deliveryFeeKes });
     setOpen(false);
     setQuery("");
-  }
-
-  function handleCountyChange(next: string) {
-    setSuperAdminCounty(next);
-    onZoneChange(null);
   }
 
   function handleAddCustomArea() {
@@ -179,21 +161,12 @@ export default function DeliveryCard({ enabled, onEnabledChange, selectedZone, o
               <label className="block font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-1">
                 County
               </label>
-              {isSuperAdmin ? (
-                <PrelineSelect
-                  options={KENYA_COUNTIES.map((c) => ({ value: c, label: c }))}
-                  value={superAdminCounty}
-                  onChange={handleCountyChange}
-                  placeholder="Select county…"
-                />
-              ) : (
-                <input
-                  type="text"
-                  value={myBranch?.county ?? "—"}
-                  disabled
-                  className="w-full h-9 px-3 rounded-[8px] border border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg) font-dm text-[13px] text-(--neutral-500) dark:text-(--dark-muted)"
-                />
-              )}
+              <input
+                type="text"
+                value={selectedZone?.county ?? "—"}
+                disabled
+                className="w-full h-9 px-3 rounded-[8px] border border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg) font-dm text-[13px] text-(--neutral-500) dark:text-(--dark-muted)"
+              />
             </div>
           </div>
 
@@ -205,14 +178,14 @@ export default function DeliveryCard({ enabled, onEnabledChange, selectedZone, o
               <div
                 role="button"
                 tabIndex={0}
-                onClick={() => county && setOpen((o) => !o)}
+                onClick={() => setOpen((o) => !o)}
                 className={`h-10 w-full px-3 flex items-center gap-2 rounded-[8px] border cursor-pointer
                   border-(--neutral-200) dark:border-(--dark-border) bg-white dark:bg-(--dark-surface)
-                  ${!county ? "opacity-60 cursor-not-allowed" : ""} ${open ? "border-(--green-800)" : ""}`}
+                  ${open ? "border-(--green-800)" : ""}`}
               >
                 <MapPin size={14} className="text-(--neutral-400) shrink-0" />
                 <span className="flex-1 min-w-0 truncate font-dm text-[13px] text-(--neutral-900) dark:text-(--dark-text)">
-                  {selectedZone ? `${selectedZone.name} — ${formatKes(selectedZone.deliveryFeeKes)}` : county ? "Select a location…" : "Select a county first"}
+                  {selectedZone ? `${selectedZone.name} — ${formatKes(selectedZone.deliveryFeeKes)}` : "Select a location…"}
                 </span>
                 <ChevronDown size={15} className={`text-(--neutral-400) shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
               </div>
@@ -250,7 +223,7 @@ export default function DeliveryCard({ enabled, onEnabledChange, selectedZone, o
                           </div>
                         ) : zoneOptions.length === 0 ? (
                           <div className="px-4 py-5 text-center font-dm text-[13px] text-(--neutral-400)">
-                            No delivery locations for this county yet
+                            {query.trim() ? "No matching locations" : "No delivery locations set up yet"}
                           </div>
                         ) : (
                           zoneOptions.map((zone) => {
@@ -265,7 +238,10 @@ export default function DeliveryCard({ enabled, onEnabledChange, selectedZone, o
                                   isSelected ? "bg-(--green-50) dark:bg-green-900/20" : "hover:bg-(--neutral-50) dark:hover:bg-(--dark-bg)"
                                 }`}
                               >
-                                <span className="font-dm text-[13px] text-(--neutral-900) dark:text-(--dark-text) truncate">{zone.name}</span>
+                                <span className="flex-1 min-w-0 truncate">
+                                  <span className="font-dm text-[13px] text-(--neutral-900) dark:text-(--dark-text)">{zone.name}</span>
+                                  <span className="font-dm text-[11px] text-(--neutral-400)"> — {zone.county}</span>
+                                </span>
                                 <span className="flex items-center gap-2 shrink-0">
                                   <span className="font-dm text-[12px] text-(--neutral-500)">{formatKes(zone.deliveryFeeKes)}</span>
                                   {isSelected && <Check size={14} className="text-(--green-800)" />}

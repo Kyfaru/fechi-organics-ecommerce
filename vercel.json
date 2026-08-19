@@ -3,6 +3,10 @@
     {
       "path": "/api/admin/workers/cleanup-notifications",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/admin/workers/verify-points",
+      "schedule": "30 3 * * *"
     }
   ]
 }

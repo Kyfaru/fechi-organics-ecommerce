@@ -7,6 +7,7 @@ import { generateOrderNumber, type TxClient } from "@/lib/orders/generate-order-
 import { pushSaleReceiptToZoho } from "@/lib/zoho/push-sale-receipt";
 import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { paymentModeForOnline } from "@/lib/zoho/payment-mode";
+import { releaseRedeemedPoints } from "@/lib/points/redeem";
 
 export async function markPaymentSuccess(args: {
   transactionId: string;
@@ -63,6 +64,12 @@ export async function markPaymentSuccess(args: {
 
   await publishQstashJSON("/api/admin/workers/send-order-confirmation", { orderId: args.orderId });
   await publishQstashJSON("/api/admin/workers/notify-admin-new-order", { orderId: args.orderId });
+  // Loyalty points, badges, referral conversion and the signup-bonus unlock.
+  // Guarded by `result` so a duplicate callback that hit the idempotency check
+  // above doesn't queue a second award pass (the ledger would reject it anyway).
+  if (result) {
+    await publishQstashJSON("/api/admin/workers/award-points", { orderId: args.orderId });
+  }
   // Invoice PDF + email follow ~1 minute later, as a separate, quieter
   // background step after the instant confirmation email above.
   await publishQstashJSON("/api/admin/workers/generate-invoice", { orderId: args.orderId }, { delay: 60 });
@@ -123,6 +130,8 @@ export async function markPaymentSuccess(args: {
             priceKes: item.priceKes,
           })),
           discountKes: order.discountKes,
+          pointsDiscountKes: order.pointsDiscountKes,
+          pointsRedeemed: order.pointsRedeemed,
           shippingKes: order.deliveryKes,
           deliveryTown: order.deliveryAddress,
           deliveryZoneLabel: order.deliveryZone,
@@ -192,6 +201,15 @@ export async function markPaymentFailed(args: {
       },
     });
   });
+
+  // Give back any loyalty points held against this order. Idempotent — a late
+  // timeout job firing after the callback already failed the order hits the
+  // ledger's unique constraint and no-ops.
+  try {
+    await releaseRedeemedPoints({ orderId: args.orderId });
+  } catch (e) {
+    console.error("[post-payment] point release failed for order", args.orderId, e);
+  }
 
   // Notify waiting SSE stream — must not throw if Redis is unavailable
   try {

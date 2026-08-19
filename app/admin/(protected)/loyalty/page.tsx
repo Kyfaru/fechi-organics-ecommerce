@@ -1,7 +1,7 @@
-import { AdminLoyaltyTiersClient } from "@/components/admin/AdminLoyaltyTiersClient";
+import { AdminLoyaltyClient } from "@/components/admin/AdminLoyaltyClient";
 
-export const metadata = { title: "Loyalty Program | Fechi Organics Admin" };
+export const metadata = { title: "Loyalty | Fechi Admin" };
 
-export default function LoyaltyPage() {
-  return <AdminLoyaltyTiersClient />;
+export default function AdminLoyaltyPage() {
+  return <AdminLoyaltyClient />;
 }

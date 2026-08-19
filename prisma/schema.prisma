@@ -200,6 +200,10 @@ enum NotificationType {
   APPROVAL_REQUESTED
   APPROVAL_DECIDED
   EXPORT_READY
+  LOYALTY_GRANT_REQUESTED
+  LOYALTY_GRANT_RELEASED
+  LOYALTY_ABUSE_FLAG
+  LOYALTY_LEDGER_BREACH
 
   @@schema("admin")
 }
@@ -255,6 +259,8 @@ model user {
   assignedTickets       supportTicket[] @relation("TicketAssignee")
   blogPosts             blogPost[]
   loyaltyPoints         loyaltyPoints?
+  pointsLedger          pointsLedger[]
+  badges                userBadge[]
   inboxMessages         inboxMessage[]
   wishlistItems         wishlistItem[]
   blogReactions         blogReaction[]
@@ -553,6 +559,11 @@ model order {
   subtotalKes               Int
   deliveryKes               Int                @default(35000)
   discountKes               Int                @default(0)
+  // Loyalty points spent on this order, and their cash value in cents.
+  // pointsDiscountKes is already subtracted inside totalKes, so revenue
+  // (totalKes - deliveryKes) excludes points-funded value automatically.
+  pointsRedeemed            Int                @default(0)
+  pointsDiscountKes         Int                @default(0)
   totalKes                  Int
   promoCode                 String?
   items                     orderItem[]
@@ -914,10 +925,16 @@ model adminProfile {
   accessExpiresAt    DateTime?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
+  // Points a super admin may hand out over their lifetime. Deliberately not
+  // renewable through any UI or API — only a direct DB UPDATE tops it back up.
+  pointsAllowance      Int   @default(100000)
+  pointsAllowanceSpent Int   @default(0)
   auditLogs          auditLog[]
   requestedApprovals approvalRequest[] @relation("RequestedApprovals")
   reviewedApprovals  approvalRequest[] @relation("ReviewedApprovals")
   exportRequests     exportRequest[]
+  pointsGrantRequests  pointsGrantRequest[]
+  pointsGrantApprovals pointsGrantApproval[]
 
   @@index([branchId])
   @@schema("admin")
@@ -1132,17 +1149,155 @@ model ticketMessage {
 }
 
 // ============================================================================
-// Loyalty (public schema)
+// Loyalty — points, badges, referrals (public schema)
 // ============================================================================
 
-model loyaltyPoints {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  user      user     @relation(fields: [userId], references: [id])
-  points    Int      @default(0)
-  tier      String   @default("BRONZE")
-  updatedAt DateTime @updatedAt
+enum PointsReason {
+  SIGNUP_BONUS
+  REFERRAL_REWARD
+  REFERRED_BONUS
+  ORDER_BASE
+  ORDER_VALUE_TIER
+  STREAK_4W
+  STREAK_6M_WEEKLY
+  STREAK_6M_MONTHLY
+  BADGE_AWARD
+  SUPER_ADMIN_GRANT
+  REDEEM
+  REDEEM_REVERSED
+  ORDER_REFUND_CLAWBACK
+  BONUS_VOIDED_ABUSE
 
+  @@schema("public")
+}
+
+enum IdentityKind {
+  IP
+  DEVICE
+  PAY_MPESA
+  PAY_CARD
+  PHONE
+  EMAIL_NORM
+
+  @@schema("public")
+}
+
+enum BadgeRarity {
+  COMMON
+  UNCOMMON
+  RARE
+  EPIC
+  LEGENDARY
+  MYTHIC
+
+  @@schema("admin")
+}
+
+enum BadgeGrantType {
+  AUTO
+  MANUAL
+
+  @@schema("admin")
+}
+
+/// Read cache over pointsLedger. `points` / `lockedPoints` are denormalized
+/// sums — the ledger chain is the source of truth, and this row is also the
+/// per-user lock (SELECT ... FOR UPDATE) that serializes ledger appends.
+/// `tier` is retained only so the column drop never has to run; nothing reads
+/// it any more — level is derived from badgeCount. See lib/points/ledger.ts.
+model loyaltyPoints {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              user     @relation(fields: [userId], references: [id])
+  points            Int      @default(0)
+  lockedPoints      Int      @default(0)
+  lifetimeEarned    Int      @default(0)
+  lifetimeRedeemed  Int      @default(0)
+  level             Int      @default(1)
+  badgeCount        Int      @default(0)
+  userCode          String   @unique
+  referralCode      String   @unique
+  leaderboardPublic Boolean  @default(false)
+  tier              String   @default("BRONZE")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([points])
+  @@schema("public")
+}
+
+/// Append-only, HMAC hash-chained. Never UPDATE or DELETE a row — corrections
+/// are compensating entries. Enforced at the database by the trigger in
+/// prisma/sql/points-ledger-guard.sql.
+model pointsLedger {
+  id           String       @id @default(uuid())
+  userId       String
+  seq          Int
+  // delta moves spendable balance, lockedDelta moves the locked pot. Every
+  // case is one entry: earn (+d, 0), lock (0, +d), unlock (+d, -d),
+  // void (0, -d), redeem (-d, 0).
+  delta        Int
+  lockedDelta  Int          @default(0)
+  balanceAfter Int
+  lockedAfter  Int
+  reason       PointsReason
+  refType      String?
+  refId        String?
+  meta         Json?
+  prevHash     String
+  hash         String
+  createdAt    DateTime     @default(now())
+  user         user         @relation(fields: [userId], references: [id])
+
+  @@unique([userId, seq])
+  // Idempotency: a replayed payment callback violates this and no-ops.
+  @@unique([userId, reason, refType, refId])
+  @@index([userId, createdAt])
+  @@index([reason])
+  @@schema("public")
+}
+
+model userBadge {
+  id                      String   @id @default(uuid())
+  userId                  String
+  badgeId                 String
+  earnedAt                DateTime @default(now())
+  grantedByAdminProfileId String?
+  user                    user     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, badgeId])
+  @@index([userId])
+  @@index([badgeId])
+  @@schema("public")
+}
+
+model referral {
+  id             String    @id @default(uuid())
+  referrerUserId String
+  referredUserId String    @unique
+  code           String
+  convertedAt    DateTime?
+  rewardedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([referrerUserId])
+  @@index([code])
+  @@schema("public")
+}
+
+/// One row per (user, signal). Values are HMAC-hashed, never stored raw.
+/// The [kind, valueHash] index is the collision lookup that powers risk scoring.
+model identitySignal {
+  id          String       @id @default(uuid())
+  userId      String
+  kind        IdentityKind
+  valueHash   String
+  firstSeenAt DateTime     @default(now())
+  lastSeenAt  DateTime     @updatedAt
+
+  @@unique([userId, kind, valueHash])
+  @@index([kind, valueHash])
+  @@index([userId])
   @@schema("public")
 }
 
@@ -1241,6 +1396,9 @@ model promotion {
   startDate      DateTime?
   endDate        DateTime?
   status         String    @default("active")
+  // Caps the absolute discount a PERCENTAGE coupon may produce, in cents.
+  // Null = uncapped. Used by the auto-issued VIP coupons.
+  maxDiscountKes Int?
   createdAt      DateTime  @default(now())
 
   @@schema("admin")
@@ -1413,9 +1571,12 @@ model purchaseOrder {
 }
 
 // ============================================================================
-// Loyalty Tiers (admin schema)
+// Loyalty — badge catalog, grants, abuse review (admin schema)
 // ============================================================================
 
+/// Superseded by the badge/level ladder. Kept only so no DROP has to run
+/// through scripts/db-deploy-prod.sh — nothing reads it.
+/// ponytail: dead table, cheaper to leave than to migrate away.
 model loyaltyTier {
   id         String   @id @default(cuid())
   name       String
@@ -1424,6 +1585,78 @@ model loyaltyTier {
   benefits   String[]
   color      String
 
+  @@schema("admin")
+}
+
+/// Generated from lib/points/badge-families.ts by prisma/seed-badges.ts.
+/// `id` is a stable slug ("orders.t07") so re-seeding is idempotent and
+/// userBadge rows survive a catalog regeneration.
+model badge {
+  id          String         @id
+  familyKey   String
+  tier        Int
+  name        String
+  description String
+  icon        String
+  rarity      BadgeRarity
+  points      Int
+  grantType   BadgeGrantType @default(AUTO)
+  ruleKey     String?
+  threshold   BigInt?
+  hidden      Boolean        @default(false)
+  sortOrder   Int
+  createdAt   DateTime       @default(now())
+
+  @@unique([familyKey, tier])
+  @@index([familyKey])
+  @@index([grantType])
+  @@schema("admin")
+}
+
+/// A super admin's request to inject points by hand. Released only when every
+/// currently-active super admin has approved. See lib/points/grants.ts.
+model pointsGrantRequest {
+  id                        String                @id @default(uuid())
+  requestedByAdminProfileId String
+  requestedBy               adminProfile          @relation(fields: [requestedByAdminProfileId], references: [id])
+  targetUserId              String
+  points                    Int
+  note                      String
+  status                    ApprovalStatus        @default(PENDING)
+  createdAt                 DateTime              @default(now())
+  decidedAt                 DateTime?
+  approvals                 pointsGrantApproval[]
+
+  @@index([status])
+  @@index([targetUserId])
+  @@schema("admin")
+}
+
+model pointsGrantApproval {
+  id             String             @id @default(uuid())
+  requestId      String
+  request        pointsGrantRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  adminProfileId String
+  adminProfile   adminProfile       @relation(fields: [adminProfileId], references: [id])
+  decision       ApprovalStatus
+  decidedAt      DateTime           @default(now())
+
+  @@unique([requestId, adminProfileId])
+  @@schema("admin")
+}
+
+model pointsAbuseFlag {
+  id                       String    @id @default(uuid())
+  userId                   String
+  score                    Int
+  reasons                  Json
+  action                   String
+  reviewedByAdminProfileId String?
+  reviewedAt               DateTime?
+  createdAt                DateTime  @default(now())
+
+  @@index([userId])
+  @@index([reviewedAt])
   @@schema("admin")
 }
 
@@ -1494,6 +1727,8 @@ model inStoreOrder {
   items              inStoreOrderItem[]
   subtotalKes        Int
   discountKes        Int                      @default(0)
+  pointsRedeemed     Int                      @default(0)
+  pointsDiscountKes  Int                      @default(0)
   promoCode          String?
   totalKes           Int
   // Optional delivery, priced from an existing DeliveryZone at order time —

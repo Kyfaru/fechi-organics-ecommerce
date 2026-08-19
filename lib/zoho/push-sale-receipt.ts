@@ -29,6 +29,10 @@ export async function pushSaleReceiptToZoho(args: {
   items: Array<{ productId: string; name: string; quantity: number; priceKes: number }>;
   discountKes?: number;
   shippingKes?: number;
+  /** Cash value of loyalty points spent, in cents. Already excluded from revenue. */
+  pointsDiscountKes?: number;
+  /** Raw point count, for the receipt's line-item label. */
+  pointsRedeemed?: number;
   // Delivery destination, formatted "town/building/estate, zone, county" —
   // pass whatever's known, blanks are dropped rather than left as empty segments.
   deliveryTown?: string | null;
@@ -66,14 +70,44 @@ export async function pushSaleReceiptToZoho(args: {
       name: args.customerName,
     });
 
-    // No top-level discount field is confirmed in Zoho's docs — fold it into
-    // notes so the amount isn't silently dropped, pending live verification
-    // of the real field name. Shipping is itemized as a line item below
-    // instead, so the receipt's own total already includes it.
+    // No top-level discount field is confirmed in Zoho's docs, so both
+    // reductions are itemised as negative-rate line items below. That keeps
+    // the receipt's own total equal to what the customer actually paid —
+    // previously the coupon discount was only mentioned in `notes` and never
+    // deducted, so every discounted sale posted to Books at more than
+    // order.totalKes. They stay in the notes as well, for legibility.
     const extraNotes = [
       args.discountKes ? `Discount: KES ${(args.discountKes / 100).toFixed(2)}` : null,
+      args.pointsDiscountKes
+        ? `Loyalty points: ${(args.pointsRedeemed ?? 0).toLocaleString()} pts = KES ${(args.pointsDiscountKes / 100).toFixed(2)}`
+        : null,
     ].filter(Boolean);
     const notes = [args.notes, ...extraNotes].filter(Boolean).join(" | ");
+
+    // Negative-rate lines. Zoho accepts these on a Sales Receipt and they are
+    // what make the posted total reconcile with order.totalKes.
+    const reductionLineItems = [
+      ...(args.discountKes && args.discountKes > 0
+        ? [
+            {
+              name: "Discount",
+              quantity: 1,
+              rate: -(args.discountKes / 100),
+              location_id: branch?.zohoLocationId ?? undefined,
+            },
+          ]
+        : []),
+      ...(args.pointsDiscountKes && args.pointsDiscountKes > 0
+        ? [
+            {
+              name: `Loyalty points redeemed (${(args.pointsRedeemed ?? 0).toLocaleString()} pts)`,
+              quantity: 1,
+              rate: -(args.pointsDiscountKes / 100),
+              location_id: branch?.zohoLocationId ?? undefined,
+            },
+          ]
+        : []),
+    ];
 
     const deliveryTitleParts = [args.deliveryTown, args.deliveryZoneLabel, args.deliveryCounty].filter(
       (p): p is string => !!p && p.trim().length > 0,
@@ -107,6 +141,7 @@ export async function pushSaleReceiptToZoho(args: {
           location_id: branch?.zohoLocationId ?? undefined,
         })),
         ...deliveryLineItem,
+        ...reductionLineItems,
       ],
       reference_number: referenceNumber,
       notes,

@@ -23,6 +23,8 @@ export function renderXml(data: ReportData): string {
     <subtotalKes>${(r.subtotalKes / 100).toFixed(2)}</subtotalKes>
     <deliveryKes>${(r.deliveryKes / 100).toFixed(2)}</deliveryKes>
     <discountKes>${(r.discountKes / 100).toFixed(2)}</discountKes>
+    <pointsRedeemed>${r.pointsRedeemed}</pointsRedeemed>
+    <pointsValueKes>${(r.pointsDiscountKes / 100).toFixed(2)}</pointsValueKes>
     <totalKes>${(r.totalKes / 100).toFixed(2)}</totalKes>
     <branch>${esc(r.branchName)}</branch>
   </order>`,
@@ -37,6 +39,9 @@ export function renderXml(data: ReportData): string {
     <to>${data.summary.to.toISOString()}</to>
     <orderCount>${data.summary.orderCount}</orderCount>
     <totalRevenueKes>${(data.summary.totalRevenueKes / 100).toFixed(2)}</totalRevenueKes>
+    <!-- Points-funded value is already netted out of totalRevenueKes above. -->
+    <totalPointsRedeemed>${data.summary.totalPointsRedeemed}</totalPointsRedeemed>
+    <totalPointsValueKes>${(data.summary.totalPointsValueKes / 100).toFixed(2)}</totalPointsValueKes>
   </meta>
   <orders>
 ${rows}

@@ -1,179 +1,152 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Heart, Star, Award, Edit2, Crown, Users, Trophy } from "lucide-react";
+import { Coins, Lock, TrendingUp, ShieldCheck, ShieldX } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
+import { StatCard } from "@/components/admin/ui/StatCard";
 import { DataTable } from "@/components/admin/ui/DataTable";
-import { StatusPill } from "@/components/admin/ui/StatusPill";
-import { EmptyState } from "@/components/admin/ui/EmptyState";
-import { StatsCard } from "@/components/ui/stats-card";
+import { Drawer } from "@/components/admin/ui/Drawer";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-type LoyaltyTier = {
-  id: string;
-  name: string;
-  minSpend: number;
-  multiplier: number;
-  benefits: string[];
-  color: string;
-};
-
-type CustomerPoints = {
-  id: string;
-  points: number;
-  tier: string;
-  updatedAt: string;
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    _count: { orders: number };
-  };
-};
-
-type ApiResponse = {
-  ok: boolean;
-  data: { tiers: LoyaltyTier[]; topCustomers: CustomerPoints[] };
-};
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-function formatKes(cents: number) {
-  return `KES ${(cents / 100).toLocaleString("en-KE")}`;
-}
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-KE", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
+// Local, matching AdminCustomersClient's own Avatar — there is no shared one.
 function initials(name: string) {
-  return name
-    .split(" ")
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-// Tier icon — bronze/silver/gold mapped to icons
-function TierIcon({ tier }: { tier: string }) {
-  const t = tier.toLowerCase();
-  if (t === "gold" || t === "platinum")
-    return <Crown size={24} className="text-yellow-500" />;
-  if (t === "silver") return <Award size={24} className="text-slate-400" />;
-  return <Heart size={24} className="text-amber-700" />;
-}
-
-// ---------------------------------------------------------------------------
-// Tier card
-// ---------------------------------------------------------------------------
-function TierCard({ tier }: { tier: LoyaltyTier }) {
-  const [editing, setEditing] = useState(false);
-
-  // Derive a safe tailwind-compatible header bg from the tier color field.
-  // The color field can be a CSS hex value — we apply it via inline style.
-  const headerStyle = { backgroundColor: tier.color || "#27731e" };
-
+function Avatar({ name, size = 36 }: { name: string; size?: number }) {
   return (
-    <div className="bg-white dark:bg-(--dark-surface) rounded-[16px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) overflow-hidden">
-      {/* Colored header band */}
-      <div style={headerStyle} className="px-6 py-5">
-        <div className="flex items-center justify-between">
-          <TierIcon tier={tier.name} />
-          <button
-            onClick={() => setEditing((e) => !e)}
-            className="w-8 h-8 flex items-center justify-center rounded-[6px] bg-white/20 text-white hover:bg-white/30 transition-colors"
-            title="Edit tier"
-          >
-            <Edit2 size={14} />
-          </button>
-        </div>
-        <h3 className="font-syne text-[22px] font-bold text-white mt-3">
-          {tier.name}
-        </h3>
-        <p className="font-dm text-[13px] text-white/70 mt-1">
-          Minimum spend: {formatKes(tier.minSpend)}
-        </p>
-      </div>
-
-      {/* Body */}
-      <div className="p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <Star size={14} className="text-(--gold-500)" />
-          <span className="font-dm text-[13px] font-semibold text-(--neutral-700) dark:text-(--dark-text)">
-            {tier.multiplier}x points multiplier
-          </span>
-        </div>
-
-        {editing ? (
-          <div className="p-4 rounded-[10px] bg-(--neutral-50) dark:bg-(--dark-bg) border border-(--neutral-200) dark:border-(--dark-border)">
-            <p className="font-dm text-[13px] text-(--neutral-500) dark:text-(--dark-muted)">
-              Tier editing UI — connect to a PATCH /api/admin/loyalty/tiers/[id] endpoint when needed.
-            </p>
-            <button
-              onClick={() => setEditing(false)}
-              className="mt-3 h-8 px-4 rounded-[6px] border border-(--neutral-200) dark:border-(--dark-border) font-dm text-[13px] text-(--neutral-700) dark:text-(--dark-text) hover:bg-(--neutral-100) transition-colors"
-            >
-              Close
-            </button>
-          </div>
-        ) : (
-          <ul className="space-y-2">
-            {tier.benefits.length === 0 ? (
-              <li className="font-dm text-[13px] text-(--neutral-400)">No benefits listed yet.</li>
-            ) : (
-              tier.benefits.map((b, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-(--green-800) mt-2 shrink-0" />
-                  <span className="font-dm text-[14px] text-(--neutral-700) dark:text-(--dark-text)">{b}</span>
-                </li>
-              ))
-            )}
-          </ul>
-        )}
-      </div>
+    <div
+      style={{ width: size, height: size, fontSize: size * 0.36 }}
+      className="rounded-full bg-(--green-800) text-white flex items-center justify-center font-dm font-semibold shrink-0"
+    >
+      {initials(name)}
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
+/**
+ * Loyalty programme overview. Entirely read-only — an admin can inspect any
+ * balance and its full history but can never alter one. The only write path is
+ * the unanimous super-admin grant flow at /admin/loyalty/grants.
+ */
+
+type Member = {
+  userId: string;
+  userCode: string;
+  name: string;
+  email: string;
+  image: string | null;
+  points: number;
+  lockedPoints: number;
+  lifetimeEarned: number;
+  lifetimeRedeemed: number;
+  level: number;
+  badgeCount: number;
+  updatedAt: string;
+};
+
+type Overview = {
+  centsPerPoint: number;
+  summary: {
+    members: number;
+    outstandingPoints: number;
+    outstandingLiabilityCents: number;
+    lockedPoints: number;
+    lifetimeEarned: number;
+    lifetimeRedeemed: number;
+    ordersPaidWithPoints: number;
+    pointsUtilised: number;
+    pointsUtilisedValueCents: number;
+    openFlags: number;
+    pendingGrants: number;
+  };
+  members: Member[];
+};
+
+type LedgerEntry = {
+  id: string;
+  seq: number;
+  delta: number;
+  lockedDelta: number;
+  balanceAfter: number;
+  lockedAfter: number;
+  reason: string;
+  refType: string | null;
+  refId: string | null;
+  createdAt: string;
+};
+
+type LedgerData = {
+  customer: {
+    userCode: string;
+    name: string;
+    email: string;
+    points: number;
+    lockedPoints: number;
+    lifetimeEarned: number;
+    lifetimeRedeemed: number;
+    level: number;
+    badgeCount: number;
+    cashValueCents: number;
+  };
+  integrity: { ok: boolean; entries: number; reason?: string; brokenAtSeq?: number };
+  entries: LedgerEntry[];
+  badges: { badgeId: string; earnedAt: string; grantedByAdminProfileId: string | null }[];
+};
+
+function kes(cents: number) {
+  return `KSh ${(cents / 100).toLocaleString("en-KE", { maximumFractionDigits: 0 })}`;
+}
+
+const REASON_LABELS: Record<string, string> = {
+  SIGNUP_BONUS: "Joining bonus",
+  REFERRAL_REWARD: "Referral reward",
+  REFERRED_BONUS: "Referred bonus",
+  ORDER_BASE: "Order points",
+  ORDER_VALUE_TIER: "Order value bonus",
+  STREAK_4W: "4-week streak",
+  STREAK_6M_WEEKLY: "6-month weekly streak",
+  STREAK_6M_MONTHLY: "6-month streak",
+  BADGE_AWARD: "Achievement",
+  SUPER_ADMIN_GRANT: "Super admin grant",
+  REDEEM: "Redeemed at checkout",
+  REDEEM_REVERSED: "Redemption reversed",
+  ORDER_REFUND_CLAWBACK: "Refund clawback",
+  BONUS_VOIDED_ABUSE: "Bonus voided (duplicate account)",
+};
+
 export function AdminLoyaltyClient() {
-  const { data, isLoading } = useQuery<ApiResponse>({
+  const [activeUserId, setActiveUserId] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery<Overview>({
     queryKey: ["admin-loyalty"],
-    queryFn: () => fetch("/api/admin/loyalty").then((r) => r.json()),
-    staleTime: 60_000,
+    queryFn: async () => {
+      const res = await fetch("/api/admin/loyalty");
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error?.message ?? "Failed to load loyalty data");
+      return json.data;
+    },
   });
 
-  const tiers = data?.data?.tiers ?? [];
-  const topCustomers = data?.data?.topCustomers ?? [];
-
-  const tableColumns = [
+  const columns = [
     {
-      key: "customer",
+      key: "name",
       label: "Customer",
       render: (_: unknown, row: Record<string, unknown>) => {
-        const cp = row as unknown as CustomerPoints;
+        const m = row as unknown as Member;
         return (
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-(--green-800) text-white flex items-center justify-center font-dm font-semibold text-[12px] shrink-0">
-              {initials(cp.user.name)}
-            </div>
+            <Avatar name={m.name} size={32} />
             <div>
               <div className="font-dm text-[14px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
-                {cp.user.name}
+                {m.name}
               </div>
               <div className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted)">
-                {cp.user.email}
+                {m.userCode}
               </div>
             </div>
           </div>
@@ -182,104 +155,248 @@ export function AdminLoyaltyClient() {
     },
     {
       key: "points",
-      label: "Points",
-      sortable: true,
+      label: "Balance",
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const m = row as unknown as Member;
+        return (
+          <div className="flex flex-col leading-tight">
+            <span className="font-dm text-[14px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
+              {m.points.toLocaleString()}
+            </span>
+            {m.lockedPoints > 0 && (
+              <span className="font-dm text-[11px] text-(--gold-700)">
+                {m.lockedPoints.toLocaleString()} locked
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: "level",
+      label: "Level",
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const m = row as unknown as Member;
+        return (
+          <span className="font-dm text-[13px] text-(--neutral-700) dark:text-(--dark-text)">
+            Lv {m.level} · {m.badgeCount} badges
+          </span>
+        );
+      },
+    },
+    {
+      key: "lifetimeEarned",
+      label: "Earned",
       render: (_: unknown, row: Record<string, unknown>) => (
-        <span className="font-dm text-[14px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
-          {(row as unknown as CustomerPoints).points.toLocaleString()}
+        <span className="font-dm text-[13px] text-(--neutral-700) dark:text-(--dark-text)">
+          {(row as unknown as Member).lifetimeEarned.toLocaleString()}
         </span>
       ),
     },
     {
-      key: "tier",
-      label: "Tier",
-      render: (_: unknown, row: Record<string, unknown>) => (
-        <StatusPill status={(row as unknown as CustomerPoints).tier.toLowerCase()} />
-      ),
-    },
-    {
-      key: "orders",
-      label: "Orders",
-      render: (_: unknown, row: Record<string, unknown>) => (
-        <span className="font-dm text-[14px] text-(--neutral-700) dark:text-(--dark-text)">
-          {(row as unknown as CustomerPoints).user._count.orders}
-        </span>
-      ),
-    },
-    {
-      key: "updatedAt",
-      label: "Last Updated",
-      sortable: true,
+      key: "lifetimeRedeemed",
+      label: "Spent",
       render: (_: unknown, row: Record<string, unknown>) => (
         <span className="font-dm text-[13px] text-(--neutral-500) dark:text-(--dark-muted)">
-          {formatDate((row as unknown as CustomerPoints).updatedAt)}
+          {(row as unknown as Member).lifetimeRedeemed.toLocaleString()}
         </span>
       ),
     },
   ];
 
   return (
-    <div className="min-h-screen">
+    <div>
       <PageHeader
-        title="Loyalty Program"
-        description="Manage tiers, multipliers, and customer points"
         breadcrumbs={[
-          { label: "Admin", href: "/admin" },
-          { label: "Customers", href: "/admin/customers" },
-          { label: "Loyalty", href: "/admin/customers/loyalty" },
+          { label: "Marketing", href: "/admin/marketing" },
+          { label: "Loyalty", href: "/admin/loyalty" },
         ]}
+        title="Loyalty & Points"
+        description="Read-only. Balances change only through customer activity or an approved super-admin grant."
+        goldWash
+        action={
+          <div className="flex gap-2">
+            <Link
+              href="/admin/loyalty/grants"
+              className="rounded-lg border border-(--neutral-300) px-3 py-2 font-dm text-[13px] font-medium text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+            >
+              Grants
+              {data && data.summary.pendingGrants > 0 && (
+                <span className="ml-1.5 rounded-full bg-(--gold-700) px-1.5 py-0.5 text-[11px] font-bold text-white">
+                  {data.summary.pendingGrants}
+                </span>
+              )}
+            </Link>
+            <Link
+              href="/admin/loyalty/flags"
+              className="rounded-lg border border-(--neutral-300) px-3 py-2 font-dm text-[13px] font-medium text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+            >
+              Flags
+              {data && data.summary.openFlags > 0 && (
+                <span className="ml-1.5 rounded-full bg-red-600 px-1.5 py-0.5 text-[11px] font-bold text-white">
+                  {data.summary.openFlags}
+                </span>
+              )}
+            </Link>
+          </div>
+        }
       />
 
-      <div className="px-6 pb-8 space-y-8">
-        {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatsCard title="Total Members" value={isLoading ? "—" : String(topCustomers.length)} icon={<Users className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
-          <StatsCard title="Active Tiers" value={isLoading ? "—" : String(tiers.length)} icon={<Trophy className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
-          <StatsCard title="Top Points" value={isLoading ? "—" : String(topCustomers[0]?.points?.toLocaleString() ?? 0)} icon={<Star className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
-          <StatsCard title="Gold Members" value={isLoading ? "—" : String(topCustomers.filter(c => c.tier.toLowerCase() === "gold" || c.tier.toLowerCase() === "platinum").length)} icon={<Crown className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
-        </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+        <StatCard
+          eyebrow="Outstanding points"
+          value={data ? data.summary.outstandingPoints.toLocaleString() : "—"}
+          trend={
+            data
+              ? { value: `${kes(data.summary.outstandingLiabilityCents)} liability`, positive: false }
+              : undefined
+          }
+          icon={Coins}
+        />
+        <StatCard
+          eyebrow="Locked (unclaimed)"
+          value={data ? data.summary.lockedPoints.toLocaleString() : "—"}
+          trend={{ value: "Unlock at first paid order", positive: true }}
+          icon={Lock}
+        />
+        <StatCard
+          eyebrow="Points utilised"
+          value={data ? data.summary.pointsUtilised.toLocaleString() : "—"}
+          trend={
+            data
+              ? {
+                  value: `${kes(data.summary.pointsUtilisedValueCents)} · ${data.summary.ordersPaidWithPoints} orders`,
+                  positive: true,
+                }
+              : undefined
+          }
+          icon={TrendingUp}
+        />
+        <StatCard
+          eyebrow="Members"
+          value={data ? data.summary.members.toLocaleString() : "—"}
+          trend={
+            data
+              ? { value: `${data.summary.lifetimeEarned.toLocaleString()} earned all-time`, positive: true }
+              : undefined
+          }
+          icon={ShieldCheck}
+        />
+      </div>
 
-        {/* Tier cards */}
-        <div>
-          <h2 className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">
-            Tiers
-          </h2>
+      <DataTable
+        columns={columns}
+        data={(data?.members ?? []) as unknown as Record<string, unknown>[]}
+        loading={isLoading}
+        onRowClick={(row) => setActiveUserId((row as unknown as Member).userId)}
+        emptyTitle="No loyalty members yet"
+        emptyDescription="Balances appear here once customers start earning points."
+      />
 
-          {isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-64 bg-(--neutral-100) dark:bg-(--dark-border) rounded-[16px] animate-pulse" />
-              ))}
+      <LedgerDrawer userId={activeUserId} onClose={() => setActiveUserId(null)} />
+    </div>
+  );
+}
+
+function LedgerDrawer({ userId, onClose }: { userId: string | null; onClose: () => void }) {
+  const { data, isLoading } = useQuery<LedgerData>({
+    queryKey: ["admin-loyalty-ledger", userId],
+    enabled: !!userId,
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/loyalty/ledger/${userId}`);
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error?.message ?? "Failed to load ledger");
+      return json.data;
+    },
+  });
+
+  return (
+    <Drawer open={!!userId} onClose={onClose} title={data?.customer.name ?? "Points history"} width={640}>
+      {isLoading || !data ? (
+        <p className="font-dm text-[13px] text-(--neutral-500)">Loading…</p>
+      ) : (
+        <div className="space-y-5">
+          {/* Integrity banner. A failure here means somebody wrote to the table
+              directly — the chain is the evidence, so don't "fix" the balance. */}
+          {data.integrity.ok ? (
+            <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
+              <ShieldCheck size={15} className="text-emerald-700 shrink-0" />
+              <span className="font-dm text-[12px] text-emerald-800">
+                Ledger verified — {data.integrity.entries} entries, chain intact.
+              </span>
             </div>
-          ) : tiers.length === 0 ? (
-            <EmptyState
-              icon={Heart}
-              title="No tiers configured"
-              description="Run the seed script or create loyalty tiers via the database."
-            />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {tiers.map((tier) => (
-                <TierCard key={tier.id} tier={tier} />
-              ))}
+            <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+              <ShieldX size={15} className="text-red-700 shrink-0 mt-0.5" />
+              <span className="font-dm text-[12px] text-red-800">
+                <strong>Integrity failure ({data.integrity.reason})</strong>
+                {data.integrity.brokenAtSeq ? ` at entry #${data.integrity.brokenAtSeq}` : ""}. This
+                ledger was modified outside the application. Investigate before adjusting anything.
+              </span>
             </div>
           )}
-        </div>
 
-        {/* Customer points table */}
-        <div>
-          <h2 className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">
-            Top Customers by Points
-          </h2>
-          <DataTable
-            columns={tableColumns}
-            data={topCustomers as unknown as Record<string, unknown>[]}
-            loading={isLoading}
-            emptyTitle="No loyalty data"
-            emptyDescription="No customers have earned points yet."
-          />
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: "Balance", value: data.customer.points.toLocaleString() },
+              { label: "Cash value", value: kes(data.customer.cashValueCents) },
+              { label: "Locked", value: data.customer.lockedPoints.toLocaleString() },
+              { label: "Level", value: `${data.customer.level} · ${data.customer.badgeCount} badges` },
+              { label: "Earned all-time", value: data.customer.lifetimeEarned.toLocaleString() },
+              { label: "Spent", value: data.customer.lifetimeRedeemed.toLocaleString() },
+            ].map(({ label, value }) => (
+              <div key={label} className="rounded-lg border border-(--neutral-200) p-3">
+                <p className="font-dm text-[11px] uppercase tracking-wider text-(--neutral-500)">{label}</p>
+                <p className="font-syne text-[16px] font-semibold text-(--neutral-900)">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <h3 className="font-syne text-[14px] font-semibold text-(--neutral-900) mb-2">
+              History ({data.entries.length})
+            </h3>
+            <ul className="space-y-1">
+              {data.entries.map((e) => {
+                const net = e.delta + e.lockedDelta;
+                return (
+                  <li
+                    key={e.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-(--neutral-200) px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-dm text-[13px] text-(--neutral-900) truncate">
+                        {REASON_LABELS[e.reason] ?? e.reason}
+                      </p>
+                      <p className="font-dm text-[11px] text-(--neutral-500)">
+                        #{e.seq} · {new Date(e.createdAt).toLocaleString()}
+                        {e.refType ? ` · ${e.refType}` : ""}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p
+                        className={`font-dm text-[13px] font-semibold ${
+                          net > 0 ? "text-emerald-700" : net < 0 ? "text-red-600" : "text-(--neutral-500)"
+                        }`}
+                      >
+                        {net > 0 ? "+" : ""}
+                        {net.toLocaleString()}
+                        {e.lockedDelta !== 0 && e.delta !== 0 ? " (unlock)" : ""}
+                      </p>
+                      <p className="font-dm text-[11px] text-(--neutral-500)">
+                        bal {e.balanceAfter.toLocaleString()}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+              {data.entries.length === 0 && (
+                <li className="font-dm text-[13px] text-(--neutral-500)">No activity yet.</li>
+              )}
+            </ul>
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </Drawer>
   );
 }

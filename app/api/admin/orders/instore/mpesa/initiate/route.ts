@@ -16,7 +16,9 @@ import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
 import { getDarajaToken } from "@/lib/payments/mpesa/daraja-client";
 import { initiateSTKPush } from "@/lib/payments/mpesa/stk-push";
-import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
+import { recordCouponRedemption } from "@/lib/promo";
+import { computeOrderTotals } from "@/lib/checkout/compute-totals";
+import { holdRedeemedPoints } from "@/lib/points/redeem";
 import { getRedis } from "@/lib/redis";
 import { makeRatelimit } from "@/lib/ratelimit";
 import { assertTrustedOrigin } from "@/lib/origin-check";
@@ -46,6 +48,9 @@ const bodySchema = z
       .array(z.object({ productId: z.string(), quantity: z.number().int().positive() }))
       .min(1),
     promoCode: z.string().optional(),
+    // Loyalty points the customer wants to spend. Only meaningful when
+    // customerUserId is set — a nameless walk-in has no balance.
+    pointsRequested: z.number().int().nonnegative().optional(),
     branchId: z.string().min(1).optional(),
     // Present when the admin is retrying a payment attempt on an order whose
     // previous attempt already failed — reuses that order instead of
@@ -96,7 +101,7 @@ export async function POST(req: NextRequest) {
     return Err.validation("Invalid request body");
   }
 
-  const { customerUserId, customerName, customerPhone, customerEmail, items, promoCode, branchId, retryOrderId, deliveryZoneId } =
+  const { customerUserId, customerName, customerPhone, customerEmail, items, promoCode, pointsRequested, branchId, retryOrderId, deliveryZoneId } =
     parsed;
 
   try {
@@ -155,23 +160,6 @@ export async function POST(req: NextRequest) {
       return sum + product.priceKes * item.quantity;
     }, 0);
 
-    const normalizedPromoCode = promoCode?.trim().toUpperCase();
-    let discountKes = 0;
-    let resolvedPromoId: string | null = null;
-    if (normalizedPromoCode) {
-      try {
-        const r = await resolvePromo(normalizedPromoCode, subtotalKes, customerUserId ?? undefined);
-        discountKes = r.discountKes;
-        resolvedPromoId = r.promo.id;
-      } catch (promoErr) {
-        reportError(promoErr, {
-          route: "POST /api/admin/orders/instore/mpesa/initiate",
-          userId: admin.id,
-          tags: { stage: "promo_resolution" },
-        });
-        /* invalid/expired — discount stays 0 */
-      }
-    }
     // Never trust a client-submitted delivery fee — resolve it from the real
     // DeliveryZone row, same "recompute from the DB" principle as product
     // prices above. An unknown/inactive zone id is treated as no delivery
@@ -179,9 +167,25 @@ export async function POST(req: NextRequest) {
     const deliveryZone = deliveryZoneId
       ? await db.deliveryZone.findUnique({ where: { id: deliveryZoneId, isActive: true } })
       : null;
-    const deliveryKes = deliveryZone?.deliveryFeeKes ?? 0;
 
-    const totalKes = Math.max(0, subtotalKes - discountKes + deliveryKes);
+    const {
+      discountCents: discountKes,
+      deliveryCents: deliveryKes,
+      promoCode: normalizedPromoCode,
+      promoId: resolvedPromoId,
+      pointsRedeemed,
+      pointsDiscountCents,
+      totalCents: totalKes,
+    } = await computeOrderTotals({
+      subtotalCents: subtotalKes,
+      deliveryCents: deliveryZone?.deliveryFeeKes ?? 0,
+      promoCode,
+      pointsRequested: customerUserId ? pointsRequested : 0,
+      userId: customerUserId ?? null,
+      // In-store keeps the delivery fee payable regardless of the coupon.
+      discountAppliesToDelivery: false,
+      route: "POST /api/admin/orders/instore/mpesa/initiate",
+    });
 
     // Resolve the walk-in to a real customer record (find-by-phone or
     // create) so they appear on /admin/customers — skip on retry, the
@@ -233,6 +237,8 @@ export async function POST(req: NextRequest) {
           customerEmail: customerEmail ?? null,
           subtotalKes,
           discountKes,
+          pointsRedeemed,
+          pointsDiscountKes: pointsDiscountCents,
           promoCode: normalizedPromoCode ?? null,
           totalKes,
           deliveryKes,
@@ -258,6 +264,17 @@ export async function POST(req: NextRequest) {
       // must not record a second redemption for one order.
       if (resolvedPromoId && normalizedPromoCode && resolvedCustomerUserId) {
         await recordCouponRedemption(resolvedPromoId, resolvedCustomerUserId, order.id);
+      }
+
+      // Debit points now; markInStorePaymentFailed() hands them back if this
+      // attempt never pays.
+      if (customerUserId) {
+        await holdRedeemedPoints({
+          userId: customerUserId,
+          orderId: order.id,
+          points: pointsRedeemed,
+          refType: "inStoreOrder",
+        });
       }
     }
 

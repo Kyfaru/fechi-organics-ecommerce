@@ -37,4 +37,10 @@ export const NOTIFICATION_TYPE_RESOURCE: Record<NotificationType, AppResource | 
   // check /api/admin/exports/mine" nudge; that endpoint (ownership-scoped)
   // is the real gate on who can actually reach the file.
   EXPORT_READY: null,
+  LOYALTY_GRANT_REQUESTED: "loyalty",
+  LOYALTY_GRANT_RELEASED: "loyalty",
+  LOYALTY_ABUSE_FLAG: "loyalty",
+  // null, not "loyalty" — a broken points ledger is an integrity incident that
+  // whoever is on call must see, not a marketing notification.
+  LOYALTY_LEDGER_BREACH: null,
 };

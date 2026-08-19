@@ -43,7 +43,16 @@ export async function GET(
         updatedAt: true,
         _count: { select: { orders: true } },
         loyaltyPoints: {
-          select: { points: true, tier: true, updatedAt: true },
+          select: {
+            points: true,
+            lockedPoints: true,
+            lifetimeEarned: true,
+            level: true,
+            badgeCount: true,
+            userCode: true,
+            tier: true,
+            updatedAt: true,
+          },
         },
       },
     });

@@ -9,6 +9,7 @@ import { splitName } from "@/lib/name";
 import { Argon2id } from "oslo/password";
 import { ac, roles } from "@/lib/permissions";
 import { logActivity } from "@/lib/admin-activity";
+import { grantJoiningBonus } from "@/lib/points/referrals";
 
 // ---------------------------------------------------------------------------
 // Admin sessions are anchored to the next midnight in Africa/Nairobi (EAT,
@@ -258,6 +259,19 @@ export const auth = betterAuth({
             await db.clientProfile.create({
               data: { userId: user.id },
             });
+
+            // Open the loyalty account and credit the joining points. They are
+            // written LOCKED and stay unspendable until this customer's first
+            // successful payment, which is what stops the bonus being farmed
+            // across throwaway emails (see lib/points/anti-abuse.ts).
+            //
+            // Best-effort: a loyalty failure must never block signup. Any
+            // customer who slips through gets their account opened lazily on
+            // first read, and the bonus is re-granted idempotently by the
+            // referral route.
+            grantJoiningBonus({ userId: user.id }).catch((err) =>
+              console.error("[auth] Failed to grant joining points:", err)
+            );
 
             // Best-effort — a failed welcome email must never block signup.
             if (process.env.RESEND_API_KEY && user.email) {

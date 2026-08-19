@@ -61,7 +61,17 @@ export async function GET(req: NextRequest) {
         createdAt: true,
         loginCount: true,
         _count: { select: { orders: true } },
-        loyaltyPoints: { select: { tier: true } },
+        loyaltyPoints: {
+          select: {
+            tier: true,
+            points: true,
+            lockedPoints: true,
+            lifetimeEarned: true,
+            level: true,
+            badgeCount: true,
+            userCode: true,
+          },
+        },
       },
     });
 

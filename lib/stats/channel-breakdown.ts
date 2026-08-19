@@ -162,6 +162,74 @@ export async function getDeliveryFeesSeries(opts: { range: StatRange }): Promise
   return { value, change: getPeriodChange(value, previousValue), series };
 }
 
+/**
+ * Loyalty points spent on paid orders, across both channels.
+ *
+ * `value` is the cash value in cents (so it formats like every other money
+ * card) and `points` is the raw point count. Revenue already excludes this —
+ * pointsDiscountKes is subtracted inside totalKes — so this card answers "how
+ * much of what we shipped was paid for with points rather than money".
+ */
+export async function getPointsUtilisedSeries(
+  opts: { scope: ChannelScope; range: StatRange },
+): Promise<ChannelSeriesResult & { points: number }> {
+  const now = new Date();
+  const granularity = granularityFor(opts.range);
+  const { gte, prevGte, prevLte } = resolveWindow(opts.range, now);
+
+  async function fetchPointsRows(from: Date | null, to: Date) {
+    const dateFilter = from ? { gte: from, lte: to } : { lte: to };
+    const wantsOnline = opts.scope !== "instore";
+    const wantsInStore = opts.scope === "total" || opts.scope === "instore";
+    const deliveryType =
+      opts.scope === "home-delivery" ? "DELIVERY" : opts.scope === "store-pickup" ? "PICKUP" : undefined;
+
+    const [online, inStore] = await Promise.all([
+      wantsOnline
+        ? db.order.findMany({
+            where: {
+              paymentStatus: "PAID",
+              pointsRedeemed: { gt: 0 },
+              createdAt: dateFilter,
+              ...(deliveryType ? { deliveryType } : {}),
+            },
+            select: { createdAt: true, pointsRedeemed: true, pointsDiscountKes: true },
+          })
+        : Promise.resolve([]),
+      wantsInStore
+        ? db.inStoreOrder.findMany({
+            where: { paymentStatus: "PAID", pointsRedeemed: { gt: 0 }, createdAt: dateFilter },
+            select: { createdAt: true, pointsRedeemed: true, pointsDiscountKes: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    return [...online, ...inStore];
+  }
+
+  const [currentRows, previousRows] = await Promise.all([
+    fetchPointsRows(gte, now),
+    prevGte ? fetchPointsRows(prevGte, prevLte!) : Promise.resolve([]),
+  ]);
+
+  const bucketMap: Record<string, number> = {};
+  for (const row of currentRows) {
+    const key = bucketKey(row.createdAt, granularity);
+    bucketMap[key] = (bucketMap[key] ?? 0) + row.pointsDiscountKes;
+  }
+  const buckets = generateBuckets(gte, now, granularity);
+  const series = buckets.map((date) => ({ date, value: bucketMap[date] ?? 0 }));
+
+  const value = currentRows.reduce((sum, r) => sum + r.pointsDiscountKes, 0);
+  const previousValue = previousRows.reduce((sum, r) => sum + r.pointsDiscountKes, 0);
+
+  return {
+    value,
+    change: getPeriodChange(value, previousValue),
+    series,
+    points: currentRows.reduce((sum, r) => sum + r.pointsRedeemed, 0),
+  };
+}
+
 async function fetchTransactionRows(gte: Date | null, lte: Date) {
   const dateFilter = gte ? { gte, lte } : { lte };
   const [onlineTx, inStoreTx] = await Promise.all([

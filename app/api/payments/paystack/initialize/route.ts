@@ -18,7 +18,9 @@ import { reportError } from "@/lib/observability";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
 import { isCardEligible } from "@/lib/payments/card-eligibility";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
-import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
+import { recordCouponRedemption } from "@/lib/promo";
+import { computeOrderTotals } from "@/lib/checkout/compute-totals";
+import { holdRedeemedPoints } from "@/lib/points/redeem";
 import { initializeTransaction } from "@/lib/paystack/client";
 import { buildTimestampOrderNumber } from "@/lib/orders/generate-order-number";
 import { getRedis } from "@/lib/redis";
@@ -96,22 +98,22 @@ export async function POST(req: NextRequest) {
       zoneId: deliveryData.zoneId,
       deliveryType: deliveryData.deliveryType,
     });
-    const promoCode = deliveryData.promoCode?.trim().toUpperCase();
-    let discountCents = 0;
-    let deliveryCents = pricing.feeKes;
-    let resolvedPromoId: string | null = null;
-    if (promoCode) {
-      try {
-        const r = await resolvePromo(promoCode, subtotalCents, userId);
-        discountCents = r.discountKes;
-        if (r.deliveryFree) deliveryCents = 0;
-        resolvedPromoId = r.promo.id;
-      } catch (promoErr) {
-        reportError(promoErr, { route: "POST /api/payments/paystack/initialize", tags: { stage: "promo_resolution" } });
-        /* invalid/expired — discount stays 0 */
-      }
-    }
-    const totalCents = Math.max(0, subtotalCents + deliveryCents - discountCents);
+    const {
+      deliveryCents,
+      discountCents,
+      promoCode,
+      promoId: resolvedPromoId,
+      pointsRedeemed,
+      pointsDiscountCents,
+      totalCents,
+    } = await computeOrderTotals({
+      subtotalCents,
+      deliveryCents: pricing.feeKes,
+      promoCode: deliveryData.promoCode,
+      pointsRequested: deliveryData.pointsRequested,
+      userId,
+      route: "POST /api/payments/paystack/initialize",
+    });
 
     // 5. Resolve branch — international orders route to the main branch
     let branch: Awaited<ReturnType<typeof db.branch.findUnique>> | null = null;
@@ -157,6 +159,8 @@ export async function POST(req: NextRequest) {
         subtotalKes: subtotalCents,
         deliveryKes: deliveryCents,
         discountKes: discountCents,
+        pointsRedeemed,
+        pointsDiscountKes: pointsDiscountCents,
         totalKes: totalCents,
         promoCode: promoCode ?? null,
         paymentStatus: "PENDING",
@@ -193,6 +197,10 @@ export async function POST(req: NextRequest) {
     if (resolvedPromoId && promoCode) {
       await recordCouponRedemption(resolvedPromoId, userId, order.id);
     }
+
+    // Debit points now so the same balance can't be spent in a parallel
+    // checkout. markPaymentFailed() gives them back if this never pays.
+    await holdRedeemedPoints({ userId, orderId: order.id, points: pointsRedeemed });
 
     // 7. Generate reference and create transaction record (PENDING)
     // Paystack only allows alphanumeric + -.= in a reference, and a literal

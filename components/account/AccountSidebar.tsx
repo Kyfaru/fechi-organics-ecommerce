@@ -13,6 +13,7 @@ import { PROFILE_QUERY_KEY, fetchProfile } from "@/lib/account/profile-query"
 
 const NAV_ITEMS: Array<{ href: string; label: string; icon: string; badge?: boolean }> = [
   { href: "/account/profile",  label: "Profile",  icon: "lucide:user"         },
+  { href: "/account/achievements", label: "Achievements", icon: "lucide:trophy" },
   { href: "/account/orders",   label: "Orders",   icon: "lucide:shopping-bag" },
   { href: "/account/reviews",  label: "Reviews",  icon: "lucide:star"         },
   { href: "/account/messages", label: "Messages", icon: "lucide:message-circle" },

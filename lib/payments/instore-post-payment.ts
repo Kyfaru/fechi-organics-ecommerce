@@ -21,6 +21,8 @@ import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-i
 import { pushSaleReceiptToZoho } from "@/lib/zoho/push-sale-receipt";
 import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { paymentModeForInStore } from "@/lib/zoho/payment-mode";
+import { publishQstashJSON } from "@/lib/qstash";
+import { releaseRedeemedPoints } from "@/lib/points/redeem";
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
@@ -82,6 +84,16 @@ export async function markInStorePaymentSuccess(args: {
     }
   });
 
+  // Loyalty points, badges and referral conversion. `provider` is still null
+  // when the idempotency guard above short-circuited, so a replayed callback
+  // does not queue a second award pass.
+  if (provider) {
+    await publishQstashJSON("/api/admin/workers/award-points", {
+      orderId: args.inStoreOrderId,
+      refType: "inStoreOrder",
+    }).catch((e) => console.error("[instore-post-payment] award-points enqueue failed:", e));
+  }
+
   // Pre-warm the invoice PDF synchronously (not queued, unlike the customer
   // flow's 60s-delayed worker) so it's already cached in R2 by the time the
   // admin's success modal renders a Send button. A render/upload failure here
@@ -135,6 +147,8 @@ export async function markInStorePaymentSuccess(args: {
             customerEmail: true,
             customerPhone: true,
             discountKes: true,
+            pointsDiscountKes: true,
+            pointsRedeemed: true,
             deliveryKes: true,
             orderNumber: true,
           },
@@ -156,6 +170,8 @@ export async function markInStorePaymentSuccess(args: {
           paymentMode: paymentModeForInStore(provider!),
           items: paidItems,
           discountKes: order?.discountKes,
+          pointsDiscountKes: order?.pointsDiscountKes,
+          pointsRedeemed: order?.pointsRedeemed,
           shippingKes: order?.deliveryKes,
           paymentReference,
           notes: `Fechi Organics in-store order ${order?.orderNumber ?? args.inStoreOrderId}`,
@@ -207,6 +223,14 @@ export async function markInStorePaymentFailed(args: {
       data: { paymentStatus: "FAILED" },
     });
   });
+
+  // Give back any loyalty points held against this order. Idempotent — a
+  // replayed failure hits the ledger's unique constraint and no-ops.
+  try {
+    await releaseRedeemedPoints({ orderId: args.inStoreOrderId, refType: "inStoreOrder" });
+  } catch (e) {
+    console.error("[instore-post-payment] point release failed:", e);
+  }
 
   try {
     await getRedis().set(

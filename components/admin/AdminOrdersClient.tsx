@@ -56,6 +56,10 @@ type AdminOrder = {
   subtotalKes: number;
   deliveryKes: number;
   discountKes: number;
+  // Loyalty points spent, and their cash value in cents. pointsDiscountKes is
+  // already subtracted inside totalKes.
+  pointsRedeemed: number;
+  pointsDiscountKes: number;
   totalKes: number;
   paymentStatus: PaymentStatus;
   deliveryAddress: string | null;
@@ -86,6 +90,8 @@ type AdminInStoreOrder = {
   paymentStatus: PaymentStatus;
   subtotalKes: number;
   discountKes: number;
+  pointsRedeemed: number;
+  pointsDiscountKes: number;
   totalKes: number;
   deliveryKes: number;
   deliveryLocation: string | null;
@@ -481,9 +487,15 @@ function InStoreOrderDrawerContent({
                   <span>-{formatKes(order.discountKes)}</span>
                 </div>
               )}
+              {order.pointsRedeemed > 0 && (
+                <div className="flex justify-between font-dm text-[13px] text-(--success)">
+                  <span>Paid with points ({order.pointsRedeemed.toLocaleString()} pts)</span>
+                  <span>-{formatKes(order.pointsDiscountKes)}</span>
+                </div>
+              )}
               <div className="h-px bg-(--neutral-200) my-1" />
               <div className="flex justify-between font-syne text-[16px] font-semibold text-(--neutral-900)">
-                <span>Total</span>
+                <span>{order.pointsRedeemed > 0 ? "Paid in cash" : "Total"}</span>
                 <span>{formatKes(order.totalKes)}</span>
               </div>
             </div>
@@ -1004,9 +1016,15 @@ function OrderDetailDrawer({
                     <span>-{formatKes(order.discountKes)}</span>
                   </div>
                 )}
+                {order.pointsRedeemed > 0 && (
+                  <div className="flex justify-between font-dm text-[13px] text-(--success)">
+                    <span>Paid with points ({order.pointsRedeemed.toLocaleString()} pts)</span>
+                    <span>-{formatKes(order.pointsDiscountKes)}</span>
+                  </div>
+                )}
                 <div className="h-px bg-(--neutral-200) my-1" />
                 <div className="flex justify-between font-syne text-[16px] font-semibold text-(--neutral-900)">
-                  <span>Total</span>
+                  <span>{order.pointsRedeemed > 0 ? "Paid in cash" : "Total"}</span>
                   <span>{formatKes(order.totalKes)}</span>
                 </div>
               </div>

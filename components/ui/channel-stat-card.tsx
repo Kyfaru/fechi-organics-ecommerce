@@ -6,7 +6,13 @@ import { MetricChart, formatCompact, ACCENTS, type MetricAccent, type ChartView 
 import { ViewToggle } from "./metric-controls";
 import { TimeRangeTabs, TIME_RANGE_PRESETS, type TimeRangeOption } from "./time-range-tabs";
 
-export type ChannelMetric = "revenue" | "orders" | "customers" | "transactions" | "delivery-fees";
+export type ChannelMetric =
+  | "revenue"
+  | "orders"
+  | "customers"
+  | "transactions"
+  | "delivery-fees"
+  | "points-utilised";
 export type ChannelScope = "total" | "website" | "home-delivery" | "store-pickup" | "instore";
 
 interface ChannelSeriesApiResult {
@@ -23,6 +29,7 @@ const ENDPOINTS: Record<ChannelMetric, string> = {
   customers: "/api/admin/stats/customers",
   transactions: "/api/admin/stats/transactions",
   "delivery-fees": "/api/admin/stats/delivery-fees",
+  "points-utilised": "/api/admin/stats/points-utilised",
 };
 
 interface ChannelStatCardProps {

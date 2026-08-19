@@ -21,7 +21,9 @@ import { initiateSTKPush } from "@/lib/payments/mpesa/stk-push";
 import { resolveMpesaGateway, otherGateway } from "@/lib/payments/mpesa/gateway";
 import type { MpesaGateway } from "@prisma/client";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
-import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
+import { recordCouponRedemption } from "@/lib/promo";
+import { computeOrderTotals } from "@/lib/checkout/compute-totals";
+import { holdRedeemedPoints } from "@/lib/points/redeem";
 import { getRedis } from "@/lib/redis";
 import { markPaymentFailed } from "@/lib/payments/post-payment";
 import { assertTrustedOrigin } from "@/lib/origin-check";
@@ -89,7 +91,7 @@ export async function POST(req: NextRequest) {
     if (attempts === 1) await redis.expire(rateKey, 60);
     if (attempts > 3) return Err.rateLimited();
 
-    // 4. Calculate totals
+    // 4. Calculate totals (coupon + loyalty points) — see lib/checkout/compute-totals.ts
     const subtotalCents = activeItems.reduce(
       (sum, item) => sum + item.product.priceKes * item.quantity,
       0,
@@ -100,22 +102,23 @@ export async function POST(req: NextRequest) {
       zoneId: deliveryData.zoneId,
       deliveryType: deliveryData.deliveryType,
     });
-    const promoCode = deliveryData.promoCode?.trim().toUpperCase();
-    let discountCents = 0;
-    let deliveryCents = pricing.feeKes;
-    let resolvedPromoId: string | null = null;
-    if (promoCode) {
-      try {
-        const r = await resolvePromo(promoCode, subtotalCents, userId);
-        discountCents = r.discountKes;
-        if (r.deliveryFree) deliveryCents = 0;
-        resolvedPromoId = r.promo.id;
-      } catch (promoErr) {
-        reportError(promoErr, { route: "POST /api/payments/mpesa/initiate", tags: { stage: "promo_resolution" } });
-        /* invalid/expired — discount stays 0 */
-      }
-    }
-    const totalCents = Math.max(0, subtotalCents + deliveryCents - discountCents);
+    const totals = await computeOrderTotals({
+      subtotalCents,
+      deliveryCents: pricing.feeKes,
+      promoCode: deliveryData.promoCode,
+      pointsRequested: deliveryData.pointsRequested,
+      userId,
+      route: "POST /api/payments/mpesa/initiate",
+    });
+    const {
+      deliveryCents,
+      discountCents,
+      promoCode,
+      promoId: resolvedPromoId,
+      pointsRedeemed,
+      pointsDiscountCents,
+      totalCents,
+    } = totals;
     const totalKes = totalCents / 100; // Convert cents to whole KES for Daraja
 
     // 5. Resolve branch — use provided branchId or look up by county
@@ -150,6 +153,8 @@ export async function POST(req: NextRequest) {
         subtotalKes: subtotalCents,
         deliveryKes: deliveryCents,
         discountKes: discountCents,
+        pointsRedeemed,
+        pointsDiscountKes: pointsDiscountCents,
         totalKes: totalCents,
         promoCode: promoCode ?? null,
         paymentStatus: "PENDING",
@@ -186,6 +191,10 @@ export async function POST(req: NextRequest) {
     if (resolvedPromoId && promoCode) {
       await recordCouponRedemption(resolvedPromoId, userId, order.id);
     }
+
+    // Debit points now so the same balance can't be spent in a parallel
+    // checkout. markPaymentFailed() gives them back if this never pays.
+    await holdRedeemedPoints({ userId, orderId: order.id, points: pointsRedeemed });
 
     // 7. Create transaction record (PENDING until callback arrives)
     const transaction = await db.transaction.create({

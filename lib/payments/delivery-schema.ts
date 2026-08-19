@@ -21,6 +21,9 @@ export const deliveryDataSchema = z.object({
   deliveryKes: z.number().int().nonnegative().optional(),
   deliveryFeeLabel: z.string().optional(),
   promoCode: z.string().optional().nullable(),
+  // Loyalty points the customer chose to spend. The server re-checks the
+  // balance and re-derives the discount — this is a request, not an amount.
+  pointsRequested: z.number().int().nonnegative().optional(),
   address: z.string().optional(),
   city: z.string().optional(),
   postalCode: z.string().optional(),

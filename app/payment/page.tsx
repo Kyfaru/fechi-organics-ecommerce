@@ -11,6 +11,8 @@ import { toast } from "@/lib/toast";
 import { usePaymentStream } from "@/hooks/use-payment-stream";
 import { useCurrency } from "@/app/providers";
 import { StepIndicator } from "@/components/checkout/StepIndicator";
+import PointsRedeemInput from "@/components/checkout/PointsRedeemInput";
+import { useDeviceSignal } from "@/hooks/use-device-signal";
 import { CHECKOUT_FLOW_FLAG_KEY } from "@/lib/checkout-flow";
 
 const PAYSTACK_ERROR_MESSAGES: Record<string, string> = {
@@ -58,6 +60,14 @@ export default function PaymentPage() {
   const [submitting, setSubmitting] = useState(false);
   const [promoDiscountKes, setPromoDiscountKes] = useState(0);
   const [freeShipping, setFreeShipping] = useState(false);
+  // Loyalty points the customer chose to spend. Sent as a *request* — the
+  // server re-checks the balance and re-derives the discount itself.
+  const [pointsRequested, setPointsRequested] = useState(0);
+  const [pointsDiscountKes, setPointsDiscountKes] = useState(0);
+
+  // Records this browser for anti-farming scoring. Checkout is the moment it
+  // matters — the joining bonus unlocks against these signals once this pays.
+  useDeviceSignal();
   const [showModal, setShowModal] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [failureCount, setFailureCount] = useState(0);
@@ -105,7 +115,10 @@ export default function PaymentPage() {
   const subtotalKes = cartQuery.data?.data?.subtotalKes ?? 0;
   const deliveryKes = freeShipping ? 0 : (deliveryData?.deliveryKes ?? 0);
   const discountKes = promoDiscountKes;
-  const totalKes = subtotalKes + deliveryKes - discountKes;
+  // Points always apply last, on top of any coupon — same order the server
+  // computes in lib/checkout/compute-totals.ts.
+  const grossKes = Math.max(0, subtotalKes + deliveryKes - discountKes);
+  const totalKes = Math.max(0, grossKes - pointsDiscountKes);
 
   const deliveryLocation = useMemo(() => {
     if (!deliveryData) return "";
@@ -128,7 +141,7 @@ export default function PaymentPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phone: mpesaPhone,
-          deliveryData,
+          deliveryData: { ...deliveryData, pointsRequested },
         }),
       });
       const json = await res.json() as { ok: boolean; data?: { orderId: string }; error?: { message: string } };
@@ -153,7 +166,7 @@ export default function PaymentPage() {
       const res = await fetch("/api/payments/paystack/initialize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deliveryData }),
+        body: JSON.stringify({ deliveryData: { ...deliveryData, pointsRequested } }),
       });
       const json = await res.json() as { ok: boolean; data?: { authorization_url: string; reference: string; orderId: string }; error?: { message: string } };
       if (!res.ok || !json.data?.authorization_url) {
@@ -268,12 +281,37 @@ export default function PaymentPage() {
               <SummaryRow label="Subtotal" value={format(subtotalKes)} />
               <SummaryRow label="Delivery" value={deliveryKes ? format(deliveryKes) : "Free"} />
               {promoDiscountKes > 0 && <SummaryRow label={`Discount (${deliveryData.promoCode})`} value={`- ${format(promoDiscountKes)}`} green />}
+              {pointsDiscountKes > 0 && (
+                <SummaryRow
+                  label={`Fechi points (${pointsRequested.toLocaleString()} pts)`}
+                  value={`- ${format(pointsDiscountKes)}`}
+                  green
+                />
+              )}
+            </div>
+
+            <div className="my-6">
+              <PointsRedeemInput
+                grossCents={grossKes}
+                appliedPoints={pointsRequested}
+                disabled={submitting || paymentLocked}
+                onApply={(points, discountCents) => {
+                  setPointsRequested(points);
+                  setPointsDiscountKes(discountCents);
+                }}
+                onRemove={() => {
+                  setPointsRequested(0);
+                  setPointsDiscountKes(0);
+                }}
+              />
             </div>
 
             <div className="my-6 h-px bg-[#e6ebe3]" />
 
             <div className="flex items-center justify-between">
-              <span className="text-[21px] font-bold text-[#1a1c1c] dark:text-white">Total</span>
+              <span className="text-[21px] font-bold text-[#1a1c1c] dark:text-white">
+                {pointsDiscountKes > 0 ? "Left to pay" : "Total"}
+              </span>
               <span className="text-[28px] font-black text-[#27731e]">{format(totalKes)}</span>
             </div>
 

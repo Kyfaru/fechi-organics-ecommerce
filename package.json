@@ -10,7 +10,9 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts"
+    "seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
+    "seed:badges": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed-badges.ts",
+    "points:verify": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' scripts/verify-points-ledger.ts"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
@@ -23,7 +25,7 @@
     "@iconify/react": "^6.0.2",
     "@internationalized/date": "^3.12.2",
     "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
+    "@prisma/client": "^7.9.1",
     "@radix-ui/react-icons": "^1.3.2",
     "@radix-ui/react-popover": "^1.1.17",
     "@radix-ui/react-progress": "^1.1.10",

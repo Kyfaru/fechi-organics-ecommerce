@@ -22,7 +22,17 @@ import { isPlaceholderEmail } from "@/lib/customers/placeholder-email";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-type LoyaltyPoints = { tier: string } | null;
+// Admin sees points but can never change them — the only write path is the
+// unanimous super-admin grant flow at /admin/loyalty/grants.
+type LoyaltyPoints = {
+  tier: string;
+  points: number;
+  lockedPoints: number;
+  lifetimeEarned: number;
+  level: number;
+  badgeCount: number;
+  userCode: string;
+} | null;
 
 type Customer = {
   id: string;
@@ -415,7 +425,27 @@ function CustomerDrawer({
                 { label: "City", value: customer.city ?? "—" },
                 { label: "Role", value: customer.role },
                 { label: "Member Since", value: formatDate(customer.createdAt) },
-                { label: "Loyalty Tier", value: customer.loyaltyPoints?.tier ?? "None" },
+                { label: "Customer Code", value: customer.loyaltyPoints?.userCode ?? "—" },
+                {
+                  label: "Points Balance",
+                  value: customer.loyaltyPoints
+                    ? `${customer.loyaltyPoints.points.toLocaleString()}${
+                        customer.loyaltyPoints.lockedPoints > 0
+                          ? ` (+${customer.loyaltyPoints.lockedPoints.toLocaleString()} locked)`
+                          : ""
+                      }`
+                    : "—",
+                },
+                {
+                  label: "Lifetime Earned",
+                  value: customer.loyaltyPoints?.lifetimeEarned.toLocaleString() ?? "—",
+                },
+                {
+                  label: "Level / Achievements",
+                  value: customer.loyaltyPoints
+                    ? `Level ${customer.loyaltyPoints.level} · ${customer.loyaltyPoints.badgeCount} badges`
+                    : "—",
+                },
                 { label: "Total Orders", value: String(customer._count.orders) },
               ].map(({ label, value }) => (
                 <div key={label} className="flex justify-between items-start py-2 border-b border-(--neutral-200) dark:border-(--dark-border) last:border-0">
@@ -608,6 +638,30 @@ export function AdminCustomersClient() {
           {(row as unknown as Customer)._count.orders}
         </span>
       ),
+    },
+    {
+      key: "points",
+      label: "Points",
+      // ponytail: not sortable. DataTable sorts with String(...).localeCompare
+      // on a top-level row key, so a numeric column would both miss the nested
+      // value and order 1,000 before 200. Ranking by points already exists,
+      // done properly, on the /admin/loyalty leaderboard. Make DataTable
+      // numeric-aware if this is ever wanted here too.
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const lp = (row as unknown as Customer).loyaltyPoints;
+        if (!lp) return <span className="font-dm text-[13px] text-(--neutral-400)">—</span>;
+        return (
+          <div className="flex flex-col leading-tight">
+            <span className="font-dm text-[14px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
+              {lp.points.toLocaleString()}
+            </span>
+            <span className="font-dm text-[11px] text-(--neutral-500) dark:text-(--dark-muted)">
+              Lv {lp.level}
+              {lp.lockedPoints > 0 ? ` · ${lp.lockedPoints.toLocaleString()} locked` : ""}
+            </span>
+          </div>
+        );
+      },
     },
     {
       key: "status",

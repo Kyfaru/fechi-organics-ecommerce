@@ -17,7 +17,10 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
-import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
+import { recordCouponRedemption } from "@/lib/promo";
+import { computeOrderTotals } from "@/lib/checkout/compute-totals";
+import { holdRedeemedPoints } from "@/lib/points/redeem";
+import { publishQstashJSON } from "@/lib/qstash";
 import { requirePermission } from "@/lib/require-permission";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { getRedis } from "@/lib/redis";
@@ -41,6 +44,9 @@ const bodySchema = z
       .array(z.object({ productId: z.string(), quantity: z.number().int().positive() }))
       .min(1),
     promoCode: z.string().optional(),
+    // Loyalty points the customer wants to spend. Only meaningful when
+    // customerUserId is set — a nameless walk-in has no balance.
+    pointsRequested: z.number().int().nonnegative().optional(),
     branchId: z.string().uuid().optional(),
     deliveryZoneId: z.string().optional(),
   })
@@ -82,7 +88,7 @@ export async function POST(req: NextRequest) {
     return Err.validation("Invalid request body");
   }
 
-  const { c2bTransactionId, customerUserId, customerName, customerPhone, customerEmail, items, promoCode, branchId, deliveryZoneId } =
+  const { c2bTransactionId, customerUserId, customerName, customerPhone, customerEmail, items, promoCode, pointsRequested, branchId, deliveryZoneId } =
     parsed;
 
   try {
@@ -123,23 +129,6 @@ export async function POST(req: NextRequest) {
       return sum + product.priceKes * item.quantity;
     }, 0);
 
-    const normalizedPromoCode = promoCode?.trim().toUpperCase();
-    let discountKes = 0;
-    let resolvedPromoId: string | null = null;
-    if (normalizedPromoCode) {
-      try {
-        const r = await resolvePromo(normalizedPromoCode, subtotalKes, customerUserId ?? undefined);
-        discountKes = r.discountKes;
-        resolvedPromoId = r.promo.id;
-      } catch (promoErr) {
-        reportError(promoErr, {
-          route: "POST /api/admin/orders/instore/mpesa/c2b/claim",
-          userId: admin.id,
-          tags: { stage: "promo_resolution" },
-        });
-        /* invalid/expired — discount stays 0 */
-      }
-    }
     // Never trust a client-submitted delivery fee — resolve it from the real
     // DeliveryZone row, same "recompute from the DB" principle as product
     // prices above. An unknown/inactive zone id is treated as no delivery
@@ -147,13 +136,30 @@ export async function POST(req: NextRequest) {
     const deliveryZone = deliveryZoneId
       ? await db.deliveryZone.findUnique({ where: { id: deliveryZoneId, isActive: true } })
       : null;
-    const deliveryKes = deliveryZone?.deliveryFeeKes ?? 0;
 
-    const totalKes = Math.max(0, subtotalKes - discountKes + deliveryKes);
+    const {
+      discountCents: discountKes,
+      deliveryCents: deliveryKes,
+      promoCode: normalizedPromoCode,
+      promoId: resolvedPromoId,
+      pointsRedeemed,
+      pointsDiscountCents,
+      totalCents: totalKes,
+    } = await computeOrderTotals({
+      subtotalCents: subtotalKes,
+      deliveryCents: deliveryZone?.deliveryFeeKes ?? 0,
+      promoCode,
+      pointsRequested: customerUserId ? pointsRequested : 0,
+      userId: customerUserId ?? null,
+      // In-store keeps the delivery fee payable regardless of the coupon.
+      discountAppliesToDelivery: false,
+      route: "POST /api/admin/orders/instore/mpesa/c2b/claim",
+    });
 
     // The admin can only claim a C2B row whose amount exactly matches the
     // computed order total — this is the only signal tying a till payment
-    // to a specific walk-in order.
+    // to a specific walk-in order. Points reduce that total, so the till
+    // payment is the cash remainder after redemption.
     if (c2bRow.transAmount !== totalKes) {
       return err("AMOUNT_MISMATCH", "Amount mismatch", 400);
     }
@@ -185,6 +191,8 @@ export async function POST(req: NextRequest) {
             customerEmail: customerEmail ?? null,
             subtotalKes,
             discountKes,
+            pointsRedeemed,
+            pointsDiscountKes: pointsDiscountCents,
             promoCode: normalizedPromoCode ?? null,
             totalKes,
             deliveryKes,
@@ -238,6 +246,18 @@ export async function POST(req: NextRequest) {
           await recordCouponRedemption(resolvedPromoId, customerUserId, order.id, tx);
         }
 
+        // The order is created already PAID here, so the debit is final —
+        // there is no failure path to reverse it on.
+        if (customerUserId) {
+          await holdRedeemedPoints({
+            userId: customerUserId,
+            orderId: order.id,
+            points: pointsRedeemed,
+            refType: "inStoreOrder",
+            tx,
+          });
+        }
+
         return { orderId: order.id, orderNumber: order.orderNumber };
       });
     } catch (e) {
@@ -252,6 +272,17 @@ export async function POST(req: NextRequest) {
         extra: { c2bTransactionId },
       });
       throw e;
+    }
+
+    // Loyalty points, badges and referral conversion. Same reasoning as the
+    // invoice and Zoho calls below — this route creates the order PAID
+    // directly instead of going through markInStorePaymentSuccess, so it
+    // needs its own copy of the enqueue.
+    if (customerUserId) {
+      await publishQstashJSON("/api/admin/workers/award-points", {
+        orderId: result.orderId,
+        refType: "inStoreOrder",
+      }).catch((e) => console.error("[instore/mpesa/c2b/claim] award-points enqueue failed:", e));
     }
 
     // Pre-warm the invoice PDF synchronously — C2B claim doesn't go through
@@ -315,6 +346,8 @@ export async function POST(req: NextRequest) {
             return { productId: product.id, name: product.name, priceKes: product.priceKes, quantity: item.quantity };
           }),
           discountKes,
+          pointsDiscountKes: pointsDiscountCents,
+          pointsRedeemed,
           shippingKes: deliveryKes,
           notes: `Fechi Organics in-store order ${result.orderNumber ?? result.orderId}`,
         });

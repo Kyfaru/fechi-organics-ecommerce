@@ -36,6 +36,10 @@ export interface ReportRow {
   subtotalKes: number;
   deliveryKes: number;
   discountKes: number;
+  /** Loyalty points spent on this order. */
+  pointsRedeemed: number;
+  /** Cash value of those points, in cents. Already subtracted inside totalKes. */
+  pointsDiscountKes: number;
   totalKes: number;
   branchName: string;
 }
@@ -43,6 +47,9 @@ export interface ReportRow {
 export interface ReportSummary {
   totalRevenueKes: number;
   orderCount: number;
+  /** Total points spent across the period, and their cash value in cents. */
+  totalPointsRedeemed: number;
+  totalPointsValueKes: number;
   from: Date;
   to: Date;
   dailySeries: { date: string; amountKes: number }[];

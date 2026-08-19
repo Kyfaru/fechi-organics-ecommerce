@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
 import { Icon } from "@iconify/react"
 import type { AccountUser } from "@/types/account"
@@ -39,6 +40,78 @@ export function BotanicalDashboardCard({ user: initialUser }: { user: AccountUse
   )
 }
 
+type PointsSummary = {
+  points: { available: number; locked: number; cashValueCents: number };
+  level: { level: number; percent: number; badgesForNextLevel: number | null };
+  badgeCount: number;
+}
+
+/**
+ * Points + level at a glance, on the profile tab. Reuses the achievements
+ * endpoint rather than adding a second one — TanStack dedupes the request
+ * with the achievements page's own query.
+ */
+export function PointsSummaryCard() {
+  const { data } = useQuery<PointsSummary>({
+    queryKey: ["achievements"],
+    queryFn: async () => {
+      const res = await fetch("/api/account/achievements")
+      const json = await res.json()
+      if (!json.ok) throw new Error(json.error?.message ?? "Failed to load points")
+      return json.data
+    },
+  })
+
+  if (!data) return null
+
+  return (
+    <Link
+      href="/account/achievements"
+      className="block bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl p-4 hover:border-[#15803D] transition-colors group"
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5">
+          <Icon icon="lucide:trophy" width={14} className="text-[#15803D]" />
+          <p className="text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+            Fechi Points
+          </p>
+        </div>
+        <Icon
+          icon="lucide:arrow-right"
+          width={14}
+          className="text-neutral-300 transition-transform group-hover:translate-x-0.5"
+        />
+      </div>
+
+      <p className="text-2xl font-bold text-neutral-900 dark:text-white leading-none">
+        {data.points.available.toLocaleString()}
+      </p>
+      <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+        worth KSh {(data.points.cashValueCents / 100).toLocaleString("en-KE", { maximumFractionDigits: 0 })}
+      </p>
+
+      {data.points.locked > 0 && (
+        <p className="mt-1.5 text-[11px] text-amber-600">
+          +{data.points.locked.toLocaleString()} unlock with your first order
+        </p>
+      )}
+
+      <div className="mt-3">
+        <div className="flex items-center justify-between text-[11px] text-neutral-500 dark:text-neutral-400 mb-1">
+          <span>Level {data.level.level}</span>
+          <span>{data.badgeCount} achievements</span>
+        </div>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
+          <div
+            className="h-full rounded-full bg-[#15803D] transition-[width] duration-300"
+            style={{ width: `${data.level.percent}%` }}
+          />
+        </div>
+      </div>
+    </Link>
+  )
+}
+
 export default function AccountRightPanel({
   user,
   hideExtras = false,
@@ -59,6 +132,11 @@ export default function AccountRightPanel({
           usage in profile/security/settings pages). */}
       <div className="max-tablet:hidden">
         <BotanicalDashboardCard user={user} />
+      </div>
+
+      {/* Points + level */}
+      <div className={hideExtras ? "max-tablet:hidden" : ""}>
+        <PointsSummaryCard />
       </div>
 
       {/* Security + Identity badges */}
