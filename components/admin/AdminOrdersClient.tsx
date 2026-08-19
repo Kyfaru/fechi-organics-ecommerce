@@ -72,7 +72,7 @@ type AdminOrder = {
   user: { name: string; email: string } | null;
   branch: { id: string; name: string; county: string; phone: string | null } | null;
   items: OrderItemDetail[];
-  transactions: { provider: "MPESA" | "PAYSTACK" | "KCB" }[];
+  transactions: { provider: "MPESA" | "PAYSTACK" | "KCB" | "POINTS" }[];
   customerPickupConfirmedAt: string | null;
   staffPickupConfirmedAt: string | null;
 };
@@ -125,6 +125,8 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
 const PROVIDER_LABELS: Record<string, string> = {
   MPESA: "M-Pesa", PAYSTACK: "Paystack", KCB: "KCB Buni",
   MPESA_STK: "M-Pesa", MPESA_C2B: "M-Pesa",
+  // No money moved — the order was covered entirely by loyalty points.
+  POINTS: "Fechi Points",
 };
 
 const R2_BASE = process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "";

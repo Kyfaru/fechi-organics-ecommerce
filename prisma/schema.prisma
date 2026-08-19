@@ -78,6 +78,10 @@ enum PaymentProvider {
   MPESA
   PAYSTACK
   KCB
+  /// No money moved — the order was covered entirely by loyalty points. Kept as
+  /// a provider so every existing surface (admin order rows, reports, Zoho
+  /// payment mode) labels it correctly instead of showing a blank method.
+  POINTS
 
   @@schema("public")
 }

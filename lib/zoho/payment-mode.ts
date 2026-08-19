@@ -18,6 +18,12 @@ export function paymentModeForOnline(provider: PaymentProvider): string {
       return "Mpesa(Daraja)";
     case "PAYSTACK":
       return "Paystack";
+    case "POINTS":
+      // No cash settled. The receipt still balances because the points are
+      // itemised as a negative line (see lib/zoho/push-sale-receipt.ts), so
+      // this reads as a fully-discounted sale rather than unpaid revenue.
+      // UNVERIFIED — must exist in Zoho Books' Payment Modes for both orgs.
+      return "Fechi Points";
   }
 }
 

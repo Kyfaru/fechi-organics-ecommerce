@@ -14,6 +14,8 @@ export const metadata = { title: "Order Detail | Fechi Organics Admin" };
 
 const PROVIDER_LABELS: Record<string, string> = {
   MPESA: "M-Pesa", PAYSTACK: "Paystack", KCB: "KCB Buni",
+  // No money moved — the order was covered entirely by loyalty points.
+  POINTS: "Fechi Points",
 };
 
 // Shared card chrome — header strip + p-6 body, matching the Stitch design

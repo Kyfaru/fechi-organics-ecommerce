@@ -6,6 +6,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   MPESA_C2B: "M-Pesa (Till)",
   PAYSTACK: "Paystack",
   KCB: "KCB",
+  POINTS: "Fechi Points",
 };
 
 interface TxLike {

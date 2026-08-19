@@ -119,6 +119,9 @@ export default function PaymentPage() {
   // computes in lib/checkout/compute-totals.ts.
   const grossKes = Math.max(0, subtotalKes + deliveryKes - discountKes);
   const totalKes = Math.max(0, grossKes - pointsDiscountKes);
+  // Nothing left to pay in cash. The server re-derives this independently and
+  // refuses the points-checkout endpoint if any balance remains.
+  const fullyCoveredByPoints = pointsRequested > 0 && totalKes === 0;
 
   const deliveryLocation = useMemo(() => {
     if (!deliveryData) return "";
@@ -186,8 +189,39 @@ export default function PaymentPage() {
       toast.warning("Please wait a moment", { message: "Give it about 30 seconds before trying to pay again." });
       return;
     }
-    if (selectedMethod === "mpesa") handleMpesaPay();
+    // Points covered the whole bill — there is nothing for a gateway to
+    // collect, so skip it entirely rather than pushing a KSh 0 STK request.
+    if (fullyCoveredByPoints) handlePointsPay();
+    else if (selectedMethod === "mpesa") handleMpesaPay();
     else handleCardPay();
+  }
+
+  async function handlePointsPay() {
+    if (!deliveryData) return;
+    setSubmitting(true);
+    capture("payment_initiated", { method: "points" });
+    try {
+      const res = await fetch("/api/payments/points/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deliveryData: { ...deliveryData, pointsRequested } }),
+      });
+      const json = (await res.json()) as {
+        ok: boolean;
+        data?: { orderId: string };
+        error?: { message: string };
+      };
+      if (!res.ok || !json.data?.orderId) {
+        toast.error(json.error?.message ?? "Could not complete your order. Please try again.");
+        return;
+      }
+      // Already paid — no gateway to wait on, so go straight to the receipt.
+      router.push(`/order-success/${json.data.orderId}`);
+    } catch {
+      toast.error("Could not complete your order. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   if (!deliveryData) {
@@ -230,6 +264,22 @@ export default function PaymentPage() {
             </div>
 
             <div className="space-y-3">
+              {fullyCoveredByPoints ? (
+                <div className="rounded-[12px] border-2 border-[#27731e] bg-[#f4fff3] p-5">
+                  <div className="flex items-center gap-2">
+                    <Icon icon="mdi:trophy-outline" width={20} className="text-[#27731e]" />
+                    <h3 className="font-heading text-[17px] font-bold text-[#1a1c1c]">
+                      Paying with Fechi Points
+                    </h3>
+                  </div>
+                  <p className="mt-2 text-[13px] leading-relaxed text-[#40493c]">
+                    Your {pointsRequested.toLocaleString()} points cover this order in full, so
+                    there&apos;s nothing left to pay. No M-Pesa prompt or card needed — just
+                    complete the order below.
+                  </p>
+                </div>
+              ) : (
+                <>
               <PaymentOption active={selectedMethod === "mpesa"} onClick={() => setSelectedMethod("mpesa")} title="M-Pesa STK Push" badge="M-PESA">
                 <p className="mb-4 text-[13px] text-[#40493c] dark:text-gray-200">You will receive a prompt on your phone to complete the payment.</p>
                 <label className="mb-2 block text-[12px] font-semibold tracking-[0.08em] text-[#40493c] dark:text-gray-200">Enter Your M-Pesa Phone Number</label>
@@ -238,7 +288,8 @@ export default function PaymentPage() {
               {deliveryData?.isCardEligible && (
                 <PaymentOption active={selectedMethod === "card"} onClick={() => setSelectedMethod("card")} title="Credit / Debit Card" badge="VISA  MC" />
               )}
-
+                </>
+              )}
             </div>
 
             <div className="mt-10 flex flex-wrap justify-center gap-8 text-[12px] font-bold uppercase tracking-[0.12em] text-[#707a6b]">
@@ -317,11 +368,24 @@ export default function PaymentPage() {
 
             <button
               onClick={handleCompleteOrderClick}
-              disabled={submitting || (selectedMethod === "mpesa" && !mpesaPhone.trim())}
+              disabled={
+                submitting ||
+                (!fullyCoveredByPoints && selectedMethod === "mpesa" && !mpesaPhone.trim())
+              }
               className={`mt-8 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-[#fec700] text-[18px] font-black text-[#1a1c1c] transition-colors hover:bg-[#f0b800] disabled:cursor-not-allowed disabled:opacity-50 ${paymentLocked ? "cursor-not-allowed opacity-50" : ""}`}
             >
-              <Icon icon={submitting ? "mdi:loading" : "mdi:lock-outline"} width={22} className={submitting ? "animate-spin" : ""} />
-              Complete Order
+              <Icon
+                icon={
+                  submitting
+                    ? "mdi:loading"
+                    : fullyCoveredByPoints
+                      ? "mdi:trophy-outline"
+                      : "mdi:lock-outline"
+                }
+                width={22}
+                className={submitting ? "animate-spin" : ""}
+              />
+              {fullyCoveredByPoints ? "Complete Order with Points" : "Complete Order"}
             </button>
             <p className="mt-4 text-center text-[11px] text-[#707a6b]">By completing this order, you agree to our Terms &amp; Conditions.</p>
             <Link href="/delivery" className="mt-4 block text-center text-[13px] font-bold text-[#27731e]">Back to delivery details</Link>

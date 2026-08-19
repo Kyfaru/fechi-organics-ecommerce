@@ -31,6 +31,8 @@ const PROVIDER_LABELS: Record<string, string> = {
   MPESA: "M-Pesa",
   PAYSTACK: "Paystack",
   KCB: "KCB",
+  // No money moved — the order was covered entirely by loyalty points.
+  POINTS: "Fechi Points",
 };
 
 function paymentMethodLine(order: InvoiceOrder): string {
