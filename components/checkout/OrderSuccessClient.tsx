@@ -95,8 +95,8 @@ export function OrderSuccessClient({ order }: { order: Order }) {
     fetch(`/api/orders/${order.id}/receipt`, { method: "POST" })
       .then(() => capture("receipt_queued", { orderId: order.id }))
       .then(() => fetch(`/api/orders/${order.id}/notify`, { method: "POST" }))
-      .then((r) => r.json() as Promise<{ inboxOk: boolean; smsOk: boolean }>)
-      .then(({ inboxOk, smsOk }) => {
+      .then((r) => r.json() as Promise<{ data: { inboxOk: boolean; smsOk: boolean } }>)
+      .then(({ data: { inboxOk, smsOk } }) => {
         if (!inboxOk && !smsOk) {
           toast.error("Could not send order confirmation. Please check your inbox later.");
         }
