@@ -15,9 +15,12 @@ import {
   STREAK_4W_MAX_AWARDS,
   STREAK_6M_WEEKLY_POINTS,
   STREAK_6M_MONTHLY_POINTS,
+  // Everything comes from rules.ts, which imports nothing. Importing any of
+  // these from ledger.ts or referral-discount.ts pulls @/lib/db — and with it
+  // the Postgres driver — into the browser bundle, which breaks the build.
+  CENTS_PER_POINT,
+  REFERRAL_DISCOUNT_PERCENT,
 } from "@/lib/points/rules";
-import { CENTS_PER_POINT } from "@/lib/points/ledger";
-import { REFERRAL_DISCOUNT_PERCENT } from "@/lib/points/referral-discount";
 
 /**
  * The customer-facing explanation of Fechi Points.

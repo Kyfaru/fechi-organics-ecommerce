@@ -11,6 +11,32 @@
 /** Money is integer cents repo-wide. */
 const KES = 100;
 
+// ---------------------------------------------------------------------------
+// Client-safe constants.
+//
+// These live here, not in ledger.ts or referral-discount.ts, because this
+// module is pure — it imports nothing. Those two import @/lib/db, so a client
+// component importing a constant from either one pulls the Postgres driver
+// into the browser bundle and the build dies on `dns`/`fs`/`net`/`tls`.
+// That is exactly what happened to /loyalty-points. Anything the storefront
+// needs to display belongs here.
+// ---------------------------------------------------------------------------
+
+/** 1 point = KSh 0.40 = 40 cents. */
+export const CENTS_PER_POINT = 40;
+
+export function pointsToCents(points: number): number {
+  return points * CENTS_PER_POINT;
+}
+
+/** Points needed to cover `cents`, rounded up so the cash remainder is never negative. */
+export function centsToPoints(cents: number): number {
+  return Math.ceil(cents / CENTS_PER_POINT);
+}
+
+/** First-order discount granted by a customer's referral code. */
+export const REFERRAL_DISCOUNT_PERCENT = 10;
+
 /**
  * Points for placing an order, by the customer's lifetime paid-order count
  * (`n` includes the order being awarded, so the first order is n = 1).

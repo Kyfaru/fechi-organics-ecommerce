@@ -12,6 +12,11 @@
  * app/api/payments/status/[orderId], so there is nowhere left to leak.
  */
 
+// Reaches the database. Importing this from a client component pulls the
+// Postgres driver into the browser bundle — this makes that fail loudly at
+// the import instead of as a wall of pg module-not-found errors.
+import "server-only";
+
 import { db } from "@/lib/db";
 import { awardPoints } from "@/lib/points/ledger";
 import type { TxClient } from "@/lib/orders/generate-order-number";

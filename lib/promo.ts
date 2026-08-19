@@ -46,6 +46,14 @@ export async function resolvePromo(
     deliveryFree = true;
   }
 
+  // Absolute ceiling on the discount, in cents. The auto-issued VIP rewards are
+  // "50% off, capped at KSh 15,000" and "70% off, capped at KSh 35,000" — the
+  // column was being written by issueVipCoupon() but never read here, so those
+  // codes were uncapped: 70% of a KSh 500,000 order gave away KSh 350,000.
+  if (promo.maxDiscountKes !== null && discountKes > promo.maxDiscountKes) {
+    discountKes = promo.maxDiscountKes;
+  }
+
   return { promo, discountKes, deliveryFree };
 }
 

@@ -15,6 +15,11 @@
  * `prevHash` cannot race.
  */
 
+// Reaches the database. Importing this from a client component pulls the
+// Postgres driver into the browser bundle — this makes that fail loudly at
+// the import instead of as a wall of pg module-not-found errors.
+import "server-only";
+
 import { createHmac, randomBytes } from "crypto";
 import type { PointsReason, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -23,17 +28,10 @@ import type { TxClient } from "@/lib/orders/generate-order-number";
 /** Genesis link for a user's first entry. */
 const GENESIS = "0".repeat(64);
 
-/** 1 point = KSh 0.40 = 40 cents. Money is integer cents repo-wide. */
-export const CENTS_PER_POINT = 40;
-
-export function pointsToCents(points: number): number {
-  return points * CENTS_PER_POINT;
-}
-
-/** Points needed to cover `cents`, rounded up so the cash remainder is never negative. */
-export function centsToPoints(cents: number): number {
-  return Math.ceil(cents / CENTS_PER_POINT);
-}
+// Re-exported from the pure rules module so existing server call sites keep
+// importing these from here, while client components can reach them without
+// dragging @/lib/db into the browser bundle.
+export { CENTS_PER_POINT, pointsToCents, centsToPoints } from "@/lib/points/rules";
 
 /**
  * Reasons that are not backed by a real purchase. Their lifetime total is

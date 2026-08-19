@@ -11,6 +11,11 @@
  * That ceiling is enforced centrally in awardPoints(), not here.
  */
 
+// Reaches the database. Importing this from a client component pulls the
+// Postgres driver into the browser bundle — this makes that fail loudly at
+// the import instead of as a wall of pg module-not-found errors.
+import "server-only";
+
 import { db } from "@/lib/db";
 import { awardPoints, ensureLoyaltyAccount } from "@/lib/points/ledger";
 import { REFERRAL_REWARD_POINTS, REFERRED_BONUS_POINTS, MAX_REWARDED_REFERRALS, SIGNUP_BONUS_POINTS } from "@/lib/points/rules";

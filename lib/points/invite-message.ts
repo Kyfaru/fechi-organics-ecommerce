@@ -12,9 +12,9 @@
  * over the limit — the shop link and the code are what actually matter.
  */
 
-export const INVITE_MAX_CHARS = 200;
+import { REFERRAL_DISCOUNT_PERCENT } from "@/lib/points/rules";
 
-export const REFERRAL_DISCOUNT_PERCENT = 10;
+export const INVITE_MAX_CHARS = 200;
 
 export function buildInviteMessage(args: {
   referralCode: string;
