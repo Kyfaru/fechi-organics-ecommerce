@@ -46,6 +46,10 @@ export default function LeaderboardClient() {
   const { data, isLoading, error } = useQuery({
     queryKey: LEADERBOARD_QUERY_KEY,
     queryFn: fetchLeaderboard,
+    // Same reasoning as the achievements page — rankings move constantly and
+    // the app-wide persisted cache would otherwise serve a day-old board.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const toggle = useMutation({

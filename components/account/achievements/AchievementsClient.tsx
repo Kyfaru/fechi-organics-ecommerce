@@ -86,6 +86,14 @@ export default function AchievementsClient() {
   const { data, isLoading, error } = useQuery({
     queryKey: ACHIEVEMENTS_QUERY_KEY,
     queryFn: fetchAchievements,
+    // The app-wide defaults are staleTime 60s, gcTime 24h, refetchOnMount
+    // false, and the cache is persisted to localStorage — so a result fetched
+    // once is reused across sessions for a day and never revalidated. That is
+    // wrong for this page: points and achievements change on every order, and
+    // anyone who opened it while the points engine was down kept an empty
+    // result long after it was fixed. Always revalidate on mount.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const visible = useMemo(() => {

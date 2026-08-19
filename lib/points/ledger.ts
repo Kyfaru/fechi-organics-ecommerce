@@ -170,9 +170,18 @@ async function ensureReferralCoupon(
     const existing = await client.promotion.findUnique({ where: { code: referralCode } });
     if (existing) return;
 
+    // The name is what staff read in the admin coupon table, so use the
+    // customer's actual name. Falls back to email, then the id, so the row is
+    // still identifiable for a walk-in created without either.
+    const owner = await client.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true },
+    });
+    const label = owner?.name?.trim() || owner?.email?.trim() || userId;
+
     await client.promotion.create({
       data: {
-        name: `Referral code for ${userId}`,
+        name: `Referral code for ${label}`,
         type: "PERCENTAGE",
         value: REFERRAL_DISCOUNT_PERCENT,
         code: referralCode,

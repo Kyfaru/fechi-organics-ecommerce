@@ -22,6 +22,13 @@ Module._resolveFilename = function (request, ...args) {
   if (request.startsWith("@/")) {
     request = path.join(process.cwd(), request.slice(2));
   }
+  // `import "server-only"` throws outside a React Server Component. These
+  // scripts ARE server code, just not running under Next, so stub it out the
+  // same way Next does under its server condition (and vitest.config.ts does
+  // for tests). Without this, every script importing lib/points/* dies.
+  if (request === "server-only") {
+    request = path.join(process.cwd(), "node_modules/server-only/empty.js");
+  }
   return originalResolve.call(this, request, ...args);
 };
 

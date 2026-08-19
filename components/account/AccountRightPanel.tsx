@@ -60,6 +60,10 @@ export function PointsSummaryCard() {
       if (!json.ok) throw new Error(json.error?.message ?? "Failed to load points")
       return json.data
     },
+    // Shares a key with the achievements page — keep the revalidation policy
+    // identical, or whichever mounts first pins a stale balance for both.
+    staleTime: 0,
+    refetchOnMount: "always",
   })
 
   if (!data) return null

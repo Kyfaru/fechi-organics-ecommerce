@@ -20,7 +20,12 @@ async function main() {
   const apply = process.argv.includes("--apply");
 
   const accounts = await db.loyaltyPoints.findMany({
-    select: { userId: true, referralCode: true },
+    select: {
+      userId: true,
+      referralCode: true,
+      // Named so the admin coupon table reads as a person, not a uuid.
+      user: { select: { name: true, email: true } },
+    },
     orderBy: { createdAt: "asc" },
   });
 
@@ -36,18 +41,48 @@ async function main() {
     `${accounts.length} loyalty account(s); ${missing.length} missing a coupon row${apply ? "" : "  (dry run)"}`,
   );
 
+  const labelFor = (a: (typeof accounts)[number]) =>
+    a.user?.name?.trim() || a.user?.email?.trim() || a.userId;
+
+  // Rows created before the coupon was named after the customer still read
+  // "Referral code for <uuid>". Repair those in the same pass.
+  const byCode = new Map(accounts.map((a) => [a.referralCode, a]));
+  const stale = (
+    await db.promotion.findMany({
+      where: { ownerUserId: { not: null } },
+      select: { id: true, code: true, name: true },
+    })
+  ).flatMap((p) => {
+    const account = p.code ? byCode.get(p.code) : undefined;
+    if (!account) return [];
+    const wanted = `Referral code for ${labelFor(account)}`;
+    return p.name === wanted ? [] : [{ id: p.id, from: p.name, to: wanted }];
+  });
+
+  if (stale.length) console.log(`${stale.length} coupon name(s) still using a raw id`);
+
   if (!apply) {
-    for (const a of missing) console.log(`  would create ${a.referralCode} for ${a.userId}`);
-    if (missing.length) console.log("\nRe-run with --apply to create them.");
+    for (const a of missing) console.log(`  would create ${a.referralCode} for ${labelFor(a)}`);
+    for (const s of stale) console.log(`  would rename "${s.from}" -> "${s.to}"`);
+    if (missing.length || stale.length) console.log("\nRe-run with --apply to write them.");
     return;
   }
+
+  for (const s of stale) {
+    try {
+      await db.promotion.update({ where: { id: s.id }, data: { name: s.to } });
+    } catch (e) {
+      console.error(`  rename failed for ${s.id}:`, e instanceof Error ? e.message : e);
+    }
+  }
+  if (stale.length) console.log(`renamed ${stale.length} coupon(s)`);
 
   let created = 0;
   for (const a of missing) {
     try {
       await db.promotion.create({
         data: {
-          name: `Referral code for ${a.userId}`,
+          name: `Referral code for ${labelFor(a)}`,
           type: "PERCENTAGE",
           value: REFERRAL_DISCOUNT_PERCENT,
           code: a.referralCode,

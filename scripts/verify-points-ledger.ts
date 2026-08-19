@@ -48,6 +48,23 @@ async function main() {
 
   if (broken.length > 0) {
     console.error(`[points:verify] ${broken.length} chain(s) FAILED verification`);
+
+    // Tampering breaks ONE chain at ONE entry. Every chain failing at its very
+    // first entry means the entries were signed with a different key than the
+    // one this process is holding — almost always running locally against a
+    // deployed database. Say so, rather than let it read as a breach.
+    const allAtSeqOne =
+      broken.length === checked && broken.every((b) => b.seq === 1 && b.reason === "HASH_MISMATCH");
+    if (allAtSeqOne) {
+      console.error(
+        "\n[points:verify] Every chain failed at its first entry, which is the signature of a\n" +
+          "KEY MISMATCH, not tampering. These entries were signed with a different\n" +
+          "POINTS_LEDGER_SECRET than the one in this environment. Use the same key\n" +
+          "everywhere that touches this database, and never rotate it — rotating\n" +
+          "invalidates every existing hash.",
+      );
+    }
+
     process.exitCode = 1;
     return;
   }
