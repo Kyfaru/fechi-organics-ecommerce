@@ -1,9 +1,17 @@
 "use client"
 
 import Link from "next/link"
-import type { CSSProperties, MouseEvent } from "react"
+import { createPortal } from "react-dom"
+import { useRouter } from "next/navigation"
+import { useState, type CSSProperties, type MouseEvent } from "react"
 import { Icon } from "@iconify/react"
 import { ORDER_STATUS_CLIENT_LABELS, type OrderStatusValue } from "@/types/account"
+import { ConfirmModal } from "@/components/ui/ConfirmModal"
+import { toast } from "@/lib/toast"
+
+// Mirrors the admin/customer cancel routes' CANCELLABLE_STATUSES — once an
+// order has shipped or is ready for pickup, cancellation isn't offered here.
+const CANCELLABLE_STATUSES = ["PENDING", "CONFIRMED", "PROCESSING", "WAITING_TO_PACKAGE"]
 
 interface OrderCardProps {
   id: string
@@ -47,15 +55,42 @@ function Thumbnail({ src, className = "", style }: { src?: string; className?: s
 }
 
 export default function OrderCard({ id, orderNumber, status, paymentStatus, createdAt, totalKes, thumbnails, itemCount, deliveryType }: OrderCardProps) {
+  const router = useRouter()
   const label = ORDER_STATUS_CLIENT_LABELS[status as OrderStatusValue] ?? status
   const colorClass = STATUS_COLORS[status] ?? "bg-neutral-100 text-neutral-600 border-neutral-200"
   const canDownload = status !== "CANCELLED" && status !== "FAILED" && paymentStatus === "PAID"
+  const canCancel = CANCELLABLE_STATUSES.includes(status)
   const extraCount = itemCount - thumbnails.length
+
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
 
   function openDocument(e: MouseEvent) {
     e.preventDefault()
     e.stopPropagation()
     window.open(`/api/orders/${id}/invoice`, "_blank")
+  }
+
+  function openCancelConfirm(e: MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    setCancelConfirmOpen(true)
+  }
+
+  async function handleCancel() {
+    setCancelling(true)
+    try {
+      const res = await fetch(`/api/orders/${id}/cancel`, { method: "POST" })
+      const json = await res.json()
+      if (!json.ok) throw new Error(json.error?.message ?? "Failed to cancel order")
+      toast.success("Order cancelled")
+      setCancelConfirmOpen(false)
+      router.refresh()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to cancel order")
+    } finally {
+      setCancelling(false)
+    }
   }
 
   const meta = (
@@ -85,10 +120,21 @@ export default function OrderCard({ id, orderNumber, status, paymentStatus, crea
       >
         <Icon icon="lucide:receipt" width={14} />
       </button>
+      {canCancel && (
+        <button
+          onClick={openCancelConfirm}
+          title="Cancel order"
+          aria-label="Cancel order"
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+        >
+          <Icon icon="lucide:x-circle" width={14} />
+        </button>
+      )}
     </>
   )
 
   return (
+    <>
     <Link
       href={`/account/orders/${id}`}
       className="relative block bg-white border border-neutral-200 rounded-xl hover:border-[#15803D]/40 hover:shadow-sm transition-all duration-150 group"
@@ -164,5 +210,21 @@ export default function OrderCard({ id, orderNumber, status, paymentStatus, crea
         </div>
       </div>
     </Link>
+    {/* Rendered via portal — a DOM descendant of the enclosing <Link> would
+        bubble its button clicks into a navigation instead of just closing. */}
+    {cancelConfirmOpen && typeof document !== "undefined" && createPortal(
+      <ConfirmModal
+        open={cancelConfirmOpen}
+        onClose={() => setCancelConfirmOpen(false)}
+        onConfirm={handleCancel}
+        title="Cancel this order?"
+        description="This can't be undone. Contact us instead if you need to change the order rather than cancel it."
+        confirmLabel="Cancel order"
+        danger
+        loading={cancelling}
+      />,
+      document.body
+    )}
+    </>
   )
 }

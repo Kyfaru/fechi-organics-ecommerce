@@ -14,6 +14,9 @@ const state = {
   referrals: [] as Referral[],
   paidOrders: {} as Record<string, number>,
   awards: [] as Array<{ userId: string; delta: number; lockedDelta: number; reason: string }>,
+  lifetimeSpendCents: {} as Record<string, number>,
+  riskScore: 0,
+  unlockResult: { unlockedPoints: 0, voided: false, score: 0 },
 };
 
 const awardPoints = vi.fn(
@@ -28,9 +31,26 @@ const awardPoints = vi.fn(
   },
 );
 
+const unlockJoiningBonus = vi.fn(async (..._args: unknown[]) => state.unlockResult);
+const collectOrderSignals = vi.fn(async (..._args: unknown[]) => {});
+const assessRisk = vi.fn(async (..._args: unknown[]) => ({ score: state.riskScore, reasons: [] as never[] }));
+
 vi.mock("@/lib/points/ledger", () => ({
   awardPoints: (a: never) => awardPoints(a),
   ensureLoyaltyAccount: async () => ({}),
+}));
+vi.mock("@/lib/points/stats", () => ({
+  getUserStats: async (userId: string) => ({
+    userId,
+    lifetimeSpendCents: state.lifetimeSpendCents[userId] ?? 0,
+    largestOrderCents: 0,
+  }),
+}));
+vi.mock("@/lib/points/anti-abuse", () => ({
+  unlockJoiningBonus: (...a: unknown[]) => unlockJoiningBonus(...a),
+  collectOrderSignals: (...a: unknown[]) => collectOrderSignals(...a),
+  assessRisk: (...a: unknown[]) => assessRisk(...a),
+  VOID_AT: 100,
 }));
 vi.mock("@/lib/sms", () => ({ sendSms: vi.fn(), hasSmsConfig: () => false }));
 vi.mock("@/lib/phone", () => ({ combineLegacyPhone: () => null }));
@@ -72,33 +92,53 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-const { attachReferral, convertReferral, grantJoiningBonus } = await import("@/lib/points/referrals");
+const { attachReferral, grantJoiningBonus, processReferralActivation } = await import(
+  "@/lib/points/referrals"
+);
 
 beforeEach(() => {
   state.loyalty = [{ userId: "alice", referralCode: "REF-ALICE" }];
   state.referrals = [];
   state.paidOrders = {};
   state.awards = [];
+  state.lifetimeSpendCents = {};
+  state.riskScore = 0;
+  state.unlockResult = { unlockedPoints: 0, voided: false, score: 0 };
   awardPoints.mockClear();
+  unlockJoiningBonus.mockClear();
+  collectOrderSignals.mockClear();
+  assessRisk.mockClear();
 });
 
 describe("grantJoiningBonus", () => {
-  it("credits 4,000 points LOCKED, not spendable", async () => {
+  it("locks 100 points when nobody referred them", async () => {
     await grantJoiningBonus({ userId: "bob" });
     expect(state.awards).toEqual([
-      { userId: "bob", delta: 0, lockedDelta: 4_000, reason: "SIGNUP_BONUS" },
+      { userId: "bob", delta: 0, lockedDelta: 100, reason: "SIGNUP_BONUS" },
     ]);
+  });
+
+  it("locks nothing for a user who was referred", async () => {
+    await grantJoiningBonus({ userId: "bob", referralCode: "REF-ALICE" });
+    expect(state.referrals).toHaveLength(1);
+    expect(state.awards).toHaveLength(0);
+  });
+
+  it("stays safe to call again after a referral already attached (no wrongful self-lock)", async () => {
+    await grantJoiningBonus({ userId: "bob", referralCode: "REF-ALICE" });
+    state.awards = [];
+    // Replay — e.g. the signup hook firing twice.
+    await grantJoiningBonus({ userId: "bob", referralCode: "REF-ALICE" });
+    expect(state.awards).toHaveLength(0);
   });
 });
 
 describe("attachReferral", () => {
-  it("links the pair and locks a 500-point welcome bonus", async () => {
+  it("links the pair without awarding any points", async () => {
     const r = await attachReferral({ userId: "bob", code: "ref-alice" });
-    expect(r).toEqual({ attached: true, bonusPoints: 500 });
+    expect(r).toEqual({ attached: true });
     expect(state.referrals[0]).toMatchObject({ referrerUserId: "alice", referredUserId: "bob" });
-    expect(state.awards).toEqual([
-      { userId: "bob", delta: 0, lockedDelta: 500, reason: "REFERRED_BONUS" },
-    ]);
+    expect(state.awards).toHaveLength(0);
   });
 
   it("rejects an unknown code", async () => {
@@ -106,7 +146,6 @@ describe("attachReferral", () => {
       attached: false,
       reason: "UNKNOWN_CODE",
     });
-    expect(state.awards).toHaveLength(0);
   });
 
   it("rejects self-referral", async () => {
@@ -123,7 +162,6 @@ describe("attachReferral", () => {
       attached: false,
       reason: "ALREADY_REFERRED",
     });
-    expect(state.awards).toHaveLength(1);
   });
 
   it("refuses a customer who has already paid for an order", async () => {
@@ -152,40 +190,56 @@ describe("attachReferral", () => {
   });
 });
 
-describe("convertReferral", () => {
-  it("pays the referrer 1,000 on the referred customer's first paid order", async () => {
+describe("processReferralActivation", () => {
+  it("does nothing before the referred customer reaches KSh 3,000", async () => {
     await attachReferral({ userId: "bob", code: "REF-ALICE" });
-    state.awards = [];
+    state.lifetimeSpendCents["bob"] = 100_000; // KSh 1,000
 
-    const out = await convertReferral({ userId: "bob", orderId: "order-1" });
-    expect(out).toMatchObject({ converted: true, referrerUserId: "alice", referrerPoints: 1_000 });
-    expect(state.awards).toEqual([
-      { userId: "alice", delta: 1_000, lockedDelta: 0, reason: "REFERRAL_REWARD" },
-    ]);
-    expect(state.referrals[0].convertedAt).not.toBeNull();
+    const out = await processReferralActivation({ userId: "bob", orderId: "order-1", refType: "order" });
+    expect(out.referralResolved).toBe(false);
+    expect(out.selfUnlocked).toBe(false);
+    expect(state.awards).toHaveLength(0);
+    expect(state.referrals[0].convertedAt).toBeNull();
   });
 
-  it("does not pay again on the second order", async () => {
+  it("pays the referrer 100 once the referred customer crosses KSh 3,000", async () => {
     await attachReferral({ userId: "bob", code: "REF-ALICE" });
-    await convertReferral({ userId: "bob", orderId: "order-1" });
+    state.lifetimeSpendCents["bob"] = 300_000; // KSh 3,000
+
+    const out = await processReferralActivation({ userId: "bob", orderId: "order-1", refType: "order" });
+    expect(out).toMatchObject({ referralResolved: true, referrerUserId: "alice", referrerPoints: 100 });
+    expect(state.awards).toEqual([
+      { userId: "alice", delta: 100, lockedDelta: 0, reason: "REFERRAL_REWARD" },
+    ]);
+    expect(state.referrals[0].convertedAt).not.toBeNull();
+    expect(collectOrderSignals).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not pay again on a later order once already converted", async () => {
+    await attachReferral({ userId: "bob", code: "REF-ALICE" });
+    state.lifetimeSpendCents["bob"] = 300_000;
+    await processReferralActivation({ userId: "bob", orderId: "order-1", refType: "order" });
     state.awards = [];
 
-    expect(await convertReferral({ userId: "bob", orderId: "order-2" })).toMatchObject({
-      converted: false,
-    });
+    const out = await processReferralActivation({ userId: "bob", orderId: "order-2", refType: "order" });
+    expect(out.referralResolved).toBe(false);
     expect(state.awards).toHaveLength(0);
   });
 
-  it("is a no-op for a customer nobody referred", async () => {
-    expect(await convertReferral({ userId: "dave", orderId: "order-9" })).toMatchObject({
-      converted: false,
-      referrerUserId: null,
-    });
+  it("voids the referral reward when the referred account looks fraudulent", async () => {
+    await attachReferral({ userId: "bob", code: "REF-ALICE" });
+    state.lifetimeSpendCents["bob"] = 300_000;
+    state.riskScore = 100; // >= VOID_AT
+
+    const out = await processReferralActivation({ userId: "bob", orderId: "order-1", refType: "order" });
+    expect(out).toMatchObject({ referralResolved: true, referrerPoints: 0 });
+    expect(state.awards).toHaveLength(0);
+    expect(state.referrals[0].convertedAt).not.toBeNull();
+    expect(state.referrals[0].rewardedAt).toBeNull();
   });
 
   it("converts but pays nothing once the referrer is past their five", async () => {
     await attachReferral({ userId: "bob", code: "REF-ALICE" });
-    // Five other referrals reach reward status before Bob's order lands.
     for (let i = 0; i < 5; i++) {
       state.referrals.push({
         id: `x${i}`,
@@ -196,10 +250,19 @@ describe("convertReferral", () => {
         rewardedAt: new Date(),
       });
     }
-    state.awards = [];
+    state.lifetimeSpendCents["bob"] = 300_000;
 
-    const out = await convertReferral({ userId: "bob", orderId: "order-1" });
-    expect(out).toMatchObject({ converted: true, referrerPoints: 0 });
+    const out = await processReferralActivation({ userId: "bob", orderId: "order-1", refType: "order" });
+    expect(out).toMatchObject({ referralResolved: true, referrerPoints: 0 });
     expect(state.awards).toHaveLength(0);
+  });
+
+  it("unlocks the customer's own bonus when nobody referred them", async () => {
+    state.lifetimeSpendCents["dave"] = 300_000;
+    state.unlockResult = { unlockedPoints: 100, voided: false, score: 0 };
+
+    const out = await processReferralActivation({ userId: "dave", orderId: "order-9", refType: "order" });
+    expect(out).toMatchObject({ referralResolved: false, selfUnlocked: true, selfUnlockedPoints: 100 });
+    expect(unlockJoiningBonus).toHaveBeenCalledWith({ userId: "dave", orderId: "order-9", refType: "order" });
   });
 });

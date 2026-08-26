@@ -5,21 +5,14 @@ import { useState, useEffect, useRef } from "react";
 import { Icon } from "@iconify/react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  orderBasePoints,
-  VALUE_TIERS,
-  SIGNUP_BONUS_POINTS,
-  REFERRED_BONUS_POINTS,
-  REFERRAL_REWARD_POINTS,
+  REFERRAL_BONUS_POINTS,
+  REFERRAL_ACTIVATION_CENTS,
+  KES_PER_EARNED_POINT,
   MAX_REWARDED_REFERRALS,
-  STREAK_4W_POINTS,
-  STREAK_4W_MAX_AWARDS,
-  STREAK_6M_WEEKLY_POINTS,
-  STREAK_6M_MONTHLY_POINTS,
   // Everything comes from rules.ts, which imports nothing. Importing any of
-  // these from ledger.ts or referral-discount.ts pulls @/lib/db — and with it
-  // the Postgres driver — into the browser bundle, which breaks the build.
+  // these from ledger.ts or referrals.ts pulls @/lib/db — and with it the
+  // Postgres driver — into the browser bundle, which breaks the build.
   CENTS_PER_POINT,
-  REFERRAL_DISCOUNT_PERCENT,
 } from "@/lib/points/rules";
 
 /**
@@ -36,8 +29,6 @@ const TOC_ITEMS = [
   { id: "how-it-works", label: "How It Works" },
   { id: "joining", label: "Joining & Welcome Points" },
   { id: "every-order", label: "Points on Every Order" },
-  { id: "big-orders", label: "Big-Order Bonuses & VIP" },
-  { id: "streaks", label: "Shopping Streaks" },
   { id: "referrals", label: "Inviting Friends" },
   { id: "achievements", label: "Achievements & Levels" },
   { id: "leaderboard", label: "The Leaderboard" },
@@ -148,7 +139,7 @@ function DataTable({ head, rows }: { head: string[]; rows: React.ReactNode[][] }
  */
 function JourneyDiagram() {
   const steps = [
-    { icon: "mdi:account-plus-outline", title: "Join", detail: `${SIGNUP_BONUS_POINTS.toLocaleString()} welcome points, held` },
+    { icon: "mdi:account-plus-outline", title: "Join", detail: "Held welcome points if nobody referred you" },
     { icon: "mdi:shopping-outline", title: "Shop", detail: "Order as normal" },
     { icon: "mdi:cash-check", title: "Pay", detail: "Points land, welcome points unlock" },
     { icon: "mdi:trophy-outline", title: "Unlock", detail: "Achievements and levels" },
@@ -344,8 +335,8 @@ export function LoyaltyPointsContent() {
     return () => observerRef.current?.disconnect();
   }, []);
 
-  const maxFreePoints =
-    SIGNUP_BONUS_POINTS + REFERRED_BONUS_POINTS + REFERRAL_REWARD_POINTS * MAX_REWARDED_REFERRALS;
+  const maxFreePoints = REFERRAL_BONUS_POINTS + REFERRAL_BONUS_POINTS * MAX_REWARDED_REFERRALS;
+  const activationKes = REFERRAL_ACTIVATION_CENTS / 100;
 
   return (
     <>
@@ -483,21 +474,24 @@ export function LoyaltyPointsContent() {
               <SectionHeading number="04" title="Joining & Welcome Points" id="joining" />
               <SectionBody>
                 <p>
-                  Creating an account earns you{" "}
+                  If nobody referred you, once your own orders add up to{" "}
+                  <strong className="text-[#1a1c1c]">{kes(activationKes)}</strong> you receive{" "}
                   <strong className="text-[#1a1c1c]">
-                    {SIGNUP_BONUS_POINTS.toLocaleString()} welcome points
+                    {REFERRAL_BONUS_POINTS.toLocaleString()} welcome points
                   </strong>{" "}
-                  straight away. You will see them on your rewards page immediately, marked as{" "}
-                  <em>held</em>.
+                  of your own — a one-time bonus, held until a fraud check clears.
                 </p>
                 <p>
-                  Held points become spendable the moment your first order is paid for. This is the
-                  one condition attached to them, and it exists so that the welcome bonus rewards
-                  real customers rather than people opening accounts in bulk.
+                  If you signed up with someone&apos;s invite code, this bonus goes to them instead
+                  once you reach that same {kes(activationKes)} — see{" "}
+                  <a href="#referrals" className="text-[#27731e] font-semibold hover:underline">
+                    Inviting Friends
+                  </a>{" "}
+                  below. Either way, you start earning points on your own orders from day one.
                 </p>
                 <HighlightBox icon="mdi:lock-open-outline">
-                  Your welcome points unlock automatically. There is nothing to claim — pay for your
-                  first order and they are yours to spend on the next one.
+                  There is nothing to claim. Keep shopping, and whichever bonus applies unlocks
+                  automatically the moment you cross {kes(activationKes)}.
                 </HighlightBox>
               </SectionBody>
             </section>
@@ -507,19 +501,18 @@ export function LoyaltyPointsContent() {
               <SectionHeading number="05" title="Points on Every Order" id="every-order" />
               <SectionBody>
                 <p>
-                  Every paid order earns points. Your earliest orders earn the most, because that is
-                  when we most want to say thank you for giving us a try.
+                  Every paid order earns points at one flat rate:{" "}
+                  <strong className="text-[#1a1c1c]">
+                    1 point for every KSh {KES_PER_EARNED_POINT} you pay in cash
+                  </strong>
+                  , rounded down.
                 </p>
                 <DataTable
-                  head={["Your order number", "Points earned"]}
+                  head={["You pay", "Points earned"]}
                   rows={[
-                    ...[1, 2, 3, 4, 5].map((n) => [
-                      `Order ${n}`,
-                      orderBasePoints(n).toLocaleString(),
-                    ]),
-                    ["Orders 6 – 10", `${orderBasePoints(10).toLocaleString()} – ${orderBasePoints(6).toLocaleString()}, falling by 50 each time`],
-                    ["Orders 11 – 49", orderBasePoints(11).toLocaleString()],
-                    ["Order 50 onwards", `${orderBasePoints(50).toLocaleString()} — it goes back up for our longest-standing customers`],
+                    [kes(1_500), "12"],
+                    [kes(3_000), "25"],
+                    [kes(6_000), "50"],
                   ]}
                 />
                 <p>
@@ -532,92 +525,30 @@ export function LoyaltyPointsContent() {
 
             {/* 06 */}
             <section>
-              <SectionHeading number="06" title="Big-Order Bonuses & VIP" id="big-orders" />
+              <SectionHeading number="06" title="Inviting Friends" id="referrals" />
               <SectionBody>
                 <p>
-                  Larger orders earn a bonus on top of the points above. Only the highest band you
-                  reach applies — the bands are not added together.
-                </p>
-                <DataTable
-                  head={["Order value", "Bonus points", "Also unlocks"]}
-                  rows={[...VALUE_TIERS]
-                    .reverse()
-                    .map((t) => [
-                      `${kes(t.minCents / 100)} and over`,
-                      t.points.toLocaleString(),
-                      t.perk === "VIP_1"
-                        ? "VIP status and a discount code for your next orders"
-                        : t.perk === "VIP_2"
-                          ? "Everything above, plus invitations, a masterclass and a personal thank-you from Wangeci"
-                          : "—",
-                    ])}
-                />
-                <p className="text-[14px] text-[#40493c]/80">
-                  Order value here means the value of the products themselves, after any discount and
-                  before delivery. VIP benefits beyond the points and discount code are arranged by
-                  our team, who will contact you directly.
-                </p>
-              </SectionBody>
-            </section>
-
-            {/* 07 */}
-            <section>
-              <SectionHeading number="07" title="Shopping Streaks" id="streaks" />
-              <SectionBody>
-                <p>Shopping with us regularly earns extra points on top of everything else.</p>
-                <DataTable
-                  head={["Streak", "Bonus", "How often"]}
-                  rows={[
-                    [
-                      "An order in four weeks running",
-                      `${STREAK_4W_POINTS.toLocaleString()} points`,
-                      `Up to ${STREAK_4W_MAX_AWARDS} times (${(STREAK_4W_POINTS * STREAK_4W_MAX_AWARDS).toLocaleString()} points in total)`,
-                    ],
-                    [
-                      "An order every week for six months",
-                      `${STREAK_6M_WEEKLY_POINTS.toLocaleString()} points`,
-                      "Once",
-                    ],
-                    [
-                      "An order in each of six months running",
-                      `${STREAK_6M_MONTHLY_POINTS.toLocaleString()} points`,
-                      "Once",
-                    ],
-                  ]}
-                />
-                <p className="text-[14px] text-[#40493c]/80">
-                  Weeks run Monday to Sunday, Kenyan time. The six-month rewards are alternatives to
-                  one another — if you shop every week for six months you receive the larger of the
-                  two, not both. The bonus lands on the order that completes the streak.
-                </p>
-              </SectionBody>
-            </section>
-
-            {/* 08 */}
-            <section>
-              <SectionHeading number="08" title="Inviting Friends" id="referrals" />
-              <SectionBody>
-                <p>
-                  Your rewards page has a personal invite code. Share it and both of you benefit:
+                  Your rewards page has a personal invite code. Share it and, once your friend has
+                  spent {kes(activationKes)}, you benefit:
                 </p>
                 <BulletList
                   items={[
                     <>
-                      They get{" "}
-                      <strong className="text-[#1a1c1c]">{REFERRAL_DISCOUNT_PERCENT}% off</strong>{" "}
-                      their first order when they enter your code at checkout, plus{" "}
-                      {REFERRED_BONUS_POINTS.toLocaleString()} points of their own.
+                      They start earning points on their own orders straight away — nothing about
+                      how they shop changes.
                     </>,
                     <>
-                      You earn{" "}
+                      Once they have spent{" "}
+                      <strong className="text-[#1a1c1c]">{kes(activationKes)}</strong> in total, you
+                      earn{" "}
                       <strong className="text-[#1a1c1c]">
-                        {REFERRAL_REWARD_POINTS.toLocaleString()} points
+                        {REFERRAL_BONUS_POINTS.toLocaleString()} points
                       </strong>{" "}
-                      once they have paid for that order.
+                      — the welcome bonus they would otherwise have received themselves.
                     </>,
                     <>
                       You can be rewarded for up to {MAX_REWARDED_REFERRALS} friends. We will let you
-                      know by message and email each time one of them orders.
+                      know by message and email each time one activates.
                     </>,
                   ]}
                 />
@@ -626,43 +557,42 @@ export function LoyaltyPointsContent() {
                   account that has already ordered, and you cannot use your own.
                 </p>
                 <HighlightBox icon="mdi:calculator-variant-outline">
-                  Adding it up, the most anyone can receive without ever spending money is{" "}
+                  Adding it up, the most anyone can receive without ever spending money themselves is{" "}
                   <strong className="text-[#1a1c1c]">{maxFreePoints.toLocaleString()} points</strong>{" "}
-                  ({kes(maxFreePoints * POINT_VALUE_KES)}): the welcome bonus, the invited-friend
-                  bonus, and {MAX_REWARDED_REFERRALS} successful invitations. Beyond that, points come
-                  from shopping.
+                  ({kes(maxFreePoints * POINT_VALUE_KES)}): the welcome bonus, plus{" "}
+                  {MAX_REWARDED_REFERRALS} successful invitations. Every one of those still requires a
+                  real payment from someone — beyond that, points come from your own shopping.
                 </HighlightBox>
               </SectionBody>
             </section>
 
-            {/* 09 */}
+            {/* 07 */}
             <section>
-              <SectionHeading number="09" title="Achievements & Levels" id="achievements" />
+              <SectionHeading number="07" title="Achievements & Levels" id="achievements" />
               <SectionBody>
                 <p>
-                  Alongside points, you collect achievements — over a thousand of them, covering
-                  everything from how many orders you have placed to how many different products you
-                  have tried, how long you have been with us, and quieter things you may stumble
-                  across on your own.
+                  Alongside points, you collect achievements for how much you have spent with us —
+                  both in total and in your single largest order. Every achievement is tied to a real
+                  payment; nothing is awarded for anything else.
                 </p>
                 <BulletList
                   items={[
-                    "Most achievements award points when you unlock them.",
+                    "Achievements award points when you unlock them, on top of what you already earned on the orders that got you there.",
                     "Your level is set by how many you have unlocked, not by your balance — so spending your points never costs you your level.",
                     "Each one shows how close you are, so you always know what is within reach.",
                     "A few are given by hand for things like attending an event. Those are recognition rather than points.",
                   ]}
                 />
                 <p className="text-[14px] text-[#40493c]/80">
-                  The full set is deliberately far more than any one person could finish. It is meant
-                  to be something to keep discovering, not a checklist to complete.
+                  The highest tiers are deliberately far more than any one person could reach. They are
+                  meant to be something to keep working toward, not a checklist to complete.
                 </p>
               </SectionBody>
             </section>
 
-            {/* 10 */}
+            {/* 08 */}
             <section>
-              <SectionHeading number="10" title="The Leaderboard" id="leaderboard" />
+              <SectionHeading number="08" title="The Leaderboard" id="leaderboard" />
               <SectionBody>
                 <p>
                   The leaderboard ranks customers by the points they have earned over time. Because
@@ -678,9 +608,9 @@ export function LoyaltyPointsContent() {
               </SectionBody>
             </section>
 
-            {/* 11 */}
+            {/* 09 */}
             <section>
-              <SectionHeading number="11" title="Spending Your Points" id="spending" />
+              <SectionHeading number="09" title="Spending Your Points" id="spending" />
               <SectionBody>
                 <p>Points are spent at the payment step, in the order summary:</p>
                 <BulletList
@@ -708,9 +638,9 @@ export function LoyaltyPointsContent() {
               </SectionBody>
             </section>
 
-            {/* 12 */}
+            {/* 10 */}
             <section>
-              <SectionHeading number="12" title="Limits & Fair Use" id="limits" />
+              <SectionHeading number="10" title="Limits & Fair Use" id="limits" />
               <SectionBody>
                 <p>A short list of things points cannot do, so there are no surprises:</p>
                 <BulletList
@@ -730,9 +660,9 @@ export function LoyaltyPointsContent() {
               </SectionBody>
             </section>
 
-            {/* 13 */}
+            {/* 11 */}
             <section>
-              <SectionHeading number="13" title="Refunds & Cancellations" id="refunds" />
+              <SectionHeading number="11" title="Refunds & Cancellations" id="refunds" />
               <SectionBody>
                 <BulletList
                   items={[
@@ -744,9 +674,9 @@ export function LoyaltyPointsContent() {
               </SectionBody>
             </section>
 
-            {/* 14 */}
+            {/* 12 */}
             <section>
-              <SectionHeading number="14" title="How We Keep Points Safe" id="safety" />
+              <SectionHeading number="12" title="How We Keep Points Safe" id="safety" />
               <SectionBody>
                 <p>
                   Your balance is not a number we can quietly edit. Every movement — earned, spent,
@@ -764,9 +694,9 @@ export function LoyaltyPointsContent() {
               </SectionBody>
             </section>
 
-            {/* 15 */}
+            {/* 13 */}
             <section>
-              <SectionHeading number="15" title="Changes & Contact" id="changes" />
+              <SectionHeading number="13" title="Changes & Contact" id="changes" />
               <SectionBody>
                 <p>
                   We may change how points are earned in future — for example by adjusting a bonus or

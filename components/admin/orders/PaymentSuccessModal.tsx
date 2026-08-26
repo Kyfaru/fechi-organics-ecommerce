@@ -14,7 +14,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, Loader2, X } from "lucide-react";
 
-type Channel = "email" | "sms";
+type Channel = "email";
 
 interface PaymentSuccessModalProps {
   open: boolean;
@@ -34,6 +34,9 @@ function formatKes(cents: number) {
 // is closing regardless of whether this succeeds, so we don't block on it or
 // surface a loading/error state for this path.
 function sendReceiptFireAndForget(inStoreOrderId: string, channel: "email" | "sms" | "both") {
+  // Only ever called with "email" now that the modal no longer offers SMS —
+  // the union stays wide because the API route itself still supports sms/both
+  // for other callers (ContactCustomerPanel).
   fetch(`/api/admin/orders/instore/${inStoreOrderId}/send-receipt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -49,10 +52,12 @@ export default function PaymentSuccessModal({
   orderNumber,
   totalKes,
   hasEmail,
-  hasPhone,
+  // Kept in the prop interface (unused here) so the three callers
+  // (MpesaPromptPanel/PaystackPanel/MpesaLivePanel) don't need updating now
+  // that this modal only offers Email.
   onClose,
 }: PaymentSuccessModalProps) {
-  const [channel, setChannel] = useState<Channel | null>(hasEmail ? "email" : hasPhone ? "sms" : null);
+  const [channel, setChannel] = useState<Channel | null>(hasEmail ? "email" : null);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -63,7 +68,7 @@ export default function PaymentSuccessModal({
       // Resetting local UI state on the modal's own open transition, not
       // derived from other React state.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setChannel(hasEmail ? "email" : hasPhone ? "sms" : null);
+      setChannel(hasEmail ? "email" : null);
       setSending(false);
       setSent(false);
       setSendError(null);
@@ -74,7 +79,7 @@ export default function PaymentSuccessModal({
   }, [open]);
 
   function handleSkipOrClose() {
-    sendReceiptFireAndForget(inStoreOrderId, "both");
+    sendReceiptFireAndForget(inStoreOrderId, "email");
     onClose();
   }
 
@@ -109,7 +114,7 @@ export default function PaymentSuccessModal({
     }
   }
 
-  const noChannelAvailable = !hasEmail && !hasPhone;
+  const noChannelAvailable = !hasEmail;
 
   return (
     <AnimatePresence>
@@ -158,35 +163,19 @@ export default function PaymentSuccessModal({
 
               {noChannelAvailable ? (
                 <p className="font-dm text-[13px] text-(--neutral-400)">
-                  No email or phone on file for this customer.
+                  No email on file for this customer.
                 </p>
               ) : (
                 <div className="flex flex-col gap-2">
-                  <label
-                    className={`flex items-center gap-2 ${hasEmail ? "cursor-pointer" : "cursor-not-allowed opacity-40"}`}
-                  >
+                  <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="radio"
                       name="receiptChannel"
                       checked={channel === "email"}
-                      disabled={!hasEmail}
                       onChange={() => setChannel("email")}
                       className="accent-(--green-800)"
                     />
                     <span className="font-dm text-[14px] text-(--neutral-700) dark:text-(--dark-text)">Email</span>
-                  </label>
-                  <label
-                    className={`flex items-center gap-2 ${hasPhone ? "cursor-pointer" : "cursor-not-allowed opacity-40"}`}
-                  >
-                    <input
-                      type="radio"
-                      name="receiptChannel"
-                      checked={channel === "sms"}
-                      disabled={!hasPhone}
-                      onChange={() => setChannel("sms")}
-                      className="accent-(--green-800)"
-                    />
-                    <span className="font-dm text-[14px] text-(--neutral-700) dark:text-(--dark-text)">SMS</span>
                   </label>
                 </div>
               )}

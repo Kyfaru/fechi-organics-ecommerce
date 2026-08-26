@@ -28,7 +28,7 @@ export type ProductDetail = ProductCard & {
   variantMode: string;
   variantGroupLabel: string | null;
   variantImagesHidden: boolean;
-  variants: { id: string; label: string; imageUrl: string | null }[];
+  variants: { id: string; label: string; imageUrl: string | null; priceKes: number | null }[];
   howToUse: string | null;
   ingredients: string | null;
   images: { url: string; alt: string; isPrimary: boolean }[];
@@ -165,7 +165,7 @@ export async function getProductBySlug(slug: string): Promise<ProductDetail | nu
       category: { select: { name: true, slug: true } },
       variants: {
         orderBy: { sortOrder: "asc" },
-        select: { id: true, label: true, image: { select: { objectKey: true } } },
+        select: { id: true, label: true, priceKes: true, image: { select: { objectKey: true } } },
       },
     },
   });
@@ -185,6 +185,7 @@ export async function getProductBySlug(slug: string): Promise<ProductDetail | nu
       id: v.id,
       label: v.label,
       imageUrl: v.image ? r2PublicUrl(v.image.objectKey) : null,
+      priceKes: v.priceKes,
     })),
     howToUse: p.howToUse,
     ingredients: p.ingredients,

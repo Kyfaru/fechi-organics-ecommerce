@@ -14,14 +14,25 @@ import type { UserStats } from "@/lib/points/stats";
 const catalog = generateBadgeCatalog();
 
 describe("badge catalog", () => {
-  it("generates at least 1,000 badges", () => {
-    expect(catalog.length).toBeGreaterThanOrEqual(1_000);
+  it("generates exactly two spend-based families of 50 tiers, plus the manual badges", () => {
+    expect(BADGE_FAMILIES.length).toBe(2);
     expect(catalog.length).toBe(BADGE_FAMILIES.length * TIERS_PER_FAMILY + MANUAL_BADGES.length);
   });
 
-  it("offers an unreachable ceiling of more than 50,000,000 points", () => {
-    const total = catalog.reduce((s, b) => s + b.points, 0);
-    expect(total).toBeGreaterThan(50_000_000);
+  it("never pays more than 1% of a tier's threshold", () => {
+    for (const b of catalog) {
+      if (b.grantType !== "AUTO" || b.threshold === null) continue;
+      expect(b.points).toBeLessThanOrEqual(Number(b.threshold) * 0.01);
+    }
+  });
+
+  it("offers an unreachable ceiling at the top tier", () => {
+    const topTierPoints = catalog
+      .filter((b) => b.grantType === "AUTO" && b.tier === TIERS_PER_FAMILY)
+      .reduce((s, b) => s + b.points, 0);
+    // Nobody is meant to reach tier 50 of either family — it should dwarf a
+    // lifetime of ordinary shopping.
+    expect(topTierPoints).toBeGreaterThan(1_000_000);
   });
 
   it("gives every badge a unique, stable id", () => {

@@ -32,7 +32,6 @@ const GENESIS = "0".repeat(64);
 // importing these from here, while client components can reach them without
 // dragging @/lib/db into the browser bundle.
 export { CENTS_PER_POINT, pointsToCents, centsToPoints } from "@/lib/points/rules";
-import { REFERRAL_DISCOUNT_PERCENT, MAX_REWARDED_REFERRALS } from "@/lib/points/rules";
 
 /**
  * Reasons that are not backed by a real purchase. Their lifetime total is
@@ -42,11 +41,10 @@ import { REFERRAL_DISCOUNT_PERCENT, MAX_REWARDED_REFERRALS } from "@/lib/points/
 const NON_PURCHASE_REASONS: ReadonlySet<PointsReason> = new Set([
   "SIGNUP_BONUS",
   "REFERRAL_REWARD",
-  "REFERRED_BONUS",
 ] as PointsReason[]);
 
-/** 4,000 signup + 500 referred + 5 x 1,000 referrals. */
-export const NON_PURCHASE_POINTS_CAP = 9500;
+/** 100 self-unlock (unreferred) + 5 x 100 referrer payouts. */
+export const NON_PURCHASE_POINTS_CAP = 600;
 
 /**
  * Shouts at module load rather than waiting for the first order.
@@ -122,78 +120,23 @@ function makeCode(prefix: string, length = 6): string {
 /**
  * Returns the user's loyalty row, creating it on first touch. Safe to call
  * concurrently — a lost create race resolves to the winner's row.
- *
- * Also materialises the customer's referral code as a real `promotion` row, so
- * it behaves like any other coupon: resolvePromo finds it natively, redemptions
- * are counted in couponRedemption, and admin can see and disable it from the
- * Customer Coupons tab.
  */
 export async function ensureLoyaltyAccount(userId: string, client: TxClient | typeof db = db) {
   const existing = await client.loyaltyPoints.findUnique({ where: { userId } });
-  if (existing) {
-    await ensureReferralCoupon(userId, existing.referralCode, client);
-    return existing;
-  }
+  if (existing) return existing;
 
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
-      const created = await client.loyaltyPoints.create({
+      return await client.loyaltyPoints.create({
         data: { userId, userCode: makeCode("FO"), referralCode: makeCode("REF") },
       });
-      await ensureReferralCoupon(userId, created.referralCode, client);
-      return created;
     } catch {
       // Either a code collided or another request created the row first.
       const now = await client.loyaltyPoints.findUnique({ where: { userId } });
-      if (now) {
-        await ensureReferralCoupon(userId, now.referralCode, client);
-        return now;
-      }
+      if (now) return now;
     }
   }
   throw new Error(`[points] could not create loyalty account for ${userId}`);
-}
-
-/**
- * Creates the promotion row backing a customer's referral code. Idempotent —
- * `code` is unique, so a concurrent or repeat call is a harmless no-op.
- *
- * Never throws: a customer must still get their loyalty account even if the
- * coupon row can't be written.
- */
-async function ensureReferralCoupon(
-  userId: string,
-  referralCode: string,
-  client: TxClient | typeof db,
-): Promise<void> {
-  try {
-    const existing = await client.promotion.findUnique({ where: { code: referralCode } });
-    if (existing) return;
-
-    // The name is what staff read in the admin coupon table, so use the
-    // customer's actual name. Falls back to email, then the id, so the row is
-    // still identifiable for a walk-in created without either.
-    const owner = await client.user.findUnique({
-      where: { id: userId },
-      select: { name: true, email: true },
-    });
-    const label = owner?.name?.trim() || owner?.email?.trim() || userId;
-
-    await client.promotion.create({
-      data: {
-        name: `Referral code for ${label}`,
-        type: "PERCENTAGE",
-        value: REFERRAL_DISCOUNT_PERCENT,
-        code: referralCode,
-        maxUses: MAX_REWARDED_REFERRALS,
-        maxUsesPerUser: 1,
-        ownerUserId: userId,
-        status: "active",
-      },
-    });
-  } catch (e) {
-    console.error("[points] could not create referral coupon for", userId, e);
-  }
 }
 
 export type AwardArgs = {

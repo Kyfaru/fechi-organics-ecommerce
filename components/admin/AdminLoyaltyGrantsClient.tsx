@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShieldCheck, Users, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
-import { StatCard } from "@/components/admin/ui/StatCard";
+import { StatsCard } from "@/components/ui/stats-card";
+import { DataTable } from "@/components/admin/ui/DataTable";
 import { toast } from "@/lib/toast";
 
 /**
@@ -117,6 +118,114 @@ export function AdminLoyaltyGrantsClient() {
 
   const me = data?.voters.find((v) => v.id === data.myAdminProfileId);
 
+  const columns = [
+    {
+      key: "points",
+      label: "Request",
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const r = row as unknown as Request;
+        return (
+          <div>
+            <p className="font-dm text-[14px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
+              {r.points.toLocaleString()} points → {r.target.name ?? r.target.id}
+            </p>
+            <p className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted)">
+              {r.target.email ?? "—"} · {r.note}
+            </p>
+          </div>
+        );
+      },
+    },
+    {
+      key: "requestedBy",
+      label: "Requested by",
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const r = row as unknown as Request;
+        return (
+          <div>
+            <p className="font-dm text-[13px] text-(--neutral-700) dark:text-(--dark-text)">{r.requestedBy.fullName}</p>
+            <p className="font-dm text-[11px] text-(--neutral-500)">{new Date(r.createdAt).toLocaleString()}</p>
+          </div>
+        );
+      },
+    },
+    {
+      key: "status",
+      label: "Status",
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const r = row as unknown as Request;
+        return (
+          <span
+            className={`rounded-full px-2.5 py-1 font-dm text-[11px] font-bold uppercase tracking-wide ${
+              r.status === "APPROVED"
+                ? "bg-emerald-50 text-emerald-700"
+                : r.status === "REJECTED"
+                  ? "bg-red-50 text-red-700"
+                  : "bg-amber-50 text-amber-700"
+            }`}
+          >
+            {r.status}
+          </span>
+        );
+      },
+    },
+    {
+      key: "approvals",
+      label: "Approvals",
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const r = row as unknown as Request;
+        return (
+          <div className="flex flex-wrap gap-1.5">
+            {r.approvals.map((a) => (
+              <span
+                key={a.adminProfileId}
+                className={`rounded-full px-2 py-0.5 font-dm text-[11px] ${
+                  a.decision === "APPROVED" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+                }`}
+              >
+                {a.fullName ?? a.adminProfileId} · {a.decision === "APPROVED" ? "approved" : "rejected"}
+              </span>
+            ))}
+            {r.status === "PENDING" &&
+              r.outstanding.map((name) => (
+                <span key={name} className="rounded-full bg-(--neutral-100) px-2 py-0.5 font-dm text-[11px] text-(--neutral-500)">
+                  {name} · waiting
+                </span>
+              ))}
+          </div>
+        );
+      },
+    },
+    {
+      key: "actions",
+      label: "",
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const r = row as unknown as Request;
+        if (r.status !== "PENDING" || r.iHaveVoted) return null;
+        return (
+          <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              disabled={vote.isPending}
+              onClick={() => vote.mutate({ id: r.id, decision: "APPROVED" })}
+              className="rounded-lg bg-(--green-800) px-3 py-1.5 font-dm text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-50"
+            >
+              Approve
+            </button>
+            <button
+              type="button"
+              disabled={vote.isPending}
+              onClick={() => vote.mutate({ id: r.id, decision: "REJECTED" })}
+              className="rounded-lg border border-red-300 px-3 py-1.5 font-dm text-[13px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              Reject
+            </button>
+          </div>
+        );
+      },
+    },
+  ];
+
   return (
     <div>
       <PageHeader
@@ -137,22 +246,26 @@ export function AdminLoyaltyGrantsClient() {
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mb-6">
-        <StatCard
-          eyebrow="Approvals required"
+        <StatsCard
+          title="Approvals required"
           value={data ? String(data.requiredApprovals) : "—"}
-          trend={{ value: "Every active super admin", positive: true }}
-          icon={Users}
+          change="Every active super admin"
+          changeType="positive"
+          icon={<Users className="h-4 w-4 text-muted-foreground" />}
         />
-        <StatCard
-          eyebrow="Your remaining allowance"
+        <StatsCard
+          title="Your remaining allowance"
           value={me ? me.remaining.toLocaleString() : "—"}
-          trend={{ value: "Not renewable", positive: false }}
-          icon={Wallet}
+          change="Not renewable"
+          changeType="negative"
+          icon={<Wallet className="h-4 w-4 text-muted-foreground" />}
         />
-        <StatCard
-          eyebrow="Pending requests"
+        <StatsCard
+          title="Pending requests"
           value={data ? String(data.requests.filter((r) => r.status === "PENDING").length) : "—"}
-          icon={ShieldCheck}
+          change="—"
+          changeType="positive"
+          icon={<ShieldCheck className="h-4 w-4 text-muted-foreground" />}
         />
       </div>
 
@@ -198,94 +311,13 @@ export function AdminLoyaltyGrantsClient() {
       </div>
 
       {/* Requests */}
-      {isLoading ? (
-        <p className="font-dm text-[13px] text-(--neutral-500)">Loading…</p>
-      ) : !data || data.requests.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-(--neutral-200) p-8 text-center font-dm text-[13px] text-(--neutral-400)">
-          No grant requests yet.
-        </p>
-      ) : (
-        <ul className="space-y-3">
-          {data.requests.map((r) => (
-            <li
-              key={r.id}
-              className="rounded-xl border border-(--neutral-200) bg-white p-4 dark:bg-(--dark-surface) dark:border-(--dark-border)"
-            >
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div className="min-w-0">
-                  <p className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
-                    {r.points.toLocaleString()} points → {r.target.name ?? r.target.id}
-                  </p>
-                  <p className="font-dm text-[12px] text-(--neutral-500)">
-                    {r.target.email ?? "—"} · requested by {r.requestedBy.fullName} ·{" "}
-                    {new Date(r.createdAt).toLocaleString()}
-                  </p>
-                  <p className="mt-1.5 font-dm text-[13px] text-(--neutral-700) dark:text-(--dark-text)">
-                    {r.note}
-                  </p>
-                </div>
-
-                <span
-                  className={`shrink-0 rounded-full px-2.5 py-1 font-dm text-[11px] font-bold uppercase tracking-wide ${
-                    r.status === "APPROVED"
-                      ? "bg-emerald-50 text-emerald-700"
-                      : r.status === "REJECTED"
-                        ? "bg-red-50 text-red-700"
-                        : "bg-amber-50 text-amber-700"
-                  }`}
-                >
-                  {r.status}
-                </span>
-              </div>
-
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {r.approvals.map((a) => (
-                  <span
-                    key={a.adminProfileId}
-                    className={`rounded-full px-2 py-0.5 font-dm text-[11px] ${
-                      a.decision === "APPROVED"
-                        ? "bg-emerald-50 text-emerald-700"
-                        : "bg-red-50 text-red-700"
-                    }`}
-                  >
-                    {a.fullName ?? a.adminProfileId} · {a.decision === "APPROVED" ? "approved" : "rejected"}
-                  </span>
-                ))}
-                {r.status === "PENDING" &&
-                  r.outstanding.map((name) => (
-                    <span
-                      key={name}
-                      className="rounded-full bg-(--neutral-100) px-2 py-0.5 font-dm text-[11px] text-(--neutral-500)"
-                    >
-                      {name} · waiting
-                    </span>
-                  ))}
-              </div>
-
-              {r.status === "PENDING" && !r.iHaveVoted && (
-                <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    disabled={vote.isPending}
-                    onClick={() => vote.mutate({ id: r.id, decision: "APPROVED" })}
-                    className="rounded-lg bg-(--green-800) px-3 py-1.5 font-dm text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-50"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    type="button"
-                    disabled={vote.isPending}
-                    onClick={() => vote.mutate({ id: r.id, decision: "REJECTED" })}
-                    className="rounded-lg border border-red-300 px-3 py-1.5 font-dm text-[13px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-                  >
-                    Reject
-                  </button>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <DataTable
+        columns={columns}
+        data={(data?.requests ?? []) as unknown as Record<string, unknown>[]}
+        loading={isLoading}
+        emptyTitle="No grant requests yet"
+        emptyDescription="Points grants raised by a super admin appear here."
+      />
     </div>
   );
 }

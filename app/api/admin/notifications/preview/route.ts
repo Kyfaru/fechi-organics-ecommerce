@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
       link: n.link,
       createdAt: n.createdAt,
       isRead: n.recipientStates.some((r) => !!r.readAt),
+      occurrenceCount: n.occurrenceCount,
     }));
 
     const unreadCritical = withState.filter((n) => !n.isRead && n.severity === "CRITICAL");

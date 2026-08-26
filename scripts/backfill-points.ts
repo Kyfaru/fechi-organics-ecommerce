@@ -23,9 +23,7 @@ import { db } from "@/lib/db";
 import { awardPointsForOrder } from "@/lib/points/award-order";
 import { evaluateBadges } from "@/lib/points/evaluate-badges";
 import { getUserStats } from "@/lib/points/stats";
-import { unlockJoiningBonus } from "@/lib/points/anti-abuse";
-import { convertReferral, attachReferral } from "@/lib/points/referrals";
-import { referralOwnerForCode } from "@/lib/points/referral-discount";
+import { processReferralActivation, attachReferral, referralOwnerForCode } from "@/lib/points/referrals";
 
 async function main() {
   const apply = process.argv.includes("--apply");
@@ -80,20 +78,15 @@ async function main() {
         continue;
       }
 
-      await unlockJoiningBonus({ userId: o.userId, orderId: o.id, refType: o.refType });
-
       if (o.promoCode && (await referralOwnerForCode(o.promoCode))) {
         await attachReferral({ userId: o.userId, code: o.promoCode, ignoreOrderId: o.id });
       }
-      await convertReferral({ userId: o.userId, orderId: o.id });
+      await processReferralActivation({ userId: o.userId, orderId: o.id, refType: o.refType });
 
       await evaluateBadges(await getUserStats(o.userId));
 
       awarded++;
-      console.log(
-        `  ${o.orderNumber ?? o.id}: +${summary.totalPoints} points` +
-          (summary.tierLabel ? ` (${summary.tierLabel})` : ""),
-      );
+      console.log(`  ${o.orderNumber ?? o.id}: +${summary.points} points`);
     } catch (e) {
       skipped++;
       console.error(`  ${o.orderNumber ?? o.id}: FAILED —`, e instanceof Error ? e.message : e);

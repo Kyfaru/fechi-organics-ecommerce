@@ -1,12 +1,18 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Icon } from "@iconify/react"
 import { ORDER_STATUS_CLIENT_LABELS, type OrderStatusValue } from "@/types/account"
+import { ConfirmModal } from "@/components/ui/ConfirmModal"
+import { toast } from "@/lib/toast"
 import OrderStepper from "./OrderStepper"
 import PaymentCard from "./PaymentCard"
 import DeliveryCard from "./DeliveryCard"
+
+// Mirrors app/api/orders/[id]/cancel/route.ts's CANCELLABLE_STATUSES.
+const CANCELLABLE_STATUSES = ["PENDING", "CONFIRMED", "PROCESSING", "WAITING_TO_PACKAGE"]
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING:            "bg-yellow-50 text-yellow-700 border-yellow-200",
@@ -79,13 +85,34 @@ function fmt(date: string) {
 }
 
 export default function OrderDetailContent({ order }: { order: Order }) {
+  const router = useRouter()
   const label = ORDER_STATUS_CLIENT_LABELS[order.status as OrderStatusValue] ?? order.status
   const colorClass = STATUS_COLORS[order.status] ?? "bg-neutral-100 text-neutral-600 border-neutral-200"
+  const canCancel = CANCELLABLE_STATUSES.includes(order.status)
+
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
 
   // Workstream I: mark order-related inbox messages as read when order is viewed
   useEffect(() => {
     fetch(`/api/account/inbox?markReadByOrderId=${order.id}`, { method: "PATCH" }).catch(() => {})
   }, [order.id])
+
+  async function handleCancel() {
+    setCancelling(true)
+    try {
+      const res = await fetch(`/api/orders/${order.id}/cancel`, { method: "POST" })
+      const json = await res.json()
+      if (!json.ok) throw new Error(json.error?.message ?? "Failed to cancel order")
+      toast.success("Order cancelled")
+      setCancelConfirmOpen(false)
+      router.refresh()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to cancel order")
+    } finally {
+      setCancelling(false)
+    }
+  }
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -116,12 +143,32 @@ export default function OrderDetailContent({ order }: { order: Order }) {
                 Download Invoice
               </Link>
             )}
+            {canCancel && (
+              <button
+                onClick={() => setCancelConfirmOpen(true)}
+                className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-full border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+              >
+                <Icon icon="lucide:x-circle" width={13} />
+                Cancel Order
+              </button>
+            )}
             <span className={`text-[12px] font-semibold px-3 py-1.5 rounded-full border ${colorClass}`}>
               {label}
             </span>
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+        open={cancelConfirmOpen}
+        onClose={() => setCancelConfirmOpen(false)}
+        onConfirm={handleCancel}
+        title="Cancel this order?"
+        description="This can't be undone. Contact us instead if you need to change the order rather than cancel it."
+        confirmLabel="Cancel order"
+        danger
+        loading={cancelling}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
         {/* Left: items + stepper */}

@@ -7,7 +7,7 @@ import { DeliveryClient } from "@/components/checkout/DeliveryClient";
 
 export default async function DeliveryPage() {
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) redirect("/login");
+  if (!session?.user) redirect("/login?returnTo=/delivery");
 
   const user = session.user as {
     firstName?: string | null;

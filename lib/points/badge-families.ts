@@ -1,10 +1,10 @@
 /**
  * The badge catalog, as configuration.
  *
- * 20 families x 50 tiers generates 1,000+ badges from this one file. Nobody
- * hand-authors a thousand rows, and nobody writes a thousand evaluators — each
- * family names ONE field of UserStats, and a badge unlocks when that field
- * reaches the tier's threshold.
+ * Two spend-based families x 50 tiers, generated from this one file rather
+ * than hand-authored. Every achievement is based on money actually spent —
+ * never points balance, tenure, or activity with no purchase behind it — and
+ * every tier pays out at most 1% of its threshold (see tierPoints below).
  *
  * Thresholds grow geometrically, so the top tiers are deliberately out of
  * human reach: the catalog's total point value is an unreachable ceiling by
@@ -16,33 +16,17 @@
  */
 
 import type { BadgeRarity } from "@prisma/client";
+import { CENTS_PER_POINT } from "@/lib/points/rules";
 
 /**
  * Numeric fields of UserStats a badge family may key off. Kept as a literal
  * union rather than derived from UserStats so this module stays free of any
  * import that would drag the database layer into the seed script.
+ *
+ * Deliberately just these two: every achievement must be based on money
+ * actually spent, never on points balance, tenure, or unpurchased activity.
  */
-export type StatKey =
-  | "paidOrders"
-  | "lifetimeSpendCents"
-  | "largestOrderCents"
-  | "longestWeekStreak"
-  | "monthsActive"
-  | "referralsConverted"
-  | "distinctCategories"
-  | "distinctProducts"
-  | "lifetimeEarned"
-  | "lifetimeRedeemed"
-  | "reviewsWritten"
-  | "wishlistItems"
-  | "nightOrders"
-  | "earlyOrders"
-  | "weekendOrders"
-  | "distinctCounties"
-  | "pickupOrders"
-  | "deliveryOrders"
-  | "blogComments"
-  | "blogReactions";
+export type StatKey = "lifetimeSpendCents" | "largestOrderCents";
 
 export type BadgeFamily = {
   key: string;
@@ -59,9 +43,14 @@ export type BadgeFamily = {
 
 export const TIERS_PER_FAMILY = 50;
 
-/** Points for a tier. Steep enough that the catalog total is an unreachable ceiling. */
-export function tierPoints(tier: number): number {
-  return Math.round(15 * Math.pow(tier, 2.6));
+/**
+ * Points for a tier, derived directly from its own threshold rather than a
+ * tier-number curve — this makes the 1%-of-spend cap structural instead of
+ * something that has to be separately tuned and re-checked: reward is always
+ * exactly floor(1% of the threshold), never more.
+ */
+export function tierPoints(thresholdCents: number): number {
+  return Math.floor((thresholdCents * 0.01) / CENTS_PER_POINT);
 }
 
 export function tierRarity(tier: number): BadgeRarity {
@@ -81,15 +70,6 @@ const kes = (cents: number) => `KSh ${(cents / 100).toLocaleString()}`;
 
 export const BADGE_FAMILIES: readonly BadgeFamily[] = [
   {
-    key: "orders",
-    label: "Order",
-    icon: "shopping-bag",
-    statKey: "paidOrders",
-    base: 1,
-    growth: 1.32,
-    describe: (n) => `Place ${n.toLocaleString()} paid order${n === 1 ? "" : "s"}`,
-  },
-  {
     key: "spend",
     label: "Patron",
     icon: "wallet",
@@ -106,159 +86,6 @@ export const BADGE_FAMILIES: readonly BadgeFamily[] = [
     base: 200_000,
     growth: 1.4,
     describe: (n) => `Place a single order worth ${kes(n)}`,
-  },
-  {
-    key: "streak",
-    label: "Streak",
-    icon: "flame",
-    statKey: "longestWeekStreak",
-    base: 2,
-    growth: 1.28,
-    describe: (n) => `Buy in ${n.toLocaleString()} consecutive weeks`,
-  },
-  {
-    key: "tenure",
-    label: "Rooted",
-    icon: "calendar-days",
-    statKey: "monthsActive",
-    base: 1,
-    growth: 1.3,
-    describe: (n) => `Stay with Fechi for ${n.toLocaleString()} month${n === 1 ? "" : "s"}`,
-  },
-  {
-    key: "referrals",
-    label: "Ambassador",
-    icon: "users",
-    statKey: "referralsConverted",
-    base: 1,
-    growth: 1.35,
-    describe: (n) => `Refer ${n.toLocaleString()} customer${n === 1 ? "" : "s"} who buy`,
-  },
-  {
-    key: "categories",
-    label: "Explorer",
-    icon: "compass",
-    statKey: "distinctCategories",
-    base: 1,
-    growth: 1.3,
-    describe: (n) => `Buy from ${n.toLocaleString()} different categories`,
-  },
-  {
-    key: "products",
-    label: "Collector",
-    icon: "package",
-    statKey: "distinctProducts",
-    base: 1,
-    growth: 1.31,
-    describe: (n) => `Try ${n.toLocaleString()} different products`,
-  },
-  {
-    key: "earned",
-    label: "Earner",
-    icon: "sparkles",
-    statKey: "lifetimeEarned",
-    base: 500,
-    growth: 1.4,
-    describe: (n) => `Earn ${n.toLocaleString()} points in total`,
-  },
-  {
-    key: "redeemed",
-    label: "Spender",
-    icon: "ticket",
-    statKey: "lifetimeRedeemed",
-    base: 250,
-    growth: 1.4,
-    describe: (n) => `Redeem ${n.toLocaleString()} points`,
-  },
-  {
-    key: "reviews",
-    label: "Critic",
-    icon: "star",
-    statKey: "reviewsWritten",
-    base: 1,
-    growth: 1.32,
-    describe: (n) => `Review ${n.toLocaleString()} order${n === 1 ? "" : "s"}`,
-  },
-  {
-    key: "wishlist",
-    label: "Dreamer",
-    icon: "heart",
-    statKey: "wishlistItems",
-    base: 1,
-    growth: 1.3,
-    describe: (n) => `Keep ${n.toLocaleString()} item${n === 1 ? "" : "s"} on your wishlist`,
-  },
-  {
-    key: "night",
-    label: "Night Owl",
-    icon: "moon",
-    statKey: "nightOrders",
-    base: 1,
-    growth: 1.34,
-    describe: (n) => `Order ${n.toLocaleString()} time${n === 1 ? "" : "s"} between 10pm and 4am`,
-  },
-  {
-    key: "early",
-    label: "Early Riser",
-    icon: "sunrise",
-    statKey: "earlyOrders",
-    base: 1,
-    growth: 1.34,
-    describe: (n) => `Order ${n.toLocaleString()} time${n === 1 ? "" : "s"} between 4am and 8am`,
-  },
-  {
-    key: "weekend",
-    label: "Weekender",
-    icon: "party-popper",
-    statKey: "weekendOrders",
-    base: 1,
-    growth: 1.33,
-    describe: (n) => `Place ${n.toLocaleString()} weekend order${n === 1 ? "" : "s"}`,
-  },
-  {
-    key: "counties",
-    label: "Nomad",
-    icon: "map-pin",
-    statKey: "distinctCounties",
-    base: 1,
-    growth: 1.28,
-    describe: (n) => `Take delivery in ${n.toLocaleString()} different counties`,
-  },
-  {
-    key: "pickup",
-    label: "Regular",
-    icon: "store",
-    statKey: "pickupOrders",
-    base: 1,
-    growth: 1.33,
-    describe: (n) => `Collect ${n.toLocaleString()} order${n === 1 ? "" : "s"} in person`,
-  },
-  {
-    key: "delivery",
-    label: "Doorstep",
-    icon: "truck",
-    statKey: "deliveryOrders",
-    base: 1,
-    growth: 1.33,
-    describe: (n) => `Have ${n.toLocaleString()} order${n === 1 ? "" : "s"} delivered`,
-  },
-  {
-    key: "comments",
-    label: "Voice",
-    icon: "message-circle",
-    statKey: "blogComments",
-    base: 1,
-    growth: 1.32,
-    describe: (n) => `Leave ${n.toLocaleString()} comment${n === 1 ? "" : "s"} on the journal`,
-  },
-  {
-    key: "reactions",
-    label: "Supporter",
-    icon: "thumbs-up",
-    statKey: "blogReactions",
-    base: 1,
-    growth: 1.32,
-    describe: (n) => `React to ${n.toLocaleString()} journal post${n === 1 ? "" : "s"}`,
   },
 ] as const;
 
@@ -326,7 +153,7 @@ export function generateBadgeCatalog(): GeneratedBadge[] {
         description: family.describe(threshold),
         icon: family.icon,
         rarity: tierRarity(tier),
-        points: tierPoints(tier),
+        points: tierPoints(threshold),
         grantType: "AUTO",
         ruleKey: family.statKey,
         threshold,

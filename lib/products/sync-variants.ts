@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 
-export type VariantInput = { label: string; imageObjectKey?: string | null };
+export type VariantInput = { label: string; imageObjectKey?: string | null; priceKes?: number | null };
 
 /**
  * Replaces all productVariant rows for a product. Variants reference an
@@ -32,6 +32,9 @@ export async function syncProductVariants(productId: string, variants: VariantIn
       productId,
       label: v.label,
       imageId: v.imageObjectKey ? imageIdByKey.get(v.imageObjectKey) ?? null : null,
+      // 0/undefined means "inherit the product's price" — store as null so
+      // the storefront's `variant.priceKes || product.priceKes` fallback works.
+      priceKes: v.priceKes ? v.priceKes : null,
       sortOrder: idx,
     })),
   });

@@ -16,7 +16,7 @@ vi.mock("@/lib/promo", () => ({ resolvePromo: (...a: unknown[]) => resolvePromo(
 vi.mock("@/lib/observability", () => ({ reportError: () => {} }));
 vi.mock("@/lib/points/ledger", () => ({
   getBalance: (...a: unknown[]) => getBalance(...a),
-  CENTS_PER_POINT: 40,
+  CENTS_PER_POINT: 100,
 }));
 
 const { computeOrderTotals } = await import("@/lib/checkout/compute-totals");
@@ -88,7 +88,7 @@ describe("zero-cash checkout eligibility", () => {
   });
 
   it("refuses to spend points the customer does not hold", async () => {
-    getBalance.mockResolvedValue({ available: 10, locked: 4_000, lifetimeEarned: 0, lifetimeRedeemed: 0 });
+    getBalance.mockResolvedValue({ available: 10, locked: 100, lifetimeEarned: 0, lifetimeRedeemed: 0 });
 
     await expect(
       computeOrderTotals({
@@ -124,7 +124,7 @@ describe("zero-cash checkout eligibility", () => {
     });
 
     expect(t.totalCents).toBe(0);
-    expect(t.pointsRedeemed).toBe(Math.ceil((1_350 * KES) / 40));
+    expect(t.pointsRedeemed).toBe(Math.ceil((1_350 * KES) / 100));
     expect(t.pointsRedeemed).toBeLessThan(500_000);
   });
 
@@ -148,6 +148,6 @@ describe("zero-cash checkout eligibility", () => {
     // fewer points than the undiscounted bill would have cost.
     expect(t.discountCents).toBe(1_000 * KES);
     expect(t.totalCents).toBe(0);
-    expect(t.pointsRedeemed).toBe(Math.ceil((9_350 * KES) / 40));
+    expect(t.pointsRedeemed).toBe(Math.ceil((9_350 * KES) / 100));
   });
 });

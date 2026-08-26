@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { Coins, Lock, TrendingUp, ShieldCheck, ShieldX } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
-import { StatCard } from "@/components/admin/ui/StatCard";
+import { StatsCard } from "@/components/ui/stats-card";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { Drawer } from "@/components/admin/ui/Drawer";
 
@@ -243,44 +243,37 @@ export function AdminLoyaltyClient() {
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-        <StatCard
-          eyebrow="Outstanding points"
+        <StatsCard
+          title="Outstanding points"
           value={data ? data.summary.outstandingPoints.toLocaleString() : "—"}
-          trend={
-            data
-              ? { value: `${kes(data.summary.outstandingLiabilityCents)} liability`, positive: false }
-              : undefined
-          }
-          icon={Coins}
+          change={data ? `${kes(data.summary.outstandingLiabilityCents)} liability` : "—"}
+          changeType="negative"
+          icon={<Coins className="h-4 w-4 text-muted-foreground" />}
         />
-        <StatCard
-          eyebrow="Locked (unclaimed)"
+        <StatsCard
+          title="Locked (unclaimed)"
           value={data ? data.summary.lockedPoints.toLocaleString() : "—"}
-          trend={{ value: "Unlock at first paid order", positive: true }}
-          icon={Lock}
+          change="Unlock at first paid order"
+          changeType="positive"
+          icon={<Lock className="h-4 w-4 text-muted-foreground" />}
         />
-        <StatCard
-          eyebrow="Points utilised"
+        <StatsCard
+          title="Points utilised"
           value={data ? data.summary.pointsUtilised.toLocaleString() : "—"}
-          trend={
+          change={
             data
-              ? {
-                  value: `${kes(data.summary.pointsUtilisedValueCents)} · ${data.summary.ordersPaidWithPoints} orders`,
-                  positive: true,
-                }
-              : undefined
+              ? `${kes(data.summary.pointsUtilisedValueCents)} · ${data.summary.ordersPaidWithPoints} orders`
+              : "—"
           }
-          icon={TrendingUp}
+          changeType="positive"
+          icon={<TrendingUp className="h-4 w-4 text-muted-foreground" />}
         />
-        <StatCard
-          eyebrow="Members"
+        <StatsCard
+          title="Members"
           value={data ? data.summary.members.toLocaleString() : "—"}
-          trend={
-            data
-              ? { value: `${data.summary.lifetimeEarned.toLocaleString()} earned all-time`, positive: true }
-              : undefined
-          }
-          icon={ShieldCheck}
+          change={data ? `${data.summary.lifetimeEarned.toLocaleString()} earned all-time` : "—"}
+          changeType="positive"
+          icon={<ShieldCheck className="h-4 w-4 text-muted-foreground" />}
         />
       </div>
 

@@ -39,10 +39,10 @@ describe("buildInviteMessage", () => {
     expect(msg).toContain(`*${CODE}*`);
   });
 
-  it("promises both the discount and the points", () => {
+  it("explains the referral bonus", () => {
     const msg = buildInviteMessage({ referralCode: CODE, baseUrl: "https://fechiorganics.com" });
-    expect(msg).toContain("10% off");
-    expect(msg).toMatch(/earn points/i);
+    expect(msg).toMatch(/KSh 3,000/);
+    expect(msg).toMatch(/100 points/);
   });
 
   it("uppercases and trims the code", () => {

@@ -66,6 +66,7 @@ export async function getCartSummary(cartId: string): Promise<CartSummary> {
           product: {
             include: { images: { where: { isPrimary: true }, take: 1 } },
           },
+          variant: { select: { priceKes: true } },
         },
         orderBy: { createdAt: "asc" },
       },
@@ -76,6 +77,7 @@ export async function getCartSummary(cartId: string): Promise<CartSummary> {
 
   const items: CartLine[] = cart.items.map((ci: typeof cart.items[number]) => {
     const img = ci.product.images[0];
+    const priceKes = ci.variant?.priceKes || ci.product.priceKes;
     return {
       cartItemId: ci.id,
       productId: ci.productId,
@@ -84,9 +86,9 @@ export async function getCartSummary(cartId: string): Promise<CartSummary> {
       variantLabel: ci.product.variantLabel,
       selectedVariantLabel: ci.variantLabel,
       primaryImageUrl: img ? r2PublicUrl(img.objectKey) : "/img/placeholder.png",
-      priceKes: ci.product.priceKes,
+      priceKes,
       quantity: ci.quantity,
-      lineTotalKes: ci.product.priceKes * ci.quantity,
+      lineTotalKes: priceKes * ci.quantity,
     };
   });
 

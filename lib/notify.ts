@@ -59,25 +59,62 @@ interface CreateNotificationInput {
   targetRoles?: string[];
 }
 
+// Repeats of the same error (same type+title+branch) within this window get
+// collapsed into one notification with an incrementing occurrenceCount,
+// instead of a separate row/email per occurrence — see occurrences() in the
+// admin notifications API for the expanded per-occurrence stepper.
+const DEDUPE_WINDOW_MS = 6 * 60 * 60 * 1000;
+
+function fingerprintFor(input: Pick<CreateNotificationInput, "type" | "title" | "branchId">) {
+  return `${input.type}::${input.title}::${input.branchId ?? ""}`;
+}
+
 export async function createNotification(input: CreateNotificationInput) {
+  const fingerprint = fingerprintFor(input);
+  let isNew = true;
+
   try {
-    await db.notification.create({
-      data: {
-        type: input.type,
-        title: input.title,
-        body: input.body,
-        link: input.link,
-        severity: input.severity ?? DEFAULT_SEVERITY[input.type],
-        branchId: input.branchId ?? null,
-        targetRoles: input.targetRoles ?? [],
-      },
+    const existing = await db.notification.findFirst({
+      where: { fingerprint, lastOccurredAt: { gte: new Date(Date.now() - DEDUPE_WINDOW_MS) } },
+      orderBy: { lastOccurredAt: "desc" },
+      select: { id: true },
     });
+
+    if (existing) {
+      isNew = false;
+      await db.notification.update({
+        where: { id: existing.id },
+        data: {
+          occurrenceCount: { increment: 1 },
+          lastOccurredAt: new Date(),
+          occurrences: { create: { link: input.link, detail: input.body } },
+        },
+      });
+    } else {
+      await db.notification.create({
+        data: {
+          type: input.type,
+          title: input.title,
+          body: input.body,
+          link: input.link,
+          severity: input.severity ?? DEFAULT_SEVERITY[input.type],
+          branchId: input.branchId ?? null,
+          targetRoles: input.targetRoles ?? [],
+          fingerprint,
+          occurrences: { create: { link: input.link, detail: input.body } },
+        },
+      });
+    }
     await bumpNotificationVersion();
   } catch (e) {
     // Non-fatal — never let notification failure break the main flow
     console.error("[notify] Failed to create notification:", e);
     return;
   }
+
+  // Only email on the first occurrence — repeats within the dedupe window
+  // just bump the existing notification's count, not another inbox blast.
+  if (!isNew) return;
 
   // Best-effort email, gated by the matching Settings → Notifications
   // toggle. Runs after the in-app notification is safely written, and never

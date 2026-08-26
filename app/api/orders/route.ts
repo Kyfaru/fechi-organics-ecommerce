@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
       where: { userId },
       include: {
         items: {
-          include: { product: true },
+          include: { product: true, variant: { select: { priceKes: true } } },
           orderBy: { createdAt: "asc" },
         },
       },
@@ -134,10 +134,11 @@ export async function POST(req: NextRequest) {
       return Err.validation("Cart is empty");
     }
 
-    // 5. Compute subtotal
+    // 5. Compute subtotal — a variant with its own priceKes overrides the
+    // product's base price (0/null on the variant means "inherit").
     const subtotalKes = cart.items.reduce(
       (sum: number, ci: (typeof cart.items)[number]) =>
-        sum + ci.product.priceKes * ci.quantity,
+        sum + (ci.variant?.priceKes || ci.product.priceKes) * ci.quantity,
       0,
     );
 
@@ -178,8 +179,10 @@ export async function POST(req: NextRequest) {
             create: cart.items.map((ci: (typeof cart.items)[number]) => ({
               productId: ci.productId,
               name: ci.product.name,
-              priceKes: ci.product.priceKes,
+              priceKes: ci.variant?.priceKes || ci.product.priceKes,
               quantity: ci.quantity,
+              variantId: ci.variantId,
+              variantLabel: ci.variantLabel,
             })),
           },
         },

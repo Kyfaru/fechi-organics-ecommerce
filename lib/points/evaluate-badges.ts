@@ -94,7 +94,8 @@ export async function evaluateBadges(stats: UserStats): Promise<UnlockedBadge[]>
   return unlocked;
 }
 
-async function syncLevel(userId: string, badgeCount: number): Promise<void> {
+/** Exported for scripts/cleanup-retired-badges.ts, which recomputes this after removing badges. */
+export async function syncLevel(userId: string, badgeCount: number): Promise<void> {
   await db.loyaltyPoints.updateMany({
     where: { userId },
     data: { badgeCount, level: levelForBadgeCount(badgeCount) },

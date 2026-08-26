@@ -103,10 +103,8 @@ export async function GET(req: NextRequest) {
       badgeCount: earned.length,
       totalBadges: catalog.length,
       stats: {
-        paidOrders: stats.paidOrders,
         lifetimeSpendCents: stats.lifetimeSpendCents,
-        longestWeekStreak: stats.longestWeekStreak,
-        referralsConverted: stats.referralsConverted,
+        largestOrderCents: stats.largestOrderCents,
       },
       badges,
     });

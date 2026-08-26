@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
+import { DataTable } from "@/components/admin/ui/DataTable";
 import { toast } from "@/lib/toast";
 
 /**
@@ -69,6 +70,94 @@ export function AdminLoyaltyFlagsClient() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const columns = [
+    {
+      key: "customer",
+      label: "Customer",
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const f = row as unknown as Flag;
+        return (
+          <div className="flex items-center gap-2 flex-wrap">
+            <div>
+              <p className="font-dm text-[14px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
+                {f.customer?.name ?? f.userId}
+              </p>
+              <p className="font-dm text-[12px] text-(--neutral-500)">{f.customer?.email ?? "—"}</p>
+            </div>
+            <span
+              className={`rounded-full px-2 py-0.5 font-dm text-[11px] font-bold uppercase tracking-wide ${
+                f.action === "VOIDED" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"
+              }`}
+            >
+              {f.action === "VOIDED" ? "Bonus voided" : "Flagged only"}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      key: "reasons",
+      label: "Matched signals",
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const f = row as unknown as Flag;
+        return (
+          <div className="flex flex-wrap gap-1.5">
+            {(Array.isArray(f.reasons) ? f.reasons : []).map((r, i) => (
+              <span
+                key={`${r.kind}-${i}`}
+                className="rounded-full bg-(--neutral-100) px-2 py-0.5 font-dm text-[11px] text-(--neutral-700)"
+              >
+                {KIND_LABELS[r.kind] ?? r.kind} as {r.sharedWith} other{r.sharedWith === 1 ? "" : "s"} (+{r.weight})
+              </span>
+            ))}
+          </div>
+        );
+      },
+    },
+    {
+      key: "score",
+      label: "Score",
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const f = row as unknown as Flag;
+        return <span className="font-dm text-[13px] text-(--neutral-700) dark:text-(--dark-text)">{f.score}</span>;
+      },
+    },
+    {
+      key: "createdAt",
+      label: "Flagged",
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const f = row as unknown as Flag;
+        return (
+          <span className="font-dm text-[12px] text-(--neutral-500)">{new Date(f.createdAt).toLocaleString()}</span>
+        );
+      },
+    },
+    {
+      key: "review",
+      label: "",
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const f = row as unknown as Flag;
+        if (f.reviewedAt) {
+          return (
+            <span className="font-dm text-[12px] text-(--neutral-400)">
+              Reviewed {new Date(f.reviewedAt).toLocaleDateString()}
+            </span>
+          );
+        }
+        return (
+          <button
+            type="button"
+            disabled={review.isPending}
+            onClick={(e) => { e.stopPropagation(); review.mutate(f.id); }}
+            className="rounded-lg border border-(--neutral-300) px-3 py-1.5 font-dm text-[13px] font-medium text-(--neutral-700) hover:bg-(--neutral-50) disabled:opacity-50"
+          >
+            Mark reviewed
+          </button>
+        );
+      },
+    },
+  ];
+
   return (
     <div>
       <PageHeader
@@ -97,77 +186,13 @@ export function AdminLoyaltyFlagsClient() {
         }
       />
 
-      {isLoading ? (
-        <p className="font-dm text-[13px] text-(--neutral-500)">Loading…</p>
-      ) : !data || data.flags.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-(--neutral-200) p-8 text-center font-dm text-[13px] text-(--neutral-400)">
-          Nothing flagged. Signups are clearing the duplicate-account check.
-        </p>
-      ) : (
-        <ul className="space-y-3">
-          {data.flags.map((f) => (
-            <li
-              key={f.id}
-              className="rounded-xl border border-(--neutral-200) bg-white p-4 dark:bg-(--dark-surface) dark:border-(--dark-border)"
-            >
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
-                      {f.customer?.name ?? f.userId}
-                    </p>
-                    <span
-                      className={`rounded-full px-2 py-0.5 font-dm text-[11px] font-bold uppercase tracking-wide ${
-                        f.action === "VOIDED" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"
-                      }`}
-                    >
-                      {f.action === "VOIDED" ? "Bonus voided" : "Flagged only"}
-                    </span>
-                  </div>
-                  <p className="font-dm text-[12px] text-(--neutral-500)">
-                    {f.customer?.email ?? "—"} · risk score {f.score} ·{" "}
-                    {new Date(f.createdAt).toLocaleString()}
-                  </p>
-                </div>
-
-                {f.reviewedAt ? (
-                  <span className="shrink-0 font-dm text-[12px] text-(--neutral-400)">
-                    Reviewed {new Date(f.reviewedAt).toLocaleDateString()}
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={review.isPending}
-                    onClick={() => review.mutate(f.id)}
-                    className="shrink-0 rounded-lg border border-(--neutral-300) px-3 py-1.5 font-dm text-[13px] font-medium text-(--neutral-700) hover:bg-(--neutral-50) disabled:opacity-50"
-                  >
-                    Mark reviewed
-                  </button>
-                )}
-              </div>
-
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {(Array.isArray(f.reasons) ? f.reasons : []).map((r, i) => (
-                  <span
-                    key={`${r.kind}-${i}`}
-                    className="rounded-full bg-(--neutral-100) px-2 py-0.5 font-dm text-[11px] text-(--neutral-700)"
-                  >
-                    {KIND_LABELS[r.kind] ?? r.kind} as {r.sharedWith} other
-                    {r.sharedWith === 1 ? "" : "s"} (+{r.weight})
-                  </span>
-                ))}
-              </div>
-
-              {f.action === "VOIDED" && (
-                <p className="mt-3 rounded-lg bg-(--neutral-50) px-3 py-2 font-dm text-[12px] text-(--neutral-600)">
-                  To restore this bonus, raise a super-admin grant — it needs unanimous approval and
-                  is permanently recorded on the ledger.
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <DataTable
+        columns={columns}
+        data={(data?.flags ?? []) as unknown as Record<string, unknown>[]}
+        loading={isLoading}
+        emptyTitle="Nothing flagged"
+        emptyDescription="Signups are clearing the duplicate-account check."
+      />
     </div>
   );
 }

@@ -93,6 +93,9 @@ const PUBLIC_PATHS = [
   "/api/testimonials",
   "/api/admin/forgot-password",
   "/api/admin/reset-password",
+  // Called from the login method-choice screen for a RETURNING user, before
+  // Better Auth's twoFactorRedirect flow has minted any real session.
+  "/api/account/2fa/precheck",
   "/api/products/options",
   "/api/track",
   "/api/webhooks",

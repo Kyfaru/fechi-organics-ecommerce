@@ -448,6 +448,8 @@ model productVariant {
   label      String
   imageId    String?
   image      productImage? @relation(fields: [imageId], references: [id], onDelete: SetNull)
+  /// Per-variant price override, in KES cents. Null/0 means "inherit product.priceKes".
+  priceKes   Int?
   sortOrder  Int           @default(0)
   cartItems  cartItem[]
   orderItems orderItem[]
@@ -1054,23 +1056,48 @@ model systemConfig {
 }
 
 model notification {
-  id          String               @id @default(cuid())
-  type        NotificationType
-  severity    NotificationSeverity
-  title       String
-  body        String
-  link        String?
-  branchId    String?
-  branch      branch?              @relation(fields: [branchId], references: [id])
-  targetRoles String[]             @default([])
-  read        Boolean              @default(false)
-  createdAt   DateTime             @default(now())
+  id              String               @id @default(cuid())
+  type            NotificationType
+  severity        NotificationSeverity
+  title           String
+  body            String
+  link            String?
+  branchId        String?
+  branch          branch?              @relation(fields: [branchId], references: [id])
+  targetRoles     String[]             @default([])
+  read            Boolean              @default(false)
+  createdAt       DateTime             @default(now())
+  /// Groups repeats of the same error (type+title+branch) within a rolling
+  /// window — see occurrenceCount/lastOccurredAt and lib/notify.ts. Nullable
+  /// because existing rows predate this column; only new notifications get
+  /// one, so pre-existing rows simply never dedupe (acceptable — the 6h
+  /// window means old rows age out of relevance for merging anyway).
+  fingerprint     String?
+  occurrenceCount Int                  @default(1)
+  lastOccurredAt  DateTime             @default(now())
 
   recipientStates notificationRecipientState[]
+  occurrences     notificationOccurrence[]
 
   @@index([read, createdAt])
   @@index([branchId, createdAt])
   @@index([severity, createdAt])
+  @@index([fingerprint, lastOccurredAt])
+  @@schema("admin")
+}
+
+/// One row per individual occurrence collapsed into a deduplicated
+/// `notification` — preserves each occurrence's specific link/detail (e.g.
+/// which order/customer) for the admin UI's expanded "stepper" view.
+model notificationOccurrence {
+  id             String       @id @default(cuid())
+  notificationId String
+  notification   notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  link           String?
+  detail         String?
+  occurredAt     DateTime     @default(now())
+
+  @@index([notificationId, occurredAt])
   @@schema("admin")
 }
 

@@ -23,8 +23,6 @@ import { createHmac } from "crypto";
 import { db } from "@/lib/db";
 import { markInStorePaymentSuccess, markInStorePaymentFailed } from "@/lib/payments/instore-post-payment";
 import { reportError } from "@/lib/observability";
-import { createNotification } from "@/lib/notify";
-import { createOrderDetailToken } from "@/lib/order-detail-token";
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
@@ -61,12 +59,7 @@ export async function POST(req: NextRequest) {
     const reference = event.data.reference;
     const tx = await db.inStoreTransaction.findFirst({
       where: { paystackReference: reference },
-      select: {
-        id: true,
-        inStoreOrderId: true,
-        status: true,
-        inStoreOrder: { select: { branchId: true, customerName: true } },
-      },
+      select: { id: true, inStoreOrderId: true, status: true },
     });
 
     if (!tx) return Response.json({ ok: true });
@@ -89,13 +82,8 @@ export async function POST(req: NextRequest) {
         inStoreOrderId: tx.inStoreOrderId,
         reason,
       });
-      await createNotification({
-        type: "PAYMENT_ERROR",
-        title: `Payment failed — order #${tx.inStoreOrderId.slice(0, 8).toUpperCase()}`,
-        body: `${tx.inStoreOrder.customerName ?? "A customer"}'s card payment failed: ${reason}`,
-        link: `/admin/orders/payment-failed/${await createOrderDetailToken(tx.inStoreOrderId, "instore")}`,
-        branchId: tx.inStoreOrder.branchId,
-      });
+      // In-store: staff are physically at the register, so no admin
+      // "payment failed" alert here (unlike the online Paystack webhook).
     }
   } catch (e) {
     reportError(e, { route: "POST /api/payments/paystack/instore-webhook", tags: { stage: "handler" } });

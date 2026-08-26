@@ -21,12 +21,13 @@ import { SignupLoader } from "@/components/ui/signup-loader";
 import { posthog } from "@/lib/posthog";
 import { reportError } from "@/lib/observability";
 import { useReloadOnBfcacheRestore } from "@/hooks/use-reload-on-bfcache-restore";
+import { sanitizeReturnTo } from "@/lib/return-to";
 
 // Isolated component so useSearchParams is inside a Suspense boundary.
 // Better Auth redirects OAuth errors (e.g. a banned user) back here as
 // ?error=CODE&error_description=... instead of its own bare error page —
 // show it as a toast rather than leaving the raw query string on screen.
-function SignupSearchParamsReader() {
+function SignupSearchParamsReader({ onReturnTo }: { onReturnTo: (returnTo: string) => void }) {
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -37,6 +38,13 @@ function SignupSearchParamsReader() {
       error === "BANNED_USER" ? "Account suspended" : "Sign-in failed",
       { message: description || "Please try again or contact support." }
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ?returnTo= is set by login's "Sign Up" link when login itself was
+  // reached with one (see app/delivery/page.tsx's guest redirect).
+  useEffect(() => {
+    onReturnTo(sanitizeReturnTo(searchParams.get("returnTo")));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -71,6 +79,7 @@ export default function SignupPage() {
   const [errors, setErrors] = useState<SignupErrors>({});
   const [isLoading, setIsLoading] = useState(false);
   const [showSignupLoader, setShowSignupLoader] = useState(false);
+  const [returnTo, setReturnTo] = useState("/");
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const turnstileRef = useRef<TurnstileHandle>(null);
 
@@ -245,7 +254,7 @@ export default function SignupPage() {
   return (
     <main className="flex min-h-screen">
       <Suspense fallback={null}>
-        <SignupSearchParamsReader />
+        <SignupSearchParamsReader onReturnTo={setReturnTo} />
       </Suspense>
       {/* ====================================================================
           LEFT PANEL — deep green botanical
@@ -576,7 +585,7 @@ export default function SignupPage() {
       </section>
 
       {showSignupLoader && (
-        <SignupLoader onDone={() => router.replace("/")} />
+        <SignupLoader onDone={() => router.replace(returnTo)} />
       )}
     </main>
   );

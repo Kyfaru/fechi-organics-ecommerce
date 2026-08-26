@@ -186,6 +186,9 @@ export function ProductDetailClient({ product }: Props) {
   const qtyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Derived values ─────────────────────────────────────────────────────────
+  // A variant's own price (when set) overrides the product's base price —
+  // 0/null on the variant means "inherit".
+  const effectivePriceKes = selectedVariant?.priceKes || product.priceKes;
   const hasDiscount = !!product.compareAtPriceKes;
   const pct = hasDiscount
     ? discountPct(product.priceKes, product.compareAtPriceKes!)
@@ -293,7 +296,7 @@ export function ProductDetailClient({ product }: Props) {
       posthog.capture("product_added_to_cart", {
         product_id: product.id,
         product_name: product.name,
-        price_kes: product.priceKes,
+        price_kes: effectivePriceKes,
         quantity,
         source: "detail_page",
       });
@@ -538,7 +541,7 @@ export function ProductDetailClient({ product }: Props) {
           {/* Price block */}
           <div className="flex items-center gap-3 flex-wrap">
             <span className="font-body font-bold text-[32px] text-[#1a1c1c] dark:text-white">
-              {format(product.priceKes)}
+              {format(effectivePriceKes)}
             </span>
             {hasDiscount && (
               <>

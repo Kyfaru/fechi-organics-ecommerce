@@ -7,7 +7,7 @@ vi.mock("@/lib/promo", () => ({ resolvePromo: (...a: unknown[]) => resolvePromo(
 vi.mock("@/lib/observability", () => ({ reportError: () => {} }));
 vi.mock("@/lib/points/ledger", () => ({
   getBalance: (...a: unknown[]) => getBalance(...a),
-  CENTS_PER_POINT: 40,
+  CENTS_PER_POINT: 100,
 }));
 
 const { computeOrderTotals, applyPoints } = await import("@/lib/checkout/compute-totals");
@@ -22,10 +22,10 @@ beforeEach(() => {
 });
 
 describe("applyPoints", () => {
-  it("values points at KSh 0.40 each", () => {
+  it("values points at KSh 1 each", () => {
     expect(applyPoints(10_000 * KES, 1_000, 5_000)).toEqual({
       pointsRedeemed: 1_000,
-      pointsDiscountCents: 400 * KES,
+      pointsDiscountCents: 1_000 * KES,
     });
   });
 
@@ -38,7 +38,7 @@ describe("applyPoints", () => {
     expect(r.pointsDiscountCents).toBe(100 * KES);
   });
 
-  it("can zero a bill that is not a whole multiple of 40 cents", () => {
+  it("can zero a bill that is not a whole multiple of 100 cents", () => {
     const gross = 1_007; // KSh 10.07
     const r = applyPoints(gross, 999_999, 999_999);
     expect(r.pointsDiscountCents).toBe(gross);
@@ -61,7 +61,7 @@ describe("computeOrderTotals", () => {
   });
 
   it("stacks points on top of a coupon, coupon first", async () => {
-    // KSh 10,000 subtotal, 10% off, then 1,000 points (KSh 400) off that.
+    // KSh 10,000 subtotal, 10% off, then 1,000 points (KSh 1,000) off that.
     resolvePromo.mockResolvedValue({
       promo: { id: "promo-1", type: "PERCENTAGE", value: 10 },
       discountKes: 1_000 * KES,
@@ -79,9 +79,9 @@ describe("computeOrderTotals", () => {
 
     expect(t.discountCents).toBe(1_000 * KES);
     expect(t.pointsRedeemed).toBe(1_000);
-    expect(t.pointsDiscountCents).toBe(400 * KES);
-    // 10,000 + 350 − 1,000 − 400
-    expect(t.totalCents).toBe(8_950 * KES);
+    expect(t.pointsDiscountCents).toBe(1_000 * KES);
+    // 10,000 + 350 − 1,000 − 1,000
+    expect(t.totalCents).toBe(8_350 * KES);
   });
 
   it("uppercases and trims the promo code before lookup", async () => {
@@ -130,8 +130,8 @@ describe("computeOrderTotals", () => {
   });
 
   it("does not let locked points be spent", async () => {
-    // 4,000 signup points are locked until the first paid order.
-    getBalance.mockResolvedValue({ available: 0, locked: 4_000, lifetimeEarned: 0, lifetimeRedeemed: 0 });
+    // The joining bonus is locked until a real payment clears the fraud check.
+    getBalance.mockResolvedValue({ available: 0, locked: 100, lifetimeEarned: 0, lifetimeRedeemed: 0 });
     await expect(
       computeOrderTotals({ subtotalCents: 5_000 * KES, deliveryCents: 0, pointsRequested: 1, userId: USER }),
     ).rejects.toBeInstanceOf(Response);
@@ -153,7 +153,7 @@ describe("computeOrderTotals", () => {
     });
     expect(t.totalCents).toBe(0);
     // Only what was needed is spent, not the whole balance.
-    expect(t.pointsRedeemed).toBe(Math.ceil((5_350 * KES) / 40));
+    expect(t.pointsRedeemed).toBe(Math.ceil((5_350 * KES) / 100));
   });
 
   it("never returns a negative total", async () => {

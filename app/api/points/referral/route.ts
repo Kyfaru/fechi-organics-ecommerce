@@ -18,7 +18,7 @@ import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { attachReferral, grantJoiningBonus } from "@/lib/points/referrals";
 import { ensureLoyaltyAccount } from "@/lib/points/ledger";
-import { MAX_REWARDED_REFERRALS, REFERRED_BONUS_POINTS } from "@/lib/points/rules";
+import { MAX_REWARDED_REFERRALS } from "@/lib/points/rules";
 import { reportError } from "@/lib/observability";
 
 const REASONS: Record<string, string> = {
@@ -54,8 +54,7 @@ export async function POST(req: NextRequest) {
 
     return ok({
       attached: true,
-      bonusPoints: result.bonusPoints,
-      message: `${REFERRED_BONUS_POINTS.toLocaleString()} bonus points added — they unlock with your first order`,
+      message: "You're linked to your referrer's invite — no extra step needed.",
     });
   } catch (e) {
     reportError(e, { route: "POST /api/points/referral", tags: { domain: "loyalty" } });

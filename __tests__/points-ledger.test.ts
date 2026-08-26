@@ -118,14 +118,14 @@ describe("POINTS_LEDGER_SECRET", () => {
 });
 
 describe("point/cash conversion", () => {
-  it("values a point at KSh 0.40", () => {
-    expect(CENTS_PER_POINT).toBe(40);
-    expect(pointsToCents(1_000)).toBe(40_000); // KSh 400.00
+  it("values a point at KSh 1", () => {
+    expect(CENTS_PER_POINT).toBe(100);
+    expect(pointsToCents(1_000)).toBe(100_000); // KSh 1,000.00
   });
 
   it("rounds up when converting cash to points so cash owed never goes negative", () => {
-    expect(centsToPoints(41)).toBe(2);
-    expect(centsToPoints(80)).toBe(2);
+    expect(centsToPoints(101)).toBe(2);
+    expect(centsToPoints(200)).toBe(2);
   });
 });
 

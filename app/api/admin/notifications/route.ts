@@ -107,6 +107,7 @@ export async function GET(req: NextRequest) {
         createdAt: n.createdAt,
         isRead: n.recipientStates.some((r) => !!r.readAt),
         isPinned: n.recipientStates.some((r) => r.pinned),
+        occurrenceCount: n.occurrenceCount,
       })),
       nextCursor,
       scope: scope.tier,

@@ -18,6 +18,7 @@ import { toast } from "@/lib/toast";
 import { posthog } from "@/lib/posthog";
 import { checkPortalMatch } from "@/lib/portal-check";
 import { reportError } from "@/lib/observability";
+import { sanitizeReturnTo } from "@/lib/return-to";
 import { useReloadOnBfcacheRestore } from "@/hooks/use-reload-on-bfcache-restore";
 
 interface LoginErrors {
@@ -45,7 +46,7 @@ interface AccountStatus {
 }
 
 // Isolated component so useSearchParams is inside a Suspense boundary
-function LoginSearchParamsReader() {
+function LoginSearchParamsReader({ onReturnTo }: { onReturnTo: (returnTo: string) => void }) {
   const searchParams = useSearchParams();
 
   // Better Auth redirects OAuth errors (e.g. a banned user) back here as
@@ -59,6 +60,13 @@ function LoginSearchParamsReader() {
       error === "BANNED_USER" ? "Account suspended" : "Sign-in failed",
       { message: description || "Please try again or contact support." }
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ?returnTo= is set by pages that bounce a guest here (e.g. /delivery) so
+  // login/signup can send them back to where they were instead of "/".
+  useEffect(() => {
+    onReturnTo(sanitizeReturnTo(searchParams.get("returnTo")));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -81,6 +89,9 @@ export default function LoginForm() {
   const [twoFactorMethods, setTwoFactorMethods] = useState<string[]>([]);
   const [isNewUser, setIsNewUser] = useState(false);
   const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null);
+  // Returning-user (2FA already configured) equivalent of accountStatus.phone
+  // — see the precheck fetch in handleCredentialsSubmit.
+  const [existingUserHasPhone, setExistingUserHasPhone] = useState(false);
   const [methodChoiceLoading, setMethodChoiceLoading] = useState<"totp" | "email" | "sms" | null>(null);
   const [totpUri, setTotpUri] = useState("");
   const [code, setCode] = useState("");
@@ -88,6 +99,9 @@ export default function LoginForm() {
   // setup, or a returning user's per-login choice) — drives OTPModal's
   // "code sent to ___" copy.
   const [otpDestination, setOtpDestination] = useState("");
+  // Where to send the user after auth completes — "/" unless a page bounced
+  // them here mid-checkout (see lib/return-to.ts).
+  const [returnTo, setReturnTo] = useState("/");
 
   const { data: sessionData, isPending: sessionPending } = useSession();
 
@@ -176,7 +190,7 @@ export default function LoginForm() {
       posthog.capture("login_completed", { method });
     }
     toast.success("Welcome back!");
-    router.replace("/");
+    router.replace(returnTo);
     router.refresh();
   }
 
@@ -223,6 +237,17 @@ export default function LoginForm() {
         setAccountStatus(null);
         setIsNewUser(false);
         setStep("method-choice");
+        // No real session yet at this point (Better Auth withheld it pending
+        // 2FA), so accountStatus/profile can't be read directly — this
+        // dedicated precheck is the only way to know whether to offer SMS.
+        fetch("/api/account/2fa/precheck", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        })
+          .then((r) => r.json())
+          .then((j) => setExistingUserHasPhone(!!j?.data?.hasPhone))
+          .catch(() => setExistingUserHasPhone(false));
         return;
       }
 
@@ -391,7 +416,9 @@ export default function LoginForm() {
       ? [totpCard, emailCard, ...(accountStatus?.phone ? [smsCard] : [])]
       : [
           ...(twoFactorMethods.includes("totp") ? [totpCard] : []),
-          ...(twoFactorMethods.includes("otp") ? [emailCard, smsCard] : []),
+          ...(twoFactorMethods.includes("otp")
+            ? [emailCard, ...(existingUserHasPhone ? [smsCard] : [])]
+            : []),
         ];
 
     return (
@@ -506,7 +533,7 @@ export default function LoginForm() {
     <main className="flex min-h-screen">
       {/* Read search-params inside Suspense to satisfy Next.js static-render rules */}
       <Suspense fallback={null}>
-        <LoginSearchParamsReader />
+        <LoginSearchParamsReader onReturnTo={setReturnTo} />
       </Suspense>
       {/* ====================================================================
           LEFT PANEL — dark green botanical
@@ -690,7 +717,7 @@ export default function LoginForm() {
               <p className="text-center text-sm text-[#40493c] dark:text-gray-400 mt-8">
                 Don&apos;t have an account?{" "}
                 <Link
-                  href="/signup"
+                  href={returnTo !== "/" ? `/signup?returnTo=${encodeURIComponent(returnTo)}` : "/signup"}
                   className="font-semibold hover:underline"
                   style={{ color: "#045a03" }}
                 >

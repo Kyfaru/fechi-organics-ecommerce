@@ -12,7 +12,7 @@
  * over the limit — the shop link and the code are what actually matter.
  */
 
-import { REFERRAL_DISCOUNT_PERCENT } from "@/lib/points/rules";
+import { REFERRAL_BONUS_POINTS } from "@/lib/points/rules";
 
 export const INVITE_MAX_CHARS = 200;
 
@@ -27,8 +27,8 @@ export function buildInviteMessage(args: {
   const code = args.referralCode.trim().toUpperCase();
 
   const core =
-    `Hi! I use Fechi Organics — use my code *${code}* for ` +
-    `${REFERRAL_DISCOUNT_PERCENT}% off your first order & we both earn points. ${shopUrl}`;
+    `Hi! I use Fechi Organics — use my code *${code}*. Spend KSh 3,000 & I earn ` +
+    `${REFERRAL_BONUS_POINTS} points, you earn from day one. ${shopUrl}`;
 
   const withInfo = `${core} How it works: ${infoUrl}`;
 
