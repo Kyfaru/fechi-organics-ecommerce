@@ -264,7 +264,6 @@ model user {
   blogPosts             blogPost[]
   loyaltyPoints         loyaltyPoints?
   pointsLedger          pointsLedger[]
-  badges                userBadge[]
   inboxMessages         inboxMessage[]
   wishlistItems         wishlistItem[]
   blogReactions         blogReaction[]
@@ -1214,29 +1213,11 @@ enum IdentityKind {
   @@schema("public")
 }
 
-enum BadgeRarity {
-  COMMON
-  UNCOMMON
-  RARE
-  EPIC
-  LEGENDARY
-  MYTHIC
-
-  @@schema("admin")
-}
-
-enum BadgeGrantType {
-  AUTO
-  MANUAL
-
-  @@schema("admin")
-}
-
 /// Read cache over pointsLedger. `points` / `lockedPoints` are denormalized
 /// sums — the ledger chain is the source of truth, and this row is also the
 /// per-user lock (SELECT ... FOR UPDATE) that serializes ledger appends.
 /// `tier` is retained only so the column drop never has to run; nothing reads
-/// it any more — level is derived from badgeCount. See lib/points/ledger.ts.
+/// it any more. See lib/points/ledger.ts.
 model loyaltyPoints {
   id                String   @id @default(cuid())
   userId            String   @unique
@@ -1245,8 +1226,6 @@ model loyaltyPoints {
   lockedPoints      Int      @default(0)
   lifetimeEarned    Int      @default(0)
   lifetimeRedeemed  Int      @default(0)
-  level             Int      @default(1)
-  badgeCount        Int      @default(0)
   userCode          String   @unique
   referralCode      String   @unique
   leaderboardPublic Boolean  @default(false)
@@ -1286,20 +1265,6 @@ model pointsLedger {
   @@unique([userId, reason, refType, refId])
   @@index([userId, createdAt])
   @@index([reason])
-  @@schema("public")
-}
-
-model userBadge {
-  id                      String   @id @default(uuid())
-  userId                  String
-  badgeId                 String
-  earnedAt                DateTime @default(now())
-  grantedByAdminProfileId String?
-  user                    user     @relation(fields: [userId], references: [id])
-
-  @@unique([userId, badgeId])
-  @@index([userId])
-  @@index([badgeId])
   @@schema("public")
 }
 
@@ -1634,31 +1599,6 @@ model loyaltyTier {
   benefits   String[]
   color      String
 
-  @@schema("admin")
-}
-
-/// Generated from lib/points/badge-families.ts by prisma/seed-badges.ts.
-/// `id` is a stable slug ("orders.t07") so re-seeding is idempotent and
-/// userBadge rows survive a catalog regeneration.
-model badge {
-  id          String         @id
-  familyKey   String
-  tier        Int
-  name        String
-  description String
-  icon        String
-  rarity      BadgeRarity
-  points      Int
-  grantType   BadgeGrantType @default(AUTO)
-  ruleKey     String?
-  threshold   BigInt?
-  hidden      Boolean        @default(false)
-  sortOrder   Int
-  createdAt   DateTime       @default(now())
-
-  @@unique([familyKey, tier])
-  @@index([familyKey])
-  @@index([grantType])
   @@schema("admin")
 }
 

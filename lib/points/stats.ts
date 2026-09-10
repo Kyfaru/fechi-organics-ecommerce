@@ -1,5 +1,6 @@
 /**
- * One snapshot of everything the badge evaluator needs.
+ * A customer's lifetime spend, used to gate the referral/joining bonus
+ * (see lib/points/referrals.ts) and shown on the rewards page.
  *
  * Online orders (`order`) and walk-in orders (`inStoreOrder`) are both
  * counted. Note inStoreOrder.customerUserId is a bare string with no foreign

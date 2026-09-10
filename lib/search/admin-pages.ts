@@ -12,7 +12,7 @@ export const ADMIN_PAGES: Array<{ title: string; url: string; keywords: string[]
   { title: "Shipping & Tracking", url: "/admin/orders/tracking", keywords: ["shipping", "tracking", "delivery status"] },
   { title: "Customers", url: "/admin/customers", keywords: ["customers", "users", "buyers"] },
   { title: "Support Tickets", url: "/admin/customers/tickets", keywords: ["tickets", "support", "help desk"] },
-  { title: "Loyalty & Points", url: "/admin/loyalty", keywords: ["loyalty", "points", "rewards", "badges", "achievements"] },
+  { title: "Loyalty & Points", url: "/admin/loyalty", keywords: ["loyalty", "points", "rewards"] },
   { title: "Points Grants", url: "/admin/loyalty/grants", keywords: ["grant", "points", "approval", "super admin"] },
   { title: "Loyalty Flags", url: "/admin/loyalty/flags", keywords: ["flags", "abuse", "duplicate", "fraud", "points"] },
   { title: "Staff", url: "/admin/staff", keywords: ["staff", "admins", "team"] },

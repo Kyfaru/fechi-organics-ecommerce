@@ -22,7 +22,6 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { levelForBadgeCount } from "@/lib/points/levels";
 import { reportError } from "@/lib/observability";
 
 const TOP_N = 50;
@@ -42,7 +41,6 @@ export async function GET(req: NextRequest) {
         userId: true,
         userCode: true,
         lifetimeEarned: true,
-        badgeCount: true,
         leaderboardPublic: true,
         user: { select: { name: true, username: true, image: true } },
       },
@@ -58,15 +56,13 @@ export async function GET(req: NextRequest) {
         displayName: reveal ? (r.user?.username ?? r.user?.name ?? r.userCode) : r.userCode,
         image: reveal ? r.user?.image ?? null : null,
         points: r.lifetimeEarned,
-        badgeCount: r.badgeCount,
-        level: levelForBadgeCount(r.badgeCount),
       };
     });
 
     // The caller's true standing, even when they are nowhere near the top.
     const me = await db.loyaltyPoints.findUnique({
       where: { userId },
-      select: { userCode: true, lifetimeEarned: true, badgeCount: true, leaderboardPublic: true },
+      select: { userCode: true, lifetimeEarned: true, leaderboardPublic: true },
     });
 
     let myRank: number | null = null;
@@ -82,8 +78,6 @@ export async function GET(req: NextRequest) {
             rank: myRank,
             userCode: me.userCode,
             points: me.lifetimeEarned,
-            badgeCount: me.badgeCount,
-            level: levelForBadgeCount(me.badgeCount),
             leaderboardPublic: me.leaderboardPublic,
             inTopN: board.some((b) => b.isSelf),
           }

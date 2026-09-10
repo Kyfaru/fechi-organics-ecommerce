@@ -67,8 +67,6 @@ export async function GET(req: NextRequest) {
             points: true,
             lockedPoints: true,
             lifetimeEarned: true,
-            level: true,
-            badgeCount: true,
             userCode: true,
           },
         },

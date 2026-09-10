@@ -42,14 +42,12 @@ export function BotanicalDashboardCard({ user: initialUser }: { user: AccountUse
 
 type PointsSummary = {
   points: { available: number; locked: number; cashValueCents: number };
-  level: { level: number; percent: number; badgesForNextLevel: number | null };
-  badgeCount: number;
 }
 
 /**
- * Points + level at a glance, on the profile tab. Reuses the achievements
- * endpoint rather than adding a second one — TanStack dedupes the request
- * with the achievements page's own query.
+ * Points at a glance, on the profile tab. Reuses the achievements endpoint
+ * rather than adding a second one — TanStack dedupes the request with the
+ * rewards page's own query.
  */
 export function PointsSummaryCard() {
   const { data } = useQuery<PointsSummary>({
@@ -96,22 +94,9 @@ export function PointsSummaryCard() {
 
       {data.points.locked > 0 && (
         <p className="mt-1.5 text-[11px] text-amber-600">
-          +{data.points.locked.toLocaleString()} unlock with your first order
+          +{data.points.locked.toLocaleString()} unlock once you've spent KSh 3,000
         </p>
       )}
-
-      <div className="mt-3">
-        <div className="flex items-center justify-between text-[11px] text-neutral-500 dark:text-neutral-400 mb-1">
-          <span>Level {data.level.level}</span>
-          <span>{data.badgeCount} achievements</span>
-        </div>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
-          <div
-            className="h-full rounded-full bg-[#15803D] transition-[width] duration-300"
-            style={{ width: `${data.level.percent}%` }}
-          />
-        </div>
-      </div>
     </Link>
   )
 }

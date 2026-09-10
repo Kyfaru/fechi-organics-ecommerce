@@ -30,8 +30,6 @@ type LoyaltyPoints = {
   points: number;
   lockedPoints: number;
   lifetimeEarned: number;
-  level: number;
-  badgeCount: number;
   userCode: string;
 } | null;
 
@@ -441,12 +439,6 @@ function CustomerDrawer({
                   label: "Lifetime Earned",
                   value: customer.loyaltyPoints?.lifetimeEarned.toLocaleString() ?? "—",
                 },
-                {
-                  label: "Level / Achievements",
-                  value: customer.loyaltyPoints
-                    ? `Level ${customer.loyaltyPoints.level} · ${customer.loyaltyPoints.badgeCount} badges`
-                    : "—",
-                },
                 { label: "Total Orders", value: String(customer._count.orders) },
               ].map(({ label, value }) => (
                 <div key={label} className="flex justify-between items-start py-2 border-b border-(--neutral-200) dark:border-(--dark-border) last:border-0">
@@ -670,10 +662,11 @@ export function AdminCustomersClient() {
             <span className="font-dm text-[14px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
               {lp.points.toLocaleString()}
             </span>
-            <span className="font-dm text-[11px] text-(--neutral-500) dark:text-(--dark-muted)">
-              Lv {lp.level}
-              {lp.lockedPoints > 0 ? ` · ${lp.lockedPoints.toLocaleString()} locked` : ""}
-            </span>
+            {lp.lockedPoints > 0 && (
+              <span className="font-dm text-[11px] text-(--neutral-500) dark:text-(--dark-muted)">
+                {lp.lockedPoints.toLocaleString()} locked
+              </span>
+            )}
           </div>
         );
       },

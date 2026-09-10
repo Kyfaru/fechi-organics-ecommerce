@@ -245,79 +245,81 @@ export function AdminLoyaltyGrantsClient() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mb-6">
-        <StatsCard
-          title="Approvals required"
-          value={data ? String(data.requiredApprovals) : "—"}
-          change="Every active super admin"
-          changeType="positive"
-          icon={<Users className="h-4 w-4 text-muted-foreground" />}
-        />
-        <StatsCard
-          title="Your remaining allowance"
-          value={me ? me.remaining.toLocaleString() : "—"}
-          change="Not renewable"
-          changeType="negative"
-          icon={<Wallet className="h-4 w-4 text-muted-foreground" />}
-        />
-        <StatsCard
-          title="Pending requests"
-          value={data ? String(data.requests.filter((r) => r.status === "PENDING").length) : "—"}
-          change="—"
-          changeType="positive"
-          icon={<ShieldCheck className="h-4 w-4 text-muted-foreground" />}
-        />
-      </div>
-
-      {/* Raise a grant */}
-      <div className="rounded-xl border border-(--neutral-200) bg-white p-5 mb-6 dark:bg-(--dark-surface) dark:border-(--dark-border)">
-        <h2 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-1">
-          Raise a grant
-        </h2>
-        <p className="font-dm text-[13px] text-(--neutral-500) mb-4">
-          Points come out of your own lifetime allowance. It cannot be topped up from here.
-        </p>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_140px]">
-          <input
-            value={targetUserId}
-            onChange={(e) => setTargetUserId(e.target.value)}
-            placeholder="Customer user ID"
-            className="h-10 rounded-lg border border-(--neutral-300) px-3 font-dm text-[14px] outline-none focus:border-(--green-800)"
+      <div className="px-6 pb-8 space-y-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <StatsCard
+            title="Approvals required"
+            value={data ? String(data.requiredApprovals) : "—"}
+            change="Every active super admin"
+            changeType="positive"
+            icon={<Users className="h-4 w-4 text-muted-foreground" />}
           />
-          <input
-            type="number"
-            min={1}
-            value={points}
-            onChange={(e) => setPoints(e.target.value)}
-            placeholder="Points"
-            className="h-10 rounded-lg border border-(--neutral-300) px-3 font-dm text-[14px] outline-none focus:border-(--green-800)"
+          <StatsCard
+            title="Your remaining allowance"
+            value={me ? me.remaining.toLocaleString() : "—"}
+            change="Not renewable"
+            changeType="negative"
+            icon={<Wallet className="h-4 w-4 text-muted-foreground" />}
+          />
+          <StatsCard
+            title="Pending requests"
+            value={data ? String(data.requests.filter((r) => r.status === "PENDING").length) : "—"}
+            change="—"
+            changeType="positive"
+            icon={<ShieldCheck className="h-4 w-4 text-muted-foreground" />}
           />
         </div>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="Reason for this grant (required, permanently recorded)"
-          rows={2}
-          className="mt-3 w-full rounded-lg border border-(--neutral-300) px-3 py-2 font-dm text-[14px] outline-none focus:border-(--green-800)"
-        />
-        <button
-          type="button"
-          disabled={create.isPending || !targetUserId.trim() || !points || !note.trim()}
-          onClick={() => create.mutate()}
-          className="mt-3 rounded-lg bg-(--green-800) px-4 py-2 font-dm text-[14px] font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
-        >
-          {create.isPending ? "Raising…" : "Raise grant"}
-        </button>
-      </div>
 
-      {/* Requests */}
-      <DataTable
-        columns={columns}
-        data={(data?.requests ?? []) as unknown as Record<string, unknown>[]}
-        loading={isLoading}
-        emptyTitle="No grant requests yet"
-        emptyDescription="Points grants raised by a super admin appear here."
-      />
+        {/* Raise a grant */}
+        <div className="rounded-xl border border-(--neutral-200) bg-white p-5 dark:bg-(--dark-surface) dark:border-(--dark-border)">
+          <h2 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-1">
+            Raise a grant
+          </h2>
+          <p className="font-dm text-[13px] text-(--neutral-500) mb-4">
+            Points come out of your own lifetime allowance. It cannot be topped up from here.
+          </p>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_140px]">
+            <input
+              value={targetUserId}
+              onChange={(e) => setTargetUserId(e.target.value)}
+              placeholder="Customer user ID"
+              className="h-10 rounded-lg border border-(--neutral-300) px-3 font-dm text-[14px] outline-none focus:border-(--green-800)"
+            />
+            <input
+              type="number"
+              min={1}
+              value={points}
+              onChange={(e) => setPoints(e.target.value)}
+              placeholder="Points"
+              className="h-10 rounded-lg border border-(--neutral-300) px-3 font-dm text-[14px] outline-none focus:border-(--green-800)"
+            />
+          </div>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Reason for this grant (required, permanently recorded)"
+            rows={2}
+            className="mt-3 w-full rounded-lg border border-(--neutral-300) px-3 py-2 font-dm text-[14px] outline-none focus:border-(--green-800)"
+          />
+          <button
+            type="button"
+            disabled={create.isPending || !targetUserId.trim() || !points || !note.trim()}
+            onClick={() => create.mutate()}
+            className="mt-3 rounded-lg bg-(--green-800) px-4 py-2 font-dm text-[14px] font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
+          >
+            {create.isPending ? "Raising…" : "Raise grant"}
+          </button>
+        </div>
+
+        {/* Requests */}
+        <DataTable
+          columns={columns}
+          data={(data?.requests ?? []) as unknown as Record<string, unknown>[]}
+          loading={isLoading}
+          emptyTitle="No grant requests yet"
+          emptyDescription="Points grants raised by a super admin appear here."
+        />
+      </div>
     </div>
   );
 }

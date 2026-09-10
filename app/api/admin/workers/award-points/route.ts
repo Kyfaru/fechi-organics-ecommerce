@@ -3,7 +3,7 @@
  *
  * Enqueued by markPaymentSuccess() (and its in-store twin) the moment an order
  * is confirmed paid. Awards order points, resolves the joining/referral bonus,
- * evaluates badges, and tells the customer what they earned.
+ * and tells the customer what they earned.
  *
  * Every step is idempotent through the ledger's unique constraint, so a
  * replayed QStash delivery is harmless.
@@ -14,8 +14,6 @@ import { db } from "@/lib/db";
 import { verifyQstashRequest } from "@/lib/qstash";
 import { awardPointsForOrder } from "@/lib/points/award-order";
 import { processReferralActivation, attachReferral, referralOwnerForCode } from "@/lib/points/referrals";
-import { evaluateBadges } from "@/lib/points/evaluate-badges";
-import { getUserStats } from "@/lib/points/stats";
 import { getBalance, awardPoints } from "@/lib/points/ledger";
 import { sendSms, hasSmsConfig } from "@/lib/sms";
 import { combineLegacyPhone } from "@/lib/phone";
@@ -75,11 +73,7 @@ export async function POST(req: NextRequest) {
 
     const activation = await processReferralActivation({ userId, orderId, refType });
 
-    const stats = await getUserStats(userId);
-    const unlocked = await evaluateBadges(stats);
-
-    const badgePoints = unlocked.reduce((s, b) => s + b.points, 0);
-    const totalThisOrder = summary.points + badgePoints + couponPoints + activation.selfUnlockedPoints;
+    const totalThisOrder = summary.points + couponPoints + activation.selfUnlockedPoints;
 
     const balance = await getBalance(userId);
 
@@ -89,7 +83,6 @@ export async function POST(req: NextRequest) {
       lines.push(`Your ${activation.selfUnlockedPoints.toLocaleString()} welcome points are now unlocked.`);
     }
     if (couponPoints > 0) lines.push(`Coupon bonus: ${couponPoints.toLocaleString()} points.`);
-    if (badgePoints > 0) lines.push(`${unlocked.length} new achievement${unlocked.length === 1 ? "" : "s"} unlocked.`);
     lines.push(`Balance: ${balance.available.toLocaleString()} points.`);
 
     await db.inboxMessage.create({
@@ -116,7 +109,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      data: { ...summary, badgesUnlocked: unlocked.length, badgePoints, balance: balance.available },
+      data: { ...summary, balance: balance.available },
     });
   } catch (e) {
     reportError(e, { route: "POST /api/admin/workers/award-points", tags: { domain: "loyalty" } });

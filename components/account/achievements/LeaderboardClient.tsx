@@ -17,8 +17,6 @@ type Row = {
   displayName: string;
   image: string | null;
   points: number;
-  badgeCount: number;
-  level: number;
 };
 
 type LeaderboardData = {
@@ -27,8 +25,6 @@ type LeaderboardData = {
     rank: number | null;
     userCode: string;
     points: number;
-    badgeCount: number;
-    level: number;
     leaderboardPublic: boolean;
     inTopN: boolean;
   } | null;
@@ -100,7 +96,7 @@ export default function LeaderboardClient() {
           className="inline-flex items-center gap-1 text-sm font-medium text-[#15803D] hover:underline shrink-0 mt-2"
         >
           <Icon icon="lucide:arrow-left" width={15} />
-          Back to achievements
+          Back to rewards
         </Link>
       </div>
 
@@ -189,9 +185,6 @@ export default function LeaderboardClient() {
                 <p className="truncate text-sm font-semibold text-neutral-900">
                   {row.displayName}
                   {row.isSelf && <span className="ml-2 text-xs text-[#15803D]">You</span>}
-                </p>
-                <p className="text-xs text-neutral-400">
-                  Level {row.level} · {row.badgeCount} achievements
                 </p>
               </div>
 

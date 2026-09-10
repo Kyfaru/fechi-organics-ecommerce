@@ -21,8 +21,6 @@ dotenv.config({ path: ".env.local" });
 
 import { db } from "@/lib/db";
 import { awardPointsForOrder } from "@/lib/points/award-order";
-import { evaluateBadges } from "@/lib/points/evaluate-badges";
-import { getUserStats } from "@/lib/points/stats";
 import { processReferralActivation, attachReferral, referralOwnerForCode } from "@/lib/points/referrals";
 
 async function main() {
@@ -82,8 +80,6 @@ async function main() {
         await attachReferral({ userId: o.userId, code: o.promoCode, ignoreOrderId: o.id });
       }
       await processReferralActivation({ userId: o.userId, orderId: o.id, refType: o.refType });
-
-      await evaluateBadges(await getUserStats(o.userId));
 
       awarded++;
       console.log(`  ${o.orderNumber ?? o.id}: +${summary.points} points`);

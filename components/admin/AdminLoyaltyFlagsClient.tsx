@@ -186,13 +186,15 @@ export function AdminLoyaltyFlagsClient() {
         }
       />
 
-      <DataTable
-        columns={columns}
-        data={(data?.flags ?? []) as unknown as Record<string, unknown>[]}
-        loading={isLoading}
-        emptyTitle="Nothing flagged"
-        emptyDescription="Signups are clearing the duplicate-account check."
-      />
+      <div className="px-6 pb-8">
+        <DataTable
+          columns={columns}
+          data={(data?.flags ?? []) as unknown as Record<string, unknown>[]}
+          loading={isLoading}
+          emptyTitle="Nothing flagged"
+          emptyDescription="Signups are clearing the duplicate-account check."
+        />
+      </div>
     </div>
   );
 }

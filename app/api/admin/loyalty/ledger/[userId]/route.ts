@@ -21,7 +21,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ userId: str
 
     const { userId } = await ctx.params;
 
-    const [loyalty, entries, integrity, badges] = await Promise.all([
+    const [loyalty, entries, integrity] = await Promise.all([
       db.loyaltyPoints.findUnique({
         where: { userId },
         select: {
@@ -30,8 +30,6 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ userId: str
           lockedPoints: true,
           lifetimeEarned: true,
           lifetimeRedeemed: true,
-          level: true,
-          badgeCount: true,
           user: { select: { name: true, email: true } },
         },
       }),
@@ -53,12 +51,6 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ userId: str
         },
       }),
       verifyChain(userId),
-      db.userBadge.findMany({
-        where: { userId },
-        orderBy: { earnedAt: "desc" },
-        take: 100,
-        select: { badgeId: true, earnedAt: true, grantedByAdminProfileId: true },
-      }),
     ]);
 
     if (!loyalty) return Err.notFound("Loyalty account");
@@ -72,15 +64,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ userId: str
         lockedPoints: loyalty.lockedPoints,
         lifetimeEarned: loyalty.lifetimeEarned,
         lifetimeRedeemed: loyalty.lifetimeRedeemed,
-        level: loyalty.level,
-        badgeCount: loyalty.badgeCount,
         cashValueCents: loyalty.points * CENTS_PER_POINT,
       },
       // ok:false here means somebody edited the table directly. Investigate
       // before adjusting anything — the chain is the evidence.
       integrity,
       entries,
-      badges,
     });
   } catch (e) {
     reportError(e, { route: "GET /api/admin/loyalty/ledger/[userId]", tags: { domain: "loyalty" } });

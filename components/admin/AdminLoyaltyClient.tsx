@@ -44,8 +44,6 @@ type Member = {
   lockedPoints: number;
   lifetimeEarned: number;
   lifetimeRedeemed: number;
-  level: number;
-  badgeCount: number;
   updatedAt: string;
 };
 
@@ -89,13 +87,10 @@ type LedgerData = {
     lockedPoints: number;
     lifetimeEarned: number;
     lifetimeRedeemed: number;
-    level: number;
-    badgeCount: number;
     cashValueCents: number;
   };
   integrity: { ok: boolean; entries: number; reason?: string; brokenAtSeq?: number };
   entries: LedgerEntry[];
-  badges: { badgeId: string; earnedAt: string; grantedByAdminProfileId: string | null }[];
 };
 
 function kes(cents: number) {
@@ -111,7 +106,6 @@ const REASON_LABELS: Record<string, string> = {
   STREAK_4W: "4-week streak",
   STREAK_6M_WEEKLY: "6-month weekly streak",
   STREAK_6M_MONTHLY: "6-month streak",
-  BADGE_AWARD: "Achievement",
   SUPER_ADMIN_GRANT: "Super admin grant",
   REDEEM: "Redeemed at checkout",
   REDEEM_REVERSED: "Redemption reversed",
@@ -173,18 +167,6 @@ export function AdminLoyaltyClient() {
       },
     },
     {
-      key: "level",
-      label: "Level",
-      render: (_: unknown, row: Record<string, unknown>) => {
-        const m = row as unknown as Member;
-        return (
-          <span className="font-dm text-[13px] text-(--neutral-700) dark:text-(--dark-text)">
-            Lv {m.level} · {m.badgeCount} badges
-          </span>
-        );
-      },
-    },
-    {
       key: "lifetimeEarned",
       label: "Earned",
       render: (_: unknown, row: Record<string, unknown>) => (
@@ -242,49 +224,51 @@ export function AdminLoyaltyClient() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-        <StatsCard
-          title="Outstanding points"
-          value={data ? data.summary.outstandingPoints.toLocaleString() : "—"}
-          change={data ? `${kes(data.summary.outstandingLiabilityCents)} liability` : "—"}
-          changeType="negative"
-          icon={<Coins className="h-4 w-4 text-muted-foreground" />}
-        />
-        <StatsCard
-          title="Locked (unclaimed)"
-          value={data ? data.summary.lockedPoints.toLocaleString() : "—"}
-          change="Unlock at first paid order"
-          changeType="positive"
-          icon={<Lock className="h-4 w-4 text-muted-foreground" />}
-        />
-        <StatsCard
-          title="Points utilised"
-          value={data ? data.summary.pointsUtilised.toLocaleString() : "—"}
-          change={
-            data
-              ? `${kes(data.summary.pointsUtilisedValueCents)} · ${data.summary.ordersPaidWithPoints} orders`
-              : "—"
-          }
-          changeType="positive"
-          icon={<TrendingUp className="h-4 w-4 text-muted-foreground" />}
-        />
-        <StatsCard
-          title="Members"
-          value={data ? data.summary.members.toLocaleString() : "—"}
-          change={data ? `${data.summary.lifetimeEarned.toLocaleString()} earned all-time` : "—"}
-          changeType="positive"
-          icon={<ShieldCheck className="h-4 w-4 text-muted-foreground" />}
+      <div className="px-6 pb-8 space-y-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatsCard
+            title="Outstanding points"
+            value={data ? data.summary.outstandingPoints.toLocaleString() : "—"}
+            change={data ? `${kes(data.summary.outstandingLiabilityCents)} liability` : "—"}
+            changeType="negative"
+            icon={<Coins className="h-4 w-4 text-muted-foreground" />}
+          />
+          <StatsCard
+            title="Locked (unclaimed)"
+            value={data ? data.summary.lockedPoints.toLocaleString() : "—"}
+            change="Unlock at first paid order"
+            changeType="positive"
+            icon={<Lock className="h-4 w-4 text-muted-foreground" />}
+          />
+          <StatsCard
+            title="Points utilised"
+            value={data ? data.summary.pointsUtilised.toLocaleString() : "—"}
+            change={
+              data
+                ? `${kes(data.summary.pointsUtilisedValueCents)} · ${data.summary.ordersPaidWithPoints} orders`
+                : "—"
+            }
+            changeType="positive"
+            icon={<TrendingUp className="h-4 w-4 text-muted-foreground" />}
+          />
+          <StatsCard
+            title="Members"
+            value={data ? data.summary.members.toLocaleString() : "—"}
+            change={data ? `${data.summary.lifetimeEarned.toLocaleString()} earned all-time` : "—"}
+            changeType="positive"
+            icon={<ShieldCheck className="h-4 w-4 text-muted-foreground" />}
+          />
+        </div>
+
+        <DataTable
+          columns={columns}
+          data={(data?.members ?? []) as unknown as Record<string, unknown>[]}
+          loading={isLoading}
+          onRowClick={(row) => setActiveUserId((row as unknown as Member).userId)}
+          emptyTitle="No loyalty members yet"
+          emptyDescription="Balances appear here once customers start earning points."
         />
       </div>
-
-      <DataTable
-        columns={columns}
-        data={(data?.members ?? []) as unknown as Record<string, unknown>[]}
-        loading={isLoading}
-        onRowClick={(row) => setActiveUserId((row as unknown as Member).userId)}
-        emptyTitle="No loyalty members yet"
-        emptyDescription="Balances appear here once customers start earning points."
-      />
 
       <LedgerDrawer userId={activeUserId} onClose={() => setActiveUserId(null)} />
     </div>
@@ -334,7 +318,6 @@ function LedgerDrawer({ userId, onClose }: { userId: string | null; onClose: () 
               { label: "Balance", value: data.customer.points.toLocaleString() },
               { label: "Cash value", value: kes(data.customer.cashValueCents) },
               { label: "Locked", value: data.customer.lockedPoints.toLocaleString() },
-              { label: "Level", value: `${data.customer.level} · ${data.customer.badgeCount} badges` },
               { label: "Earned all-time", value: data.customer.lifetimeEarned.toLocaleString() },
               { label: "Spent", value: data.customer.lifetimeRedeemed.toLocaleString() },
             ].map(({ label, value }) => (

@@ -30,7 +30,6 @@ const TOC_ITEMS = [
   { id: "joining", label: "Joining & Welcome Points" },
   { id: "every-order", label: "Points on Every Order" },
   { id: "referrals", label: "Inviting Friends" },
-  { id: "achievements", label: "Achievements & Levels" },
   { id: "leaderboard", label: "The Leaderboard" },
   { id: "spending", label: "Spending Your Points" },
   { id: "limits", label: "Limits & Fair Use" },
@@ -142,7 +141,7 @@ function JourneyDiagram() {
     { icon: "mdi:account-plus-outline", title: "Join", detail: "Held welcome points if nobody referred you" },
     { icon: "mdi:shopping-outline", title: "Shop", detail: "Order as normal" },
     { icon: "mdi:cash-check", title: "Pay", detail: "Points land, welcome points unlock" },
-    { icon: "mdi:trophy-outline", title: "Unlock", detail: "Achievements and levels" },
+    { icon: "mdi:account-multiple-plus-outline", title: "Invite", detail: "Earn more when friends shop too" },
     { icon: "mdi:tag-heart-outline", title: "Spend", detail: "Points off your next order" },
   ];
 
@@ -301,7 +300,7 @@ function DesktopTOC({ activeId }: { activeId: string }) {
 
         <div className="mt-8 rounded-[12px] bg-[#f4fff3] border border-[#d4ebd0] p-4">
           <p className="text-[12px] text-[#40493c] font-body leading-relaxed">
-            See your own points and achievements.
+            See your own points and invite code.
           </p>
           <Link
             href="/account/achievements"
@@ -372,8 +371,8 @@ export function LoyaltyPointsContent() {
                 Fechi Points
               </h1>
               <p className="text-white/70 text-[16px] font-body max-w-[520px] leading-relaxed">
-                Earn points every time you shop with us, unlock achievements as you go, and spend
-                those points straight off the price of a future order.
+                Earn points every time you shop with us, and spend them straight off the price of a
+                future order.
               </p>
             </div>
 
@@ -428,8 +427,7 @@ export function LoyaltyPointsContent() {
                   <Link href="/account/achievements" className="text-[#27731e] font-semibold hover:underline">
                     rewards page
                   </Link>
-                  , along with every achievement you have unlocked and every point you have ever
-                  earned or spent.
+                  , along with every point you have ever earned or spent.
                 </HighlightBox>
               </SectionBody>
             </section>
@@ -568,31 +566,7 @@ export function LoyaltyPointsContent() {
 
             {/* 07 */}
             <section>
-              <SectionHeading number="07" title="Achievements & Levels" id="achievements" />
-              <SectionBody>
-                <p>
-                  Alongside points, you collect achievements for how much you have spent with us —
-                  both in total and in your single largest order. Every achievement is tied to a real
-                  payment; nothing is awarded for anything else.
-                </p>
-                <BulletList
-                  items={[
-                    "Achievements award points when you unlock them, on top of what you already earned on the orders that got you there.",
-                    "Your level is set by how many you have unlocked, not by your balance — so spending your points never costs you your level.",
-                    "Each one shows how close you are, so you always know what is within reach.",
-                    "A few are given by hand for things like attending an event. Those are recognition rather than points.",
-                  ]}
-                />
-                <p className="text-[14px] text-[#40493c]/80">
-                  The highest tiers are deliberately far more than any one person could reach. They are
-                  meant to be something to keep working toward, not a checklist to complete.
-                </p>
-              </SectionBody>
-            </section>
-
-            {/* 08 */}
-            <section>
-              <SectionHeading number="08" title="The Leaderboard" id="leaderboard" />
+              <SectionHeading number="07" title="The Leaderboard" id="leaderboard" />
               <SectionBody>
                 <p>
                   The leaderboard ranks customers by the points they have earned over time. Because
@@ -608,9 +582,9 @@ export function LoyaltyPointsContent() {
               </SectionBody>
             </section>
 
-            {/* 09 */}
+            {/* 08 */}
             <section>
-              <SectionHeading number="09" title="Spending Your Points" id="spending" />
+              <SectionHeading number="08" title="Spending Your Points" id="spending" />
               <SectionBody>
                 <p>Points are spent at the payment step, in the order summary:</p>
                 <BulletList
@@ -638,9 +612,9 @@ export function LoyaltyPointsContent() {
               </SectionBody>
             </section>
 
-            {/* 10 */}
+            {/* 09 */}
             <section>
-              <SectionHeading number="10" title="Limits & Fair Use" id="limits" />
+              <SectionHeading number="09" title="Limits & Fair Use" id="limits" />
               <SectionBody>
                 <p>A short list of things points cannot do, so there are no surprises:</p>
                 <BulletList
@@ -660,9 +634,9 @@ export function LoyaltyPointsContent() {
               </SectionBody>
             </section>
 
-            {/* 11 */}
+            {/* 10 */}
             <section>
-              <SectionHeading number="11" title="Refunds & Cancellations" id="refunds" />
+              <SectionHeading number="10" title="Refunds & Cancellations" id="refunds" />
               <SectionBody>
                 <BulletList
                   items={[
@@ -674,9 +648,9 @@ export function LoyaltyPointsContent() {
               </SectionBody>
             </section>
 
-            {/* 12 */}
+            {/* 11 */}
             <section>
-              <SectionHeading number="12" title="How We Keep Points Safe" id="safety" />
+              <SectionHeading number="11" title="How We Keep Points Safe" id="safety" />
               <SectionBody>
                 <p>
                   Your balance is not a number we can quietly edit. Every movement — earned, spent,
@@ -694,14 +668,13 @@ export function LoyaltyPointsContent() {
               </SectionBody>
             </section>
 
-            {/* 13 */}
+            {/* 12 */}
             <section>
-              <SectionHeading number="13" title="Changes & Contact" id="changes" />
+              <SectionHeading number="12" title="Changes & Contact" id="changes" />
               <SectionBody>
                 <p>
-                  We may change how points are earned in future — for example by adjusting a bonus or
-                  adding new achievements. Points you have already earned stay yours at the rate
-                  described here.
+                  We may change how points are earned in future — for example by adjusting a bonus.
+                  Points you have already earned stay yours at the rate described here.
                 </p>
                 <p>
                   This page sits alongside our{" "}
@@ -724,7 +697,7 @@ export function LoyaltyPointsContent() {
                   See what you have earned
                 </p>
                 <p className="text-white/60 text-[14px] font-body">
-                  Your balance, your achievements and your invite code, all in one place.
+                  Your balance and your invite code, all in one place.
                 </p>
               </div>
               <Link

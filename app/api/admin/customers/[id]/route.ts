@@ -47,8 +47,6 @@ export async function GET(
             points: true,
             lockedPoints: true,
             lifetimeEarned: true,
-            level: true,
-            badgeCount: true,
             userCode: true,
             tier: true,
             updatedAt: true,
