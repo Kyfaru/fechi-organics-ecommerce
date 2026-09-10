@@ -57,6 +57,7 @@ export function FaqPageClient({ faqs }: { faqs: Faq[] }) {
   }, [faqs, search]);
 
   const hasResults = groups.some(([, items]) => items.length > 0);
+  const hasAnyFaqs = faqs.length > 0;
 
   return (
     <>
@@ -110,24 +111,28 @@ export function FaqPageClient({ faqs }: { faqs: Faq[] }) {
       ══════════════════════════════════════════════════════ */}
       <section id="faqs" className="px-4 md:px-8 py-14 md:py-16 bg-[#f9fafb] dark:bg-neutral-950 transition-colors">
         <div className="max-w-[1100px] mx-auto">
-          <div className="relative mb-10 max-w-lg mx-auto">
-            <Icon
-              icon="mdi:magnify"
-              width={20}
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400"
-            />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search questions..."
-              className="w-full pl-11 pr-4 py-3.5 rounded-full border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-[15px] text-neutral-900 dark:text-white placeholder:text-neutral-400 outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] transition-colors"
-            />
-          </div>
+          {hasAnyFaqs && (
+            <div className="relative mb-10 max-w-lg mx-auto">
+              <Icon
+                icon="mdi:magnify"
+                width={20}
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400"
+              />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search questions..."
+                className="w-full pl-11 pr-4 py-3.5 rounded-full border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-[15px] text-neutral-900 dark:text-white placeholder:text-neutral-400 outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] transition-colors"
+              />
+            </div>
+          )}
 
           {!hasResults && (
             <div className="text-center py-16 text-neutral-400">
-              <p className="text-lg">No questions match &quot;{search}&quot;.</p>
+              <p className="text-lg">
+                {hasAnyFaqs ? <>No questions match &quot;{search}&quot;.</> : "No FAQs available right now — check back soon."}
+              </p>
             </div>
           )}
 
