@@ -4,7 +4,7 @@ import { BlogClient } from "@/components/blog/BlogClient";
 import { getPublishedPosts } from "@/lib/queries/blog";
 
 export const metadata = {
-  title: "Blog | Fechi Organics",
+  title: "Blog",
   description: "Tips, stories & natural living from the Fechi Organics team.",
 };
 

@@ -4,7 +4,7 @@ import { Footer } from "@/components/layout/Footer";
 import { TermsContent } from "@/components/legal/TermsContent";
 
 export const metadata: Metadata = {
-  title: "Terms & Conditions | Fechi Organics",
+  title: "Terms & Conditions",
   description:
     "The terms that govern your use of the Fechi Organics website and purchase of our products, in accordance with Kenyan law.",
 };

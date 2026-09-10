@@ -170,7 +170,14 @@ export function ProductDetailClient({ product }: Props) {
   const qtyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Derived values ─────────────────────────────────────────────────────────
+<<<<<<< Updated upstream
   const hasDiscount = !!product.compareAtPriceKes;
+=======
+  // A variant's own price (when set) overrides the product's base price —
+  // 0/null on the variant means "inherit".
+  const effectivePriceKes = selectedVariant?.priceKes || product.priceKes;
+  const hasDiscount = !!product.compareAtPriceKes && product.compareAtPriceKes > product.priceKes;
+>>>>>>> Stashed changes
   const pct = hasDiscount
     ? discountPct(product.priceKes, product.compareAtPriceKes!)
     : null;
@@ -311,6 +318,7 @@ export function ProductDetailClient({ product }: Props) {
     cartMutation.mutate();
   }
 
+<<<<<<< Updated upstream
   // ── Related products query ─────────────────────────────────────────────────
   const { data: relatedData, isLoading: relatedLoading } =
     useQuery<RelatedResponse>({
@@ -325,6 +333,39 @@ export function ProductDetailClient({ product }: Props) {
   // Filter out the current product from recommendations
   const relatedProducts =
     relatedData?.data?.items?.filter((p) => p.slug !== product.slug) ?? [];
+=======
+  // ── Other Products query — same category, falling back to best-sellers
+  // storewide when the category has too few other items ──
+  const { data: relatedItems, isLoading: relatedLoading, isError: relatedError } =
+    useQuery<ProductCardType[]>({
+      queryKey: ["otherProducts", product.categorySlug, product.slug],
+      queryFn: async () => {
+        const res = await fetch(`/api/storefront/products?category=${product.categorySlug}&limit=20`);
+        const json: RelatedResponse = await res.json();
+        if (!res.ok || json.ok !== true) throw new Error("Failed to load related products");
+        const items = json.data.items.filter((p) => p.slug !== product.slug);
+        if (items.length >= 3) return items;
+
+        // Not enough same-category items — top up with best-sellers storewide.
+        const fallbackRes = await fetch(`/api/storefront/products?sort=best&limit=20`);
+        const fallbackJson: RelatedResponse = await fallbackRes.json();
+        if (!fallbackRes.ok || fallbackJson.ok !== true) return items;
+        const seen = new Set(items.map((p) => p.id));
+        for (const p of fallbackJson.data.items) {
+          if (p.slug !== product.slug && !seen.has(p.id)) {
+            items.push(p);
+            seen.add(p.id);
+          }
+        }
+        return items;
+      },
+      staleTime: 60_000,
+    });
+
+  // Randomize and cap at 5 — re-shuffles only when the fetched pool changes,
+  // not on unrelated re-renders.
+  const otherProducts = useMemo(() => shuffle(relatedItems ?? []).slice(0, 5), [relatedItems]);
+>>>>>>> Stashed changes
 
   // ── Scroll tracking for "Complete Your Routine" ───────────────────────────
   useEffect(() => {
@@ -787,6 +828,7 @@ export function ProductDetailClient({ product }: Props) {
                     <SkeletonCard />
                   </div>
                 ))
+<<<<<<< Updated upstream
               : relatedProducts.length > 0
                 ? relatedProducts.map((p) => (
                     <div key={p.id} className="flex-shrink-0 w-[280px]">
@@ -796,8 +838,25 @@ export function ProductDetailClient({ product }: Props) {
                 : (
                   <p className="font-body text-[14px]" style={{ color: "#40493c" }}>
                     No related products found.
+=======
+              : relatedError
+                ? (
+                  <p className="font-body text-[14px]" style={{ color: "#40493c" }}>
+                    Couldn&apos;t load other products right now.
+>>>>>>> Stashed changes
                   </p>
-                )}
+                )
+                : otherProducts.length > 0
+                  ? otherProducts.map((p) => (
+                      <div key={p.id} className="flex-shrink-0 w-[280px]">
+                        <ProductCard product={p} />
+                      </div>
+                    ))
+                  : (
+                    <p className="font-body text-[14px]" style={{ color: "#40493c" }}>
+                      No other products found.
+                    </p>
+                  )}
           </div>
         </div>
       </div>

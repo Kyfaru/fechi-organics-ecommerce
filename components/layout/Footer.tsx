@@ -72,7 +72,6 @@ function InlineCurrencySwitcher() {
         aria-expanded={open}
       >
         <span className="font-semibold text-white">{current.symbol}</span>
-        <span>{current.code}</span>
         <Icon
           icon={open ? "mdi:chevron-down" : "mdi:chevron-up"}
           width={13}

@@ -146,7 +146,7 @@ export function ProductCard({ product }: Props) {
     cartMutation.mutate();
   }
 
-  const hasDiscount = !!product.compareAtPriceKes;
+  const hasDiscount = !!product.compareAtPriceKes && product.compareAtPriceKes > product.priceKes;
   const discountPct = hasDiscount
     ? Math.round((1 - product.priceKes / product.compareAtPriceKes!) * 100)
     : 0;
