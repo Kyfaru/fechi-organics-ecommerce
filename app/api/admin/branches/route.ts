@@ -1,23 +1,33 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { headers } from 'next/headers'
-import { connection } from 'next/server'
-import { auth } from '@/lib/auth'
-import { db } from '@/lib/db'
+import { NextRequest } from "next/server"
+import { connection } from "next/server"
+import { db } from "@/lib/db"
+import { ok, Err } from "@/lib/api"
+import { requirePermission } from "@/lib/require-permission"
+import { reportError } from "@/lib/observability"
 
-/** GET /api/admin/branches — returns all active branches for staff assignment. */
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   await connection()
-
-  const session = await auth.api.getSession({ headers: await headers() })
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  try {
+    const denied = await requirePermission(req, { branches: ["view"] })
+    if (denied) return denied
+    const branches = await db.branch.findMany({
+      orderBy: { name: "asc" },
+      select: {
+        id: true, name: true, county: true, phone: true, isActive: true, mpesaType: true, shortcode: true,
+        // Zoho connection status only — never the org's encrypted credential columns.
+        zohoOrganizationId: true, zohoLocationId: true, zohoWarehouseId: true,
+        zohoOrganization: { select: { id: true, name: true } },
+      },
+    })
+    const shaped = branches.map((b) => ({
+      ...b,
+      zohoConnected: Boolean(b.zohoOrganizationId),
+      zohoOrganizationName: b.zohoOrganization?.name ?? null,
+    }))
+    return ok({ branches: shaped })
+  } catch (e) {
+    reportError(e, { route: "GET /api/admin/branches", tags: { domain: "branches" } })
+    console.error("[admin/branches] GET error", e)
+    return Err.internal()
   }
-
-  const branches = await db.branch.findMany({
-    where: { isActive: true },
-    select: { id: true, name: true },
-    orderBy: { name: 'asc' },
-  })
-
-  return NextResponse.json({ branches })
 }

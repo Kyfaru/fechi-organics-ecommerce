@@ -5,17 +5,20 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Icon } from "@iconify/react";
+import { AnimatePresence, motion } from "framer-motion";
 import type { Value as PhoneValue } from "react-phone-number-input";
 import { Navbar } from "@/components/layout/Navbar";
 import { StepIndicator } from "@/components/checkout/StepIndicator";
-import PhoneInput from "@/components/auth/PhoneInput";
+import PhoneInput from "@/components/ui/PhoneInput";
 import { KENYA_COUNTIES } from "@/lib/kenya-counties";
 import { toast } from "@/lib/toast";
 import { useCurrency } from "@/app/providers";
+import { CHECKOUT_FLOW_FLAG_KEY } from "@/lib/checkout-flow";
 
 type DeliveryMode = "DELIVERY" | "PICKUP";
 type Country = { code: string; name: string; flag: string };
 type Zone = { id: string; name: string; deliveryFeeKes: number; branchId: string | null };
+type Branch = { id: string; cardEligible: boolean };
 type StateOption = { code: string; name: string };
 type CartItem = { productId: string; name: string; quantity: number; lineTotalKes: number; primaryImageUrl?: string };
 type CartResponse = { ok: boolean; data: { items: CartItem[]; subtotalKes: number; itemCount: number } };
@@ -23,6 +26,19 @@ type SelectOption = { value: string; label: string; icon?: string };
 
 type Props = {
   user: { fullName: string; email: string; phone: string; country: string };
+};
+
+const MODE_COPY: Record<DeliveryMode, { heading: string; description: string; icon: string }> = {
+  DELIVERY: {
+    heading: "Home Delivery Details",
+    description: "We'll bring your order straight to your location.",
+    icon: "mdi:truck-delivery-outline",
+  },
+  PICKUP: {
+    heading: "Store Pickup Details",
+    description: "Collect your order from one of our store locations.",
+    icon: "mdi:store-outline",
+  },
 };
 
 const PICKUP_STORES = [
@@ -171,18 +187,30 @@ function SelectDropdown({
 export function DeliveryClient({ user }: Props) {
   const router = useRouter();
   const { format } = useCurrency();
+
+  // Only reachable via the cart's "Place Order" button (which sets this
+  // flag) — typing/bookmarking /delivery directly sends you back to /cart.
+  const [flowChecked, setFlowChecked] = useState(false);
+  useEffect(() => {
+    window.setTimeout(() => {
+      if (!sessionStorage.getItem(CHECKOUT_FLOW_FLAG_KEY)) {
+        router.replace("/cart");
+        return;
+      }
+      setFlowChecked(true);
+    }, 0);
+  }, [router]);
+
   const initialName = splitName(user.fullName);
   const [mode, setMode] = useState<DeliveryMode>("DELIVERY");
   const [firstName, setFirstName] = useState(initialName.firstName);
   const [lastName, setLastName] = useState(initialName.lastName);
   const [email, setEmail] = useState(user.email);
-  const [phone, setPhone] = useState<PhoneValue | undefined>(() => {
-    const p = user.phone;
-    if (!p) return undefined;
-    if (p.startsWith("+")) return p as PhoneValue;
-    if (p.startsWith("0")) return `+254${p.slice(1)}` as PhoneValue;
-    return p as PhoneValue;
-  });
+  // user.phone is already a properly combined E.164 value (phone + phoneCode
+  // joined server-side via lib/phone.ts combineLegacyPhone — see app/delivery/page.tsx).
+  const [phone, setPhone] = useState<PhoneValue | undefined>(
+    user.phone && user.phone.startsWith("+") ? (user.phone as PhoneValue) : undefined
+  );
 
   // Always default to Kenya — user's stored country may be a name not a code
   const [country, setCountry] = useState("KE");
@@ -261,6 +289,13 @@ export function DeliveryClient({ user }: Props) {
     queryKey: ["cart"],
     queryFn: () => fetch("/api/cart").then((r) => r.json()),
     staleTime: 0,
+    refetchOnMount: "always",
+  });
+
+  const branchesQuery = useQuery<{ ok: boolean; data: { branches: Branch[] } }>({
+    queryKey: ["branches"],
+    queryFn: () => fetch("/api/branches").then((r) => r.json()),
+    staleTime: 24 * 60 * 60 * 1000,
   });
 
   // ---------------------------------------------------------------------------
@@ -275,18 +310,28 @@ export function DeliveryClient({ user }: Props) {
   const subtotalKes = cartQuery.data?.data?.subtotalKes ?? 0;
   const discountKes = promoStatus === "valid" ? discountAmountKes : 0;
   const totalKes = subtotalKes + feeKes - discountKes;
+  const branches = branchesQuery.data?.data?.branches ?? [];
+  const selectedBranchId = mode === "PICKUP" ? selectedStore.branchId : (selectedZone?.branchId ?? null);
+  const selectedBranchCardEligible = branches.find((b) => b.id === selectedBranchId)?.cardEligible ?? false;
+  // Card is only offered for international orders or Nairobi/Nakuru branch locations —
+  // mirrors lib/payments/card-eligibility.ts, which is the authoritative server-side check.
+  const isCardEligible = !isKenya || selectedBranchCardEligible;
 
   // ---------------------------------------------------------------------------
   // Validation errors (computed, only surfaced when submitted)
   // ---------------------------------------------------------------------------
   const errors = useMemo(() => {
     const e: Record<string, string> = {};
+    if (!firstName.trim()) e.firstName = "Please enter your first name";
+    if (!lastName.trim()) e.lastName = "Please enter your last name";
+    if (!email.trim()) e.email = "Please enter your email address";
+    else if (!/^\S+@\S+\.\S+$/.test(email.trim())) e.email = "Please enter a valid email address";
+    if (!phone) e.phone = "Please enter your phone number";
     if (mode === "DELIVERY") {
       if (isKenya) {
         if (!county) e.county = "Please select your county";
         else if (noZones) e.zone = "No delivery zones available for this county — contact the store or pick another county";
         else if (!zoneId) e.zone = "Please select a delivery zone";
-        if (!address.trim()) e.address = "Please enter your town, estate, or building";
       } else {
         if (!state && !stateText.trim()) e.state = "Please select or enter your state / province";
         if (!address.trim()) e.address = "Please enter your address";
@@ -294,7 +339,7 @@ export function DeliveryClient({ user }: Props) {
       }
     }
     return e;
-  }, [mode, isKenya, county, noZones, zoneId, address, state, stateText, postalCode]);
+  }, [firstName, lastName, email, phone, mode, isKenya, county, noZones, zoneId, address, state, stateText, postalCode]);
 
   // ---------------------------------------------------------------------------
   // Promo handlers
@@ -359,8 +404,14 @@ export function DeliveryClient({ user }: Props) {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setSubmitted(true);
-    if (!firstName.trim() || !lastName.trim() || !email.trim() || !phone) return;
-    if (mode === "DELIVERY" && Object.keys(errors).length > 0) return;
+    if (!firstName.trim() || !lastName.trim() || !email.trim() || !phone) {
+      toast.error("Please fill in your first name, last name, email, and phone number.");
+      return;
+    }
+    if (Object.keys(errors).length > 0) {
+      toast.error("Please fix the highlighted fields before continuing.");
+      return;
+    }
     if (pricingQuery.isFetching) return;
 
     setSubmitting(true);
@@ -384,6 +435,7 @@ export function DeliveryClient({ user }: Props) {
         deliveryKes: feeKes,
         deliveryFeeLabel: feeLabel,
         promoCode: promoCode.trim().toUpperCase() || null,
+        isCardEligible,
       };
       sessionStorage.setItem("fechi_delivery", JSON.stringify(deliveryData));
       capture("delivery_form_completed", { country, mode, feeKes });
@@ -409,9 +461,19 @@ export function DeliveryClient({ user }: Props) {
   // ---------------------------------------------------------------------------
   // JSX
   // ---------------------------------------------------------------------------
+  if (!flowChecked) {
+    return (
+      <div className="min-h-screen bg-[#f8f8f7] dark:bg-gray-950 flex items-center justify-center">
+        <Icon icon="mdi:loading" width={30} className="animate-spin text-[#27731e]" />
+      </div>
+    );
+  }
+
   return (
+    <>
+    <Navbar />
     <div className="min-h-screen bg-[#f8f8f7] dark:bg-gray-950">
-      <Navbar />
+      
       <main className="mx-auto w-full max-w-[1180px] px-4 py-10 md:py-14">
         <div className="mb-8"><StepIndicator step={2} /></div>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_430px] lg:items-start">
@@ -431,18 +493,37 @@ export function DeliveryClient({ user }: Props) {
               ))}
             </div>
 
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={mode}
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 4 }}
+                transition={{ duration: 0.18 }}
+                className="mb-4 flex items-center gap-2.5"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e8f3e6] text-[#0b6b13] dark:bg-[#0b6b13]/20">
+                  <Icon icon={MODE_COPY[mode].icon} width={18} />
+                </span>
+                <div>
+                  <p className="text-[14px] font-bold text-[#1a1c1c] dark:text-white">{MODE_COPY[mode].heading}</p>
+                  <p className="text-[12px] text-[#6b7568] dark:text-gray-400">{MODE_COPY[mode].description}</p>
+                </div>
+              </motion.div>
+            </AnimatePresence>
+
             <form id="delivery-details-form" onSubmit={handleSubmit} className="rounded-[12px] border border-[#dce4d8] bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-900 md:p-8">
               {/* Contact fields */}
               <div className="grid gap-5 sm:grid-cols-2">
-                <Field label="First Name">
-                  <input className={inputNormal} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Jane" />
+                <Field label="First Name" error={showErr("firstName")}>
+                  <input className={inputCls(!!showErr("firstName"))} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Jane" />
                 </Field>
-                <Field label="Last Name">
-                  <input className={inputNormal} value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="e.g. Doe" />
+                <Field label="Last Name" error={showErr("lastName")}>
+                  <input className={inputCls(!!showErr("lastName"))} value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="e.g. Doe" />
                 </Field>
-                <PhoneInput label="Phone Number" value={phone} onChange={setPhone} />
-                <Field label="Email Address">
-                  <input type="email" className={inputNormal} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" />
+                <PhoneInput label="Phone Number" value={phone} onChange={setPhone} error={showErr("phone")} />
+                <Field label="Email Address" error={showErr("email")}>
+                  <input type="email" className={inputCls(!!showErr("email"))} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" />
                 </Field>
               </div>
 
@@ -516,15 +597,16 @@ export function DeliveryClient({ user }: Props) {
                         disabled={!county || noZones}
                         loading={zonesQuery.isLoading && Boolean(county)}
                         hasError={!!showErr("zone")}
+                        searchable
                       />
                     </Field>
                   )}
 
                   {/* Town / Estate / Building (Kenya) or Address (International) */}
                   {isKenya ? (
-                    <Field label="Town / Estate / Building" error={showErr("address")}>
+                    <Field label="Town / Estate / Building (Optional)">
                       <input
-                        className={inputCls(!!showErr("address"))}
+                        className={inputNormal}
                         value={address}
                         onChange={(e) => setAddress(e.target.value)}
                         placeholder={!zoneId ? "Select a delivery zone first" : "e.g. Westlands, The Mirage"}
@@ -669,6 +751,7 @@ export function DeliveryClient({ user }: Props) {
         </div>
       </main>
     </div>
+    </>
   );
 }
 

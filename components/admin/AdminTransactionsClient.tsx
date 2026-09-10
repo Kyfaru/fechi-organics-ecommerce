@@ -6,11 +6,12 @@ import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { SkeletonStatCard, SkeletonChart } from "@/components/admin/ui/Skeleton";
-import DownloadButton from "@/components/ui/DownloadButton";
-import { ProgressMetricCard } from "@/components/ui/progress-metric-card";
+import { Download } from "lucide-react";
 import { DonutChart, type DonutChartSegment } from "@/components/ui/donut-chart";
 import { VisxBarChart } from "@/components/ui/bar-chart-visx";
-import { toSeriesPoints } from "@/lib/chart-transforms";
+import { ChannelStatCard } from "@/components/ui/channel-stat-card";
+import { StatSetSlider } from "@/components/ui/stat-set-slider";
+import { ExportModal } from "@/components/admin/exports/ExportModal";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -28,6 +29,7 @@ type AdminTransaction = {
   status: TxStatus;
   mpesaReceiptNumber: string | null;
   failureReason: string | null;
+  mpesaGatewayUsed: "DARAJA" | "KCB_BUNI" | null;
   createdAt: string;
   order: {
     id: string;
@@ -45,6 +47,11 @@ type ApiResponse = {
       total: number;
       totalPages: number;
     };
+    stats: {
+      totalRevenue: number;
+      pending: number;
+      totalTransactions: number;
+    };
   };
 };
 
@@ -56,6 +63,13 @@ function formatKes(cents: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+function formatKesCompact(cents: number) {
+  const v = cents / 100;
+  if (v >= 1_000_000) return `KES ${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `KES ${(v / 1_000).toFixed(1)}K`;
+  return `KES ${v.toLocaleString()}`;
 }
 
 function shortId(id: string) {
@@ -139,30 +153,13 @@ function buildProviderData(transactions: AdminTransaction[], filter: PieFilter) 
 }
 
 // ---------------------------------------------------------------------------
-// Export handler — triggers CSV download from server
-// Used by DownloadButton via onDownload prop
-// ---------------------------------------------------------------------------
-async function handleExportCsv(): Promise<void> {
-  const res = await fetch("/api/admin/finance/export", { method: "POST" });
-  if (!res.ok) {
-    console.error("[finance/export] failed:", res.status);
-    throw new Error(`Export failed: ${res.status}`);
-  }
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `transactions-${Date.now()}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 export function AdminTransactionsClient() {
   // Filter state for the payment methods pie chart (F4)
   const [pieFilter, setPieFilter] = useState<PieFilter>("SUCCESSFUL");
+  const [exportOpen, setExportOpen] = useState(false);
+  const [statSet, setStatSet] = useState(0);
 
   const { data, isLoading } = useQuery<ApiResponse>({
     queryKey: ["admin-finance"],
@@ -173,13 +170,6 @@ export function AdminTransactionsClient() {
   });
 
   const transactions = data?.data?.transactions ?? [];
-  const total = data?.data?.pagination?.total ?? 0;
-
-  // Derived stats — computed from the fetched page.
-  // For fully accurate totals, the API would need to return aggregate fields.
-  const successTxns = transactions.filter((t) => t.status === "SUCCESS");
-  const pendingTxns = transactions.filter((t) => t.status === "PENDING");
-  const totalRevenue = successTxns.reduce((s, t) => s + t.amount, 0);
 
   const monthlyRevenue = buildMonthlyRevenue(transactions);
 
@@ -257,6 +247,20 @@ export function AdminTransactionsClient() {
       },
     },
     {
+      key: "mpesaGatewayUsed",
+      label: "Route",
+      render: (_v: unknown, row: Record<string, unknown>) => {
+        const gateway = row.mpesaGatewayUsed as "DARAJA" | "KCB_BUNI" | null;
+        if (!gateway) return <span className="text-(--neutral-400)">—</span>;
+        const label = gateway === "KCB_BUNI" ? "KCB Buni" : "Daraja";
+        return (
+          <span className="inline-flex items-center rounded-full px-[10px] h-6 bg-(--info)/10 text-(--info) font-dm text-[12px] font-medium">
+            {label}
+          </span>
+        );
+      },
+    },
+    {
       key: "status",
       label: "Status",
       render: (_v: unknown, row: Record<string, unknown>) => {
@@ -283,66 +287,56 @@ export function AdminTransactionsClient() {
     { id: "CANCELLED", label: "Cancelled" },
   ];
 
+  const statSet1 = (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <ChannelStatCard title="Total Revenue" metric="revenue" scope="total" accent="emerald" valueFormatter={formatKesCompact} />
+      <ChannelStatCard title="Website Revenue" metric="revenue" scope="website" accent="blue" valueFormatter={formatKesCompact} />
+      <ChannelStatCard title="Total Transactions" metric="transactions" accent="violet" valueFormatter={(v) => v.toLocaleString()} />
+    </div>
+  );
+
+  const statSet2 = (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <ChannelStatCard title="Home Delivery Revenue" metric="revenue" scope="home-delivery" accent="amber" valueFormatter={formatKesCompact} />
+      <ChannelStatCard title="Store Pickup Revenue" metric="revenue" scope="store-pickup" accent="rose" valueFormatter={formatKesCompact} />
+      <ChannelStatCard title="Instore Revenue" metric="revenue" scope="instore" accent="neutral" valueFormatter={formatKesCompact} />
+    </div>
+  );
+
   return (
     <div>
       <PageHeader
         title="Finance"
         description="Revenue, transactions and payment records"
-        action={<DownloadButton onDownload={handleExportCsv} label="Export CSV" />}
+        action={
+          <button
+            onClick={() => setExportOpen(true)}
+            className="h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center gap-2 transition-colors"
+          >
+            <Download size={14} /> Export
+          </button>
+        }
       />
 
-      <div className="px-6 pb-8 space-y-6">
-        {/* ── Stat cards ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {isLoading ? (
-            Array.from({ length: 4 }).map((_, i) => <SkeletonStatCard key={i} />)
-          ) : (
-            <>
-              <ProgressMetricCard
-                title="Total Revenue"
-                value={totalRevenue}
-                change={2.4}
-                changeLabel="vs last month"
-                accent="emerald"
-                valueFormatter={(v) => `KES ${(v / 100).toLocaleString()}`}
-                series={monthlyRevenue.length > 0 ? [{ name: "Revenue", data: toSeriesPoints(monthlyRevenue) }] : []}
-              />
-              <ProgressMetricCard
-                title="Total Transactions"
-                value={total}
-                target={500}
-                change={1.8}
-                changeLabel="vs last month"
-                accent="blue"
-                series={[]}
-              />
-              <ProgressMetricCard
-                title="Pending"
-                value={pendingTxns.length}
-                change={-2.1}
-                changeLabel="vs last month"
-                accent="amber"
-                series={[]}
-              />
-              <ProgressMetricCard
-                title="Refunds"
-                value={0}
-                change={0}
-                changeLabel="vs last month"
-                accent="rose"
-                series={[]}
-              />
-            </>
-          )}
-        </div>
+      <ExportModal resource="finance" open={exportOpen} onClose={() => setExportOpen(false)} />
 
-        {/* ── Charts row ── */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {/* Monthly revenue bar chart — 2/3 */}
+      <div className="px-6 pb-8 space-y-6">
+        {/* ── Stat cards — two transitioning sets ── */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => <SkeletonStatCard key={i} />)}
+          </div>
+        ) : (
+          <StatSetSlider sets={[statSet1, statSet2]} index={statSet} onChange={setStatSet} />
+        )}
+
+        {/* ── Charts row — 2-column ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Monthly revenue bar chart */}
           {isLoading ? (
-            <div className="xl:col-span-2"><SkeletonChart /></div>
+            <SkeletonChart />
           ) : (
-            <div className="xl:col-span-2 bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+            <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
               <h2 className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-1">
                 Monthly Revenue
               </h2>
@@ -358,7 +352,7 @@ export function AdminTransactionsClient() {
             </div>
           )}
 
-          {/* Payment methods donut with filter toggles — 1/3 (F4) */}
+          {/* Payment methods donut with filter toggles (F4) */}
           {isLoading ? (
             <SkeletonChart />
           ) : (

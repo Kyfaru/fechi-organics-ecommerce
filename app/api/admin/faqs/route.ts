@@ -1,18 +1,19 @@
 import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
-import { connection } from "next/server";
+import { connection, NextRequest } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 /** GET /api/admin/faqs */
-export async function GET() {
+export async function GET(req: NextRequest) {
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { content: ["view"] });
+  if (denied) return denied;
 
   try {
     const faqs = await db.faq.findMany({
@@ -21,19 +22,19 @@ export async function GET() {
     return ok(faqs);
   } catch (e) {
     console.error("[faqs/GET]", e);
+    reportError(e, { route: "GET /api/admin/faqs" });
     return Err.internal();
   }
 }
 
 /** POST /api/admin/faqs — create FAQ */
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { content: ["create"] });
+  if (denied) return denied;
 
   let body: { question: string; answer: string; group?: string; order?: number; status?: string };
   try {
@@ -46,19 +47,25 @@ export async function POST(req: Request) {
   if (!body.answer?.trim()) return Err.validation("Answer is required");
 
   try {
-    const faq = await db.faq.create({
-      data: {
-        question: body.question.trim(),
-        answer: body.answer.trim(),
-        group: body.group ?? "General",
-        order: body.order ?? 0,
-        status: body.status ?? "published",
-      },
-    });
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return Err.forbidden();
+
+    const payload = {
+      kind: "faq", question: body.question.trim(), answer: body.answer.trim(),
+      group: body.group ?? "General", order: body.order ?? 0, status: body.status ?? "published",
+    };
+    const outcome = await requireApprovalOrProceed(ctx, "content", "create", payload);
+    if (!outcome.proceed) return Approval.queued(outcome.requestId);
+
+    const faq = await approvalExecutors["content:create"](payload, null) as
+      Awaited<ReturnType<typeof db.faq.create>>;
+
     console.info(`[faqs/POST] Created FAQ: ${faq.id}`);
+    logActivity(ctx.id, "Added FAQ", "faq", faq.id, req);
     return created(faq);
   } catch (e) {
     console.error("[faqs/POST]", e);
+    reportError(e, { route: "POST /api/admin/faqs" });
     return Err.internal();
   }
 }

@@ -50,7 +50,7 @@ These are updated via the admin panel or direct DB update. The seed populates th
 
 | Environment | Base URL |
 |-------------|---------|
-| Sandbox | `https://uat.buni.kcbgroup.com` |
+| Sandbox | `https://api.buni.kcbgroup.com` |
 | Production | Contact KCB Buni support for the production base URL |
 
 ## Dispatch

@@ -5,13 +5,17 @@ import { auth } from "@/lib/auth";
 import { resolveCart, getCartSummary } from "@/lib/cart";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
-const UpdateSchema = z.object({ quantity: z.number().int().min(0).max(99) });
+const UpdateSchema = z.object({ quantity: z.number().int().min(0).max(99) }).strict();
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ productId: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const { productId } = await params;
@@ -37,6 +41,7 @@ export async function PATCH(
     return ok(summary);
   } catch (e) {
     console.error("[cart/items/[productId]] PATCH error", e);
+    reportError(e, { route: "PATCH /api/cart/items/[productId]" });
     return Err.internal();
   }
 }
@@ -45,6 +50,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ productId: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const { productId } = await params;
@@ -59,6 +66,7 @@ export async function DELETE(
     return ok(summary);
   } catch (e) {
     console.error("[cart/items/[productId]] DELETE error", e);
+    reportError(e, { route: "DELETE /api/cart/items/[productId]" });
     return Err.internal();
   }
 }

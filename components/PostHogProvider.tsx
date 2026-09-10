@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useSession } from "@/lib/auth-client";
 import { initPostHog, posthog } from "@/lib/posthog";
+import { UTM_COOKIE_NAME } from "@/lib/attribution";
 
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -23,6 +24,18 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
     lastUrl.current = url;
     posthog.capture("$pageview", { $current_url: window.location.href });
   }, [pathname, searchParams]);
+
+  // Capture UTM params on landing — last-touch attribution, 30-day cookie,
+  // stamped onto cart/order at write time (see lib/attribution.ts).
+  useEffect(() => {
+    const source = searchParams.get("utm_source");
+    if (!source) return;
+    const medium = searchParams.get("utm_medium");
+    const campaign = searchParams.get("utm_campaign");
+    const value = JSON.stringify({ s: source, m: medium, c: campaign });
+    const maxAge = 30 * 24 * 60 * 60;
+    document.cookie = `${UTM_COOKIE_NAME}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}; SameSite=Lax`;
+  }, [searchParams]);
 
   // Track browser back/forward via popstate
   useEffect(() => {

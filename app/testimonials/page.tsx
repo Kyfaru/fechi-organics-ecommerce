@@ -5,7 +5,7 @@ import { TestimonialsGrid } from "@/components/testimonials/TestimonialsGrid";
 import { getTestimonialsPaginated } from "@/lib/queries/testimonials";
 
 export const metadata = {
-  title: "Testimonials",
+  title: "Testimonials | Fechi Organics",
   description: "Real results from real customers — before & after stories from the Fechi Organics community.",
 };
 

@@ -9,19 +9,21 @@
 
 import { ok, Err } from "@/lib/api";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
 import { headers } from "next/headers";
 import { connection } from "next/server";
+import { NextRequest } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requireStaffSession, loadCallerContext } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
+import { logActivity } from "@/lib/admin-activity";
 
-export async function PATCH(req: Request) {
+export async function PATCH(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (!user) return Err.authRequired();
-  if (user.role !== "admin") return Err.forbidden();
+  const denied = await requireStaffSession(req);
+  if (denied) return denied;
 
   let body: Record<string, unknown>;
   try {
@@ -59,6 +61,9 @@ export async function PATCH(req: Request) {
       return Err.validation("Current password is incorrect.");
     }
 
+    const ctx = await loadCallerContext();
+    if (!ctx.denied) logActivity(ctx.id, "Changed own password", "profile", ctx.id, req, undefined, "WARNING");
+
     return ok({ message: "Password updated successfully." });
   } catch (err) {
     console.error("[PATCH /api/admin/profile/password]", err);
@@ -67,6 +72,7 @@ export async function PATCH(req: Request) {
     if (msg.toLowerCase().includes("password")) {
       return Err.validation("Current password is incorrect.");
     }
+    reportError(err, { route: "PATCH /api/admin/profile/password", tags: { domain: "profile" } });
     return Err.internal();
   }
 }

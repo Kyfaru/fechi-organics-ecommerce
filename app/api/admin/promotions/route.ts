@@ -1,18 +1,19 @@
 import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
-import { connection } from "next/server";
+import { connection, NextRequest } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 /** GET /api/admin/promotions */
-export async function GET() {
+export async function GET(req: NextRequest) {
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { promotions: ["view"] });
+  if (denied) return denied;
 
   try {
     const promotions = await db.promotion.findMany({
@@ -21,19 +22,19 @@ export async function GET() {
     return ok(promotions);
   } catch (e) {
     console.error("[promotions/GET]", e);
+    reportError(e, { route: "GET /api/admin/promotions" });
     return Err.internal();
   }
 }
 
 /** POST /api/admin/promotions — create promotion */
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { promotions: ["create"] });
+  if (denied) return denied;
 
   let body: {
     name: string;
@@ -42,6 +43,7 @@ export async function POST(req: Request) {
     code?: string;
     minOrder?: number;
     maxUses?: number;
+    maxUsesPerUser?: number;
     startDate?: string;
     endDate?: string;
     status?: string;
@@ -57,23 +59,21 @@ export async function POST(req: Request) {
   if (body.value == null) return Err.validation("Value is required");
 
   try {
-    const promotion = await db.promotion.create({
-      data: {
-        name: body.name.trim(),
-        type: body.type,
-        value: body.value,
-        code: body.code ?? null,
-        minOrder: body.minOrder ?? null,
-        maxUses: body.maxUses ?? null,
-        startDate: body.startDate ? new Date(body.startDate) : null,
-        endDate: body.endDate ? new Date(body.endDate) : null,
-        status: body.status ?? "active",
-      },
-    });
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return Err.forbidden();
+
+    const outcome = await requireApprovalOrProceed(ctx, "promotions", "create", body);
+    if (!outcome.proceed) return Approval.queued(outcome.requestId);
+
+    const promotion = await approvalExecutors["promotions:create"](body, null) as
+      Awaited<ReturnType<typeof db.promotion.create>>;
+
     console.info(`[promotions/POST] Created promotion: ${promotion.id} — ${promotion.name}`);
+    logActivity(ctx.id, `Created promotion "${promotion.name}"`, "promotion", promotion.id, req);
     return created(promotion);
   } catch (e) {
     console.error("[promotions/POST]", e);
+    reportError(e, { route: "POST /api/admin/promotions" });
     return Err.internal();
   }
 }

@@ -1,20 +1,18 @@
 import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
-import { connection } from "next/server";
+import { connection, NextRequest } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 /** GET /api/admin/loyalty/tiers
  *  Returns all loyalty tiers + top-20 customers by points for leaderboard.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { loyalty: ["view"] });
+  if (denied) return denied;
 
   try {
     const [tiers, leaderboard] = await Promise.all([
@@ -28,20 +26,20 @@ export async function GET() {
 
     return ok({ tiers, leaderboard });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/loyalty/tiers", tags: { domain: "loyalty" } });
     console.error("[loyalty/tiers/GET]", e);
     return Err.internal();
   }
 }
 
 /** POST /api/admin/loyalty/tiers — create tier */
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { loyalty: ["create"] });
+  if (denied) return denied;
 
   let body: { name: string; minSpend: number; multiplier?: number; benefits?: string[]; color?: string };
   try {
@@ -66,6 +64,7 @@ export async function POST(req: Request) {
     console.info(`[loyalty/tiers/POST] Created tier: ${tier.id} — ${tier.name}`);
     return created(tier);
   } catch (e) {
+    reportError(e, { route: "POST /api/admin/loyalty/tiers", tags: { domain: "loyalty" } });
     console.error("[loyalty/tiers/POST]", e);
     return Err.internal();
   }

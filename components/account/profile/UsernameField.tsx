@@ -9,9 +9,15 @@ interface UsernameFieldProps {
   lastUsernameChange: Date | null
 }
 
-function daysUntilAvailable(last: Date | null): number | null {
+function daysUntilAvailable(last: Date | string | null): number | null {
   if (!last) return null
-  const days = 30 - (Date.now() - last.getTime()) / 86400000
+  // lastUsernameChange crosses a network/server-action boundary before
+  // reaching here (fetch response JSON, or a server action's flight reply) —
+  // neither has a real Date type, so it can arrive as an ISO string even
+  // though the AccountUser type says Date. Normalize defensively rather than
+  // trusting every current and future caller to revive it correctly.
+  const lastDate = last instanceof Date ? last : new Date(last)
+  const days = 30 - (Date.now() - lastDate.getTime()) / 86400000
   return days > 0 ? Math.ceil(days) : null
 }
 

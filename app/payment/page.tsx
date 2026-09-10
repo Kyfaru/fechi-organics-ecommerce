@@ -10,6 +10,8 @@ import { Navbar } from "@/components/layout/Navbar";
 import { toast } from "@/lib/toast";
 import { usePaymentStream } from "@/hooks/use-payment-stream";
 import { useCurrency } from "@/app/providers";
+import { StepIndicator } from "@/components/checkout/StepIndicator";
+import { CHECKOUT_FLOW_FLAG_KEY } from "@/lib/checkout-flow";
 
 const PAYSTACK_ERROR_MESSAGES: Record<string, string> = {
   payment_failed: "Payment was not completed. Please try again.",
@@ -34,6 +36,7 @@ interface DeliveryData {
   deliveryType: "PICKUP" | "DELIVERY";
   branchName: string | null;
   promoCode?: string | null;
+  isCardEligible?: boolean;
 }
 
 type PaymentMethod = "mpesa" | "card";
@@ -58,6 +61,7 @@ export default function PaymentPage() {
   const [showModal, setShowModal] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [failureCount, setFailureCount] = useState(0);
+  const [paymentLocked, setPaymentLocked] = useState(false);
 
   // Paystack redirects back with ?error= on failure — show banner immediately
   const paystackError = searchParams.get("error");
@@ -67,10 +71,17 @@ export default function PaymentPage() {
     queryKey: ["cart"],
     queryFn: () => fetch("/api/cart").then((r) => r.json()),
     staleTime: 0,
+    refetchOnMount: "always",
   });
 
   useEffect(() => {
     window.setTimeout(() => {
+      // Only reachable via the cart's "Place Order" button (which sets this
+      // flag) — typing/bookmarking /payment directly sends you back to /cart.
+      if (!sessionStorage.getItem(CHECKOUT_FLOW_FLAG_KEY)) {
+        router.push("/cart");
+        return;
+      }
       const raw = sessionStorage.getItem("fechi_delivery");
       if (!raw) {
         router.push("/delivery");
@@ -157,6 +168,15 @@ export default function PaymentPage() {
     }
   }
 
+  function handleCompleteOrderClick() {
+    if (paymentLocked) {
+      toast.warning("Please wait a moment", { message: "Give it about 30 seconds before trying to pay again." });
+      return;
+    }
+    if (selectedMethod === "mpesa") handleMpesaPay();
+    else handleCardPay();
+  }
+
   if (!deliveryData) {
     return (
       <div className="min-h-screen bg-[#f8f8f7] flex items-center justify-center">
@@ -166,9 +186,12 @@ export default function PaymentPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8f8f7] dark:bg-gray-950">
-      <Navbar />
+    <>
+    <Navbar />
+    <div className="min-h-full bg-[#f8f8f7] dark:bg-gray-950">
+      
       <main className="mx-auto max-w-[1180px] px-4 py-16 md:py-24">
+        <div className="mb-8"><StepIndicator step={3} /></div>
         <h1 className="mb-20 text-center font-heading text-[34px] font-bold text-[#1a1c1c] dark:text-white">Complete Your Order</h1>
 
         {paystackErrorMessage ? (
@@ -180,6 +203,11 @@ export default function PaymentPage() {
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_430px]">
           <section className="rounded-[12px] border border-[#e1e8de] bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-900 md:p-8">
+            <div className="mb-6">
+              <Link href="/delivery" className="inline-flex items-center gap-1.5 text-[14px] text-[#40493c] dark:text-gray-400 hover:text-[#27731e] dark:hover:text-[#27731e] transition-colors">
+              <Icon icon="mdi:arrow-left-thin" width={18} className="text-[#0b6b13]" />
+              Back to delivery details</Link>
+            </div>
             <div className="mb-6 flex items-center gap-3">
               <Icon icon="mdi:wallet-outline" width={22} className="text-[#0b6b13]" />
               <div>
@@ -190,12 +218,14 @@ export default function PaymentPage() {
 
             <div className="space-y-3">
               <PaymentOption active={selectedMethod === "mpesa"} onClick={() => setSelectedMethod("mpesa")} title="M-Pesa STK Push" badge="M-PESA">
-                <p className="mb-4 text-[13px] text-[#40493c]">You will receive a prompt on your phone to complete the payment.</p>
-                <label className="mb-2 block text-[12px] font-semibold tracking-[0.08em] text-[#40493c]">Enter Your M-Pesa Phone Number</label>
-                <input value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} className="h-12 w-full rounded-[8px] border border-[#c0cab8] bg-[#fbfbfb] px-4 text-[14px] text-text-dark dark:text-gray-200 outline-none focus:border-[#27731e]" />
+                <p className="mb-4 text-[13px] text-[#40493c] dark:text-gray-200">You will receive a prompt on your phone to complete the payment.</p>
+                <label className="mb-2 block text-[12px] font-semibold tracking-[0.08em] text-[#40493c] dark:text-gray-200">Enter Your M-Pesa Phone Number</label>
+                <input value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} className="h-12 w-full rounded-[8px] border border-[#c0cab8] dark:border-[#27731e] bg-[#fbfbfb] dark:bg-gray-800 px-4 text-[16px] text-text-dark dark:text-white/90 text-bold outline-none focus:border-yellow-cta" />
               </PaymentOption>
-              <PaymentOption active={selectedMethod === "card"} onClick={() => setSelectedMethod("card")} title="Credit / Debit Card" badge="VISA  MC" />
-              
+              {deliveryData?.isCardEligible && (
+                <PaymentOption active={selectedMethod === "card"} onClick={() => setSelectedMethod("card")} title="Credit / Debit Card" badge="VISA  MC" />
+              )}
+
             </div>
 
             <div className="mt-10 flex flex-wrap justify-center gap-8 text-[12px] font-bold uppercase tracking-[0.12em] text-[#707a6b]">
@@ -248,9 +278,9 @@ export default function PaymentPage() {
             </div>
 
             <button
-              onClick={selectedMethod === "mpesa" ? handleMpesaPay : handleCardPay}
+              onClick={handleCompleteOrderClick}
               disabled={submitting || (selectedMethod === "mpesa" && !mpesaPhone.trim())}
-              className="mt-8 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-[#fec700] text-[18px] font-black text-[#1a1c1c] transition-colors hover:bg-[#f0b800] disabled:cursor-not-allowed disabled:opacity-50"
+              className={`mt-8 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-[#fec700] text-[18px] font-black text-[#1a1c1c] transition-colors hover:bg-[#f0b800] disabled:cursor-not-allowed disabled:opacity-50 ${paymentLocked ? "cursor-not-allowed opacity-50" : ""}`}
             >
               <Icon icon={submitting ? "mdi:loading" : "mdi:lock-outline"} width={22} className={submitting ? "animate-spin" : ""} />
               Complete Order
@@ -264,7 +294,7 @@ export default function PaymentPage() {
       {showModal && activeOrderId ? (
         <PaymentStatusModal
           orderId={activeOrderId}
-          onClose={(wasFailure) => {
+          onClose={(wasFailure, reason) => {
             setShowModal(false);
             setActiveOrderId(null);
             if (wasFailure) {
@@ -274,11 +304,16 @@ export default function PaymentPage() {
                 toast.error("Too many failed attempts. Please try again later or contact support.");
                 router.push("/cart");
               }
+              if (reason?.split(":")[0] === "1032") {
+                setPaymentLocked(true);
+                window.setTimeout(() => setPaymentLocked(false), 30_000);
+              }
             }
           }}
         />
       ) : null}
     </div>
+    </>
   );
 }
 
@@ -293,7 +328,7 @@ function errorMessage(reason: string | null) {
   return reason?.replace(/^\d+:/, "") || "Payment not completed. Try again or contact support.";
 }
 
-function PaymentStatusModal({ orderId, onClose }: { orderId: string; onClose: (wasFailure?: boolean) => void }) {
+function PaymentStatusModal({ orderId, onClose }: { orderId: string; onClose: (wasFailure?: boolean, reason?: string | null) => void }) {
   const router = useRouter();
   const { status, reason } = usePaymentStream(orderId);
 
@@ -339,7 +374,7 @@ function PaymentStatusModal({ orderId, onClose }: { orderId: string; onClose: (w
             </div>
             <h2 className="mt-6 font-heading text-[25px] font-black text-[#1a1c1c] dark:text-white">Payment failed</h2>
             <p className="mt-3 text-[14px] leading-6 text-[#40493c] dark:text-gray-300">{errorMessage(reason ?? null)}</p>
-            <button onClick={() => onClose(true)} className="mt-6 h-12 w-full rounded-full bg-[#fec700] text-[14px] font-black text-[#1a1c1c] transition-colors hover:bg-[#f0b800]">Try Again</button>
+            <button onClick={() => onClose(true, reason)} className="mt-6 h-12 w-full rounded-full bg-[#fec700] text-[14px] font-black text-[#1a1c1c] transition-colors hover:bg-[#f0b800]">Try Again</button>
           </>
         )}
         {phase === "timeout" && (
@@ -369,12 +404,12 @@ function PaymentOption({ active, onClick, title, badge, icon, children }: {
     <button
       type="button"
       onClick={onClick}
-      className={`w-full rounded-[10px] border p-4 text-left transition-colors ${active ? "border-[#0b6b13] bg-[#f6fbf5] ring-1 ring-[#0b6b13]" : "border-[#dce4d8] bg-white hover:border-[#a9b8a2]"}`}
+      className={`w-full rounded-[10px] border p-4 text-left transition-colors ${active ? "border-[#0b6b13] bg-[#f6fbf5] dark:bg-gray-700 ring-1 ring-[#0b6b13]" : "border-[#dce4d8] bg-white dark:bg-gray-700 hover:border-[#a9b8a2]"}`}
     >
       <div className="flex items-center gap-3">
-        <span className={`h-3 w-3 rounded-full border ${active ? "border-[#0b6b13] bg-orange-300 ring-2 ring-[#a4f690]" : "border-[#7b8975]"}`} />
-        <span className="flex-1 text-[16px] font-bold text-[#1a1c1c]">{title}</span>
-        {badge ? <span className="rounded-[4px] border border-[#dce4d8] px-2 py-1 text-[10px] font-black text-[#0b6b13]">{badge}</span> : null}
+        <span className={`h-3 w-3 rounded-full border ${active ? "border-[#0b6b13] bg-[#a4f690] ring-2 ring-offset-2 ring-[#a4f690]" : "border-[#7b8975]"}`} />
+        <span className="flex-1 text-[16px] font-bold text-[#1a1c1c] dark:text-white">{title}</span>
+        {badge ? <span className="rounded-[4px] border border-[#dce4d8] dark:border-gray-600 px-2 py-1 text-[10px] font-black text-[#0b6b13] dark:text-green-400">{badge}</span> : null}
         {icon ? <Icon icon={icon} width={22} className="text-[#707a6b]" /> : null}
       </div>
       {active && children ? <div className="ml-8 mt-5">{children}</div> : null}
@@ -384,8 +419,8 @@ function PaymentOption({ active, onClick, title, badge, icon, children }: {
 
 function SummaryRow({ label, value, green }: { label: string; value: string; green?: boolean }) {
   return (
-    <div className={`flex items-center justify-between ${green ? "text-[#0b6b13]" : ""}`}>
-      <span>{label}</span>
+    <div className={`flex items-center justify-between ${green ? "text-[#0b6b13] dark:text-mint" : ""}`}>
+      <span className="text-text-dark dark:text-white">{label}</span>
       <span>{value}</span>
     </div>
   );

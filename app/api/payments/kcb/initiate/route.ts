@@ -14,39 +14,26 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
+import { reportError } from "@/lib/observability";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
 import { initiateKcbStkPush } from "@/lib/payments/kcb/kcb-client";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
-import { resolvePromo } from "@/lib/promo";
+import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
 import { getRedis } from "@/lib/redis";
 import { markPaymentFailed } from "@/lib/payments/post-payment";
-
-const deliveryDataSchema = z.object({
-  fullName: z.string().min(1),
-  phone: z.string().min(9),
-  email: z.string().email().optional(),
-  country: z.string().min(2).default("KE"),
-  county: z.string().optional().default(""),
-  state: z.string().optional(),
-  zoneId: z.string().optional().nullable(),
-  deliveryZone: z.string().optional().nullable(),
-  deliveryKes: z.number().int().nonnegative().optional(),
-  promoCode: z.string().optional().nullable(),
-  address: z.string().optional(),
-  city: z.string().optional(),
-  postalCode: z.string().optional(),
-  notes: z.string().optional(),
-  deliveryType: z.enum(["PICKUP", "DELIVERY"]),
-  branchId: z.string().optional().nullable(),
-  branchName: z.string().optional().nullable(),
-});
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { deliveryDataSchema } from "@/lib/payments/delivery-schema";
+import { buildTimestampOrderNumber } from "@/lib/orders/generate-order-number";
+import { readUtmCookie } from "@/lib/attribution";
 
 const bodySchema = z.object({
   phone: z.string().min(9),
   deliveryData: deliveryDataSchema,
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   // 1. Authenticate
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
@@ -58,7 +45,8 @@ export async function POST(req: NextRequest) {
   try {
     const raw = await req.json();
     parsed = bodySchema.parse(raw);
-  } catch {
+  } catch (bodyErr) {
+    reportError(bodyErr, { route: "POST /api/payments/kcb/initiate", tags: { stage: "body_validation" } });
     return Err.validation("Invalid request body");
   }
 
@@ -108,12 +96,15 @@ export async function POST(req: NextRequest) {
     const promoCode = deliveryData.promoCode?.trim().toUpperCase();
     let discountCents = 0;
     let deliveryCents = pricing.feeKes;
+    let resolvedPromoId: string | null = null;
     if (promoCode) {
       try {
-        const r = await resolvePromo(promoCode, subtotalCents);
+        const r = await resolvePromo(promoCode, subtotalCents, userId);
         discountCents = r.discountKes;
         if (r.deliveryFree) deliveryCents = 0;
-      } catch {
+        resolvedPromoId = r.promo.id;
+      } catch (promoErr) {
+        reportError(promoErr, { route: "POST /api/payments/kcb/initiate", tags: { stage: "promo_resolution" } });
         /* invalid/expired — discount stays 0 */
       }
     }
@@ -142,6 +133,8 @@ export async function POST(req: NextRequest) {
     }
 
     // 6. Create order
+    const now = new Date();
+    const utm = readUtmCookie(req);
     const order = await db.order.create({
       data: {
         userId,
@@ -152,24 +145,38 @@ export async function POST(req: NextRequest) {
         promoCode: promoCode ?? null,
         paymentStatus: "PENDING",
         status: "PENDING",
+        orderNumber: buildTimestampOrderNumber(now, "KCB"),
+        createdAt: now,
         deliveryType: deliveryData.deliveryType,
         deliveryPhone: deliveryData.phone,
         deliveryAddress: deliveryData.address ?? null,
         deliveryCity: deliveryData.city ?? deliveryData.state ?? null,
         deliveryCounty: deliveryData.county || deliveryData.country,
         deliveryZone: deliveryData.deliveryZone ?? pricing.label,
+        deliveryPostalCode: deliveryData.postalCode ?? null,
+        deliveryCountry: deliveryData.countryName ?? null,
         isInternational: deliveryData.country.toUpperCase() !== "KE",
         branchId: branch.id,
+        utmSource: utm?.source ?? null,
+        utmMedium: utm?.medium ?? null,
+        utmCampaign: utm?.campaign ?? null,
         items: {
           create: activeItems.map((item) => ({
             productId: item.product.id,
             name: item.product.name,
             priceKes: item.product.priceKes,
             quantity: item.quantity,
+            variantId: item.variantId,
+            variantLabel: item.variantLabel,
           })),
         },
       },
     });
+
+    // Record coupon redemption
+    if (resolvedPromoId && promoCode) {
+      await recordCouponRedemption(resolvedPromoId, userId, order.id);
+    }
 
     // 7. Create transaction record (PENDING until callback arrives)
     const transaction = await db.transaction.create({
@@ -184,15 +191,24 @@ export async function POST(req: NextRequest) {
 
     // 8. Initiate KCB Buni STK push
     const callbackUrl = `${process.env.KCB_CALLBACK_BASE_URL ?? process.env.MPESA_CALLBACK_BASE_URL}/api/payments/kcb/callback`;
+    const consumer_secret = branch.consumerSecretEnc || process.env.KCB_CONSUMER_SECRET;
+    const consumer_key = branch.consumerKeyEnc || process.env.KCB_CONSUMER_KEY;
+    const api_key = branch.apiKeyEnc || process.env.KCB_API_KEY;
+    const shortcode = branch.shortcode || process.env.KCB_SHORTCODE || "null";
+    const formatOrderNumber = order.orderNumber?.slice(4,-1);
+    const invoiceCode = `${branch.invoiceNumber}-${formatOrderNumber}`;
+    if (!branch.invoiceNumber) {
+    return err("BRANCH", `Branch ${branch.id} is undefined number`, 500);
+    }
 
     const kcbRes = await initiateKcbStkPush({
       branch: {
         id: branch.id,
-        shortcode: branch.shortcode,
-        invoiceNumber: branch.invoiceNumber ?? null,
-        consumerKeyEnc: branch.consumerKeyEnc,
-        consumerSecretEnc: branch.consumerSecretEnc,
-        apiKeyEnc: branch.apiKeyEnc ?? null,
+        shortcode: branch.shortcode ?? shortcode ?? null,
+        invoiceNumber: invoiceCode ?? branch.invoiceNumber,
+        consumerKeyEnc:branch.consumerKeyEnc ?? consumer_key,
+        consumerSecretEnc: branch.consumerSecretEnc ?? consumer_secret,
+        apiKeyEnc: api_key ?? null,
       },
       phone,
       amountKes: totalCents, // function converts to whole KES internally
@@ -223,6 +239,7 @@ export async function POST(req: NextRequest) {
 
     return ok({ orderId: order.id, message: "Check your phone for the M-Pesa prompt" });
   } catch (e) {
+    reportError(e, { route: "POST /api/payments/kcb/initiate", tags: { stage: "handler" }, extra: { userId } });
     console.error("[kcb/initiate] POST error", e);
     return Err.internal();
   }

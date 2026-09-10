@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
   Mail,
@@ -15,6 +16,8 @@ import {
   PencilLine,
   Megaphone,
   Zap,
+  Clock,
+  Calendar,
 } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { StatsCard } from "@/components/ui/stats-card";
@@ -22,7 +25,7 @@ import { DataTable } from "@/components/admin/ui/DataTable";
 import RichTextEditor from "@/components/admin/ui/RichTextEditor";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
-import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import MultiCustomerSelect, {
   type CustomerOption,
 } from "@/components/ui/MultiCustomerSelect";
@@ -85,6 +88,13 @@ export function AdminCampaignsClient() {
   const [sendMode, setSendMode] = useState<"now" | "later">("now");
   const [deleteTarget, setDeleteTarget] = useState<Campaign | null>(null);
 
+  // Send-options modal state — lets an admin pick Send Now / Schedule / Send Later per campaign
+  const [sendTarget, setSendTarget] = useState<Campaign | null>(null);
+  const [scheduleAt, setScheduleAt] = useState("");
+
+  // Recipient delivery-status drawer — opened by clicking a campaign row
+  const [viewTarget, setViewTarget] = useState<Campaign | null>(null);
+
   const [form, setForm] = useState({
     name: "",
     heading: "",
@@ -101,9 +111,29 @@ export function AdminCampaignsClient() {
     queryKey: ["admin-campaigns"],
     queryFn: () =>
       fetch("/api/admin/campaigns").then((r) => r.json()),
+    // Poll while anything is actively sending, so a status flip to SENT/FAILED
+    // shows up without the admin having to manually reload the page.
+    refetchInterval: (query) => {
+      const list: Campaign[] = query.state.data?.data?.campaigns ?? [];
+      return list.some((c) => c.status === "SENDING") ? 5000 : false;
+    },
   });
 
   const campaigns: Campaign[] = data?.data?.campaigns ?? [];
+
+  // ── Fetch recipient delivery status for the viewed campaign ────────────────
+  const { data: recipientsData, isLoading: recipientsLoading } = useQuery({
+    queryKey: ["admin-campaign-recipients", viewTarget?.id],
+    queryFn: () =>
+      fetch(`/api/admin/campaigns/${viewTarget!.id}/recipients`).then((r) => r.json()),
+    enabled: !!viewTarget,
+  });
+  const recipientCounts: Record<string, number> = recipientsData?.data?.counts ?? {};
+  const recipientList: {
+    id: string; name: string; email: string; channel: string; status: string;
+    errorMessage: string | null; sentAt: string | null; deliveredAt: string | null;
+    openedAt: string | null; clickedAt: string | null; failedAt: string | null;
+  }[] = recipientsData?.data?.recipients ?? [];
   const stats = data?.data?.stats ?? {
     total: 0,
     sentThisMonth: 0,
@@ -166,19 +196,37 @@ export function AdminCampaignsClient() {
   });
 
   // ── Send campaign ─────────────────────────────────────────────────────────
+  // mode "now" sends immediately, "schedule" waits for an exact datetime the
+  // admin picks, "later" queues a short fixed-delay batch send in the background
+  type SendPayload = {
+    id: string;
+    mode: "now" | "schedule" | "later";
+    scheduledAt?: string;
+  };
+
+  const SEND_SUCCESS_MESSAGE: Record<SendPayload["mode"], string> = {
+    now: "Campaign is sending now",
+    schedule: "Campaign scheduled",
+    later: "Campaign queued — it will go out shortly",
+  };
+
   const sendMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, mode, scheduledAt }: SendPayload) => {
       const res = await fetch(`/api/admin/campaigns/${id}/send`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode, scheduledAt }),
       });
       const json = await res.json();
       if (!json.ok)
         throw new Error(json.error?.message ?? "Failed to send campaign");
       return json.data;
     },
-    onSuccess: () => {
-      toast.success("Campaign queued for sending");
+    onSuccess: (_data, variables) => {
+      toast.success(SEND_SUCCESS_MESSAGE[variables.mode]);
       qc.invalidateQueries({ queryKey: ["admin-campaigns"] });
+      setSendTarget(null);
+      setScheduleAt("");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -326,7 +374,8 @@ export function AdminCampaignsClient() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  sendMutation.mutate(c.id);
+                  setScheduleAt("");
+                  setSendTarget(c);
                 }}
                 className="h-8 px-3 rounded-[6px] font-dm text-[13px] bg-(--green-50) text-(--green-800) hover:bg-(--green-200) transition-colors flex items-center gap-1.5"
               >
@@ -379,6 +428,10 @@ export function AdminCampaignsClient() {
           emptyTitle="No campaigns yet"
           emptyDescription="Create your first email, SMS, WhatsApp, or push campaign."
           pageSize={20}
+          onRowClick={(row) => {
+            const c = row as unknown as Campaign;
+            if (c.status !== "DRAFT") setViewTarget(c);
+          }}
         />
       </div>
 
@@ -697,6 +750,107 @@ export function AdminCampaignsClient() {
         )}
       </Drawer>
 
+      {/* Send options — Send Now / Schedule / Send Later */}
+      <AnimatePresence>
+        {sendTarget && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/45 z-50"
+              onClick={() => setSendTarget(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[440px] bg-white dark:bg-(--dark-surface) rounded-[12px] shadow-(--e3) z-50 p-6"
+            >
+              <h3 className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-1">
+                Send &quot;{sendTarget.name}&quot;
+              </h3>
+              <p className="font-dm text-[14px] text-(--neutral-500) dark:text-(--dark-muted) mb-5">
+                Choose when this campaign should go out.
+              </p>
+
+              <div className="space-y-3">
+                <button
+                  onClick={() =>
+                    sendMutation.mutate({ id: sendTarget.id, mode: "now" })
+                  }
+                  disabled={sendMutation.isPending}
+                  className="w-full flex items-center gap-3 p-3 rounded-[8px] border border-(--neutral-200) hover:border-(--green-800) hover:bg-(--green-50) transition-colors text-left disabled:opacity-50"
+                >
+                  <Send size={16} className="text-(--green-800) shrink-0" />
+                  <div>
+                    <div className="font-dm text-[14px] font-medium text-(--neutral-900)">
+                      Send Now
+                    </div>
+                    <div className="font-dm text-[12px] text-(--neutral-500)">
+                      Delivers immediately
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() =>
+                    sendMutation.mutate({ id: sendTarget.id, mode: "later" })
+                  }
+                  disabled={sendMutation.isPending}
+                  className="w-full flex items-center gap-3 p-3 rounded-[8px] border border-(--neutral-200) hover:border-(--green-800) hover:bg-(--green-50) transition-colors text-left disabled:opacity-50"
+                >
+                  <Clock size={16} className="text-(--green-800) shrink-0" />
+                  <div>
+                    <div className="font-dm text-[14px] font-medium text-(--neutral-900)">
+                      Send Later
+                    </div>
+                    <div className="font-dm text-[12px] text-(--neutral-500)">
+                      Queues a short delayed batch send in the background
+                    </div>
+                  </div>
+                </button>
+
+                <div className="p-3 rounded-[8px] border border-(--neutral-200)">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Calendar size={16} className="text-(--green-800) shrink-0" />
+                    <div className="font-dm text-[14px] font-medium text-(--neutral-900)">
+                      Schedule
+                    </div>
+                  </div>
+                  <input
+                    type="datetime-local"
+                    value={scheduleAt}
+                    onChange={(e) => setScheduleAt(e.target.value)}
+                    className={inputCls}
+                  />
+                  <button
+                    onClick={() =>
+                      sendMutation.mutate({
+                        id: sendTarget.id,
+                        mode: "schedule",
+                        scheduledAt: new Date(scheduleAt).toISOString(),
+                      })
+                    }
+                    disabled={sendMutation.isPending || !scheduleAt}
+                    className="mt-3 w-full h-10 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors disabled:opacity-50"
+                  >
+                    Schedule Send
+                  </button>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSendTarget(null)}
+                className="mt-5 w-full h-10 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+              >
+                Cancel
+              </button>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Delete confirm */}
       <ConfirmModal
         open={!!deleteTarget}
@@ -710,9 +864,83 @@ export function AdminCampaignsClient() {
         confirmLabel="Delete"
         danger
       />
+
+      {/* Recipient delivery-status drawer */}
+      <Drawer
+        open={!!viewTarget}
+        onClose={() => setViewTarget(null)}
+        title={viewTarget ? `Delivery — ${viewTarget.name}` : ""}
+      >
+        {viewTarget && (
+          <div className="space-y-5">
+            {viewTarget.status === "FAILED" && (
+              <div className="rounded-[8px] bg-(--danger-bg) p-3 font-dm text-[13px] text-(--danger)">
+                This campaign failed to send. Retrying it will skip recipients already
+                marked delivered.
+              </div>
+            )}
+            <div className="grid grid-cols-4 gap-2">
+              {RECIPIENT_STATUS_LABELS.map(({ key, label, color }) => (
+                <div key={key} className="rounded-[8px] border border-(--neutral-200) p-2.5 text-center">
+                  <div className={`font-dm text-[18px] font-bold ${color}`}>
+                    {recipientCounts[key] ?? 0}
+                  </div>
+                  <div className="font-dm text-[11px] text-(--neutral-500)">{label}</div>
+                </div>
+              ))}
+            </div>
+
+            {recipientsLoading ? (
+              <p className="font-dm text-[13px] text-(--neutral-500)">Loading…</p>
+            ) : recipientList.length === 0 ? (
+              <p className="font-dm text-[13px] text-(--neutral-500)">No recipients recorded yet.</p>
+            ) : (
+              <div className="border border-(--neutral-200) rounded-[8px] overflow-hidden">
+                <table className="w-full text-left">
+                  <thead className="bg-(--neutral-50)">
+                    <tr>
+                      <th className="font-dm text-[12px] font-medium text-(--neutral-500) px-3 py-2">Recipient</th>
+                      <th className="font-dm text-[12px] font-medium text-(--neutral-500) px-3 py-2">Channel</th>
+                      <th className="font-dm text-[12px] font-medium text-(--neutral-500) px-3 py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recipientList.map((r) => (
+                      <tr key={r.id} className="border-t border-(--neutral-100)">
+                        <td className="px-3 py-2">
+                          <div className="font-dm text-[13px] text-(--neutral-900)">{r.name}</div>
+                          <div className="font-dm text-[12px] text-(--neutral-500)">{r.email}</div>
+                        </td>
+                        <td className="px-3 py-2 font-dm text-[12px] text-(--neutral-700)">{r.channel}</td>
+                        <td className="px-3 py-2">
+                          <StatusPill status={r.status.toLowerCase()} />
+                          {r.errorMessage && (
+                            <div className="font-dm text-[11px] text-(--danger) mt-0.5">{r.errorMessage}</div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 }
+
+const RECIPIENT_STATUS_LABELS: { key: string; label: string; color: string }[] = [
+  { key: "SENT", label: "Sent", color: "text-(--neutral-700)" },
+  { key: "DELIVERED", label: "Delivered", color: "text-(--green-800)" },
+  { key: "OPENED", label: "Opened", color: "text-(--info)" },
+  { key: "CLICKED", label: "Clicked", color: "text-purple-700" },
+  { key: "BOUNCED", label: "Bounced", color: "text-(--gold-700)" },
+  { key: "SPAM", label: "Marked spam", color: "text-(--danger)" },
+  { key: "FAILED", label: "Failed", color: "text-(--danger)" },
+  { key: "QUEUED", label: "Queued", color: "text-(--neutral-400)" },
+];
 
 function Field({
   label,

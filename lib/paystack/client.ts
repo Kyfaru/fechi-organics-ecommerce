@@ -19,9 +19,10 @@ export async function initializeTransaction(
       email: input.email,
       amount: input.amount,
       reference: input.reference,
-      subaccount: input.subaccount,
-      bearer: "subaccount",
-      transaction_charge: 0,
+      // No subaccount configured → charge settles straight to the main Paystack account.
+      ...(input.subaccount
+        ? { subaccount: input.subaccount, bearer: "subaccount", transaction_charge: 0 }
+        : {}),
       ...(input.callback_url ? { callback_url: input.callback_url } : {}),
       ...(input.metadata ? { metadata: input.metadata } : {}),
     }),

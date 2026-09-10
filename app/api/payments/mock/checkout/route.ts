@@ -6,7 +6,9 @@ import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
-import { resolvePromo } from "@/lib/promo";
+import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 const DeliverySchema = z.object({
   fullName: z.string().min(1),
@@ -28,15 +30,17 @@ const DeliverySchema = z.object({
   branchId: z.string().optional().nullable(),
   branchName: z.string().optional().nullable(),
   promoCode: z.string().optional().nullable(),
-});
+}).strict();
 
 const BodySchema = z.object({
   deliveryData: DeliverySchema,
   paymentMethod: z.enum(["mpesa", "card"]),
   outcome: z.enum(["success", "failed"]).default("success"),
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
 
@@ -81,12 +85,17 @@ export async function POST(req: NextRequest) {
     const promoCode = deliveryData.promoCode?.trim().toUpperCase() || null;
     let discountKes = 0;
     let deliveryFeeKes = pricing.feeKes;
+    let resolvedPromoId: string | null = null;
     if (promoCode) {
       try {
-        const r = await resolvePromo(promoCode, subtotalKes);
+        const r = await resolvePromo(promoCode, subtotalKes, session.user.id);
         discountKes = r.discountKes;
         if (r.deliveryFree) deliveryFeeKes = 0;
-      } catch { /* invalid/expired — discount stays 0 */ }
+        resolvedPromoId = r.promo.id;
+      } catch (promoErr) {
+        reportError(promoErr, { route: "POST /api/payments/mock/checkout", tags: { stage: "promo_resolution" } });
+        /* invalid/expired — discount stays 0 */
+      }
     }
     const totalKes = Math.max(0, subtotalKes + deliveryFeeKes - discountKes);
 
@@ -112,6 +121,8 @@ export async function POST(req: NextRequest) {
           deliveryCity: deliveryData.city ?? deliveryData.state ?? null,
           deliveryCounty: deliveryData.county || deliveryData.country,
           deliveryZone: deliveryData.deliveryZone ?? pricing.label,
+          deliveryPostalCode: deliveryData.postalCode ?? null,
+          deliveryCountry: deliveryData.countryName ?? null,
           branchId: branch?.id ?? null,
           items: {
             create: activeItems.map((item) => ({
@@ -119,6 +130,8 @@ export async function POST(req: NextRequest) {
               name: item.product.name,
               priceKes: item.product.priceKes,
               quantity: item.quantity,
+              variantId: item.variantId,
+              variantLabel: item.variantLabel,
             })),
           },
         },
@@ -144,6 +157,10 @@ export async function POST(req: NextRequest) {
           });
         }
         await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
+
+        if (resolvedPromoId && promoCode) {
+          await recordCouponRedemption(resolvedPromoId, session.user.id, created.id, tx);
+        }
       }
 
       return created;
@@ -151,6 +168,11 @@ export async function POST(req: NextRequest) {
 
     return ok({ orderId: order.id, paymentStatus: order.paymentStatus });
   } catch (e) {
+    reportError(e, {
+      route: "POST /api/payments/mock/checkout",
+      userId: session.user.id,
+      tags: { stage: "handler" },
+    });
     console.error("[mock-checkout] POST error", e);
     return Err.internal();
   }

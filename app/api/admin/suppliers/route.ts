@@ -1,18 +1,16 @@
 import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
-import { connection } from "next/server";
+import { connection, NextRequest } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 /** GET /api/admin/suppliers */
-export async function GET() {
+export async function GET(req: NextRequest) {
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { suppliers: ["view"] });
+  if (denied) return denied;
 
   try {
     const suppliers = await db.supplier.findMany({
@@ -27,20 +25,20 @@ export async function GET() {
     });
     return ok(suppliers);
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/suppliers", tags: { domain: "suppliers" } });
     console.error("[suppliers/GET]", e);
     return Err.internal();
   }
 }
 
 /** POST /api/admin/suppliers — create supplier */
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { suppliers: ["create"] });
+  if (denied) return denied;
 
   let body: {
     name: string;
@@ -78,6 +76,7 @@ export async function POST(req: Request) {
     console.info(`[suppliers/POST] Created supplier: ${supplier.id} — ${supplier.name}`);
     return created(supplier);
   } catch (e) {
+    reportError(e, { route: "POST /api/admin/suppliers", tags: { domain: "suppliers" } });
     console.error("[suppliers/POST]", e);
     return Err.internal();
   }

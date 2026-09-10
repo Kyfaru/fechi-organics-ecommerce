@@ -11,34 +11,51 @@ import { ok, Err } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { connection } from "next/server";
+import { NextRequest } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requireStaffSession } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
+import { logActivity } from "@/lib/admin-activity";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
+  const denied = await requireStaffSession(req);
+  if (denied) return denied;
 
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    include: { adminProfile: true },
-  });
-  if (!user) return Err.authRequired();
-  if (user.role !== "admin") return Err.forbidden();
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) return Err.authRequired();
 
-  // Strip sensitive fields before returning
-  const { ...safeUser } = user;
-  return ok({ user: safeUser });
+    const user = await db.user.findUnique({
+      where: { id: session.user.id },
+      include: { adminProfile: true },
+    });
+    if (!user) return Err.authRequired();
+
+    // Strip sensitive fields before returning
+    const { ...safeUser } = user;
+    return ok({ user: safeUser });
+  } catch (err) {
+    reportError(err, { route: "GET /api/admin/profile", tags: { domain: "profile" } });
+    console.error("[GET /api/admin/profile]", err);
+    return Err.internal();
+  }
 }
 
-export async function PATCH(req: Request) {
+export async function PATCH(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
+
+  const denied = await requireStaffSession(req);
+  if (denied) return denied;
 
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
 
   const user = await db.user.findUnique({ where: { id: session.user.id } });
   if (!user) return Err.authRequired();
-  if (user.role !== "admin") return Err.forbidden();
 
   let body: Record<string, unknown>;
   try {
@@ -88,8 +105,19 @@ export async function PATCH(req: Request) {
       include: { adminProfile: true },
     });
 
+    // Diff before/after for name/phone (mirrors the changedFields pattern in
+    // app/api/admin/customers/[id]/route.ts) — fullName/department changes
+    // aren't logged here since they're lower-stakes profile metadata.
+    const changed: Record<string, { from: unknown; to: unknown }> = {};
+    if (userUpdate.name !== undefined && userUpdate.name !== user.name) changed.name = { from: user.name, to: userUpdate.name };
+    if (userUpdate.phone !== undefined && userUpdate.phone !== user.phone) changed.phone = { from: user.phone, to: userUpdate.phone };
+    if (Object.keys(changed).length && updated?.adminProfile) {
+      logActivity(updated.adminProfile.id, `Updated own profile (${Object.keys(changed).join(", ")})`, "profile", updated.adminProfile.id, req, changed, "INFO");
+    }
+
     return ok({ user: updated });
   } catch (err) {
+    reportError(err, { route: "PATCH /api/admin/profile", userId: user.id, tags: { domain: "profile" } });
     console.error("[PATCH /api/admin/profile]", err);
     return Err.internal();
   }

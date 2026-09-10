@@ -1,19 +1,12 @@
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-
-// ---------------------------------------------------------------------------
-// Auth helper
-// ---------------------------------------------------------------------------
-async function requireAdmin(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user) return null;
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  return user?.role === "admin" ? user : null;
-}
+import { invalidateCategoryCache } from "@/lib/cache-tags";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // PATCH /api/admin/products/categories/[id]
@@ -29,17 +22,20 @@ const UpdateSchema = z.object({
   imageKey: z.string().optional(),
   isActive: z.boolean().optional(),
   sortOrder: z.number().int().min(0).optional(),
-});
+}).strict();
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
-  try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { products: ["update"] });
+  if (denied) return denied;
+
+  try {
     const { id } = await params;
 
     const existing = await db.category.findUnique({ where: { id } });
@@ -55,12 +51,14 @@ export async function PATCH(
     });
 
     console.info("[admin/products/categories/[id]] PATCH — updated", id);
+    invalidateCategoryCache(existing.slug, category.slug);
     return ok({ category });
   } catch (e: unknown) {
     console.error("[admin/products/categories/[id]] PATCH error", e);
     if ((e as { code?: string }).code === "P2002") {
       return Err.validation("A category with this slug already exists");
     }
+    reportError(e, { route: "PATCH /api/admin/products/categories/[id]" });
     return Err.internal();
   }
 }
@@ -73,11 +71,14 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
-  try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { products: ["delete"] });
+  if (denied) return denied;
+
+  try {
     const { id } = await params;
 
     const existing = await db.category.findUnique({
@@ -96,9 +97,11 @@ export async function DELETE(
     await db.category.delete({ where: { id } });
 
     console.info("[admin/products/categories/[id]] DELETE —", id);
+    invalidateCategoryCache(existing.slug);
     return ok({ id });
   } catch (e) {
     console.error("[admin/products/categories/[id]] DELETE error", e);
+    reportError(e, { route: "DELETE /api/admin/products/categories/[id]" });
     return Err.internal();
   }
 }

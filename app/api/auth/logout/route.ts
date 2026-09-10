@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { connection } from "next/server";
 import { getRedis } from "@/lib/redis";
 import { sessionChannel } from "@/lib/session-channel";
+import { reportError } from "@/lib/observability";
 
 export async function POST(): Promise<NextResponse> {
   await connection();
@@ -20,6 +21,7 @@ export async function POST(): Promise<NextResponse> {
       );
     } catch (e) {
       console.error("[logout] Redis set failed:", e);
+      reportError(e, { route: "POST /api/auth/logout", tags: { flow: "logout" } });
     }
 
     await auth.api.signOut({ headers: await headers() });

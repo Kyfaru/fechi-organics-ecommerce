@@ -4,7 +4,13 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { sendSms } from "@/lib/twilio";
+import { sendSms, hasSmsConfig } from "@/lib/sms";
+import { combineLegacyPhone } from "@/lib/phone";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
+import { deleteOrder, type OrderKind } from "@/lib/orders/delete-order";
+import { logActivity } from "@/lib/admin-activity";
 
 const STATUS_MESSAGES: Record<string, string> = {
   CONFIRMED:  "has been confirmed",
@@ -16,24 +22,13 @@ const STATUS_MESSAGES: Record<string, string> = {
   PICKED_UP:          "has been picked up. Thank you for your order!",
 };
 
-// Generate a unique order number (non-transaction version)
-async function generateOrderNumber(): Promise<string> {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  for (let i = 0; i < 5; i++) {
-    const suffix = Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * 36)]).join("");
-    const num = `#FO-${suffix}`;
-    const exists = await db.order.findUnique({ where: { orderNumber: num } });
-    if (!exists) return num;
-  }
-  throw new Error("Could not generate unique order number after 5 retries");
-}
-
 function notifyOrderStatusChange(
   orderId: string,
   userId: string | null,
   orderRef: string,
   status: string,
   phone?: string | null,
+  phoneCode?: string | null,
 ) {
   const msg = STATUS_MESSAGES[status];
   if (!msg || !userId) return;
@@ -45,23 +40,19 @@ function notifyOrderStatusChange(
         data: { userId, type: "SYSTEM", title: `Order ${orderRef} — ${status}`, body, orderId },
       });
     } catch (e) {
+      reportError(e, { route: "PATCH /api/admin/orders/[id]", tags: { domain: "orders", stage: "notify-inbox" } });
       console.error("[notify] inbox failed:", e);
     }
-    const hasTwilio = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER);
-    if (hasTwilio && phone) {
-      try { await sendSms(phone, body); } catch (e) { console.error("[notify] SMS failed:", e); }
+    const smsPhone = phone ? combineLegacyPhone(phone, phoneCode ?? null) : null;
+    if (hasSmsConfig() && smsPhone) {
+      try {
+        await sendSms(smsPhone, body);
+      } catch (e) {
+        reportError(e, { route: "PATCH /api/admin/orders/[id]", tags: { domain: "orders", stage: "notify-sms" } });
+        console.error("[notify] SMS failed:", e);
+      }
     }
   });
-}
-
-// ---------------------------------------------------------------------------
-// Auth helper — matches pattern in /api/admin/orders/route.ts
-// ---------------------------------------------------------------------------
-async function requireAdmin(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user) return null;
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  return user?.role === "admin" ? user : null;
 }
 
 // Shared include for returning the full order after mutations
@@ -77,6 +68,8 @@ const ORDER_INCLUDE = {
       },
     },
   },
+  branch: { select: { id: true, name: true, county: true, phone: true } },
+  transactions: { orderBy: { createdAt: "desc" }, take: 1, select: { provider: true } },
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -88,10 +81,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   await connection();
-  try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { orders: ["view"] });
+  if (denied) return denied;
+
+  try {
     const { id } = await params;
 
     const order = await db.order.findUnique({
@@ -112,6 +106,8 @@ export async function GET(
             },
           },
         },
+        branch: { select: { id: true, name: true, county: true, phone: true } },
+        transactions: { orderBy: { createdAt: "desc" }, take: 1, select: { provider: true } },
       },
     });
 
@@ -120,6 +116,7 @@ export async function GET(
     console.info("[admin/orders/[id]] GET —", id);
     return ok({ order });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/orders/[id]", tags: { domain: "orders" } });
     console.error("[admin/orders/[id]] GET error", e);
     return Err.internal();
   }
@@ -128,35 +125,46 @@ export async function GET(
 // ---------------------------------------------------------------------------
 // PATCH /api/admin/orders/[id]
 // Supports two modes:
-//   1. Fulfillment actions: { action: 'set_processing' | 'unset_processing' | 'confirm' | 'ship' | 'cancel', orderNumber?: string }
+//   1. Fulfillment actions: { action: 'set_processing' | 'unset_processing' | 'ship' | 'cancel' | 'set_packaging' | 'set_ready' | 'set_picked_up', orderNumber?: string }
 //   2. Legacy status/paymentStatus update: { status?, paymentStatus? }
 // ---------------------------------------------------------------------------
 const FulfillmentSchema = z.object({
-  action: z.enum(["set_processing", "unset_processing", "confirm", "ship", "cancel", "set_packaging", "set_ready", "set_picked_up"]),
+  action: z.enum(["set_processing", "unset_processing", "ship", "cancel", "set_packaging", "set_ready", "set_picked_up"]),
   orderNumber: z.string().optional(),
-});
+}).strict();
 
 const LegacySchema = z.object({
-  status: z.enum(["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"]).optional(),
+  status: z.enum([
+    "PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED",
+    "WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP", "FAILED",
+  ]).optional(),
   paymentStatus: z.enum(["PENDING", "PAID", "FAILED"]).optional(),
-});
+}).strict();
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
-  try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { orders: ["update_status"] });
+  if (denied) return denied;
+
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session?.user) return Err.authRequired();
+
+  const ctx = await loadCallerContext();
+
+  try {
     const { id } = await params;
 
     const body = await req.json().catch(() => ({}));
 
     // Route to fulfillment handler when "action" key is present
     if ("action" in body) {
-      return handleFulfillmentAction(id, body, admin.id);
+      return handleFulfillmentAction(id, body, session.user.id, ctx.denied ? null : ctx.id, req);
     }
 
     // Legacy path — direct status / paymentStatus update
@@ -176,8 +184,12 @@ export async function PATCH(
     });
 
     console.info("[admin/orders/[id]] PATCH (legacy) —", id, "→", parsed.data.status);
+    if (!ctx.denied) {
+      logActivity(ctx.id, `Updated order ${order.orderNumber ?? id} (legacy)`, "order", id, req, { status: parsed.data.status, paymentStatus: parsed.data.paymentStatus }, "INFO");
+    }
     return ok({ order: updated });
   } catch (e) {
+    reportError(e, { route: "PATCH /api/admin/orders/[id]", tags: { domain: "orders" } });
     console.error("[admin/orders/[id]] PATCH error", e);
     return Err.internal();
   }
@@ -191,7 +203,15 @@ async function handleFulfillmentAction(
   orderId: string,
   body: unknown,
   adminUserId: string,
+  adminProfileId: string | null,
+  req: NextRequest,
 ): Promise<Response> {
+  function logFulfillment(action: string, orderRef: string, from: string, to: string) {
+    if (adminProfileId) {
+      logActivity(adminProfileId, `Order ${action} — ${orderRef}`, "order", orderId, req, { action, from, to }, "INFO");
+    }
+  }
+
   const parsed = FulfillmentSchema.safeParse(body);
   if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
@@ -200,40 +220,20 @@ async function handleFulfillmentAction(
   const order = await db.order.findUnique({
     where: { id: orderId },
     include: {
-      user: { select: { phone: true } },
+      user: { select: { phone: true, phoneCode: true } },
       branch: { select: { name: true } }
     },
   });
   if (!order) return Err.notFound("Order");
 
-  const terminalStatuses = ["SHIPPED", "DELIVERED", "CANCELLED"];
-
   switch (action) {
-    case "confirm": {
-      // New flow: PENDING → CONFIRMED (first step)
-      // Auto-generate order number if not set; otherwise require the admin to type it
-      if (order.orderNumber) {
-        if (!orderNumber || orderNumber !== order.orderNumber) {
-          return Err.validation("Order number does not match — confirmation rejected");
-        }
-      }
-      const resolvedOrderNumber = order.orderNumber ?? (await generateOrderNumber());
-      const updated = await db.order.update({
-        where: { id: orderId },
-        data: {
-          status: "CONFIRMED",
-          confirmedBy: adminUserId,
-          confirmedAt: new Date(),
-          orderNumber: resolvedOrderNumber,
-        },
-        include: ORDER_INCLUDE,
-      });
-      console.info("[admin/orders/[id]] confirm —", orderId, "orderNumber:", resolvedOrderNumber);
-      notifyOrderStatusChange(orderId, order.userId, resolvedOrderNumber, "CONFIRMED", order.user?.phone);
-      return ok({ order: updated });
-    }
-
     case "set_processing": {
+      // Order-number gate now lives here (was on the old "confirm" action):
+      // by the time an order is CONFIRMED, orderNumber is already assigned
+      // by the payment-success webhook, so this check is unconditional.
+      if (!orderNumber || orderNumber !== order.orderNumber) {
+        return Err.validation("Order number does not match — confirmation rejected");
+      }
       // New flow: CONFIRMED → PROCESSING (packaging/preparing)
       if (order.deliveryType === "PICKUP") {
         return Err.validation("Use set_packaging for pickup orders — set_processing is for delivery orders only");
@@ -250,8 +250,10 @@ async function handleFulfillmentAction(
         },
         include: ORDER_INCLUDE,
       });
+      await db.orderStatusEvent.create({ data: { orderId, status: "PROCESSING", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] set_processing —", orderId);
-      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "PROCESSING", order.user?.phone);
+      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "PROCESSING", order.user?.phone, order.user?.phoneCode);
+      logFulfillment("set_processing", order.orderNumber ?? orderId, order.status, "PROCESSING");
       return ok({ order: updated });
     }
 
@@ -269,6 +271,7 @@ async function handleFulfillmentAction(
         include: ORDER_INCLUDE,
       });
       console.info("[admin/orders/[id]] unset_processing —", orderId);
+      logFulfillment("unset_processing", order.orderNumber ?? orderId, order.status, "CONFIRMED");
       return ok({ order: updated });
     }
 
@@ -288,23 +291,40 @@ async function handleFulfillmentAction(
         },
         include: ORDER_INCLUDE,
       });
+      await db.orderStatusEvent.create({ data: { orderId, status: "SHIPPED", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] ship —", orderId);
-      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "SHIPPED", order.user?.phone);
+      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "SHIPPED", order.user?.phone, order.user?.phoneCode);
+      logFulfillment("ship", order.orderNumber ?? orderId, order.status, "SHIPPED");
       return ok({ order: updated });
     }
 
     case "cancel": {
+      // Orders can only be cancelled before they've physically left the building
+      // (shipped) or been made available for pickup — after that, cancellation
+      // needs a different (refund/return) flow, not a status flip.
+      const CANCELLABLE_STATUSES = ["PENDING", "CONFIRMED", "PROCESSING", "WAITING_TO_PACKAGE"];
+      if (!CANCELLABLE_STATUSES.includes(order.status)) {
+        return Err.validation("Order cannot be cancelled once it has shipped or is ready for pickup");
+      }
       const updated = await db.order.update({
         where: { id: orderId },
         data: { status: "CANCELLED" },
         include: ORDER_INCLUDE,
       });
+      await db.orderStatusEvent.create({ data: { orderId, status: "CANCELLED", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] cancel —", orderId);
-      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "CANCELLED", order.user?.phone);
+      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "CANCELLED", order.user?.phone, order.user?.phoneCode);
+      logFulfillment("cancel", order.orderNumber ?? orderId, order.status, "CANCELLED");
       return ok({ order: updated });
     }
 
     case "set_packaging": {
+      // Order-number gate now lives here (was on the old "confirm" action):
+      // by the time an order is CONFIRMED, orderNumber is already assigned
+      // by the payment-success webhook, so this check is unconditional.
+      if (!orderNumber || orderNumber !== order.orderNumber) {
+        return Err.validation("Order number does not match — confirmation rejected");
+      }
       if (order.deliveryType !== "PICKUP") {
         return Err.validation("set_packaging is only for PICKUP orders");
       }
@@ -320,8 +340,10 @@ async function handleFulfillmentAction(
         },
         include: ORDER_INCLUDE,
       });
+      await db.orderStatusEvent.create({ data: { orderId, status: "WAITING_TO_PACKAGE", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] set_packaging —", orderId);
-      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "WAITING_TO_PACKAGE", order.user?.phone);
+      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "WAITING_TO_PACKAGE", order.user?.phone, order.user?.phoneCode);
+      logFulfillment("set_packaging", order.orderNumber ?? orderId, order.status, "WAITING_TO_PACKAGE");
       return ok({ order: updated });
     }
 
@@ -338,6 +360,7 @@ async function handleFulfillmentAction(
         data: { status: "READY_FOR_PICKUP" },
         include: ORDER_INCLUDE,
       });
+      await db.orderStatusEvent.create({ data: { orderId, status: "READY_FOR_PICKUP", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] set_ready —", orderId);
       // Custom message for ready — override STATUS_MESSAGES
       if (order.userId) {
@@ -347,30 +370,106 @@ async function handleFulfillmentAction(
             await db.inboxMessage.create({
               data: { userId: order.userId!, type: "SYSTEM", title: `Order ${orderRef} — Ready for Pickup`, body: readyMsg, orderId },
             });
-          } catch (e) { console.error("[notify] inbox failed:", e); }
+          } catch (e) {
+            reportError(e, { route: "PATCH /api/admin/orders/[id]", tags: { domain: "orders", stage: "notify-ready-inbox" } });
+            console.error("[notify] inbox failed:", e);
+          }
         });
       }
+      logFulfillment("set_ready", order.orderNumber ?? orderId, order.status, "READY_FOR_PICKUP");
       return ok({ order: updated });
     }
 
     case "set_picked_up": {
+      // Dual confirmation: pickup only completes once both the staff member
+      // handing over the order AND the customer receiving it have confirmed.
+      // Mirrors the customer-side confirmation in app/api/orders/[id]/picked-up/route.ts.
       if (order.status !== "READY_FOR_PICKUP") {
         return Err.validation("Order must be in READY_FOR_PICKUP status before it can be marked as picked up");
       }
+      const customerAlreadyConfirmed = order.customerPickupConfirmedAt !== null;
       const updated = await db.order.update({
         where: { id: orderId },
-        data: {
-          status: "PICKED_UP",
-          pickedUpAt: new Date(),
-        },
+        data: customerAlreadyConfirmed
+          ? {
+              staffPickupConfirmedAt: new Date(),
+              status: "PICKED_UP",
+              pickedUpAt: new Date(),
+            }
+          : {
+              staffPickupConfirmedAt: new Date(),
+            },
         include: ORDER_INCLUDE,
       });
-      console.info("[admin/orders/[id]] set_picked_up —", orderId);
-      notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "PICKED_UP", order.user?.phone);
+      if (customerAlreadyConfirmed) {
+        await db.orderStatusEvent.create({ data: { orderId, status: "PICKED_UP", occurredAt: new Date() } });
+        console.info("[admin/orders/[id]] set_picked_up — completed —", orderId);
+        notifyOrderStatusChange(orderId, order.userId, order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`, "PICKED_UP", order.user?.phone, order.user?.phoneCode);
+        logFulfillment("set_picked_up", order.orderNumber ?? orderId, order.status, "PICKED_UP");
+      } else {
+        console.info("[admin/orders/[id]] set_picked_up — staff confirmed, waiting on customer —", orderId);
+      }
       return ok({ order: updated });
     }
 
     default:
       return Err.validation("Unknown action");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /api/admin/orders/[id]
+// Permanently deletes an order and everything connected to it (items, status
+// events, transactions, invoice) — the customer record is never touched.
+// Super-admin only, direct isSuperAdmin check (not routed through
+// requirePermission/roles — this must be stricter than any grantable role).
+// ---------------------------------------------------------------------------
+const DeleteSchema = z.object({
+  reason: z.string().trim().min(1, "A reason is required"),
+  kind: z.enum(["order", "instore"]),
+}).strict();
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
+  await connection();
+
+  const ctx = await loadCallerContext();
+  if (ctx.denied) return ctx.denied === "auth" ? Err.authRequired() : Err.forbidden();
+  if (!ctx.isSuperAdmin) return Err.forbidden();
+
+  try {
+    const { id } = await params;
+    const parsed = DeleteSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
+    const { reason, kind } = parsed.data;
+
+    let orderNumber: string | null;
+    try {
+      ({ orderNumber } = await deleteOrder({ id, kind: kind as OrderKind, reason, actorAdminProfileId: ctx.id }));
+    } catch (e) {
+      if (e instanceof Error && e.message === "Order not found") return Err.notFound("Order");
+      throw e;
+    }
+
+    await logActivity(
+      ctx.id,
+      `Permanently deleted ${kind === "instore" ? "in-store " : ""}order ${orderNumber ?? id}`,
+      "order",
+      id,
+      req,
+      { reason, kind },
+      "CRITICAL",
+    );
+
+    console.info("[admin/orders/[id]] DELETE —", id, kind);
+    return ok({ id });
+  } catch (e) {
+    reportError(e, { route: "DELETE /api/admin/orders/[id]", tags: { domain: "orders" } });
+    console.error("[admin/orders/[id]] DELETE error", e);
+    return Err.internal();
   }
 }

@@ -3,8 +3,12 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MessageSquare, Send, Plus, X } from "lucide-react";
+import { MessageSquare, Send, Plus, X, Paperclip, FileText, ArrowLeft } from "lucide-react";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
+import { useTicketStream } from "@/hooks/use-ticket-stream";
+
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_ATTACHMENT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif", "application/pdf"];
 
 // ---------------------------------------------------------------------------
 // Types
@@ -14,6 +18,9 @@ type TicketMessage = {
   senderType: "CUSTOMER" | "ADMIN";
   content: string;
   createdAt: string;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
+  attachmentType?: string | null;
 };
 
 type TicketSummary = {
@@ -23,7 +30,12 @@ type TicketSummary = {
   status: "OPEN" | "RESOLVED" | "EXPIRED";
   lastActivityAt: string;
   createdAt: string;
-  messages: { content: string; senderType: "CUSTOMER" | "ADMIN"; createdAt: string }[];
+  messages: {
+    content: string;
+    senderType: "CUSTOMER" | "ADMIN";
+    createdAt: string;
+    attachmentName?: string | null;
+  }[];
 };
 
 type TicketDetail = TicketSummary & {
@@ -172,6 +184,42 @@ function NewTicketModal({
 // ---------------------------------------------------------------------------
 // Message bubble — customer POV: CUSTOMER = right/green, ADMIN = left/white
 // ---------------------------------------------------------------------------
+function MessageAttachment({ message, isCustomer }: { message: TicketMessage; isCustomer: boolean }) {
+  if (!message.attachmentUrl) return null;
+  const isImage = message.attachmentType?.startsWith("image/");
+
+  if (isImage) {
+    return (
+      <a
+        href={message.attachmentUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block mb-2 rounded-[10px] overflow-hidden max-w-[220px]"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={message.attachmentUrl} alt={message.attachmentName ?? "Attachment"} className="w-full h-auto block" />
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={message.attachmentUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={[
+        "flex items-center gap-2 mb-2 px-3 py-2 rounded-[10px] transition-colors",
+        isCustomer ? "bg-white/15 hover:bg-white/25" : "bg-(--neutral-100) hover:bg-(--neutral-200)",
+      ].join(" ")}
+    >
+      <FileText size={16} className={isCustomer ? "text-white shrink-0" : "text-(--green-800) shrink-0"} />
+      <span className={["font-dm text-[13px] truncate", isCustomer ? "text-white" : "text-(--neutral-900)"].join(" ")}>
+        {message.attachmentName ?? "Attachment"}
+      </span>
+    </a>
+  );
+}
+
 function MessageBubble({ message }: { message: TicketMessage & { isOptimistic?: boolean } }) {
   const isCustomer = message.senderType === "CUSTOMER";
 
@@ -179,7 +227,10 @@ function MessageBubble({ message }: { message: TicketMessage & { isOptimistic?: 
     return (
       <div className="flex justify-end">
         <div className="max-w-[70%] bg-(--green-800) rounded-[16px] rounded-tr-[4px] px-4 py-3">
-          <p className="font-dm text-[14px] text-white leading-relaxed">{message.content}</p>
+          <MessageAttachment message={message} isCustomer />
+          {message.content && (
+            <p className="font-dm text-[14px] text-white leading-relaxed">{message.content}</p>
+          )}
           <span className="font-dm text-[11px] text-white/60 mt-1 block text-right">
             {formatTime(message.createdAt)}
           </span>
@@ -192,7 +243,10 @@ function MessageBubble({ message }: { message: TicketMessage & { isOptimistic?: 
     <div className="flex justify-start">
       <div className="max-w-[70%] bg-white border border-(--neutral-200) rounded-[16px] rounded-tl-[4px] px-4 py-3 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
         <div className="font-dm text-[11px] text-(--green-800) font-semibold mb-1">Fechi Organics Support</div>
-        <p className="font-dm text-[14px] text-(--neutral-900) leading-relaxed">{message.content}</p>
+        <MessageAttachment message={message} isCustomer={false} />
+        {message.content && (
+          <p className="font-dm text-[14px] text-(--neutral-900) leading-relaxed">{message.content}</p>
+        )}
         <span className="font-dm text-[11px] text-(--neutral-400) mt-1 block">
           {formatTime(message.createdAt)}
         </span>
@@ -208,8 +262,25 @@ export function MessagesClient() {
   const qc = useQueryClient();
   const [activeTicketId, setActiveTicketId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!ALLOWED_ATTACHMENT_TYPES.includes(file.type)) {
+      toast.error("Only images and PDFs can be attached");
+      return;
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      toast.error("File exceeds 10 MB");
+      return;
+    }
+    setPendingFile(file);
+  }
 
   // -------------------------------------------------------------------------
   // Fetch ticket list
@@ -235,14 +306,23 @@ export function MessagesClient() {
 
   const activeTicket: TicketDetail | null = detailData?.data?.ticket ?? null;
 
+  // Real-time layer on top of the 15s poll above — invalidate as soon as a
+  // reply lands (from the admin's side, most of the time) so the thread
+  // updates without waiting for the next poll tick.
+  useTicketStream(activeTicketId, () => {
+    qc.invalidateQueries({ queryKey: ["my-ticket", activeTicketId] });
+    qc.invalidateQueries({ queryKey: ["my-tickets"] });
+  });
+
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [activeTicket?.messages?.length]);
 
-  // Auto-select first ticket
+  // Auto-select first ticket — desktop only, so mobile always lands on the
+  // WhatsApp-style list view first instead of jumping straight into a thread.
   useEffect(() => {
-    if (!activeTicketId && tickets.length > 0) {
+    if (!activeTicketId && tickets.length > 0 && window.matchMedia("(min-width: 768px)").matches) {
       setActiveTicketId(tickets[0].id);
     }
   }, [tickets.length]);
@@ -251,20 +331,26 @@ export function MessagesClient() {
   // Reply mutation
   // -------------------------------------------------------------------------
   const replyMutation = useMutation({
-    mutationFn: (content: string) =>
-      fetch(`/api/tickets/${activeTicketId}/reply`, {
+    mutationFn: ({ content, file }: { content: string; file: File | null }) => {
+      const fd = new FormData();
+      if (content) fd.append("content", content);
+      if (file) fd.append("file", file);
+      return fetch(`/api/tickets/${activeTicketId}/reply`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
-      }).then((r) => r.json()),
+        body: fd,
+      }).then((r) => r.json());
+    },
 
-    onMutate: async (content) => {
+    onMutate: async ({ content, file }) => {
       const optimistic = {
         id: `opt-${Date.now()}`,
         senderType: "CUSTOMER" as const,
         content,
         createdAt: new Date().toISOString(),
         isOptimistic: true,
+        attachmentUrl: file ? URL.createObjectURL(file) : null,
+        attachmentName: file?.name ?? null,
+        attachmentType: file?.type ?? null,
       };
       qc.setQueryData(
         ["my-ticket", activeTicketId],
@@ -300,9 +386,11 @@ export function MessagesClient() {
 
   function handleSend() {
     const text = replyText.trim();
-    if (!text || !activeTicketId) return;
+    if ((!text && !pendingFile) || !activeTicketId) return;
     setReplyText("");
-    replyMutation.mutate(text);
+    const file = pendingFile;
+    setPendingFile(null);
+    replyMutation.mutate({ content: text, file });
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -319,22 +407,22 @@ export function MessagesClient() {
 
   return (
     <>
-      <div className="flex h-[calc(100vh-72px)] bg-white">
+      <div className="flex h-[calc(100vh-260px)] min-h-[560px] rounded-2xl border border-(--neutral-200) overflow-hidden bg-white">
 
         {/* ---------------------------------------------------------------- */}
         {/* Column 1 — Ticket list (280px)                                   */}
         {/* ---------------------------------------------------------------- */}
-        <div className="w-[280px] shrink-0 border-r border-(--neutral-200) flex flex-col">
+        <div className={`${activeTicketId ? "hidden md:flex" : "flex"} w-full md:w-[280px] shrink-0 md:border-r border-(--neutral-200) flex-col`}>
           {/* Header */}
           <div className="h-14 flex items-center justify-between px-4 border-b border-(--neutral-200)">
             <span className="font-syne text-[16px] font-semibold text-(--neutral-900)">Messages</span>
-            <button
+            {/*<button
               onClick={() => setShowNewModal(true)}
               className="w-8 h-8 flex items-center justify-center rounded-[6px] bg-(--green-800) text-white hover:opacity-90 transition-opacity"
               title="New ticket"
             >
               <Plus size={16} />
-            </button>
+            </button>*/}
           </div>
 
           {/* List */}
@@ -359,9 +447,10 @@ export function MessagesClient() {
             ) : (
               tickets.map((ticket) => {
                 const lastMsg = ticket.messages[0];
-                const preview = lastMsg
-                  ? lastMsg.content.slice(0, 42) + (lastMsg.content.length > 42 ? "…" : "")
-                  : ticket.subject.slice(0, 42);
+                const previewText = lastMsg
+                  ? lastMsg.content || (lastMsg.attachmentName ? `📎 ${lastMsg.attachmentName}` : "")
+                  : ticket.subject;
+                const preview = previewText.slice(0, 42) + (previewText.length > 42 ? "…" : "");
                 const active = ticket.id === activeTicketId;
 
                 return (
@@ -397,7 +486,7 @@ export function MessagesClient() {
         {/* ---------------------------------------------------------------- */}
         {/* Column 2 — Thread view (flex-1)                                  */}
         {/* ---------------------------------------------------------------- */}
-        <div className="flex-1 flex flex-col min-w-0 bg-[#f7f8f7]">
+        <div className={`${activeTicketId ? "flex" : "hidden md:flex"} flex-1 flex-col min-w-0 bg-[#f7f8f7]`}>
           {!activeTicket && !detailLoading ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-4">
               <MessageSquare size={48} className="text-(--neutral-300)" />
@@ -415,6 +504,13 @@ export function MessagesClient() {
             <>
               {/* Thread header */}
               <div className="h-14 shrink-0 flex items-center px-4 bg-white border-b border-(--neutral-200) gap-3">
+                <button
+                  onClick={() => setActiveTicketId(null)}
+                  className="md:hidden -ml-1 w-8 h-8 flex items-center justify-center rounded-full hover:bg-(--neutral-100) transition-colors shrink-0"
+                  aria-label="Back to messages"
+                >
+                  <ArrowLeft size={18} className="text-(--neutral-700)" />
+                </button>
                 {detailLoading ? (
                   <div className="h-5 w-48 bg-(--neutral-100) rounded animate-pulse" />
                 ) : activeTicket ? (
@@ -467,22 +563,50 @@ export function MessagesClient() {
               {/* Compose */}
               <div className="shrink-0 border-t border-(--neutral-200) p-3 bg-white">
                 {canReply ? (
-                  <div className="flex gap-2 items-end">
-                    <textarea
-                      value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      placeholder="Type a message... (Ctrl+Enter to send)"
-                      rows={2}
-                      className="flex-1 resize-none rounded-[10px] border border-(--neutral-200) bg-(--neutral-50) px-3 py-2 font-dm text-[14px] text-(--neutral-900) placeholder:text-(--neutral-400) min-h-[40px] max-h-[120px] focus:border-(--green-800) focus:outline-none transition-colors"
-                    />
-                    <button
-                      onClick={handleSend}
-                      disabled={!replyText.trim() || replyMutation.isPending}
-                      className="w-10 h-10 rounded-full bg-(--green-800) text-white flex items-center justify-center hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity shrink-0"
-                    >
-                      <Send size={16} />
-                    </button>
+                  <div className="flex flex-col gap-2">
+                    {pendingFile && (
+                      <div className="flex items-center gap-2 self-start px-3 py-1.5 rounded-full bg-(--neutral-100) max-w-full">
+                        <FileText size={14} className="text-(--neutral-500) shrink-0" />
+                        <span className="font-dm text-[12px] text-(--neutral-700) truncate">{pendingFile.name}</span>
+                        <button
+                          onClick={() => setPendingFile(null)}
+                          className="text-(--neutral-400) hover:text-(--neutral-700) shrink-0"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex gap-2 items-end">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={handleFileSelect}
+                        className="hidden"
+                      />
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        title="Attach a file"
+                        className="w-10 h-10 rounded-full border border-(--neutral-200) text-(--neutral-500) flex items-center justify-center hover:bg-(--neutral-50) transition-colors shrink-0"
+                      >
+                        <Paperclip size={16} />
+                      </button>
+                      <textarea
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder="Type a message... (Ctrl+Enter to send)"
+                        rows={1}
+                        className="flex-1 resize-none rounded-[10px] border border-(--neutral-200) bg-(--neutral-50) px-3 py-2 font-dm text-[14px] text-(--neutral-900) placeholder:text-(--neutral-400) min-h-[40px] max-h-[120px] focus:border-(--green-800) focus:outline-none transition-colors"
+                      />
+                      <button
+                        onClick={handleSend}
+                        disabled={(!replyText.trim() && !pendingFile) || replyMutation.isPending}
+                        className="w-10 h-10 rounded-full bg-(--green-800) text-white flex items-center justify-center hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity shrink-0"
+                      >
+                        <Send size={16} />
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <p className="text-center font-dm text-[13px] text-(--neutral-400) py-1">

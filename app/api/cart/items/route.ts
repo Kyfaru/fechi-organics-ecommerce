@@ -5,20 +5,27 @@ import { auth } from "@/lib/auth";
 import { resolveCart, getCartSummary } from "@/lib/cart";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
+import { readUtmCookie } from "@/lib/attribution";
 
 const AddSchema = z.object({
   productId: z.string().uuid(),
   quantity: z.number().int().min(1).max(99).default(1),
-});
+  variantId: z.string().optional(),
+  variantLabel: z.string().optional(),
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const body = await req.json().catch(() => ({}));
     const parsed = AddSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
-    const { productId, quantity } = parsed.data;
+    const { productId, quantity, variantId, variantLabel } = parsed.data;
 
     // Verify product exists and is in stock
     const product = await db.product.findUnique({ where: { id: productId, isActive: true } });
@@ -27,14 +34,20 @@ export async function POST(req: NextRequest) {
     const session = await auth.api.getSession({ headers: req.headers });
     const userId = session?.user?.id ?? null;
 
-    const { cartId, isNew } = await resolveCart(userId);
+    const { cartId, isNew } = await resolveCart(userId, readUtmCookie(req)?.source);
 
-    // Upsert: increment quantity if already in cart
-    await db.cartItem.upsert({
-      where: { cartId_productId: { cartId, productId } },
-      create: { cartId, productId, quantity },
-      update: { quantity: { increment: quantity } },
+    // Prisma's compound-unique where-input doesn't accept `null` for a
+    // nullable member field, so a null variantId (sizes-mode/no-variant
+    // products) needs a plain findFirst + create/update instead of upsert.
+    const existingItem = await db.cartItem.findFirst({
+      where: { cartId, productId, variantId: variantId ?? null },
+      select: { id: true },
     });
+    if (existingItem) {
+      await db.cartItem.update({ where: { id: existingItem.id }, data: { quantity: { increment: quantity } } });
+    } else {
+      await db.cartItem.create({ data: { cartId, productId, quantity, variantId, variantLabel } });
+    }
 
     await db.cart.update({ where: { id: cartId }, data: { updatedAt: new Date() } });
 
@@ -56,6 +69,7 @@ export async function POST(req: NextRequest) {
     return resp;
   } catch (e) {
     console.error("[cart/items] POST error", e);
+    reportError(e, { route: "POST /api/cart/items" });
     return Err.internal();
   }
 }

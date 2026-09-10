@@ -1,21 +1,9 @@
 import { NextRequest } from "next/server"
 import { connection } from "next/server"
-import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { ok, Err } from "@/lib/api"
-
-// ---------------------------------------------------------------------------
-// Auth helper — mirrors pattern in app/api/admin/orders/route.ts
-// ---------------------------------------------------------------------------
-async function requireAdmin(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers })
-  if (!session?.user) return null
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    include: { adminProfile: true },
-  })
-  return user?.role === "admin" ? user : null
-}
+import { requirePermission } from "@/lib/require-permission"
+import { reportError } from "@/lib/observability"
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/reviews
@@ -23,10 +11,11 @@ async function requireAdmin(req: NextRequest) {
 // ---------------------------------------------------------------------------
 export async function GET(req: NextRequest) {
   await connection()
-  try {
-    const admin = await requireAdmin(req)
-    if (!admin) return Err.forbidden()
 
+  const denied = await requirePermission(req, { reviews: ["view"] })
+  if (denied) return denied
+
+  try {
     const reviews = await db.testimonial.findMany({
       where: { userId: { not: null } },
       orderBy: { createdAt: "desc" },
@@ -47,6 +36,7 @@ export async function GET(req: NextRequest) {
 
     return ok({ reviews })
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/reviews", tags: { domain: "reviews" } })
     console.error("[admin/reviews] GET error", e)
     return Err.internal()
   }

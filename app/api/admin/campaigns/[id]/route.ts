@@ -1,26 +1,22 @@
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
-import { requireAdminPage } from "@/lib/admin-guard";
+import { requirePermission } from "@/lib/require-permission";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 /** PATCH /api/admin/campaigns/[id] */
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
-  const denied = await requireAdminPage(req, 'campaigns');
+  const denied = await requirePermission(req, { campaigns: ["update"] });
   if (denied) return denied;
-
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
 
   const { id } = await params;
 
@@ -47,6 +43,7 @@ export async function PATCH(
     console.info(`[campaigns/PATCH] Updated campaign: ${id}`);
     return ok(campaign);
   } catch (e) {
+    reportError(e, { route: "PATCH /api/admin/campaigns/[id]", tags: { domain: "campaigns" } });
     console.error("[campaigns/PATCH]", e);
     return Err.internal();
   }
@@ -57,16 +54,12 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
-  const denied = await requireAdminPage(req, 'campaigns');
+  const denied = await requirePermission(req, { campaigns: ["delete"] });
   if (denied) return denied;
-
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
 
   const { id } = await params;
 
@@ -75,6 +68,7 @@ export async function DELETE(
     console.info(`[campaigns/DELETE] Deleted campaign: ${id}`);
     return ok({ deleted: true });
   } catch (e) {
+    reportError(e, { route: "DELETE /api/admin/campaigns/[id]", tags: { domain: "campaigns" } });
     console.error("[campaigns/DELETE]", e);
     return Err.internal();
   }

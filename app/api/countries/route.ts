@@ -1,7 +1,8 @@
 import { connection } from "next/server";
 import countriesData from "world-countries";
 import { getRedis } from "@/lib/redis";
-import { ok } from "@/lib/api";
+import { ok, Err } from "@/lib/api";
+import { reportError } from "@/lib/observability";
 
 type Country = { code: string; name: string; flag: string; phoneCode: string };
 
@@ -24,18 +25,24 @@ function buildCountries(): Country[] {
 
 export async function GET() {
   await connection();
-  const redis = getRedis();
-  const cacheKey = "countries:all";
+  try {
+    const redis = getRedis();
+    const cacheKey = "countries:all";
 
-  const cached = await redis.get(cacheKey);
-  if (
-    Array.isArray(cached) &&
-    cached.every((country) => typeof country?.flag === "string" && country.flag.startsWith("https://flagcdn.com/"))
-  ) {
-    return ok({ countries: cached as Country[] });
+    const cached = await redis.get(cacheKey);
+    if (
+      Array.isArray(cached) &&
+      cached.every((country) => typeof country?.flag === "string" && country.flag.startsWith("https://flagcdn.com/"))
+    ) {
+      return ok({ countries: cached as Country[] });
+    }
+
+    const countries = buildCountries();
+    await redis.set(cacheKey, countries, { ex: 86400 });
+    return ok({ countries });
+  } catch (e) {
+    reportError(e, { route: "GET /api/countries" });
+    console.error("[countries] GET error", e);
+    return Err.internal();
   }
-
-  const countries = buildCountries();
-  await redis.set(cacheKey, countries, { ex: 86400 });
-  return ok({ countries });
 }

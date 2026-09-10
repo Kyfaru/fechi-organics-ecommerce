@@ -1,8 +1,10 @@
+import { assertTrustedOrigin } from "@/lib/origin-check";
 import { NextRequest } from "next/server"
 import { connection } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { ok, Err } from "@/lib/api"
+import { reportError } from "@/lib/observability"
 
 // POST /api/orders/[id]/delivered
 // Allows the authenticated customer to mark their own SHIPPED order as DELIVERED.
@@ -10,6 +12,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection()
   try {
     const session = await auth.api.getSession({ headers: req.headers })
@@ -58,6 +62,7 @@ export async function POST(
     return ok({ order: updated })
   } catch (e) {
     console.error("[orders/[id]/delivered] POST error", e)
+    reportError(e, { route: "POST /api/orders/[id]/delivered" })
     return Err.internal()
   }
 }

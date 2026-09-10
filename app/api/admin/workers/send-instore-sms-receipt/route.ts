@@ -1,0 +1,47 @@
+// Qstash-triggered worker for the "both" channel's SMS leg of
+// POST /api/admin/orders/instore/[id]/send-receipt — scheduled with a short
+// delay so the admin's request returns immediately instead of waiting on
+// Twilio.
+
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { verifyQstashRequest } from "@/lib/qstash";
+import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-invoice";
+import { buildInstoreSmsMessage } from "@/lib/invoice/build-instore-sms";
+import { sendSms } from "@/lib/sms";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
+
+export async function POST(req: NextRequest) {
+  const rawBody = await req.text();
+  const isValid = await verifyQstashRequest(req.headers.get("upstash-signature"), rawBody);
+  if (!isValid) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+
+  const { inStoreOrderId } = JSON.parse(rawBody) as { inStoreOrderId: string };
+
+  try {
+    const order = await db.inStoreOrder.findUnique({ where: { id: inStoreOrderId } });
+    if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
+
+    // Idempotency — Qstash can redeliver, and there's nothing to do if the
+    // customer never gave a phone number.
+    if (order.receiptSentSms || !order.customerPhone) {
+      return NextResponse.json({ ok: true, skipped: true });
+    }
+
+    const invoice = await getOrCreateInStoreInvoice(inStoreOrderId);
+    if (!invoice) return NextResponse.json({ error: "Order not found" }, { status: 404 });
+
+    await sendSms(
+      order.customerPhone,
+      buildInstoreSmsMessage({ invoiceNumber: invoice.invoiceNumber, customerName: order.customerName, url: invoice.url }),
+    );
+
+    await db.inStoreOrder.update({ where: { id: inStoreOrderId }, data: { receiptSentSms: true } });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    reportError(error, { route: "POST /api/admin/workers/send-instore-sms-receipt", extra: { inStoreOrderId } });
+    trackServerEvent("system", "send_instore_sms_receipt_worker_failed", { inStoreOrderId });
+    return NextResponse.json({ error: "Worker failed" }, { status: 500 });
+  }
+}

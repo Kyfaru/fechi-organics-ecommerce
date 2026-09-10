@@ -1,37 +1,36 @@
 import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { connection } from "next/server";
+import { NextRequest } from "next/server";
+import { requirePermission } from "@/lib/require-permission";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 /** GET /api/admin/banners */
-export async function GET() {
+export async function GET(req: NextRequest) {
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { content: ["view"] });
+  if (denied) return denied;
 
   try {
     const banners = await db.banner.findMany({ orderBy: { name: "asc" } });
     return ok(banners);
   } catch (e) {
     console.error("[banners/GET]", e);
+    reportError(e, { route: "GET /api/admin/banners" });
     return Err.internal();
   }
 }
 
 /** POST /api/admin/banners — create banner */
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { content: ["create"] });
+  if (denied) return denied;
 
   let body: {
     name: string;
@@ -70,6 +69,7 @@ export async function POST(req: Request) {
     return created(banner);
   } catch (e) {
     console.error("[banners/POST]", e);
+    reportError(e, { route: "POST /api/admin/banners" });
     return Err.internal();
   }
 }

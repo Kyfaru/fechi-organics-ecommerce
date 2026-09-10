@@ -1,68 +1,106 @@
+import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { connection } from "next/server";
+import { invalidateProductCache } from "@/lib/cache-tags";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
+import { assertBranchAccess } from "@/lib/branch-access";
+import { LOW_STOCK_THRESHOLD } from "@/lib/inventory/constants";
+import { reportError } from "@/lib/observability";
 
 /** POST /api/admin/inventory/adjust
- *  Body: { productId, type: "ADD"|"REMOVE"|"SET", quantity, reason, notes? }
- *  Returns the updated product with new stock value.
+ *  Body: { branchId, productId, type: "ADD"|"REMOVE"|"SET", quantity, reason, notes? }
+ *  Adjusts one branch's stock row for a product. Returns the updated stock value.
  */
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
+  const denied = await requirePermission(req, { inventory: ["adjust"] });
+  if (denied) return denied;
 
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
-
-  let body: { productId: string; type: "ADD" | "REMOVE" | "SET"; quantity: number; reason: string; notes?: string };
+  let body: {
+    branchId: string;
+    productId: string;
+    type: "ADD" | "REMOVE" | "SET";
+    quantity: number;
+    reason: string;
+    notes?: string;
+  };
   try {
     body = await req.json();
   } catch {
     return Err.validation("Invalid JSON body");
   }
 
-  const { productId, type, quantity, reason, notes } = body;
+  const { branchId, productId, type, quantity, reason, notes } = body;
 
-  if (!productId || !type || quantity == null || !reason) {
-    return Err.validation("productId, type, quantity, and reason are required");
+  if (!branchId || !productId || !type || quantity == null || !reason) {
+    return Err.validation("branchId, productId, type, quantity, and reason are required");
   }
   if (quantity < 0) return Err.validation("Quantity must be a non-negative number");
+  if (type !== "ADD" && type !== "REMOVE" && type !== "SET") {
+    return Err.validation("type must be ADD, REMOVE, or SET");
+  }
+
+  const caller = await loadCallerContext();
+  if (caller.denied) return caller.denied === "auth" ? Err.authRequired() : Err.forbidden();
+  const forbidden = assertBranchAccess(caller, branchId);
+  if (forbidden) return forbidden;
 
   const product = await db.product.findUnique({ where: { id: productId } });
   if (!product) return Err.notFound("Product");
 
+  const existingStock = await db.branchProductStock.findUnique({
+    where: { branchId_productId: { branchId, productId } },
+    select: { stock: true },
+  });
+  const previousStock = existingStock?.stock ?? 0;
+
   let newStock: number;
   if (type === "ADD") {
-    newStock = product.stock + Math.floor(quantity);
+    newStock = previousStock + Math.floor(quantity);
   } else if (type === "REMOVE") {
-    newStock = Math.max(0, product.stock - Math.floor(quantity));
-  } else if (type === "SET") {
-    newStock = Math.floor(quantity);
+    newStock = Math.max(0, previousStock - Math.floor(quantity));
   } else {
-    return Err.validation("type must be ADD, REMOVE, or SET");
+    newStock = Math.floor(quantity);
   }
 
   try {
-    const updated = await db.product.update({
-      where: { id: productId },
-      data: { stock: newStock },
-      include: { category: { select: { name: true } } },
+    await db.branchProductStock.upsert({
+      where: { branchId_productId: { branchId, productId } },
+      create: { branchId, productId, stock: newStock, lastSyncedAt: new Date() },
+      update: { stock: newStock, lastSyncedAt: new Date() },
     });
 
-    console.info(`[inventory/adjust] Product ${product.name}: ${product.stock} → ${newStock} (${type}, reason: ${reason}, notes: ${notes ?? "none"})`);
+    console.info(`[inventory/adjust] Branch ${branchId}, product ${product.name}: ${previousStock} → ${newStock} (${type}, reason: ${reason}, notes: ${notes ?? "none"})`);
+    // Product cache may include fields beyond stock (storefront doesn't gate
+    // on stock, but keep this invalidation in place for anything else cached
+    // under the product's slug).
+    invalidateProductCache(product.slug);
+
+    await db.auditLog.create({
+      data: {
+        adminProfileId: caller.id,
+        action: "adjust",
+        resource: "inventory",
+        resourceId: productId,
+        details: { branchId, type, quantity, previousStock, newStock, reason, notes },
+      },
+    }).catch((e) => console.error("[inventory/adjust] auditLog write failed", e));
 
     return ok({
-      id: updated.id,
-      name: updated.name,
-      previousStock: product.stock,
-      newStock: updated.stock,
+      id: product.id,
+      name: product.name,
+      previousStock,
+      newStock,
       status:
-        updated.stock === 0 ? "out_of_stock" : updated.stock < 10 ? "low_stock" : "in_stock",
+        newStock === 0 ? "out_of_stock" : newStock < LOW_STOCK_THRESHOLD ? "low_stock" : "in_stock",
     });
   } catch (e) {
+    reportError(e, { route: "POST /api/admin/inventory/adjust", userId: caller.id, tags: { domain: "inventory" } });
     console.error("[inventory/adjust/POST]", e);
     return Err.internal();
   }

@@ -3,7 +3,7 @@ import { Footer } from "@/components/layout/Footer";
 import { ShippingClient } from "@/components/shipping/ShippingClient";
 
 export const metadata = {
-  title: "Shipping & Delivery",
+  title: "Shipping & Delivery | Fechi Organics",
   description:
     "See FECHI Organics delivery zones and fees across Kenya, free branch pickup, and how to request a new delivery zone.",
 };

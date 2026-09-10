@@ -1,31 +1,23 @@
 "use client";
 
 /**
- * DownloadButton — animated download pill with styled-components.
+ * DownloadButton — animated download pill.
  *
  * States:
- *   idle    → 160px wide pill; blue border (rgb(91,91,240)); circle button on left
+ *   idle    → 108px wide pill; brand green border; circle button on left
  *             with down-arrow icon; "Download" label on right.
- *   loading → pill shrinks to 57px (circle only); circle fills with #3333a8
- *             from bottom over ~3.5 s; square stop icon replaces arrow.
- *   (done)  → onDownload() resolves → smoothly resets back to 160px idle.
+ *   loading → pill shrinks to 38px (circle only); circle fills with the
+ *             darker brand green from bottom over ~3.5 s; square stop icon
+ *             replaces arrow.
+ *   (done)  → onDownload() resolves → smoothly resets back to idle.
  *             NO "Open" / "installed" end-state.
  *
  * Props: { onDownload: () => Promise<void>; label?: string; className?: string }
+ * Styles: app/globals.css (.download-button-*)
  */
 
 import React, { useRef, useState } from "react";
-import styled, { keyframes, css } from "styled-components";
-
-// ---------------------------------------------------------------------------
-// Keyframes
-// ---------------------------------------------------------------------------
-
-/** Fill the circle from bottom to top (simulates download progress) */
-const fillUp = keyframes`
-  from { clip-path: inset(100% 0 0 0); }
-  to   { clip-path: inset(0% 0 0 0); }
-`;
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Props / State
@@ -38,85 +30,8 @@ export interface DownloadButtonProps {
 
 type BtnState = "idle" | "loading";
 
-// ---------------------------------------------------------------------------
-// Styled components
-// ---------------------------------------------------------------------------
-const BLUE      = "rgb(91, 91, 240)";
-const DARK_BLUE = "#3333a8";
-
-/** Outer pill wrapper */
-const Pill = styled.div<{ $state: BtnState }>`
-  display: inline-flex;
-  align-items: center;
-  width: ${({ $state }) => ($state === "idle" ? "160px" : "57px")};
-  height: 57px;
-  border: 2px solid ${BLUE};
-  border-radius: 30px;
-  overflow: hidden;
-  cursor: pointer;
-  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-  flex-shrink: 0;
-  user-select: none;
-`;
-
-/** Left circle — always visible */
-const CircleBtn = styled.div<{ $state: BtnState }>`
-  position: relative;
-  width: 53px;
-  height: 53px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-`;
-
-/** Static background of circle when idle */
-const CircleBg = styled.div`
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: transparent;
-`;
-
-/** Animated fill layer — clips from bottom */
-const CircleFill = styled.div<{ $active: boolean }>`
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: ${DARK_BLUE};
-  clip-path: inset(100% 0 0 0);
-  ${({ $active }) =>
-    $active &&
-    css`
-      animation: ${fillUp} 3.5s linear forwards;
-    `}
-`;
-
-/** Icon container (sits above fill layer) */
-const IconWrap = styled.div`
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: ${BLUE};
-`;
-
-/** Label to the right of circle — only shown in idle */
-const Label = styled.span<{ $visible: boolean }>`
-  flex: 1;
-  text-align: center;
-  font-size: 14px;
-  font-weight: 600;
-  color: ${BLUE};
-  font-family: var(--font-dm-var, system-ui, sans-serif);
-  white-space: nowrap;
-  opacity: ${({ $visible }) => ($visible ? 1 : 0)};
-  transition: opacity 0.2s ease;
-  padding-right: 14px;
-`;
+const GREEN = "#1F6F18"; // --green-800
+const DARK_GREEN = "#103D0C"; // --green-900
 
 // ---------------------------------------------------------------------------
 // SVG icons
@@ -125,7 +40,7 @@ const Label = styled.span<{ $visible: boolean }>`
 /** Down-arrow icon */
 function ArrowDown({ color }: { color: string }) {
   return (
-    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+    <svg width="15" height="15" viewBox="0 0 22 22" fill="none" aria-hidden="true">
       <line x1="11" y1="3" x2="11" y2="16" stroke={color} strokeWidth="2" strokeLinecap="round" />
       <polyline points="6,12 11,17 16,12" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
@@ -135,7 +50,7 @@ function ArrowDown({ color }: { color: string }) {
 /** Square stop icon (shown during loading) */
 function StopIcon({ color }: { color: string }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+    <svg width="10" height="10" viewBox="0 0 14 14" fill="none" aria-hidden="true">
       <rect x="1" y="1" width="12" height="12" rx="2" fill={color} />
     </svg>
   );
@@ -178,20 +93,42 @@ export default function DownloadButton({
   }, []);
 
   const isLoading = state === "loading";
-  const iconColor = isLoading ? "white" : BLUE;
+  const iconColor = isLoading ? "white" : GREEN;
 
   return (
-    <Pill $state={state} className={className} onClick={handleClick} role="button" aria-label={label}>
-      <CircleBtn $state={state}>
-        <CircleBg />
-        <CircleFill $active={isLoading} />
-        <IconWrap>
+    <div
+      className={cn(
+        "download-button-pill inline-flex items-center h-[38px] rounded-[20px] overflow-hidden cursor-pointer shrink-0 select-none",
+        className
+      )}
+      style={{ width: isLoading ? "38px" : "108px", border: `1.5px solid ${GREEN}` }}
+      onClick={handleClick}
+      role="button"
+      aria-label={label}
+    >
+      <div className="relative w-[35px] h-[35px] rounded-full shrink-0 overflow-hidden flex items-center justify-center">
+        <div className="absolute inset-0 rounded-full bg-transparent" />
+        <div
+          className="download-button-fill absolute inset-0 rounded-full"
+          data-active={isLoading}
+          style={{ background: DARK_GREEN, clipPath: "inset(100% 0 0 0)" }}
+        />
+        <div className="relative z-10 flex items-center justify-center" style={{ color: GREEN }}>
           {isLoading ? <StopIcon color={iconColor} /> : <ArrowDown color={iconColor} />}
-        </IconWrap>
-      </CircleBtn>
+        </div>
+      </div>
 
       {/* Label — only meaningful in idle; collapses with the pill when loading */}
-      <Label $visible={!isLoading}>{label}</Label>
-    </Pill>
+      <span
+        className="download-button-label flex-1 text-center text-[12px] font-semibold whitespace-nowrap pr-2.5"
+        style={{
+          color: GREEN,
+          fontFamily: "var(--font-dm-var, system-ui, sans-serif)",
+          opacity: isLoading ? 0 : 1,
+        }}
+      >
+        {label}
+      </span>
+    </div>
   );
 }

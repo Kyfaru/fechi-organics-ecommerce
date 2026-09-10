@@ -5,6 +5,8 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { r2PublicUrl } from "@/lib/r2";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -61,13 +63,16 @@ export async function GET(req: NextRequest) {
     return ok({ products });
   } catch (e) {
     console.error("[favorites] GET error", e);
+    reportError(e, { route: "GET /api/favorites" });
     return Err.internal();
   }
 }
 
-const ToggleSchema = z.object({ productId: z.string().uuid() });
+const ToggleSchema = z.object({ productId: z.string().uuid() }).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const session = await auth.api.getSession({ headers: req.headers });
@@ -93,6 +98,7 @@ export async function POST(req: NextRequest) {
     }
   } catch (e) {
     console.error("[favorites] POST error", e);
+    reportError(e, { route: "POST /api/favorites" });
     return Err.internal();
   }
 }

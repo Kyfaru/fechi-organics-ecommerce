@@ -5,8 +5,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Icon } from "@iconify/react";
 import { toast } from "@/lib/toast";
 import Link from "next/link";
-import PhoneInput from "@/components/auth/PhoneInput";
+import { useSearchParams } from "next/navigation";
+import PhoneInput from "@/components/ui/PhoneInput";
 import { posthog } from "@/lib/posthog";
+import { ContactSuccessModal } from "@/components/contact/ContactSuccessModal";
 
 function CustomSelect({
   value,
@@ -152,6 +154,7 @@ const ORDER_INQUIRY_OPTIONS = [
   "Order Inquiry",
   "Product Question",
   "Delivery Issue",
+  "Request a Delivery Zone",
   "Return Request",
   "Partnership",
   "Other",
@@ -200,25 +203,52 @@ function FaqAccordion() {
   );
 }
 
+const MESSAGE_MAX = 50000;
+
 /* shared input classes to avoid repetition */
 const inputCls =
   "w-full border border-[#c0cab8] dark:border-gray-600 rounded-[8px] px-4 py-3 font-body text-[14px] text-[#1a1c1c] dark:text-white bg-white dark:bg-gray-800 outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] placeholder-[#a1a1a1] dark:placeholder-gray-500 transition-colors";
 
 export function ContactClient() {
-  const [form, setForm] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
-    subject: "Order Inquiry",
-    message: "",
+  // Pre-fill subject (and optionally a starter message) from the query string —
+  // used by the /shipping page's "Request a New Zone" CTA so a zone request
+  // becomes a normal contact-form ticket instead of a separate backend path.
+  // Read once via a lazy useState initializer (matches the searchParams.get()
+  // pattern already used in ShopClient) rather than setState-in-effect.
+  const searchParams = useSearchParams();
+  const [form, setForm] = useState(() => {
+    const subjectParam = searchParams.get("subject");
+    const countyParam = searchParams.get("county");
+    const subject =
+      subjectParam && ORDER_INQUIRY_OPTIONS.includes(subjectParam) ? subjectParam : "Order Inquiry";
+    return {
+      firstName: "",
+      lastName: "",
+      email: "",
+      phone: "",
+      subject,
+      message: countyParam
+        ? `Hi, I'd like to request delivery to ${countyParam} County — it's not currently listed on the Shipping page.`
+        : "",
+    };
   });
   const [sending, setSending] = useState(false);
+  const [successModal, setSuccessModal] = useState<{ open: boolean; ticketNumber?: string }>({
+    open: false,
+  });
+  const [messageOverflow, setMessageOverflow] = useState(false);
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    if (name === "message" && value.length > MESSAGE_MAX) {
+      setForm((prev) => ({ ...prev, message: value.slice(0, MESSAGE_MAX) }));
+      setMessageOverflow(true);
+      window.setTimeout(() => setMessageOverflow(false), 400);
+      return;
+    }
+    setForm((prev) => ({ ...prev, [name]: value }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -229,8 +259,11 @@ export function ContactClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...form,
           name: `${form.firstName} ${form.lastName}`.trim(),
+          email: form.email,
+          phone: form.phone,
+          subject: form.subject,
+          message: form.message,
         }),
       });
       const json = await res.json();
@@ -244,7 +277,8 @@ export function ContactClient() {
           utm_medium: urlParams.get("utm_medium"),
           utm_campaign: urlParams.get("utm_campaign"),
         });
-        toast.success("Message sent! We'll get back to you within 24 hours.");
+        const ticketNumber = json.data?.ticketNumber as string | undefined;
+        setSuccessModal({ open: true, ticketNumber });
         setForm({
           firstName: "",
           lastName: "",
@@ -254,7 +288,7 @@ export function ContactClient() {
           message: "",
         });
       } else {
-        toast.error(json.error ?? "Something went wrong. Please try again.");
+        toast.error(json.error?.message ?? "Something went wrong. Please try again.");
       }
     } catch {
       toast.error("Network error. Please check your connection and try again.");
@@ -263,8 +297,22 @@ export function ContactClient() {
     }
   }
 
+  function handleCloseSuccessModal() {
+    const { ticketNumber } = successModal;
+    setSuccessModal({ open: false });
+    toast.success(
+      ticketNumber ? `Ticket ${ticketNumber} created — we'll be in touch soon.` : "We'll be in touch soon."
+    );
+  }
+
   return (
     <>
+      <ContactSuccessModal
+        open={successModal.open}
+        ticketNumber={successModal.ticketNumber}
+        onClose={handleCloseSuccessModal}
+      />
+
       {/* Hero header */}
       <section className="bg-white dark:bg-gray-950 px-4 md:px-8 pt-10 pb-16 text-center transition-colors">
         <motion.div
@@ -282,7 +330,7 @@ export function ContactClient() {
       </section>
 
       {/* Main content — Form + Contact cards */}
-      <section className="px-4 md:px-8 pb-16 bg-[#f9f9f9] dark:bg-gray-900 transition-colors">
+      <section className="px-4 md:px-8 pb-16 pt-10 bg-[#f9f9f9] dark:bg-gray-900 transition-colors">
         <div className="max-w-[1200px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
 
           {/* Send a Message form */}
@@ -360,15 +408,41 @@ export function ContactClient() {
 
               <div>
                 <label className="font-body text-[#40493c] dark:text-gray-400 text-[12px] mb-1.5 block">Message</label>
-                <textarea
-                  name="message"
-                  value={form.message}
-                  onChange={handleChange}
-                  required
-                  rows={4}
-                  placeholder="How can we help you today?"
-                  className={`${inputCls} resize-none`}
-                />
+                <div className="relative">
+                  <textarea
+                    name="message"
+                    value={form.message}
+                    onChange={handleChange}
+                    required
+                    rows={4}
+                    maxLength={MESSAGE_MAX}
+                    placeholder="How can we help you today?"
+                    className={`${inputCls} resize-none ${messageOverflow ? "animate-shake-error border-red-500 focus:border-red-500 focus:ring-red-500" : ""}`}
+                  />
+                  {messageOverflow && (
+                    <Icon
+                      icon="mdi:alert-circle"
+                      width={18}
+                      className="absolute top-3 right-3 text-red-500"
+                    />
+                  )}
+                </div>
+                <div className="flex items-center justify-between mt-1.5">
+                  {messageOverflow ? (
+                    <span className="font-body text-[12px] text-red-500">
+                      Message can&apos;t exceed {MESSAGE_MAX.toLocaleString()} characters.
+                    </span>
+                  ) : (
+                    <span />
+                  )}
+                  <span
+                    className={`font-body text-[12px] shrink-0 ${
+                      form.message.length >= MESSAGE_MAX ? "text-red-500" : "text-[#a1a1a1] dark:text-gray-500"
+                    }`}
+                  >
+                    {form.message.length.toLocaleString()} / {MESSAGE_MAX.toLocaleString()}
+                  </span>
+                </div>
               </div>
 
               <button

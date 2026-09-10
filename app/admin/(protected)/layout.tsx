@@ -1,18 +1,23 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { AdminHeader } from "@/components/admin/AdminHeader";
 import { AdminFooter } from "@/components/admin/AdminFooter";
-import { PrelineInit } from "@/components/admin/PrelineInit";
+import { AdminSessionGuard } from "@/components/admin/AdminSessionGuard";
+import { Admin403 } from "@/components/admin/Admin403";
 import { Spinner } from "@/components/ui/spinner";
+import { checkPermissionPage, loadCallerContext } from "@/lib/require-permission";
+import { resourceForPath, isNoResourcePath } from "@/lib/admin-nav";
+import { DEV_ACCESS_COOKIE } from "@/lib/dev-access";
+import { logPageView } from "@/lib/admin-activity";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="admin-shell min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
-      <PrelineInit />
+      <AdminSessionGuard />
       <AdminSidebar />
       <main className="md:ml-[var(--sidebar-w,264px)] min-h-screen flex flex-col transition-all duration-200">
         <AdminHeader />
@@ -35,14 +40,42 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
 async function AdminGuard({ children }: { children: React.ReactNode }) {
   if (process.env.ADMIN_DEV_BYPASS === "true") return <>{children}</>;
+
+  const devSecret = process.env.DEV_ACCESS_SECRET;
+  if (devSecret && (await cookies()).get(DEV_ACCESS_COOKIE)?.value === devSecret) {
+    return <>{children}</>;
+  }
+
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) redirect("/admin/login");
 
   const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") redirect("/");
+  if (user?.role !== "admin") redirect("/403");
 
-  // Force password change on first login
-  if (user.mustChangePassword) redirect("/admin/change-password");
+  // Resource-level check for the current route — in-place 403 (shell stays
+  // mounted) rather than a redirect, since a redirect would lose the
+  // sidebar/header context for no reason. Auth/inactive/expired states still
+  // redirect below (a session-validity issue, not a "wrong page" issue).
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  const resource = resourceForPath(pathname);
+  if (resource) {
+    const access = await checkPermissionPage({ [resource]: ["view"] });
+    if (!access.allowed) {
+      if (access.reason === "forbidden") return <Admin403 />;
+      redirect(access.reason === "auth" ? "/admin/login" : "/admin");
+    }
+  } else if (!isNoResourcePath(pathname)) {
+    // Fail closed — a page under /admin/* that isn't explicitly registered
+    // (in NAV_GROUPS, UNLISTED_RESOURCE_PATHS, or NO_RESOURCE_REQUIRED_PATHS)
+    // is denied by default rather than silently allowed.
+    return <Admin403 />;
+  }
+
+  // Page-view audit log — fire-and-forget, never blocks rendering. Shared
+  // instrumentation point for every /admin/* page rather than one-off calls
+  // per page, so it can't be forgotten on new routes.
+  const ctx = await loadCallerContext();
+  if (!ctx.denied) void logPageView(ctx.id, pathname);
 
   return <>{children}</>;
 }

@@ -5,6 +5,8 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { reportError } from "@/lib/observability";
 
 const BodySchema = z.object({
   country: z.string().min(2),
@@ -16,12 +18,14 @@ const BodySchema = z.object({
   deliveryPhone: z.string().min(7),
   deliveryType: z.enum(["PICKUP", "DELIVERY"]),
   branchId: z.string().optional().nullable(),
-});
+}).strict();
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
 
@@ -62,6 +66,7 @@ export async function PATCH(
     return ok({ order: updated });
   } catch (e) {
     console.error("[orders/:id/delivery] PATCH error", e);
+    reportError(e, { route: "PATCH /api/orders/[id]/delivery" });
     return Err.internal();
   }
 }

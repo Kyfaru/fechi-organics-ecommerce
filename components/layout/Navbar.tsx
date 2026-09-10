@@ -5,13 +5,19 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import { Icon } from "@iconify/react";
+import "@/lib/iconify-offline";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Tooltip } from "@/components/ui/Tooltip";
+import { LogoutModal } from "@/components/ui/LogoutModal";
+import { NavbarWhatsAppButton } from "@/components/ui/NavbarWhatsAppButton";
 import { useSession, signOut } from "@/lib/auth-client";
-import { useTheme } from "@/app/providers";
+import { readSessionCache, writeSessionCache, clearSessionCache } from "@/lib/session-cache";
+import { useTheme, clearPersistedQueryCache } from "@/app/providers";
 import { posthog } from "@/lib/posthog";
 import { useUnreadCount } from "@/hooks/useUnreadCount";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { GlobalSearchModal, type SearchResult } from "@/components/ui/GlobalSearchModal";
 
 const NAV_LINKS = [
   { href: "/", label: "Home" },
@@ -41,10 +47,12 @@ function ProfileTrigger({
   user,
   onLogout,
   unreadCount = 0,
+  transparent = false,
 }: {
   user: NavUser;
   onLogout: () => void;
   unreadCount?: number;
+  transparent?: boolean;
 }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const displayName = user.name ?? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() ?? "Account";
@@ -67,7 +75,10 @@ function ProfileTrigger({
     <div className="relative" data-profile-area>
       <button
         onClick={() => setProfileOpen((v) => !v)}
-        className="flex items-center gap-2 h-[44px] px-3 rounded-[40px] hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+        className={[
+          "flex items-center gap-2 h-[44px] px-3 rounded-[40px] transition-colors",
+          transparent ? "hover:bg-white/20" : "hover:bg-gray-100 dark:hover:bg-gray-800",
+        ].join(" ")}
         aria-label="Open profile menu"
       >
         {/* Avatar */}
@@ -76,16 +87,30 @@ function ProfileTrigger({
         </span>
         {/* Name + email */}
         <span className="flex flex-col items-start leading-tight">
-          <span className="text-[14px] font-bold text-[#1a1c1c] dark:text-white whitespace-nowrap">
+          <span
+            className={[
+              "text-[14px] font-bold whitespace-nowrap",
+              transparent ? "text-white" : "text-[#1a1c1c] dark:text-white",
+            ].join(" ")}
+          >
             {displayName}
           </span>
           {user.email && (
-            <span className="text-[12px] text-[#a1a1a1] whitespace-nowrap max-w-[140px] truncate">
+            <span
+              className={[
+                "text-[12px] whitespace-nowrap max-w-[140px] truncate",
+                transparent ? "text-white/70" : "text-[#a1a1a1]",
+              ].join(" ")}
+            >
               {user.email}
             </span>
           )}
         </span>
-        <Icon icon="mdi:chevron-down" width={18} className="text-[#a1a1a1] flex-shrink-0" />
+        <Icon
+          icon="mdi:chevron-down"
+          width={18}
+          className={transparent ? "text-white/70 flex-shrink-0" : "text-[#a1a1a1] flex-shrink-0"}
+        />
       </button>
 
       {/* Dropdown */}
@@ -167,91 +192,15 @@ function DropdownLink({
   );
 }
 
-// ── LogoutModal ──────────────────────────────────────────────────────────────
-
-/**
- * Confirmation dialog before signing the user out.
- * Calls signOut() then redirects to "/" on confirm.
- */
-function LogoutModal({
-  open,
-  onClose,
-  onConfirm,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onConfirm: () => Promise<void>;
-}) {
-  const [loading, setLoading] = useState(false);
-
-  async function handleConfirm() {
-    setLoading(true);
-    try {
-      await onConfirm();
-      onClose(); // close BEFORE setLoading(false) so AnimatePresence exit fires
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <AnimatePresence>
-      {open && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            key="logout-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="fixed inset-0 bg-black/40 z-[100]"
-            onClick={onClose}
-          />
-          {/* Card */}
-          <motion.div
-            key="logout-card"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.15 }}
-            className="fixed z-[101] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-[20px] p-8 max-w-sm w-[calc(100vw-2rem)] shadow-xl"
-          >
-            <h2 className="font-heading text-[20px] font-bold text-[#1a1c1c] mb-2">
-              Sign out?
-            </h2>
-            <p className="text-sm text-[#6b7280] mb-6">
-              You&apos;ll need to log in again to access your account.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={onClose}
-                disabled={loading}
-                className="px-5 py-2.5 rounded-full border border-[#c0cab8] text-[#1a1c1c] text-sm font-body hover:bg-gray-50 transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirm}
-                disabled={loading}
-                className="px-5 py-2.5 rounded-full bg-red-500 text-white text-sm font-body hover:bg-red-600 transition-colors disabled:opacity-60 flex items-center gap-2"
-              >
-                {loading && (
-                  <Icon icon="mdi:loading" width={16} className="animate-spin" />
-                )}
-                Sign Out
-              </button>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
-  );
-}
-
 // ── Navbar ───────────────────────────────────────────────────────────────────
 
-export function Navbar({ flat = false }: { flat?: boolean } = {}) {
+/**
+ * `transparent`: for pages with a full-bleed hero behind the navbar (e.g. /blog).
+ * The navbar starts see-through with white/gold styling and switches to the
+ * normal solid look once the page scrolls past a `#navbar-hero-sentinel`
+ * element the hero renders at its own bottom edge.
+ */
+export function Navbar({ flat = false, transparent = false }: { flat?: boolean; transparent?: boolean } = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -259,14 +208,80 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(flat);
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [pastHero, setPastHero] = useState(!transparent);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // While `transparent`, watch the hero's own sentinel element (rendered by
+  // the page) rather than a hardcoded pixel height — works no matter how
+  // tall the hero renders at a given breakpoint.
+  useEffect(() => {
+    if (!transparent) return;
+    function check() {
+      const sentinel = document.getElementById("navbar-hero-sentinel");
+      setPastHero(!sentinel || sentinel.getBoundingClientRect().top <= 80);
+    }
+    check();
+    window.addEventListener("scroll", check, { passive: true });
+    window.addEventListener("resize", check);
+    return () => {
+      window.removeEventListener("scroll", check);
+      window.removeEventListener("resize", check);
+    };
+  }, [transparent]);
+
+  const isTransparent = transparent && !pastHero;
+  // The mobile drawer is an opaque white overlay — force the sticky mobile
+  // bar solid while it's open so its icons stay visible against it.
+  const mobileIsTransparent = isTransparent && !mobileOpen;
 
   const { theme, toggleTheme } = useTheme();
 
-  const { data: session } = useSession();
+  const { data: session, isPending: sessionPending } = useSession();
   // Cast to NavUser: Better Auth's session.user type omits additionalFields
   // (firstName, lastName) at the type level but they are present at runtime.
-  const user = (session?.user as NavUser | undefined) ?? null;
+  // role comes from the admin plugin and isn't part of NavUser (display-only
+  // concern), so it's read separately below for the cache write.
+  const liveUser = (session?.user as NavUser | undefined) ?? null;
+  const liveRole = (session?.user as { role?: string } | undefined)?.role ?? null;
+
+  // Instant-paint cache: on first mount (server render and the client's
+  // hydration pass) there is no way to read localStorage without risking a
+  // hydration mismatch, so both start out rendering "logged out" — identical
+  // to the server. Once mounted, a useEffect (below) reads the cache, so a
+  // returning user's profile paints the moment that effect runs instead of
+  // waiting on the live session's DB round-trip.
+  const [hasMounted, setHasMounted] = useState(false);
+  const [cachedDisplay, setCachedDisplay] = useState<{ name: string; image: string | null } | null>(null);
+
+  useEffect(() => {
+    setHasMounted(true);
+    const cached = readSessionCache();
+    if (cached) setCachedDisplay({ name: cached.name, image: cached.image });
+  }, []);
+
+  // While the live session is still resolving, prefer the cache (if any) so
+  // returning users see their profile immediately instead of a "Log in"
+  // flash. Once sessionPending is false, the live session is always the
+  // source of truth — logged in or out — the cache never overrides it.
+  const user: NavUser | null = !hasMounted ? null : sessionPending ? cachedDisplay : liveUser;
+
+  // Keep the cache in sync with whatever the live session actually says.
+  // Runs every time useSession() finishes resolving: writes fresh display
+  // data on login, and — critically — clears the cache on logout (this tab)
+  // or once a logout/session-expiry from another tab is next noticed here,
+  // so a stale name/avatar never lingers past the real session state.
+  useEffect(() => {
+    if (sessionPending) return;
+    if (liveUser) {
+      writeSessionCache({
+        name: liveUser.name || `${liveUser.firstName ?? ""} ${liveUser.lastName ?? ""}`.trim() || "Account",
+        image: liveUser.image ?? null,
+        role: liveRole ?? "client",
+      });
+    } else {
+      clearSessionCache();
+    }
+  }, [sessionPending, liveUser, liveRole]);
 
   const { data: cartData } = useQuery<{ ok: boolean; data: { itemCount: number } }>({
     queryKey: ["cart"],
@@ -309,8 +324,26 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
     return () => document.removeEventListener("mousedown", handle);
   }, [searchOpen]);
 
+  const debouncedSearch = useDebouncedValue(searchQuery, 300);
+  const { data: searchData, isFetching: searchLoading } = useQuery<{ ok: boolean; data: { results: SearchResult[] } }>({
+    queryKey: ["global-search", debouncedSearch],
+    queryFn: () => fetch(`/api/search?q=${encodeURIComponent(debouncedSearch)}`).then((r) => r.json()),
+    enabled: debouncedSearch.trim().length >= 2,
+  });
+  const searchResults = searchData?.data?.results ?? [];
+
+  function handleSelectSearchResult(result: SearchResult) {
+    setSearchOpen(false);
+    setSearchQuery("");
+    router.push(result.url);
+  }
+
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (searchResults[0]) {
+      handleSelectSearchResult(searchResults[0]);
+      return;
+    }
     setSearchOpen(false);
     setSearchQuery("");
   }
@@ -319,6 +352,7 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
     posthog.capture("logout_clicked");
     posthog.reset();
     await signOut();
+    clearPersistedQueryCache();
     router.push("/");
   }
 
@@ -335,25 +369,49 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
       {/* ── Desktop Navbar (always fixed) ── */}
       <nav
         className={[
-          "hidden md:flex items-center justify-between h-[76px] bg-white/95 dark:bg-[#111]/95 px-8 shadow-sm",
-          "fixed z-[9999] transition-all duration-300 backdrop-blur-sm",
+          "hidden md:flex items-center justify-between h-[76px] px-8",
+          "sticky z-9999 transition-all duration-300 mt-5 mx-5",
+          isTransparent
+            ? "bg-transparent shadow-none"
+            : "bg-white/80 dark:bg-[#111]/80 shadow-sm backdrop-blur-sm",
           flat
-            ? "top-0 left-0 right-0 rounded-none shadow-sm"
+            ? "top-2 left-0 right-0 rounded-none shadow-sm"
             : scrolled
-            ? "top-4 left-[5px] right-[5px] rounded-none shadow-md"
-            : "top-[2em] left-12 right-12 rounded-[40px]",
+            ? "top-2 left-[5px] right-[5px] rounded-[0px] shadow-md"
+            : "top-4 left-12 right-12 rounded-[40px]",
         ].join(" ")}
       >
         {/* Logo */}
         <Link href="/" className="flex-shrink-0">
-          <Image
-            src="/logo/text-only-black.webp"
-            alt="Fechi Organics"
-            width={120}
-            height={42}
-            className="object-contain h-[33px] w-auto"
-            priority
-          />
+          {isTransparent ? (
+            <Image
+              src="/logo/text-only-white.webp"
+              alt="Fechi Organics"
+              width={120}
+              height={42}
+              className="object-contain h-[33px] w-auto"
+              priority
+            />
+          ) : (
+            <>
+              <Image
+                src="/logo/text-only-black.webp"
+                alt="Fechi Organics"
+                width={120}
+                height={42}
+                className="object-contain h-[33px] w-auto dark:hidden"
+                priority
+              />
+              <Image
+                src="/logo/text-only-white.webp"
+                alt="Fechi Organics"
+                width={120}
+                height={42}
+                className="object-contain h-[33px] w-auto hidden dark:block"
+                priority
+              />
+            </>
+          )}
         </Link>
 
         {/* Nav links — always visible */}
@@ -363,13 +421,23 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
               <Link
                 href={link.href}
                 onClick={() => posthog.capture("nav_link_clicked", { link: link.label, href: link.href, source_path: pathname })}
-                className={[
-                  "relative group text-[16px] tracking-[0.8px] transition-colors font-body",
-                  "after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:bg-[#27731e] after:origin-left after:transition-all after:duration-300",
-                  pathname === link.href
-                    ? "text-[#27731e] font-semibold after:w-full"
-                    : "text-black dark:text-white hover:text-[#27731e] after:w-0 group-hover:after:w-full",
-                ].join(" ")}
+                className={
+                  isTransparent
+                    ? [
+                        "relative group text-[16px] tracking-[0.8px] transition-colors font-body",
+                        "after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:bg-[#fec700] after:origin-left after:transition-all after:duration-300",
+                        pathname === link.href
+                          ? "text-[#fec700] font-semibold after:w-full"
+                          : "text-white hover:text-[#fec700] after:w-0 group-hover:after:w-full",
+                      ].join(" ")
+                    : [
+                        "relative group text-[16px] tracking-[0.8px] transition-colors font-body",
+                        "after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:bg-[#27731e] after:origin-left after:transition-all after:duration-300",
+                        pathname === link.href
+                          ? "text-[#27731e] font-semibold after:w-full"
+                          : "text-black dark:text-white hover:text-[#27731e] after:w-0 group-hover:after:w-full",
+                      ].join(" ")
+                }
               >
                 {link.label}
               </Link>
@@ -389,7 +457,7 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
                 exit={{ opacity: 0, width: 40 }}
                 transition={{ type: "spring", stiffness: 300, damping: 28 }}
                 onSubmit={handleSearchSubmit}
-                className="absolute top-1/2 -translate-y-1/2 z-40 overflow-hidden"
+                className="absolute top-1/2 -translate-y-1/2 z-40"
               >
                 <div className="relative flex items-center">
                   <input
@@ -406,6 +474,12 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
                   >
                     <Icon icon="mdi:magnify" width={16} />
                   </button>
+                  <GlobalSearchModal
+                    query={searchQuery}
+                    results={searchResults}
+                    loading={searchLoading}
+                    onSelect={handleSelectSearchResult}
+                  />
                 </div>
               </motion.form>
             )}
@@ -418,25 +492,36 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
                 setSearchOpen((v) => !v);
                 if (searchOpen) setSearchQuery("");
               }}
-              className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors relative z-30"
+              className={[
+                "w-9 h-9 flex items-center justify-center rounded-full transition-colors relative z-30",
+                isTransparent ? "hover:bg-white/20" : "hover:bg-gray-100 dark:hover:bg-gray-800",
+              ].join(" ")}
               aria-label={searchOpen ? "Close search" : "Open search"}
             >
               <Icon
                 icon={searchOpen ? "mdi:close" : "mdi:magnify"}
                 width={22}
-                className="text-[#1a1c1c] dark:text-white"
+                className={isTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"}
               />
             </button>
+          </Tooltip>
+
+          {/* WhatsApp */}
+          <Tooltip label="WhatsApp">
+            <NavbarWhatsAppButton transparent={isTransparent} />
           </Tooltip>
 
           {/* Cart */}
           <Tooltip label="Cart">
             <Link
               href="/cart"
-              className="relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className={[
+                "relative w-9 h-9 flex items-center justify-center rounded-full transition-colors",
+                isTransparent ? "hover:bg-white/20" : "hover:bg-gray-100 dark:hover:bg-gray-800",
+              ].join(" ")}
               aria-label="Shopping cart"
             >
-              <Icon icon="uil:cart" width={22} className="text-[#1a1c1c] dark:text-white" />
+              <Icon icon="uil:cart" width={22} className={isTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"} />
               {cartCount > 0 && (
                 <span className="absolute top-0 right-0 min-w-[15px] h-[15px] bg-[#FFC800] text-black text-[7px] font-bold rounded-full border-2 border-white flex items-center justify-center px-1 leading-none">
                   {cartCount > 99 ? "99+" : cartCount}
@@ -445,42 +530,59 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
             </Link>
           </Tooltip>
 
-          {/* Notifications bell */}
-          <Tooltip label="Inbox">
-            <Link
-              href="/account/inbox"
-              className="relative w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-              aria-label="Notifications"
-            >
-              <Icon icon="lucide:bell" width={20} className="text-[#1a1c1c] dark:text-white" />
-              {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
-              )}
-            </Link>
-          </Tooltip>
+          {/* Notifications bell — logged-in users only */}
+          {user && (
+            <Tooltip label="Inbox">
+              <Link
+                href="/account/inbox"
+                className={[
+                  "relative w-9 h-9 flex items-center justify-center rounded-full transition-colors",
+                  isTransparent ? "hover:bg-white/20" : "hover:bg-gray-100 dark:hover:bg-gray-800",
+                ].join(" ")}
+                aria-label="Notifications"
+              >
+                <Icon icon="lucide:bell" width={20} className={isTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"} />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+                )}
+              </Link>
+            </Tooltip>
+          )}
 
           {/* Dark mode toggle */}
           <Tooltip label={theme === "dark" ? "Light mode" : "Dark mode"}>
             <button
               onClick={toggleTheme}
-              className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className={[
+                "w-9 h-9 flex items-center justify-center rounded-full transition-colors",
+                isTransparent ? "hover:bg-white/20" : "hover:bg-gray-100 dark:hover:bg-gray-800",
+              ].join(" ")}
               aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             >
               <Icon
-                icon={theme === "dark" ? "mdi:weather-sunny" : "mdi:weather-night"}
+                icon={theme === "dark" ? "iconamoon:mode-light" : "mdi:weather-night"}
                 width={20}
-                className="text-[#1a1c1c] dark:text-white"
+                className={isTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"}
               />
             </button>
           </Tooltip>
 
           {/* Profile trigger or Log in */}
           {user ? (
-            <ProfileTrigger user={user} onLogout={() => setLogoutModalOpen(true)} unreadCount={unreadCount} />
+            <ProfileTrigger
+              user={user}
+              onLogout={() => setLogoutModalOpen(true)}
+              unreadCount={unreadCount}
+              transparent={isTransparent}
+            />
           ) : (
             <Link
               href="/login"
-              className="flex items-center gap-1.5 bg-[#27731e] text-white rounded-[40px] px-5 h-[44px] text-[16px] tracking-[-0.16px] font-body hover:bg-[#045a03] transition-colors"
+              className={
+                isTransparent
+                  ? "flex items-center gap-1.5 bg-[#fec700] text-[#1a1c1c] rounded-[40px] px-5 h-[44px] text-[16px] tracking-[-0.16px] font-body hover:bg-[#e6b400] transition-colors"
+                  : "flex items-center gap-1.5 bg-[#27731e] text-white rounded-[40px] px-5 h-[44px] text-[16px] tracking-[-0.16px] font-body hover:bg-[#045a03] transition-colors"
+              }
             >
               Log in
               <Icon icon="mdi:chevron-right" width={16} />
@@ -489,14 +591,19 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
         </div>
       </nav>
 
-      {/* Mobile spacer */}
-      <div aria-hidden className="md:hidden h-16" />
+      {/* Mobile spacer — collapsed while transparent-over-hero */}
+      <div aria-hidden className={`md:hidden ${mobileIsTransparent ? "h-0" : "h-16"}`} />
 
       {/* ── Mobile Navbar (fixed) ── */}
-      <nav className="md:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between h-16 bg-white dark:bg-[#111] px-4 shadow-sm">
+      <nav
+        className={[
+          "md:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between h-16 px-4 transition-colors duration-300",
+          mobileIsTransparent ? "bg-transparent shadow-none" : "bg-white dark:bg-[#111] shadow-sm",
+        ].join(" ")}
+      >
         <Link href="/">
           <Image
-            src="/logo/Asset 16@5x.webp"
+            src={mobileIsTransparent ? "/logo/logo-white-version.webp" : "/logo/logo-black.webp"}
             alt="Fechi Organics"
             width={100}
             height={35}
@@ -504,20 +611,38 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
           />
         </Link>
         <div className="flex items-center gap-2">
+          <NavbarWhatsAppButton variant="mobile" />
           <Link href="/cart" className="relative p-2" aria-label="Cart">
-            <Icon icon="mdi:cart-outline" width={22} className="text-[#1a1c1c] dark:text-white" />
+            <Icon icon="solar:cart-large-4-linear" width={22} className={mobileIsTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"} />
             {cartCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] bg-[#27731e] text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none">
                 {cartCount > 99 ? "99+" : cartCount}
               </span>
             )}
           </Link>
-          <Link href="/account/inbox" className="relative p-2" aria-label="Notifications">
-            <Icon icon="lucide:bell" width={20} className="text-[#1a1c1c] dark:text-white" />
-            {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-            )}
-          </Link>
+          {user && (
+            <Link href="/account/inbox" className="relative p-2" aria-label="Notifications">
+              <Icon icon="lucide:bell" width={20} className={mobileIsTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"} />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+              )}
+            </Link>
+          )}
+          {user && (
+            <Link
+              href="/account"
+              className="relative w-8 h-8 rounded-full border-2 border-[#27731e] overflow-hidden flex items-center justify-center flex-shrink-0"
+              aria-label="Account settings"
+            >
+              {user.image ? (
+                <Image src={user.image} alt={user.name ?? "Account"} fill sizes="32px" className="object-cover" />
+              ) : (
+                <span className="w-full h-full bg-[#27731e] text-white text-xs font-bold flex items-center justify-center">
+                  {((user.name ?? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()) || "A")[0].toUpperCase()}
+                </span>
+              )}
+            </Link>
+          )}
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
             className="p-2"
@@ -526,94 +651,144 @@ export function Navbar({ flat = false }: { flat?: boolean } = {}) {
             <Icon
               icon={mobileOpen ? "mdi:close" : "mdi:menu"}
               width={24}
-              className="text-[#1a1c1c] dark:text-white"
+              className={mobileIsTransparent ? "text-white" : "text-[#1a1c1c] dark:text-white"}
             />
           </button>
         </div>
       </nav>
 
-      {/* ── Mobile drawer ── */}
+      {/* ── Mobile menu: top-right anchored modal ── */}
       <AnimatePresence>
         {mobileOpen && (
-          <motion.div
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ type: "spring", stiffness: 300, damping: 35 }}
-            className="fixed inset-0 z-40 bg-white dark:bg-[#111] md:hidden flex flex-col pt-20 px-8"
-          >
-            <button
-              className="absolute top-4 right-4 p-2"
+          <>
+            {/* Dimmed backdrop */}
+            <motion.div
+              key="mobile-menu-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-[60] bg-black/30 md:hidden"
               onClick={() => setMobileOpen(false)}
-              aria-label="Close menu"
-            >
-              <Icon icon="mdi:close" width={26} className="text-[#1a1c1c] dark:text-white" />
-            </button>
+            />
 
-            {/* Logged-in user row at top of drawer */}
-            {user && (
-              <div className="mb-6 pb-6 border-b border-[#e2e2e2] dark:border-[#2a2a2a]">
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="w-10 h-10 rounded-full bg-[#27731e] text-white text-base font-bold flex items-center justify-center flex-shrink-0">
-                    {(
-                      (user.name ?? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() ?? "A")[0]
-                    ).toUpperCase()}
-                  </span>
-                  <div className="flex flex-col leading-tight min-w-0">
-                    <span className="text-[15px] font-bold text-[#1a1c1c] dark:text-white truncate">
-                      {user.name ?? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()}
-                    </span>
-                    {user.email && (
-                      <span className="text-[12px] text-[#a1a1a1] truncate">{user.email}</span>
-                    )}
+            <motion.div
+              key="mobile-menu-modal"
+              initial={{ opacity: 0, y: -8, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.97 }}
+              transition={{ duration: 0.18 }}
+              className="fixed top-16 right-4 z-[70] w-[300px] max-w-[calc(100vw-2rem)] max-h-[calc(100vh-5rem)] overflow-y-auto rounded-[24px] bg-white dark:bg-[#111] shadow-xl md:hidden"
+            >
+              {/* Search */}
+              <div className="p-4 pb-3 relative" data-search-area>
+                <form onSubmit={handleSearchSubmit} className="relative">
+                  <Icon icon="mdi:magnify" width={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1a1]" />
+                  <input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search products..."
+                    className="w-full h-11 pl-10 pr-4 border border-[#e2e2e2] dark:border-[#2a2a2a] rounded-full text-[14px] font-body outline-none focus:border-[#27731e] focus:ring-1 focus:ring-[#27731e] bg-white dark:bg-gray-900 dark:text-white"
+                  />
+                  <GlobalSearchModal
+                    query={searchQuery}
+                    results={searchResults}
+                    loading={searchLoading}
+                    onSelect={(result) => {
+                      setMobileOpen(false);
+                      handleSelectSearchResult(result);
+                    }}
+                  />
+                </form>
+              </div>
+
+              {/* Nav links */}
+              <div className="px-3 pb-2">
+                {NAV_LINKS.map((link) => {
+                  const active = pathname === link.href;
+                  return (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      onClick={() => {
+                        setMobileOpen(false);
+                        posthog.capture("nav_link_clicked", { link: link.label, href: link.href, source_path: pathname });
+                      }}
+                      className={[
+                        "flex items-center justify-between px-4 py-3 rounded-xl text-[15px] font-body transition-colors",
+                        active
+                          ? "bg-[#e8fce3] dark:bg-green-950/30 text-[#27731e] font-semibold"
+                          : "text-[#1a1c1c] dark:text-white hover:bg-gray-50 dark:hover:bg-gray-800",
+                      ].join(" ")}
+                    >
+                      {link.label}
+                      <Icon icon="mdi:chevron-right" width={16} className={active ? "text-[#27731e]" : "text-[#c4c4c4]"} />
+                    </Link>
+                  );
+                })}
+              </div>
+
+              {/* Appearance */}
+              <div className="mx-3 mb-2 flex items-center justify-between px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-900">
+                <div className="flex items-center gap-3">
+                  <Icon icon={theme === "dark" ? "mdi:weather-night" : "iconamoon:mode-light"} width={20} className="text-[#27731e]" />
+                  <div className="flex flex-col leading-tight">
+                    <span className="text-[14px] font-semibold text-[#1a1c1c] dark:text-white">Appearance</span>
+                    <span className="text-[12px] text-[#a1a1a1]">Toggle between modes</span>
                   </div>
                 </div>
                 <button
-                  onClick={() => {
-                    setMobileOpen(false);
-                    setLogoutModalOpen(true);
-                  }}
-                  className="flex items-center gap-2 text-[#ef4444] text-sm font-body hover:underline"
+                  onClick={toggleTheme}
+                  className="px-3 py-1.5 rounded-full border border-[#e2e2e2] dark:border-[#2a2a2a] text-[13px] font-body text-[#1a1c1c] dark:text-white bg-white dark:bg-gray-800"
                 >
-                  <Icon icon="mdi:logout" width={16} />
-                  Log Out
+                  {theme === "dark" ? "Dark" : "Light"}
                 </button>
               </div>
-            )}
 
-            <ul className="flex flex-col gap-6 list-none m-0 p-0">
-              {NAV_LINKS.map((link) => (
-                <li key={link.href}>
-                  <Link
-                    href={link.href}
+              {/* Account section */}
+              {user ? (
+                <div className="mx-3 mb-3 pt-3 border-t border-[#e2e2e2] dark:border-[#2a2a2a]">
+                  <div className="flex items-center gap-3 px-1 mb-2">
+                    <span className="w-10 h-10 rounded-full bg-[#27731e] text-white text-base font-bold flex items-center justify-center flex-shrink-0">
+                      {((user.name ?? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()) || "A")[0].toUpperCase()}
+                    </span>
+                    <div className="flex flex-col leading-tight min-w-0">
+                      <span className="text-[15px] font-bold text-[#1a1c1c] dark:text-white truncate">
+                        {user.name ?? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()}
+                      </span>
+                      {user.email && (
+                        <span className="text-[12px] text-[#a1a1a1] truncate">{user.email}</span>
+                      )}
+                    </div>
+                  </div>
+                  <DropdownLink href="/account/orders" icon="mdi:receipt-outline" label="Orders" onClick={() => setMobileOpen(false)} />
+                  <DropdownLink href="/account/wishlist" icon="mdi:heart-outline" label="Favourites" onClick={() => setMobileOpen(false)} />
+                  <DropdownLink href="/account/settings" icon="mdi:cog-outline" label="Settings" onClick={() => setMobileOpen(false)} />
+                  <button
                     onClick={() => {
                       setMobileOpen(false);
-                      posthog.capture("nav_link_clicked", { link: link.label, href: link.href, source_path: pathname });
+                      setLogoutModalOpen(true);
                     }}
-                    className={[
-                      "text-2xl font-heading tracking-tight",
-                      pathname === link.href
-                        ? "text-[#27731e]"
-                        : "text-[#1a1c1c] dark:text-white hover:text-[#27731e]",
-                    ].join(" ")}
+                    className="w-full flex items-center justify-center gap-2 mt-1 px-4 py-2.5 text-[14px] font-body font-medium text-[#ef4444] bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-950/40 rounded-xl transition-colors"
                   >
-                    {link.label}
+                    <Icon icon="mdi:logout" width={18} />
+                    Log Out
+                  </button>
+                </div>
+              ) : (
+                <div className="px-4 pb-4 pt-2">
+                  <Link
+                    href="/login"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center justify-center gap-2 bg-[#27731e] text-white rounded-[40px] px-6 py-3.5 text-[15px] font-body"
+                  >
+                    Login to your account
+                    <Icon icon="mdi:login" width={18} />
                   </Link>
-                </li>
-              ))}
-            </ul>
-
-            {/* Show login button only when logged out */}
-            {!user && (
-              <Link
-                href="/login"
-                onClick={() => setMobileOpen(false)}
-                className="mt-8 flex items-center justify-center gap-2 bg-[#27731e] text-white rounded-[40px] px-6 py-3 text-lg font-body"
-              >
-                Log in <Icon icon="mdi:chevron-right" width={18} />
-              </Link>
-            )}
-          </motion.div>
+                </div>
+              )}
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 

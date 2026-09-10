@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import Image from "next/image";
 import { motion } from "framer-motion";
+import { Icon } from "@iconify/react";
 import {
   ShoppingBag, Clock, Truck, CheckCircle, Search, Download,
   ChevronDown, MoreHorizontal, X, Tag, User, CreditCard, Printer, Link2,
-  MapPin, Check, Copy,
+  MapPin, Check, Copy, Receipt, Plus,
 } from "lucide-react";
 import { StatsCard } from "@/components/ui/stats-card";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -16,14 +19,17 @@ import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
-import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import CheckboxGreen from "@/components/ui/CheckboxGreen";
 import { PrelineSelect } from "@/components/admin/ui/PrelineSelect";
+import { PrelineDatePicker } from "@/components/admin/ui/PrelineDatePicker";
+import { usePersistedFilter } from "@/hooks/use-persisted-filters";
+import { ExportModal } from "@/components/admin/exports/ExportModal";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-type OrderStatus = "PENDING" | "CONFIRMED" | "PROCESSING" | "SHIPPED" | "DELIVERED" | "CANCELLED" | "WAITING_TO_PACKAGE" | "READY_FOR_PICKUP" | "PICKED_UP";
+type OrderStatus = "PENDING" | "CONFIRMED" | "PROCESSING" | "SHIPPED" | "DELIVERED" | "CANCELLED" | "WAITING_TO_PACKAGE" | "READY_FOR_PICKUP" | "PICKED_UP" | "FAILED";
 type PaymentStatus = "PENDING" | "PAID" | "FAILED";
 
 type OrderItemDetail = {
@@ -38,6 +44,7 @@ type OrderItemDetail = {
 };
 
 type AdminOrder = {
+  kind: "order";
   id: string;
   status: OrderStatus;
   orderNumber: string | null;
@@ -59,9 +66,41 @@ type AdminOrder = {
   guestEmail: string | null;
   createdAt: string;
   user: { name: string; email: string } | null;
-  branch: { id: string; name: string; county: string } | null;
+  branch: { id: string; name: string; county: string; phone: string | null } | null;
   items: OrderItemDetail[];
+  transactions: { provider: "MPESA" | "PAYSTACK" | "KCB" }[];
+  customerPickupConfirmedAt: string | null;
+  staffPickupConfirmedAt: string | null;
 };
+
+// In-store orders — admin-created walk-in sales, surfaced in the same list
+// per the drawer's restricted 2-step view (Confirmed -> Picked Up only).
+type InStoreFulfillmentStatus = "CONFIRMED" | "PICKED_UP";
+type InStoreItemDetail = { id: string; name: string; quantity: number; priceKes: number };
+
+type AdminInStoreOrder = {
+  kind: "instore";
+  id: string;
+  orderNumber: string | null;
+  fulfillmentStatus: InStoreFulfillmentStatus;
+  paymentStatus: PaymentStatus;
+  subtotalKes: number;
+  discountKes: number;
+  totalKes: number;
+  createdByAdminId: string;
+  createdByAdminName: string;
+  customerUserId: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  customerEmail: string | null;
+  branch: { id: string; name: string; county: string; phone: string | null } | null;
+  items: InStoreItemDetail[];
+  transactions: { provider: "MPESA_STK" | "MPESA_C2B" | "PAYSTACK" }[];
+  pickedUpAt: string | null;
+  createdAt: string;
+};
+
+type AdminOrderRow = AdminOrder | AdminInStoreOrder;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -72,6 +111,12 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   WAITING_TO_PACKAGE: "Packaging",
   READY_FOR_PICKUP: "Ready for Pickup",
   PICKED_UP: "Picked Up",
+  FAILED: "Failed",
+};
+
+const PROVIDER_LABELS: Record<string, string> = {
+  MPESA: "M-Pesa", PAYSTACK: "Paystack", KCB: "KCB Buni",
+  MPESA_STK: "M-Pesa", MPESA_C2B: "M-Pesa",
 };
 
 const R2_BASE = process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "";
@@ -88,8 +133,63 @@ function formatDate(iso: string | null | undefined) {
   return new Date(iso).toLocaleDateString("en-KE", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function formatTime(iso: string | null | undefined) {
+  if (!iso) return "—";
+
+  return new Date(iso).toLocaleTimeString("en-KE", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+function formatDateTime(iso: string | null | undefined) {
+  if (!iso) return "—";
+
+  return new Date(iso).toLocaleString("en-KE", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+// 31-letter ASCII alphabet, 1-indexed by day-of-month (1-31).
+const ALPHABET = [
+  "A","B","C","D","E","F","G","H","I","J","K","L","M",
+  "N","O","P","Q","R","S","T","U","V","W","X","Y","Z",
+  "AA","AB","AC","AD","AE"
+];
+
+function yearLetter(year: number): string {
+  const digit = year % 10;
+  const position = digit === 0 ? 10 : digit; // 0 -> 10th letter (clock-face style)
+  return String.fromCharCode(64 + position); // A=65
+}
+const now = new Date();
+function shortOrderNumber(
+  date: Date,
+): string {
+  const eat = new Date(date.getTime() + 3 * 60 * 60 * 1000);
+  const month = eat.getUTCMonth() + 1;
+  const weekday = eat.getUTCDay() === 0 ? 7 : eat.getUTCDay();
+  const hour = String(eat.getUTCHours()).padStart(2, "0");
+  const minute = String(eat.getUTCMinutes()).padStart(2, "0");
+  const second = String(eat.getUTCSeconds()).padStart(2, "0");
+  const digits = `${month}${weekday}${hour}${minute}${second}`;
+
+  const letters = `${yearLetter(eat.getUTCFullYear())}${ALPHABET[eat.getUTCDate() - 1]}`;
+
+  const body =`${digits}${letters}`;
+  return `#FO-${body}`;
+}
+
 function shortId(id: string) {
-  return `#${id.slice(0, 8).toUpperCase()}`;
+  return `#FO-${id.slice(0, 8).toUpperCase()}`;
 }
 
 function getInitials(name: string | null | undefined) {
@@ -109,6 +209,18 @@ function itemImageUrl(item: OrderItemDetail): string | null {
   return `${R2_BASE.replace(/\/$/, "")}/${key}`;
 }
 
+// Cream badge distinguishing in-store (walk-in) orders from the two
+// delivery-type badges (purple Store Pickup / dark Home Delivery) shown
+// elsewhere for regular customer orders — reuses the existing gold design
+// token rather than inventing a new color.
+function InStoreBadge() {
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-(--gold-50) text-(--gold-700)">
+      In-Store Order
+    </span>
+  );
+}
+
 function isToday(iso: string) {
   const d = new Date(iso);
   const now = new Date();
@@ -119,6 +231,17 @@ function isThisMonth(iso: string) {
   const d = new Date(iso);
   const now = new Date();
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+}
+
+// Mon-Sun week, matching this file's en-KE convention elsewhere (see
+// shortOrderNumber, which treats Sunday as day 7 rather than day 0).
+function isThisWeek(iso: string) {
+  const d = new Date(iso);
+  const now = new Date();
+  const day = now.getDay() === 0 ? 7 : now.getDay();
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (day - 1));
+  monday.setHours(0, 0, 0, 0);
+  return d >= monday && d <= now;
 }
 
 // ---------------------------------------------------------------------------
@@ -209,21 +332,398 @@ function ConfirmOrderModal({
 }
 
 // ---------------------------------------------------------------------------
+// In-Store Order Detail Drawer — restricted 2-step view (Confirmed -> Picked
+// Up only), no cancel button, non-clickable customer card, no "Copy Link"
+// (no customer account page exists to link to for a walk-in sale).
+// ---------------------------------------------------------------------------
+function InStoreOrderDrawerContent({
+  order,
+  open,
+  onClose,
+  isSuperAdmin,
+}: {
+  order: AdminInStoreOrder;
+  open: boolean;
+  onClose: () => void;
+  isSuperAdmin?: boolean;
+}) {
+  const qc = useQueryClient();
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [confirmPickupOpen, setConfirmPickupOpen] = useState(false);
+
+  const pickupMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/admin/orders/instore/${id}/pickup`, { method: "POST" });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error?.message ?? "Update failed");
+      return json;
+    },
+    onSuccess: () => {
+      toast.success("Order marked picked up");
+      qc.invalidateQueries({ queryKey: ["admin-orders"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const totalQty = order.items.reduce((s, i) => s + i.quantity, 0);
+  const isPaid = order.paymentStatus === "PAID";
+  const isPickedUp = order.fulfillmentStatus === "PICKED_UP";
+  const canDownload = isPaid;
+
+  return (
+    <Drawer open={open} onClose={onClose} title={`Order ${order.orderNumber ?? shortId(order.id)}`} width={640} footer={null}>
+      <div className="flex gap-6">
+        {/* ── Left ── */}
+        <div className="flex-1 min-w-0 flex flex-col gap-6">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px]">Order Number</span>
+            {order.orderNumber ? (
+              <div className="flex items-center gap-1.5 bg-(--neutral-100) px-3 py-1 rounded-full">
+                <span className="font-mono text-[13px] font-semibold text-(--neutral-900)">{order.orderNumber}</span>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(order.orderNumber!); toast.success("Copied"); }}
+                  className="text-(--neutral-400) hover:text-(--neutral-700) transition-colors"
+                  title="Copy"
+                >
+                  <Copy size={12} />
+                </button>
+              </div>
+            ) : (
+              <span className="font-dm text-[13px] text-(--neutral-400) italic">—</span>
+            )}
+            <InStoreBadge />
+          </div>
+
+          <p className="font-dm text-[12px] text-(--neutral-500)">
+            Created by <span className="font-medium text-(--neutral-700)">{order.createdByAdminName}</span>
+          </p>
+
+          {/* Fulfillment panel — 2 steps only */}
+          <div className="bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200)">
+            <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-4">Fulfillment</p>
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <CheckboxGreen checked={isPaid} onChange={() => {}} disabled />
+                <div>
+                  <p className="font-dm text-[14px] font-medium text-(--neutral-900)">Confirmed</p>
+                  <p className="font-dm text-[12px] text-(--neutral-500)">
+                    {isPaid ? "Paid — ready for pickup" : "Awaiting payment confirmation"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pl-[52px]">
+                {isPickedUp ? (
+                  <div className="flex items-center gap-2 text-[#15803D]">
+                    <CheckCircle size={16} />
+                    <p className="font-dm text-[13px] font-semibold">
+                      Picked up{order.pickedUpAt ? ` — ${formatDate(order.pickedUpAt)} ${formatTime(order.pickedUpAt)}` : ""}
+                    </p>
+                  </div>
+                ) : (
+                  <button
+                    disabled={!isPaid || pickupMutation.isPending}
+                    onClick={() => setConfirmPickupOpen(true)}
+                    className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-[#15803D] text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#16A34A] transition-colors flex items-center gap-1.5"
+                  >
+                    {pickupMutation.isPending ? <Spinner size={12} /> : <Check size={13} />}
+                    Confirm Pickup
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Order items — in-store items have no product/image relation, so
+              they always show the placeholder icon rather than a photo. */}
+          <div>
+            <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-3">
+              Items ({totalQty})
+            </p>
+            <div className="flex flex-col gap-2">
+              {order.items.map((item) => {
+                const subtotal = (item.priceKes / 100) * item.quantity;
+                return (
+                  <div key={item.id} className="flex items-center gap-3 py-2 border-b border-(--neutral-100) last:border-0">
+                    <div className="w-10 h-10 rounded-[6px] bg-(--neutral-100) overflow-hidden shrink-0 flex items-center justify-center">
+                      <Tag size={14} className="text-(--neutral-300)" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-dm text-[13px] font-medium text-(--neutral-900) line-clamp-1">{item.name}</p>
+                      <p className="font-dm text-[12px] text-(--neutral-400)">
+                        {formatKes(item.priceKes)} × {item.quantity}
+                      </p>
+                    </div>
+                    <p className="font-dm text-[13px] font-semibold text-(--neutral-900) whitespace-nowrap">
+                      KES {subtotal.toLocaleString("en-KE", { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Price summary — no delivery line, in-store orders never have one */}
+            <div className="mt-4 bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200) flex flex-col gap-2">
+              <div className="flex justify-between font-dm text-[13px] text-(--neutral-500)">
+                <span>Subtotal</span>
+                <span>{formatKes(order.subtotalKes)}</span>
+              </div>
+              {order.discountKes > 0 && (
+                <div className="flex justify-between font-dm text-[13px] text-(--success)">
+                  <span>Discount</span>
+                  <span>-{formatKes(order.discountKes)}</span>
+                </div>
+              )}
+              <div className="h-px bg-(--neutral-200) my-1" />
+              <div className="flex justify-between font-syne text-[16px] font-semibold text-(--neutral-900)">
+                <span>Total</span>
+                <span>{formatKes(order.totalKes)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Right ── */}
+        <div className="w-[180px] shrink-0 flex flex-col gap-4">
+          {/* Customer card — not clickable, no account page exists for a walk-in */}
+          <div className="bg-(--neutral-50) rounded-[10px] p-3 border border-(--neutral-200)">
+            <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Customer</p>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-(--green-50) flex items-center justify-center shrink-0">
+                <span className="font-syne text-[11px] font-bold text-(--green-800)">
+                  {getInitials(order.customerName)}
+                </span>
+              </div>
+              <div className="min-w-0">
+                <p className="font-dm text-[12px] font-medium text-(--neutral-900) truncate">
+                  {order.customerName ?? "Walk-in customer"}
+                </p>
+                <p className="font-dm text-[11px] text-(--neutral-400) truncate">
+                  {order.customerPhone ?? order.customerEmail ?? "—"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Branch */}
+          <div className="bg-(--neutral-50) rounded-[10px] p-3 border border-(--neutral-200)">
+            <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Branch</p>
+            <p className="font-dm text-[12px] text-(--neutral-700)">{order.branch?.name ?? "—"}</p>
+            {order.branch?.phone && <p className="font-dm text-[11px] text-(--neutral-400) mt-0.5">{order.branch.phone}</p>}
+          </div>
+
+          {/* Payment card */}
+          <div className="bg-(--neutral-50) rounded-[10px] p-3 border border-(--neutral-200)">
+            <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Payment</p>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <CreditCard size={13} className="text-(--neutral-400)" />
+              <span className="font-dm text-[12px] text-(--neutral-700)">
+                {PROVIDER_LABELS[order.transactions?.[0]?.provider ?? ""] ?? "—"}
+              </span>
+            </div>
+            <StatusPill status={order.paymentStatus === "PAID" ? "paid" : order.paymentStatus.toLowerCase()} />
+            <p className="font-dm text-[13px] font-semibold text-(--neutral-900) mt-2">{formatKes(order.totalKes)}</p>
+          </div>
+
+          {/* Action buttons — Print Invoice only, no Copy Link, no Cancel
+              (in-store orders are final once paid) */}
+          <div className="flex flex-col gap-2">
+            <Link
+              href={`/admin/orders/instore/${order.id}`}
+              className="w-full h-9 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center justify-center gap-1.5 transition-colors"
+            >
+              <Icon icon="lucide:external-link" width={13} /> View Full Details
+            </Link>
+            <button
+              onClick={() => { window.open(`/api/admin/orders/instore/${order.id}/invoice`, "_blank"); }}
+              disabled={!canDownload}
+              className="w-full h-9 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center justify-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Printer size={13} /> Print Invoice
+            </button>
+            {isSuperAdmin && (
+              <>
+                <div className="h-px bg-(--neutral-200) my-1" />
+                <button
+                  onClick={() => setDeleteModalOpen(true)}
+                  className="w-full h-9 rounded-[8px] font-dm text-[12px] text-(--danger) hover:bg-(--danger-bg) flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <X size={13} /> Delete Permanently
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Date info */}
+          <div className="font-dm text-[11px] text-(--neutral-400)">
+            <p>Placed {formatDate(order.createdAt)} {formatTime(order.createdAt)}</p>
+            <p className="mt-0.5">In-store order</p>
+          </div>
+        </div>
+      </div>
+      <ConfirmModal
+        open={confirmPickupOpen}
+        onClose={() => setConfirmPickupOpen(false)}
+        onConfirm={() => { pickupMutation.mutate(order.id); setConfirmPickupOpen(false); }}
+        title="Confirm handover?"
+        description="Confirm you have handed over this order to the customer."
+        confirmLabel="Confirm Pickup"
+        loading={pickupMutation.isPending}
+      />
+
+      <DeleteOrderModal
+        order={order}
+        kind="instore"
+        open={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onDeleted={onClose}
+      />
+    </Drawer>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Delete order modal — super-admin only, requires a reason and typing the
+// order number back to confirm. Shared by both the online-order and
+// in-store-order drawer variants.
+// ---------------------------------------------------------------------------
+export function DeleteOrderModal({
+  order,
+  kind,
+  open,
+  onClose,
+  onDeleted,
+}: {
+  order: { id: string; orderNumber: string | null } | null;
+  kind: "order" | "instore";
+  open: boolean;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const qc = useQueryClient();
+  const [reason, setReason] = useState("");
+  const [confirmText, setConfirmText] = useState("");
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/admin/orders/${order!.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason, kind }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error?.message ?? "Delete failed");
+      return json;
+    },
+    onSuccess: () => {
+      toast.success("Order permanently deleted");
+      qc.invalidateQueries({ queryKey: ["admin-orders"] });
+      setReason("");
+      setConfirmText("");
+      onClose();
+      onDeleted();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  if (!order) return null;
+  const expected = order.orderNumber ?? order.id;
+  const canConfirm = reason.trim().length > 0 && confirmText.trim() === expected;
+
+  return (
+    <ConfirmModal
+      open={open}
+      onClose={() => { onClose(); setReason(""); setConfirmText(""); }}
+      onConfirm={() => {
+        if (!canConfirm) { toast.error("Enter a reason and type the order number exactly to confirm"); return; }
+        deleteMutation.mutate();
+      }}
+      title="Permanently delete this order?"
+      description="This deletes the order, its items, transactions, and invoice. This cannot be undone. The customer record is not affected."
+      confirmLabel="Delete Permanently"
+      danger
+      loading={deleteMutation.isPending}
+    >
+      <div className="flex flex-col gap-3">
+        <div>
+          <label className="font-dm text-[12px] font-medium text-(--neutral-700) block mb-1">Reason</label>
+          {/* Quick-fill templates — only super admins ever reach this modal
+              (every trigger button is isSuperAdmin-gated), matching "admin
+              and super admin only, everyone else writes it manually". */}
+          <div className="flex flex-wrap gap-1.5 mb-1.5">
+            {DELETE_REASON_TEMPLATES.map((t) => (
+              <button
+                key={t.label}
+                type="button"
+                onClick={() => setReason(t.text)}
+                className="px-2.5 h-6 rounded-full border border-(--neutral-200) bg-(--neutral-50) font-dm text-[11px] font-medium text-(--neutral-700) hover:bg-(--neutral-100) transition-colors"
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value.slice(0, 200))}
+            rows={2}
+            maxLength={200}
+            className="w-full rounded-[8px] border border-(--neutral-200) px-3 py-2 font-dm text-[13px] resize-none"
+            placeholder="Why is this order being deleted?"
+          />
+          <p className="font-dm text-[11px] text-(--neutral-400) text-right mt-0.5">{reason.length}/200</p>
+        </div>
+        <div>
+          <label className="font-dm text-[12px] font-medium text-(--neutral-700) block mb-1">
+            Type <span className="font-mono font-semibold">{expected}</span> to confirm
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              className="flex-1 h-9 rounded-[8px] border border-(--neutral-200) px-3 font-dm text-[13px]"
+            />
+            <button
+              type="button"
+              onClick={() => { navigator.clipboard.writeText(expected); toast.success("Copied"); }}
+              className="h-9 w-9 shrink-0 rounded-[8px] border border-(--neutral-200) flex items-center justify-center text-(--neutral-500) hover:bg-(--neutral-50) hover:text-(--neutral-700) transition-colors"
+              title="Copy order number"
+            >
+              <Icon icon="lucide:copy" width={15} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </ConfirmModal>
+  );
+}
+
+const DELETE_REASON_TEMPLATES = [
+  { label: "Test case", text: "Created as a test order during development/QA — not a real customer order, safe to remove." },
+  { label: "Clearing failed orders", text: "Failed payment order being cleared out during routine cleanup of abandoned checkout attempts." },
+  { label: "Other", text: "Removed for reasons not captured by the standard categories — see admin activity log for context." },
+];
+
+// ---------------------------------------------------------------------------
 // Order Detail Drawer
 // ---------------------------------------------------------------------------
 function OrderDetailDrawer({
   order,
   open,
   onClose,
+  isSuperAdmin,
 }: {
-  order: AdminOrder | null;
+  order: AdminOrderRow | null;
   open: boolean;
   onClose: () => void;
+  isSuperAdmin?: boolean;
 }) {
   const qc = useQueryClient();
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [confirmModal1Open, setConfirmModal1Open] = useState(false);
+  const [simpleConfirm, setSimpleConfirm] = useState<{ action: string; title: string; description: string; confirmLabel: string } | null>(null);
   const [confirmModal2Open, setConfirmModal2Open] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [pendingGateAction, setPendingGateAction] = useState<"set_processing" | "set_packaging" | null>(null);
   const [noteText, setNoteText] = useState("");
 
   // Generic fulfillment PATCH — used by processing toggle and ship button
@@ -246,6 +746,9 @@ function OrderDetailDrawer({
   });
 
   if (!order) return null;
+  if (order.kind === "instore") {
+    return <InStoreOrderDrawerContent order={order} open={open} onClose={onClose} isSuperAdmin={isSuperAdmin} />;
+  }
 
   const totalQty = order.items.reduce((s, i) => s + i.quantity, 0);
   const isConfirmed = ["CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED"].includes(order.status);
@@ -257,7 +760,7 @@ function OrderDetailDrawer({
 
   return (
     <>
-      <Drawer open={open} onClose={onClose} title={`Order ${order.orderNumber ?? shortId(order.id)}`} width={640} footer={null}>
+      <Drawer open={open} onClose={onClose} title={`Order ${order.orderNumber ?? shortOrderNumber(now) ?? shortId(order.id)}`} width={640} footer={null}>
         <div className="flex gap-6">
           {/* ── Left ── */}
           <div className="flex-1 min-w-0 flex flex-col gap-6">
@@ -285,23 +788,29 @@ function OrderDetailDrawer({
             </div>
 
             {/* Fulfillment panel */}
-            <div className="bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200)">
+            <div
+              className={`bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200) ${
+                order.status === "FAILED" || order.status === "CANCELLED" ? "pointer-events-none opacity-50" : ""
+              }`}
+            >
               <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-4">Fulfillment</p>
 
               <div className="flex flex-col gap-4">
-                {/* Step 1: Confirmed (shared by both flows) */}
+                {/* Step 1: Confirmed — read-only indicator, driven by payment webhook */}
                 <div className="flex items-center gap-3">
                   <CheckboxGreen
                     checked={isConfirmed}
-                    onChange={() => { if (!isConfirmed) setConfirmModal1Open(true); }}
-                    disabled={fulfillMutation.isPending || isConfirmed || order.status === "CANCELLED"}
+                    onChange={() => {}}
+                    disabled
                   />
                   <div>
                     <p className="font-dm text-[14px] font-medium text-(--neutral-900)">Confirmed</p>
-                    {order.confirmedAt ? (
+                    {order.status === "FAILED" ? (
+                      <p className="font-dm text-[12px] text-(--danger)">Payment failed — order not confirmed</p>
+                    ) : isConfirmed ? (
                       <p className="font-dm text-[12px] text-(--neutral-500)">Confirmed at {formatDate(order.confirmedAt)}</p>
                     ) : (
-                      <p className="font-dm text-[12px] text-(--neutral-400)">Verify the order and confirm</p>
+                      <p className="font-dm text-[12px] text-(--neutral-400)">Awaiting payment confirmation</p>
                     )}
                   </div>
                 </div>
@@ -314,7 +823,8 @@ function OrderDetailDrawer({
                         checked={["WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP"].includes(order.status)}
                         onChange={() => {
                           if (!["WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP"].includes(order.status)) {
-                            handleFulfillment("set_packaging");
+                            setPendingGateAction("set_packaging");
+                            setConfirmModal1Open(true);
                           }
                         }}
                         disabled={fulfillMutation.isPending || !isConfirmed || ["WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP", "CANCELLED"].includes(order.status)}
@@ -331,11 +841,12 @@ function OrderDetailDrawer({
                     <div className="flex items-center gap-3 pl-[52px]">
                       <button
                         disabled={order.status !== "WAITING_TO_PACKAGE" || fulfillMutation.isPending}
-                        onClick={() => {
-                          if (window.confirm("Mark this order as ready for pickup?")) {
-                            handleFulfillment("set_ready");
-                          }
-                        }}
+                        onClick={() => setSimpleConfirm({
+                          action: "set_ready",
+                          title: "Ready for pickup?",
+                          description: "This marks the order as ready and notifies the customer to come collect it.",
+                          confirmLabel: "Mark Ready",
+                        })}
                         className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-amber-500 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-amber-600 transition-colors flex items-center gap-1.5"
                       >
                         {fulfillMutation.isPending ? <Spinner size={12} /> : <MapPin size={13} />}
@@ -343,21 +854,33 @@ function OrderDetailDrawer({
                       </button>
                     </div>
 
-                    {/* PICKUP: Step 4 — Picked Up button */}
-                    <div className="flex items-center gap-3 pl-[52px]">
-                      <button
-                        disabled={order.status !== "READY_FOR_PICKUP" || fulfillMutation.isPending}
-                        onClick={() => {
-                          if (window.confirm("Confirm the customer has picked up this order?")) {
-                            handleFulfillment("set_picked_up");
-                          }
-                        }}
-                        className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-[#15803D] text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#16A34A] transition-colors flex items-center gap-1.5"
-                      >
-                        {fulfillMutation.isPending ? <Spinner size={12} /> : <Check size={13} />}
-                        Mark Picked Up
-                      </button>
-                    </div>
+                    {/* PICKUP: Step 4 — dual pickup confirmation (staff + customer) */}
+                    {order.status === "READY_FOR_PICKUP" && order.staffPickupConfirmedAt ? (
+                      <div className="flex items-center gap-3 pl-[52px]">
+                        <div className="bg-(--neutral-50) border border-(--neutral-200) rounded-[8px] px-3 py-2 flex items-center gap-2">
+                          <Clock size={14} className="text-(--neutral-400) shrink-0" />
+                          <p className="font-dm text-[12px] text-(--neutral-500)">
+                            Staff confirmed handover — waiting for customer to confirm pickup
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3 pl-[52px]">
+                        <button
+                          disabled={order.status !== "READY_FOR_PICKUP" || fulfillMutation.isPending}
+                          onClick={() => setSimpleConfirm({
+                            action: "set_picked_up",
+                            title: "Confirm handover?",
+                            description: "Confirm you have handed over this order to the customer.",
+                            confirmLabel: "Confirm Pickup",
+                          })}
+                          className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-[#15803D] text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#16A34A] transition-colors flex items-center gap-1.5"
+                        >
+                          {fulfillMutation.isPending ? <Spinner size={12} /> : <Check size={13} />}
+                          Confirm Pickup (Staff)
+                        </button>
+                      </div>
+                    )}
 
                     {/* PICKUP: Final state */}
                     {order.status === "PICKED_UP" && (
@@ -373,13 +896,20 @@ function OrderDetailDrawer({
                     <div className="flex items-center gap-3">
                       <CheckboxGreen
                         checked={isProcessed}
-                        onChange={() => handleFulfillment(isProcessed ? "unset_processing" : "set_processing")}
+                        onChange={() => {
+                          if (isProcessed) {
+                            handleFulfillment("unset_processing");
+                          } else {
+                            setPendingGateAction("set_processing");
+                            setConfirmModal1Open(true);
+                          }
+                        }}
                         disabled={fulfillMutation.isPending || !isConfirmed || ["SHIPPED", "DELIVERED", "CANCELLED"].includes(order.status)}
                       />
                       <div>
                         <p className="font-dm text-[14px] font-medium text-(--neutral-900)">Processing</p>
                         {isProcessed ? (
-                          <p className="font-dm text-[12px] text-(--neutral-500)">Packaging started {formatDate(order.processedAt)}</p>
+                          <p className="font-dm text-[12px] text-(--neutral-500)">Packaging started {formatDateTime(order.processedAt)}</p>
                         ) : (
                           <p className="font-dm text-[12px] text-(--neutral-400)">Waiting to be packaged / shipped</p>
                         )}
@@ -390,11 +920,12 @@ function OrderDetailDrawer({
                     <div className="flex items-center gap-3 pl-[52px]">
                       <button
                         disabled={order.status !== "PROCESSING" || fulfillMutation.isPending}
-                        onClick={() => {
-                          if (window.confirm("Mark this order as shipped?")) {
-                            handleFulfillment("ship");
-                          }
-                        }}
+                        onClick={() => setSimpleConfirm({
+                          action: "ship",
+                          title: "Mark as shipped?",
+                          description: "This marks the order as shipped and notifies the customer.",
+                          confirmLabel: "Mark Shipped",
+                        })}
                         className="px-4 py-2 text-[13px] font-medium rounded-[8px] bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors flex items-center gap-1.5"
                       >
                         {fulfillMutation.isPending ? <Spinner size={12} /> : <Truck size={13} />}
@@ -494,9 +1025,10 @@ function OrderDetailDrawer({
                 <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Store Pickup</p>
                 <div className="flex items-start gap-2 bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200)">
                   <MapPin size={15} className="text-(--neutral-400) shrink-0 mt-0.5" />
-                  <p className="font-dm text-[13px] text-(--neutral-700)">
-                    Customer will collect from store{order.branch?.name ? ` — ${order.branch.name}` : ""}
-                  </p>
+                  <div className="font-dm text-[13px] text-(--neutral-700)">
+                    <p>Customer will collect from store{order.branch?.name ? ` — ${order.branch.name}` : ""}</p>
+                    {order.branch?.phone && <p className="text-(--neutral-500) mt-0.5">{order.branch.phone}</p>}
+                  </div>
                 </div>
               </div>
             )}
@@ -564,9 +1096,17 @@ function OrderDetailDrawer({
               <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Payment</p>
               <div className="flex items-center gap-1.5 mb-1.5">
                 <CreditCard size={13} className="text-(--neutral-400)" />
-                <span className="font-dm text-[12px] text-(--neutral-700)">M-Pesa</span>
+                <span className="font-dm text-[12px] text-(--neutral-700)">
+                  {PROVIDER_LABELS[order.transactions?.[0]?.provider ?? ""] ?? "—"}
+                </span>
               </div>
-              <StatusPill status={order.paymentStatus === "PAID" ? "paid" : order.paymentStatus.toLowerCase()} />
+              <StatusPill
+                status={
+                  order.status === "FAILED" || order.status === "CANCELLED"
+                    ? "failed"
+                    : order.paymentStatus === "PAID" ? "paid" : order.paymentStatus.toLowerCase()
+                }
+              />
               <p className="font-dm text-[13px] font-semibold text-(--neutral-900) mt-2">
                 {formatKes(order.totalKes)}
               </p>
@@ -574,23 +1114,31 @@ function OrderDetailDrawer({
 
             {/* Action buttons */}
             <div className="flex flex-col gap-2">
-              <button
-                onClick={() => { window.print(); }}
+              <Link
+                href={`/admin/orders/${order.id}`}
                 className="w-full h-9 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <Icon icon="lucide:external-link" width={13} /> View Full Details
+              </Link>
+              <button
+                onClick={() => { window.open(`/api/admin/orders/${order.id}/invoice`, "_blank"); }}
+                disabled={order.status === "FAILED" || order.status === "CANCELLED" || order.paymentStatus !== "PAID"}
+                className="w-full h-9 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center justify-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Printer size={13} /> Print Invoice
               </button>
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}/orders/${order.id}`);
+                  navigator.clipboard.writeText(`${window.location.origin}/account/orders/${encodeURIComponent(order.orderNumber ?? order.id)}`);
                   toast.success("Order link copied");
                 }}
-                className="w-full h-9 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center justify-center gap-1.5 transition-colors"
+                disabled={order.status === "FAILED" || order.status === "CANCELLED"}
+                className="w-full h-9 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center justify-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Link2 size={13} /> Copy Link
               </button>
 
-              {order.status !== "CANCELLED" && (
+              {["PENDING", "CONFIRMED", "PROCESSING", "WAITING_TO_PACKAGE"].includes(order.status) && (
                 <>
                   <div className="h-px bg-(--neutral-200) my-1" />
                   <button
@@ -601,11 +1149,22 @@ function OrderDetailDrawer({
                   </button>
                 </>
               )}
+              {isSuperAdmin && (
+                <>
+                  <div className="h-px bg-(--neutral-200) my-1" />
+                  <button
+                    onClick={() => setDeleteModalOpen(true)}
+                    className="w-full h-9 rounded-[8px] font-dm text-[12px] text-(--danger) hover:bg-(--danger-bg) flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <X size={13} /> Delete Permanently
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Date info */}
             <div className="font-dm text-[11px] text-(--neutral-400)">
-              <p>Placed {formatDate(order.createdAt)}</p>
+              <p>Placed {formatDate(order.createdAt)} {formatTime(order.createdAt)}</p>
               {order.deliveryType && (
                 <p className="mt-0.5">{order.deliveryType === "PICKUP" ? "Pickup order" : "Delivery order"}</p>
               )}
@@ -613,6 +1172,16 @@ function OrderDetailDrawer({
           </div>
         </div>
       </Drawer>
+
+      <ConfirmModal
+        open={!!simpleConfirm}
+        onClose={() => setSimpleConfirm(null)}
+        onConfirm={() => { if (simpleConfirm) handleFulfillment(simpleConfirm.action); setSimpleConfirm(null); }}
+        title={simpleConfirm?.title ?? ""}
+        description={simpleConfirm?.description ?? ""}
+        confirmLabel={simpleConfirm?.confirmLabel ?? "Confirm"}
+        loading={fulfillMutation.isPending}
+      />
 
       {/* Cancel confirm */}
       <ConfirmModal
@@ -629,30 +1198,40 @@ function OrderDetailDrawer({
         loading={fulfillMutation.isPending}
       />
 
-      {/* Confirm step 1 — are you sure? */}
+      {/* Confirm step 1 — are you sure? (shared by set_processing / set_packaging gates) */}
       <ConfirmModal
         open={confirmModal1Open}
-        onClose={() => setConfirmModal1Open(false)}
+        onClose={() => { setConfirmModal1Open(false); setPendingGateAction(null); }}
         onConfirm={() => {
           setConfirmModal1Open(false);
           setConfirmModal2Open(true);
         }}
-        title="Confirm this order?"
-        description="Are you sure you want to confirm this order? You will need to enter the order number to proceed."
+        title="Proceed with this order?"
+        description="Are you sure you want to proceed? You will need to enter the order number to continue."
         confirmLabel="Yes, continue"
         loading={false}
       />
 
-      {/* Confirm step 2 — order number verification */}
+      {/* Confirm step 2 — order number verification gate */}
       <ConfirmOrderModal
         order={order}
         open={confirmModal2Open}
-        onClose={() => setConfirmModal2Open(false)}
+        onClose={() => { setConfirmModal2Open(false); setPendingGateAction(null); }}
         onConfirm={(orderNumber) => {
           setConfirmModal2Open(false);
-          handleFulfillment("confirm", orderNumber);
+          if (pendingGateAction) handleFulfillment(pendingGateAction, orderNumber);
+          setPendingGateAction(null);
         }}
         loading={fulfillMutation.isPending}
+      />
+
+      {/* Delete permanently */}
+      <DeleteOrderModal
+        order={order}
+        kind="order"
+        open={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onDeleted={onClose}
       />
     </>
   );
@@ -662,20 +1241,30 @@ function OrderDetailDrawer({
 // Main component
 // ---------------------------------------------------------------------------
 export function AdminOrdersClient() {
-  const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"" | OrderStatus>("");
-  const [branchFilter, setBranchFilter] = useState("");
-  const [selectedOrder, setSelectedOrder] = useState<AdminOrder | null>(null);
+  const router = useRouter();
+  const [search, setSearch] = usePersistedFilter("orders:search", "");
+  const [filterStatus, setFilterStatus] = usePersistedFilter<"" | OrderStatus>("orders:status", "");
+  const [filterPayment, setFilterPayment] = usePersistedFilter<"" | PaymentStatus>("orders:payment", "");
+  const [dateFilter, setDateFilter] = usePersistedFilter<"" | "today" | "week" | "month" | "custom">(
+    "orders:date",
+    ""
+  );
+  const [customFrom, setCustomFrom] = usePersistedFilter("orders:date-from", "");
+  const [customTo, setCustomTo] = usePersistedFilter("orders:date-to", "");
+  const [branchFilter, setBranchFilter] = usePersistedFilter("orders:branch", "");
+  const [channelFilter, setChannelFilter] = usePersistedFilter<"" | "pickup" | "delivery" | "instore">("orders:channel", "");
+  const [exportOpen, setExportOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<AdminOrderRow | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // ── Data query ──
-  const { data, isLoading } = useQuery<{ ok: boolean; data: { orders: AdminOrder[]; scope: { isSuperAdmin: boolean; branchId: string | null } } }>({
+  const { data, isLoading } = useQuery<{ ok: boolean; data: { orders: AdminOrderRow[]; scope: { isSuperAdmin: boolean; branchId: string | null } } }>({
     queryKey: ["admin-orders", branchFilter],
     queryFn: () => fetch(`/api/admin/orders${branchFilter ? `?branchId=${encodeURIComponent(branchFilter)}` : ""}`).then((r) => r.json()),
     staleTime: 30_000,
     refetchInterval: (query) => {
       const liveOrders = query.state.data?.data?.orders ?? [];
-      return liveOrders.some((order) => order.paymentStatus === "PENDING" || order.status === "PENDING") ? 15_000 : false;
+      return liveOrders.some((order) => order.paymentStatus === "PENDING" || (order.kind === "order" && order.status === "PENDING")) ? 15_000 : false;
     },
   });
 
@@ -684,36 +1273,66 @@ export function AdminOrdersClient() {
     queryFn: () => fetch("/api/branches").then((r) => r.json()),
   });
 
-  const orders: AdminOrder[] = data?.data?.orders ?? [];
+  const orders: AdminOrderRow[] = data?.data?.orders ?? [];
   const scope = data?.data?.scope;
   const branches = branchesQuery.data?.data?.branches ?? [];
 
-  // ── Stats ──
-  const todayOrders = orders.filter((o) => isToday(o.createdAt)).length;
-  const processingOrders = orders.filter((o) => o.status === "PROCESSING").length;
-  const shippedOrders = orders.filter((o) => o.status === "SHIPPED").length;
-  const deliveredThisMonth = orders.filter((o) => o.status === "DELIVERED" && isThisMonth(o.createdAt)).length;
+  // Drawer must reflect live order state after mutations (invalidation refetches the list,
+  // but `selectedOrder` itself is a frozen snapshot from click-time) — always render the live lookup.
+  const liveSelectedOrder = orders.find((o) => o.id === selectedOrder?.id) ?? selectedOrder;
 
-  // ── Filtered list ──
+  // ── Stats ── "Today's Orders" is a volume metric spanning both kinds;
+  // Processing/Shipped/Delivered are customer-fulfillment-specific and have
+  // no in-store equivalent, so those stay scoped to kind === "order".
+  const todayOrders = orders.filter((o) => isToday(o.createdAt)).length;
+  const processingOrders = orders.filter((o) => o.kind === "order" && o.status === "PROCESSING").length;
+  const shippedOrders = orders.filter((o) => o.kind === "order" && o.status === "SHIPPED").length;
+  const deliveredThisMonth = orders.filter((o) => o.kind === "order" && o.status === "DELIVERED" && isThisMonth(o.createdAt)).length;
+
+  // ── Filtered list ── filterStatus only has meaning for in-store rows when
+  // it's CONFIRMED/PICKED_UP (the only two InStoreFulfillmentStatus values);
+  // any other status filter naturally excludes them, matching the API's
+  // own server-side filtering behavior.
   const filtered = orders.filter((o) => {
-    if (filterStatus && o.status !== filterStatus) return false;
+    if (filterStatus) {
+      if (o.kind === "order" && o.status !== filterStatus) return false;
+      if (o.kind === "instore" && o.fulfillmentStatus !== filterStatus) return false;
+    }
+    if (filterPayment && o.paymentStatus !== filterPayment) return false;
+    if (channelFilter === "pickup" && !(o.kind === "order" && o.deliveryType === "PICKUP")) return false;
+    if (channelFilter === "delivery" && !(o.kind === "order" && o.deliveryType === "DELIVERY")) return false;
+    if (channelFilter === "instore" && o.kind !== "instore") return false;
+    if (dateFilter === "today" && !isToday(o.createdAt)) return false;
+    if (dateFilter === "week" && !isThisWeek(o.createdAt)) return false;
+    if (dateFilter === "month" && !isThisMonth(o.createdAt)) return false;
+    if (dateFilter === "custom") {
+      const created = new Date(o.createdAt);
+      if (customFrom && created < new Date(customFrom)) return false;
+      if (customTo) {
+        const toEnd = new Date(customTo);
+        toEnd.setHours(23, 59, 59, 999);
+        if (created > toEnd) return false;
+      }
+    }
     if (search) {
       const q = search.toLowerCase();
-      const customer = o.user?.name ?? o.guestEmail ?? "";
+      const customer = o.kind === "order" ? (o.user?.name ?? o.guestEmail ?? "") : (o.customerName ?? "");
+      const email = o.kind === "order" ? (o.user?.email ?? "") : (o.customerEmail ?? "");
       if (
         !o.id.toLowerCase().includes(q) &&
         !customer.toLowerCase().includes(q) &&
-        !(o.user?.email ?? "").toLowerCase().includes(q) &&
+        !email.toLowerCase().includes(q) &&
         !(o.orderNumber ?? "").toLowerCase().includes(q)
       ) return false;
     }
     return true;
   });
 
-  function openOrderDetail(order: AdminOrder) {
+  function openOrderDetail(order: AdminOrderRow) {
     setSelectedOrder(order);
     setDrawerOpen(true);
   }
+  
 
   // ── Table columns ──
   const columns = [
@@ -721,11 +1340,11 @@ export function AdminOrdersClient() {
       key: "id",
       label: "Order",
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
+        const o = row as unknown as AdminOrderRow;
         return (
           <div>
             <span className="font-dm text-[13px] font-semibold text-(--neutral-900) font-mono">
-              {o.orderNumber ?? shortId(o.id)}
+              {o.orderNumber ?? shortOrderNumber(now) ?? shortId(o.id)}
             </span>
           </div>
         );
@@ -736,7 +1355,15 @@ export function AdminOrdersClient() {
       label: "Customer",
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
+        const o = row as unknown as AdminOrderRow;
+        if (o.kind === "instore") {
+          return (
+            <div>
+              <p className="font-dm text-[13px] font-medium text-(--neutral-900)">{o.customerName ?? "Walk-in customer"}</p>
+              <p className="font-dm text-[11px] text-(--neutral-400)">{o.customerPhone ?? o.customerEmail ?? "—"}</p>
+            </div>
+          );
+        }
         return o.user ? (
           <div>
             <p className="font-dm text-[13px] font-medium text-(--neutral-900)">{o.user.name}</p>
@@ -751,7 +1378,8 @@ export function AdminOrdersClient() {
       key: "deliveryType",
       label: "Delivery",
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
+        const o = row as unknown as AdminOrderRow;
+        if (o.kind === "instore") return <InStoreBadge />;
         if (o.deliveryType === "PICKUP") {
           return (
             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
@@ -770,7 +1398,7 @@ export function AdminOrdersClient() {
       key: "items",
       label: "Items",
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
+        const o = row as unknown as AdminOrderRow;
         const qty = o.items.reduce((s, i) => s + i.quantity, 0);
         return <span className="font-dm text-[13px] text-(--neutral-700)">{qty} item{qty !== 1 ? "s" : ""}</span>;
       },
@@ -780,15 +1408,48 @@ export function AdminOrdersClient() {
       label: "Total",
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
-        return <span className="font-dm text-[13px] font-semibold text-(--neutral-900)">{formatKes(o.totalKes)}</span>;
+        const o = row as unknown as AdminOrderRow;
+        const canDownload = o.kind === "instore"
+          ? o.paymentStatus === "PAID"
+          : o.status !== "FAILED" && o.status !== "CANCELLED" && o.paymentStatus === "PAID";
+        const invoiceUrl = o.kind === "instore"
+          ? `/api/admin/orders/instore/${o.id}/invoice`
+          : `/api/admin/orders/${o.id}/invoice`;
+        return (
+          <div className="flex items-center gap-2">
+            <span className="font-dm text-[13px] font-semibold text-(--neutral-900)">{formatKes(o.totalKes)}</span>
+            <button
+              onClick={(e) => { e.stopPropagation(); window.open(invoiceUrl, "_blank"); }}
+              disabled={!canDownload}
+              title="Download invoice"
+              aria-label="Download invoice"
+              className="w-6 h-6 flex items-center justify-center rounded-[6px] text-(--neutral-400) hover:bg-(--neutral-100) hover:text-(--neutral-700) transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Printer size={13} />
+            </button>
+            {o.kind === "order" && (
+              <button
+                onClick={(e) => { e.stopPropagation(); window.open(invoiceUrl, "_blank"); }}
+                disabled={!canDownload}
+                title="Download receipt"
+                aria-label="Download receipt"
+                className="w-6 h-6 flex items-center justify-center rounded-[6px] text-(--neutral-400) hover:bg-(--neutral-100) hover:text-(--neutral-700) transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <Receipt size={13} />
+              </button>
+            )}
+          </div>
+        );
       },
     },
     {
       key: "status",
       label: "Status",
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
+        const o = row as unknown as AdminOrderRow;
+        if (o.kind === "instore") {
+          return <StatusPill status={o.fulfillmentStatus.toLowerCase()} />;
+        }
         return <StatusPill status={o.status.toLowerCase()} />;
       },
     },
@@ -796,7 +1457,7 @@ export function AdminOrdersClient() {
       key: "paymentStatus",
       label: "Payment",
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
+        const o = row as unknown as AdminOrderRow;
         return <StatusPill status={o.paymentStatus === "PAID" ? "paid" : o.paymentStatus.toLowerCase()} />;
       },
     },
@@ -805,15 +1466,15 @@ export function AdminOrdersClient() {
       label: "Date",
       sortable: true,
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
-        return <span className="font-dm text-[12px] text-(--neutral-400)">{formatDate(o.createdAt)}</span>;
+        const o = row as unknown as AdminOrderRow;
+        return <span className="font-dm text-[12px] text-(--neutral-400)">{formatDateTime(o.createdAt)}</span>;
       },
     },
     {
       key: "actions",
       label: "",
       render: (_: unknown, row: Record<string, unknown>) => {
-        const o = row as unknown as AdminOrder;
+        const o = row as unknown as AdminOrderRow;
         return (
           <button
             onClick={(e) => { e.stopPropagation(); openOrderDetail(o); }}
@@ -826,11 +1487,23 @@ export function AdminOrdersClient() {
     },
   ];
 
-  const ALL_STATUSES: OrderStatus[] = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP"];
+  const ALL_STATUSES: OrderStatus[] = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP", "FAILED"];
 
   return (
     <div className="min-h-screen">
-      <PageHeader title="Orders" description="Manage customer orders and fulfillment" />
+      <PageHeader
+        title="Orders"
+        description="Manage customer orders and fulfillment"
+        action={
+          <button
+            onClick={() => router.push("/admin/orders/new")}
+            className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+          >
+            <Plus size={16} />
+            Create Order
+          </button>
+        }
+      />
 
       {/* ── Stat cards ── */}
       <div className="px-6 mb-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -866,6 +1539,57 @@ export function AdminOrdersClient() {
           />
         </div>
 
+        <div className="w-[180px]">
+          <PrelineSelect
+            value={filterPayment}
+            onChange={(v) => setFilterPayment(v as "" | PaymentStatus)}
+            placeholder="All payments"
+            options={[
+              { value: "PAID", label: "Paid" },
+              { value: "PENDING", label: "Pending" },
+              { value: "FAILED", label: "Failed" },
+            ]}
+          />
+        </div>
+
+        <div className="w-[180px]">
+          <PrelineSelect
+            value={channelFilter}
+            onChange={(v) => setChannelFilter(v as "" | "pickup" | "delivery" | "instore")}
+            placeholder="All channels"
+            options={[
+              { value: "pickup", label: "Store Pickup" },
+              { value: "delivery", label: "Home Delivery" },
+              { value: "instore", label: "In-Store" },
+            ]}
+          />
+        </div>
+
+        <div className="w-[180px]">
+          <PrelineSelect
+            value={dateFilter}
+            onChange={(v) => setDateFilter(v as "" | "today" | "week" | "month" | "custom")}
+            placeholder="All dates"
+            options={[
+              { value: "today", label: "Today" },
+              { value: "week", label: "This Week" },
+              { value: "month", label: "This Month" },
+              { value: "custom", label: "Custom" },
+            ]}
+          />
+        </div>
+
+        {dateFilter === "custom" && (
+          <>
+            <div className="w-[180px]">
+              <PrelineDatePicker value={customFrom} onChange={setCustomFrom} placeholder="From" />
+            </div>
+            <div className="w-[180px]">
+              <PrelineDatePicker value={customTo} onChange={setCustomTo} placeholder="To" />
+            </div>
+          </>
+        )}
+
         {scope?.isSuperAdmin && (
           <div className="w-[200px]">
             <PrelineSelect
@@ -884,12 +1608,14 @@ export function AdminOrdersClient() {
         )}
 
         <button
-          onClick={() => toast.info("Export coming soon")}
+          onClick={() => setExportOpen(true)}
           className="ml-auto h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center gap-2 transition-colors"
         >
           <Download size={14} /> Export
         </button>
       </div>
+
+      <ExportModal resource="orders" open={exportOpen} onClose={() => setExportOpen(false)} />
 
       {/* ── Table ── */}
       <motion.div
@@ -902,7 +1628,7 @@ export function AdminOrdersClient() {
           columns={columns}
           data={filtered as unknown as Record<string, unknown>[]}
           loading={isLoading}
-          onRowClick={(row) => openOrderDetail(row as unknown as AdminOrder)}
+          onRowClick={(row) => openOrderDetail(row as unknown as AdminOrderRow)}
           emptyTitle="No orders found"
           emptyDescription="Orders placed through the storefront will appear here."
           pageSize={25}
@@ -911,9 +1637,10 @@ export function AdminOrdersClient() {
 
       {/* ── Order detail drawer ── */}
       <OrderDetailDrawer
-        order={selectedOrder}
+        order={liveSelectedOrder}
         open={drawerOpen}
         onClose={() => { setDrawerOpen(false); setTimeout(() => setSelectedOrder(null), 250); }}
+        isSuperAdmin={scope?.isSuperAdmin}
       />
     </div>
   );

@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { r2PublicUrl } from "@/lib/r2"
 import type { OrderStatus } from "@prisma/client"
+import { reportError } from "@/lib/observability"
 
 const ONGOING: OrderStatus[] = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "WAITING_TO_PACKAGE", "READY_FOR_PICKUP"]
 const DELIVERED: OrderStatus[] = ["DELIVERED", "PICKED_UP"]
@@ -29,43 +30,49 @@ export async function GET(req: Request) {
     ...(statusFilter ? { status: { in: statusFilter } } : {}),
   }
 
-  const [orders, total] = await Promise.all([
-    db.order.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * take,
-      take,
-      select: {
-        id: true,
-        orderNumber: true,
-        status: true,
-        createdAt: true,
-        totalKes: true,
-        deliveryType: true,
-        items: {
-          take: 1,
-          select: {
-            name: true,
-            quantity: true,
-            product: {
-              select: {
-                images: { where: { isPrimary: true }, take: 1, select: { objectKey: true } },
+  try {
+    const [orders, total] = await Promise.all([
+      db.order.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * take,
+        take,
+        select: {
+          id: true,
+          orderNumber: true,
+          status: true,
+          createdAt: true,
+          totalKes: true,
+          deliveryType: true,
+          items: {
+            take: 1,
+            select: {
+              name: true,
+              quantity: true,
+              product: {
+                select: {
+                  images: { where: { isPrimary: true }, take: 1, select: { objectKey: true } },
+                },
               },
             },
           },
         },
-      },
-    }),
-    db.order.count({ where }),
-  ])
+      }),
+      db.order.count({ where }),
+    ])
 
-  const data = orders.map((o) => ({
-    ...o,
-    thumbnail: o.items[0]?.product.images[0]?.objectKey
-      ? r2PublicUrl(o.items[0].product.images[0].objectKey)
-      : null,
-    itemCount: o.items.length,
-  }))
+    const data = orders.map((o) => ({
+      ...o,
+      thumbnail: o.items[0]?.product.images[0]?.objectKey
+        ? r2PublicUrl(o.items[0].product.images[0].objectKey)
+        : null,
+      itemCount: o.items.length,
+    }))
 
-  return NextResponse.json({ ok: true, data, total, page, pages: Math.ceil(total / take) })
+    return NextResponse.json({ ok: true, data, total, page, pages: Math.ceil(total / take) })
+  } catch (e) {
+    reportError(e, { route: "GET /api/account/orders" })
+    console.error("[account/orders] GET error", e)
+    return NextResponse.json({ ok: false }, { status: 500 })
+  }
 }

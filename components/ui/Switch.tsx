@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Switch — animated toggle using styled-components.
+ * Switch — animated toggle.
  *
  * Visual spec:
  *   Width: 46px, Height: 24px, Circle diameter: 18px
@@ -11,15 +11,11 @@
  *   Slider ::before creates a subtle horizontal highlight / "ripple line" across the track
  *
  * Props: { checked, onChange, disabled? }
+ * Styles: app/globals.css (.switch-*)
  */
 
 import React from "react";
-import styled from "styled-components";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-const EASE = "cubic-bezier(0.27, 0.2, 0.25, 1.51)";
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -29,82 +25,6 @@ export interface SwitchProps {
   onChange: (v: boolean) => void;
   disabled?: boolean;
 }
-
-// ---------------------------------------------------------------------------
-// Styled components
-// ---------------------------------------------------------------------------
-
-/**
- * Label is the outermost element — it's a <label> so the hidden input
- * inside receives click events and the switch is fully accessible.
- */
-const SwitchLabel = styled.label<{ $disabled: boolean }>`
-  position: relative;
-  display: inline-block;
-  width: 46px;
-  height: 24px;
-  cursor: ${({ $disabled }) => ($disabled ? "not-allowed" : "pointer")};
-  flex-shrink: 0;
-
-  /* Focus ring for keyboard nav — shown when inner input is focused */
-  &:focus-within .sw-slider {
-    outline: 2px solid rgb(0, 218, 80);
-    outline-offset: 2px;
-  }
-`;
-
-/** Visually-hidden accessible checkbox */
-const HiddenInput = styled.input`
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  opacity: 0;
-  cursor: inherit;
-  z-index: 1;
-`;
-
-/** The pill-shaped colored track */
-const Slider = styled.span<{ $checked: boolean; $disabled: boolean }>`
-  position: absolute;
-  inset: 0;
-  border-radius: 12px;
-  background: ${({ $checked }) =>
-    $checked ? "rgb(0, 218, 80)" : "rgb(131, 131, 131)"};
-  transition: background 0.2s ${EASE};
-  pointer-events: none;
-  opacity: ${({ $disabled }) => ($disabled ? 0.5 : 1)};
-
-  /* Subtle horizontal ripple / highlight line */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 50%;
-    left: 5px;
-    right: 5px;
-    height: 2px;
-    border-radius: 1px;
-    background: rgba(255, 255, 255, 0.22);
-    transform: translateY(-50%);
-  }
-`;
-
-/** White circle thumb */
-const Thumb = styled.span<{ $checked: boolean }>`
-  position: absolute;
-  top: 3px;
-  left: ${({ $checked }) => ($checked ? "25px" : "3px")};
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(0, 0, 0, 0.05);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: left 0.2s ${EASE};
-`;
 
 // ---------------------------------------------------------------------------
 // Inline SVG icons — rendered inside the thumb
@@ -140,19 +60,34 @@ function CheckmarkIcon() {
 // ---------------------------------------------------------------------------
 export default function Switch({ checked, onChange, disabled = false }: SwitchProps) {
   return (
-    <SwitchLabel $disabled={disabled}>
-      <HiddenInput
+    <label
+      className={cn(
+        "switch-label relative inline-block w-[46px] h-6 shrink-0",
+        disabled ? "cursor-not-allowed" : "cursor-pointer"
+      )}
+    >
+      <input
         type="checkbox"
+        className="absolute inset-0 w-full h-full m-0 opacity-0 z-[1] cursor-inherit"
         checked={checked}
         onChange={(e) => !disabled && onChange(e.target.checked)}
         disabled={disabled}
         aria-checked={checked}
       />
-      <Slider $checked={checked} $disabled={disabled} className="sw-slider">
-        <Thumb $checked={checked}>
+      <span
+        className={cn("switch-slider absolute inset-0 rounded-xl pointer-events-none", disabled && "opacity-50")}
+        style={{ background: checked ? "rgb(0, 218, 80)" : "rgb(131, 131, 131)" }}
+      >
+        <span
+          className="switch-thumb absolute top-[3px] w-[18px] h-[18px] rounded-full bg-white flex items-center justify-center"
+          style={{
+            left: checked ? "25px" : "3px",
+            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(0, 0, 0, 0.05)",
+          }}
+        >
           {checked ? <CheckmarkIcon /> : <CrossIcon />}
-        </Thumb>
-      </Slider>
-    </SwitchLabel>
+        </span>
+      </span>
+    </label>
   );
 }

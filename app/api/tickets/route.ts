@@ -5,6 +5,12 @@ import { connection } from "next/server";
 import { ok, created, Err } from "@/lib/api";
 import { z } from "zod";
 import { NextRequest } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { generateTicketNumber } from "@/lib/tickets/generate-ticket-number";
+import { assignTicketToAdmin } from "@/lib/tickets/assign-admin";
+import { createNotification } from "@/lib/notify";
+import { reportError } from "@/lib/observability";
+import { trackServerEvent } from "@/lib/observability-server";
 
 async function requireUser() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -15,12 +21,6 @@ async function requireUser() {
 // 48 hours — initial ticket expiry window
 const TICKET_EXPIRY_MS = 48 * 60 * 60 * 1000;
 
-// Generate zero-padded ticket number: TK-00001
-async function generateTicketNumber(): Promise<string> {
-  const count = await db.supportTicket.count();
-  return `TK-${String(count + 1).padStart(5, "0")}`;
-}
-
 // ---------------------------------------------------------------------------
 // GET /api/tickets
 // Returns all tickets belonging to the authenticated user.
@@ -30,6 +30,13 @@ export async function GET() {
   try {
     const user = await requireUser();
     if (!user) return Err.authRequired();
+
+    // Bulk-expire tickets whose expiresAt has passed — mirrors the same sweep
+    // in GET /api/admin/tickets so status is never stale on either side.
+    await db.supportTicket.updateMany({
+      where: { userId: user.id, expiresAt: { lt: new Date() }, status: "OPEN" },
+      data: { status: "EXPIRED" },
+    });
 
     const tickets = await db.supportTicket.findMany({
       where: { userId: user.id },
@@ -46,7 +53,7 @@ export async function GET() {
         messages: {
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { content: true, senderType: true, createdAt: true },
+          select: { content: true, senderType: true, createdAt: true, attachmentName: true },
         },
       },
     });
@@ -54,6 +61,7 @@ export async function GET() {
     return ok({ tickets });
   } catch (e) {
     console.error("[tickets] GET error", e);
+    reportError(e, { route: "GET /api/tickets" });
     return Err.internal();
   }
 }
@@ -66,9 +74,11 @@ export async function GET() {
 const CreateSchema = z.object({
   subject: z.string().min(3).max(200),
   content: z.string().min(10).max(5000),
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const user = await requireUser();
@@ -79,6 +89,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
     const ticketNumber = await generateTicketNumber();
+    const assignedAdminId = await assignTicketToAdmin();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + TICKET_EXPIRY_MS);
 
@@ -86,6 +97,7 @@ export async function POST(req: NextRequest) {
       data: {
         ticketNumber,
         userId: user.id,
+        assignedAdminId,
         subject: parsed.data.subject,
         expiresAt,
         messages: {
@@ -101,9 +113,18 @@ export async function POST(req: NextRequest) {
     });
 
     console.info("[tickets] POST — created ticket", ticketNumber, "for user", user.id);
+    trackServerEvent(user.id, "ticket_created", { ticketId: ticket.id, ticketNumber });
+    createNotification({
+      type: "TICKET_NEW",
+      title: `New ticket: ${parsed.data.subject}`,
+      body: `${user.name ?? user.email} opened ticket ${ticketNumber}`,
+      link: `/admin/tickets/${ticket.id}`,
+      targetRoles: ["customer_care"],
+    }).catch(() => {});
     return created({ ticket });
   } catch (e) {
     console.error("[tickets] POST error", e);
+    reportError(e, { route: "POST /api/tickets" });
     return Err.internal();
   }
 }
