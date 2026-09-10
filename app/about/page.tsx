@@ -3,7 +3,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { AboutClient } from "@/components/about/AboutClient";
 
 export const metadata = {
-  title: "About Us | Fechi Organics",
+  title: "About Us",
   description:
     "Discover the story behind FECHI Organics — a proudly Kenyan skincare and wellness brand dedicated to natural beauty, confidence, and healthy living.",
 };

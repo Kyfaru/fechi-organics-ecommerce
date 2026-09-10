@@ -1588,13 +1588,21 @@ export function AdminProductsClient() {
   }
 
   // ── Data query ──
-  const { data, isLoading } = useQuery<{ ok: boolean; data: { products: AdminProduct[] } }>({
+  // The app-wide persisted query cache (app/providers.tsx) can restore a
+  // stale/empty result on mount before the background refetch resolves —
+  // refetchOnMount: "always" forces a revalidation every time, and treating
+  // "still fetching with nothing to show yet" as loading (not "isLoading"
+  // alone, which react-query only sets true when there's no cached data at
+  // all) avoids a misleading "No products found" flash on a stale cache hit.
+  const { data, isLoading, isFetching } = useQuery<{ ok: boolean; data: { products: AdminProduct[] } }>({
     queryKey: ["admin-products"],
     queryFn: () => fetch("/api/admin/products").then((r) => r.json()),
     staleTime: 60_000,
+    refetchOnMount: "always",
   });
 
   const products: AdminProduct[] = data?.data?.products ?? [];
+  const productsLoading = isLoading || (isFetching && products.length === 0);
 
   // Derive categories from loaded products (no extra API call unless categories page)
   // E3: allow adding new categories inline — keep a local supplemental list
@@ -2094,7 +2102,7 @@ export function AdminProductsClient() {
         </div>
 
         {/* Count label */}
-        {!isLoading && (
+        {!productsLoading && (
           <span className="font-dm text-[13px] text-(--neutral-400) ml-1">
             {filtered.length} product{filtered.length !== 1 ? "s" : ""}
           </span>
@@ -2123,7 +2131,7 @@ export function AdminProductsClient() {
       <div className="px-6">
         {view === "grid" ? (
           // ── Grid view ──
-          isLoading ? (
+          productsLoading ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {Array.from({ length: 10 }).map((_, i) => (
                 <div key={i} className="bg-white rounded-[12px] border border-(--neutral-200) overflow-hidden">
@@ -2161,7 +2169,7 @@ export function AdminProductsClient() {
           <DataTable
             columns={tableColumns}
             data={filtered as unknown as Record<string, unknown>[]}
-            loading={isLoading}
+            loading={productsLoading}
             onRowClick={(row) => openEdit(row as unknown as AdminProduct)}
             emptyTitle="No products found"
             emptyDescription="Try adjusting your filters or add a new product."

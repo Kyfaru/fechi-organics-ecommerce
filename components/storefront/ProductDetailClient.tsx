@@ -186,7 +186,7 @@ export function ProductDetailClient({ product }: Props) {
   const qtyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Derived values ─────────────────────────────────────────────────────────
-  const hasDiscount = !!product.compareAtPriceKes;
+  const hasDiscount = !!product.compareAtPriceKes && product.compareAtPriceKes > product.priceKes;
   const pct = hasDiscount
     ? discountPct(product.priceKes, product.compareAtPriceKes!)
     : null;
@@ -332,21 +332,37 @@ export function ProductDetailClient({ product }: Props) {
     cartMutation.mutate();
   }
 
-  // ── Other Products query — any active product storewide, not category-scoped ──
-  const { data: relatedData, isLoading: relatedLoading } =
-    useQuery<RelatedResponse>({
-      queryKey: ["otherProducts"],
-      queryFn: () =>
-        fetch(`/api/storefront/products?limit=20`).then((r) => r.json()),
+  // ── Other Products query — same category, falling back to best-sellers
+  // storewide when the category has too few other items ──
+  const { data: relatedItems, isLoading: relatedLoading, isError: relatedError } =
+    useQuery<ProductCardType[]>({
+      queryKey: ["otherProducts", product.categorySlug, product.slug],
+      queryFn: async () => {
+        const res = await fetch(`/api/storefront/products?category=${product.categorySlug}&limit=20`);
+        const json: RelatedResponse = await res.json();
+        if (!res.ok || json.ok !== true) throw new Error("Failed to load related products");
+        const items = json.data.items.filter((p) => p.slug !== product.slug);
+        if (items.length >= 3) return items;
+
+        // Not enough same-category items — top up with best-sellers storewide.
+        const fallbackRes = await fetch(`/api/storefront/products?sort=best&limit=20`);
+        const fallbackJson: RelatedResponse = await fallbackRes.json();
+        if (!fallbackRes.ok || fallbackJson.ok !== true) return items;
+        const seen = new Set(items.map((p) => p.id));
+        for (const p of fallbackJson.data.items) {
+          if (p.slug !== product.slug && !seen.has(p.id)) {
+            items.push(p);
+            seen.add(p.id);
+          }
+        }
+        return items;
+      },
       staleTime: 60_000,
     });
 
-  // Exclude the current product, then randomize and cap at 5 — re-shuffles
-  // only when the fetched pool changes, not on unrelated re-renders.
-  const otherProducts = useMemo(() => {
-    const pool = relatedData?.data?.items?.filter((p) => p.slug !== product.slug) ?? [];
-    return shuffle(pool).slice(0, 5);
-  }, [relatedData, product.slug]);
+  // Randomize and cap at 5 — re-shuffles only when the fetched pool changes,
+  // not on unrelated re-renders.
+  const otherProducts = useMemo(() => shuffle(relatedItems ?? []).slice(0, 5), [relatedItems]);
 
   // ── Scroll tracking for "Other Products" ──────────────────────────────────
   useEffect(() => {
@@ -850,17 +866,23 @@ export function ProductDetailClient({ product }: Props) {
                     <SkeletonCard />
                   </div>
                 ))
-              : otherProducts.length > 0
-                ? otherProducts.map((p) => (
-                    <div key={p.id} className="flex-shrink-0 w-[280px]">
-                      <ProductCard product={p} />
-                    </div>
-                  ))
-                : (
+              : relatedError
+                ? (
                   <p className="font-body text-[14px]" style={{ color: "#40493c" }}>
-                    No other products found.
+                    Couldn&apos;t load other products right now.
                   </p>
-                )}
+                )
+                : otherProducts.length > 0
+                  ? otherProducts.map((p) => (
+                      <div key={p.id} className="flex-shrink-0 w-[280px]">
+                        <ProductCard product={p} />
+                      </div>
+                    ))
+                  : (
+                    <p className="font-body text-[14px]" style={{ color: "#40493c" }}>
+                      No other products found.
+                    </p>
+                  )}
           </div>
         </div>
       </div>
