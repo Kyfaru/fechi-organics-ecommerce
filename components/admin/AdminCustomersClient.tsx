@@ -11,10 +11,19 @@ import {
 import Link from "next/link";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { StatsCard } from "@/components/ui/stats-card";
+import type { PeriodChange } from "@/lib/stats";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { EmptyState } from "@/components/admin/ui/EmptyState";
+import { DonutChart } from "@/components/ui/donut-chart";
+
+// Walk-in customers created from Create Order without an email get a
+// placeholder address (see lib/customers/find-or-create-walkin.ts) — surface
+// "No email" instead of the fake address until an admin fills in a real one.
+function isPlaceholderEmail(email: string): boolean {
+  return email.endsWith("@instore.local");
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,7 +59,8 @@ type CustomerOrder = {
   paymentStatus: string;
   totalKes: number;
   createdAt: string;
-  _count: { items: number };
+  itemsCount: number;
+  kind: "order" | "instore";
 };
 
 type Stats = {
@@ -62,7 +72,7 @@ type Stats = {
 
 type ApiResponse = {
   ok: boolean;
-  data: { users: Customer[]; stats: Stats };
+  data: { users: Customer[]; stats: Stats; statsChange: Record<"total" | "newThisMonth", PeriodChange> };
 };
 
 // ---------------------------------------------------------------------------
@@ -79,6 +89,12 @@ function formatDate(iso: string) {
 function formatKes(amountCents: number) {
   return `KES ${(amountCents / 100).toLocaleString("en-KE")}`;
 }
+
+const CHANNEL_COLORS: Record<string, string> = {
+  EMAIL: "#3b82f6",
+  SMS: "#22c55e",
+  PUSH: "#f59e0b",
+};
 
 function initials(name: string) {
   return name
@@ -198,6 +214,28 @@ function CustomerDrawer({
 }) {
   const [tab, setTab] = useState<"orders" | "info" | "notes">("orders");
   const [note, setNote] = useState("");
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [emailDraft, setEmailDraft] = useState("");
+  const qc = useQueryClient();
+
+  const updateEmailMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const res = await fetch(`/api/admin/customers/${customerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      return res.json();
+    },
+    onSuccess: (res) => {
+      if (!res.ok) { toast.error(res.error?.message ?? "Could not save email"); return; }
+      toast.success("Email saved");
+      setEditingEmail(false);
+      qc.invalidateQueries({ queryKey: ["admin-customer-detail", customerId] });
+      qc.invalidateQueries({ queryKey: ["admin-customers"] });
+    },
+    onError: () => toast.error("Could not save email"),
+  });
 
   const { data: detailData, isLoading: detailLoading } = useQuery({
     queryKey: ["admin-customer-detail", customerId],
@@ -213,8 +251,17 @@ function CustomerDrawer({
     enabled: !!customerId && tab === "orders",
   });
 
+  const { data: statsData } = useQuery({
+    queryKey: ["admin-customer-stats", customerId],
+    queryFn: () =>
+      fetch(`/api/admin/customers/${customerId}/stats`).then((r) => r.json()),
+    enabled: !!customerId && tab === "info",
+  });
+
   const customer: CustomerDetail | null = detailData?.data?.user ?? null;
   const orders: CustomerOrder[] = ordersData?.data?.orders ?? [];
+  const stats: { testimonialsCount: number; totalSpendKes: number; channelUsage: { channel: string; count: number }[] } | null =
+    statsData?.data ?? null;
 
   const TABS = [
     { key: "orders" as const, label: "Orders" },
@@ -247,7 +294,11 @@ function CustomerDrawer({
                 {customer.name}
               </div>
               <div className="font-dm text-[14px] text-(--neutral-500) dark:text-(--dark-muted)">
-                {customer.email}
+                {isPlaceholderEmail(customer.email) ? (
+                  <span className="text-(--gold-700)">No email — add one</span>
+                ) : (
+                  customer.email
+                )}
               </div>
               <div className="mt-1">
                 <StatusPill status={customer.banned ? "banned" : "active"} />
@@ -296,11 +347,18 @@ function CustomerDrawer({
                       className="flex items-center justify-between p-3 rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg)"
                     >
                       <div>
-                        <div className="font-dm text-[13px] font-semibold text-(--neutral-900) dark:text-(--dark-text) font-mono">
-                          #{order.id.slice(0, 8).toUpperCase()}
+                        <div className="flex items-center gap-1.5">
+                          <div className="font-dm text-[13px] font-semibold text-(--neutral-900) dark:text-(--dark-text) font-mono">
+                            #{order.id.slice(0, 8).toUpperCase()}
+                          </div>
+                          {order.kind === "instore" && (
+                            <span className="font-dm text-[10px] font-semibold uppercase tracking-[0.4px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                              In-Store
+                            </span>
+                          )}
                         </div>
                         <div className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted) mt-0.5">
-                          {order._count.items} item{order._count.items !== 1 ? "s" : ""} &middot; {formatDate(order.createdAt)}
+                          {order.itemsCount} item{order.itemsCount !== 1 ? "s" : ""} &middot; {formatDate(order.createdAt)}
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
@@ -319,9 +377,45 @@ function CustomerDrawer({
           {/* Tab: Info */}
           {tab === "info" && (
             <div className="space-y-4">
+              {isPlaceholderEmail(customer.email) && (
+                <div className="flex justify-between items-start py-2 border-b border-(--neutral-200) dark:border-(--dark-border)">
+                  <span className="font-dm text-[13px] text-(--neutral-500) dark:text-(--dark-muted) pt-1.5">Email</span>
+                  {editingEmail ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        autoFocus
+                        type="email"
+                        value={emailDraft}
+                        onChange={(e) => setEmailDraft(e.target.value)}
+                        placeholder="customer@email.com"
+                        className="h-8 px-2 rounded-[6px] border border-(--neutral-200) font-dm text-[13px] focus:outline-none focus:border-(--green-800)"
+                      />
+                      <button
+                        type="button"
+                        disabled={updateEmailMutation.isPending}
+                        onClick={() => emailDraft.trim() && updateEmailMutation.mutate(emailDraft.trim())}
+                        className="h-8 px-3 rounded-[6px] bg-(--green-800) text-white font-dm text-[12px] font-medium disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                      <button type="button" onClick={() => setEditingEmail(false)} className="h-8 px-2 font-dm text-[12px] text-(--neutral-500)">
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { setEmailDraft(""); setEditingEmail(true); }}
+                      className="font-dm text-[13px] text-(--gold-700) font-medium hover:underline"
+                    >
+                      No email — add one
+                    </button>
+                  )}
+                </div>
+              )}
               {[
                 { label: "Full Name", value: customer.name },
-                { label: "Email", value: customer.email },
+                ...(isPlaceholderEmail(customer.email) ? [] : [{ label: "Email", value: customer.email }]),
                 { label: "Phone", value: customer.phone ?? "—" },
                 { label: "Country", value: customer.country ?? "—" },
                 { label: "City", value: customer.city ?? "—" },
@@ -341,6 +435,39 @@ function CustomerDrawer({
                 <div className="mt-4 p-3 rounded-[10px] bg-(--danger-bg) border border-(--danger)">
                   <div className="font-dm text-[12px] font-semibold text-(--danger) mb-1">Ban Reason</div>
                   <div className="font-dm text-[13px] text-(--danger)">{customer.banReason}</div>
+                </div>
+              )}
+
+              {stats && (
+                <div className="mt-6 pt-6 border-t border-(--neutral-200) dark:border-(--dark-border)">
+                  <div className="font-dm text-[12px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-3">
+                    Engagement
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) p-3">
+                      <div className="font-dm text-[11px] text-(--neutral-500) dark:text-(--dark-muted)">Testimonials given</div>
+                      <div className="font-syne text-[20px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">{stats.testimonialsCount}</div>
+                    </div>
+                    <div className="rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) p-3">
+                      <div className="font-dm text-[11px] text-(--neutral-500) dark:text-(--dark-muted)">Total spent</div>
+                      <div className="font-syne text-[20px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">{formatKes(stats.totalSpendKes)}</div>
+                    </div>
+                  </div>
+
+                  {stats.channelUsage.length > 0 && (
+                    <div>
+                      <div className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted) mb-2">Channel usage</div>
+                      <DonutChart
+                        size={140}
+                        strokeWidth={20}
+                        data={stats.channelUsage.map((c) => ({
+                          label: c.channel,
+                          value: c.count,
+                          color: CHANNEL_COLORS[c.channel] ?? "#9ca3af",
+                        }))}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -391,6 +518,7 @@ export function AdminCustomersClient() {
 
   const allCustomers = data?.data?.users ?? [];
   const stats = data?.data?.stats;
+  const statsChange = data?.data?.statsChange;
 
   // Client-side filter on top of server data (server already handles DB-level filter;
   // this handles additional text search without a round-trip)
@@ -447,7 +575,11 @@ export function AdminCustomersClient() {
                 {c.name}
               </div>
               <div className="font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted)">
-                {c.email}
+                {isPlaceholderEmail(c.email) ? (
+                  <span className="text-(--gold-700)">No email — add one</span>
+                ) : (
+                  c.email
+                )}
               </div>
             </div>
           </div>
@@ -542,9 +674,9 @@ export function AdminCustomersClient() {
       <div className="px-6 pb-8 space-y-6">
         {/* Stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatsCard title="Total Customers" value={isLoading ? "—" : String(stats?.total ?? 0)} icon={<Users className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+          <StatsCard title="Total Customers" value={isLoading ? "—" : String(stats?.total ?? 0)} icon={<Users className="h-4 w-4 text-muted-foreground" />} change={statsChange?.total.change ?? "—"} changeType={statsChange?.total.changeType === "decrease" ? "negative" : "positive"} />
           <StatsCard title="Active (90d)" value={isLoading ? "—" : String(stats?.active ?? 0)} icon={<UserCheck className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
-          <StatsCard title="New This Month" value={isLoading ? "—" : String(stats?.newThisMonth ?? 0)} icon={<UserPlus className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+          <StatsCard title="New This Month" value={isLoading ? "—" : String(stats?.newThisMonth ?? 0)} icon={<UserPlus className="h-4 w-4 text-muted-foreground" />} change={statsChange?.newThisMonth.change ?? "—"} changeType={statsChange?.newThisMonth.changeType === "decrease" ? "negative" : "positive"} />
           <StatsCard title="Banned" value={isLoading ? "—" : String(stats?.banned ?? 0)} icon={<Ban className="h-4 w-4 text-muted-foreground" />} change="—" changeType="negative" />
         </div>
 

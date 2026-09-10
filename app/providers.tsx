@@ -1,10 +1,15 @@
 "use client";
 
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
-import { createContext, useContext, useEffect, useState } from "react";
+import { QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import type { CurrencyCode, FxRates } from "@/lib/currency";
 import { CURRENCIES, formatPrice } from "@/lib/currency";
 import { PostHogProvider } from "@/components/PostHogProvider";
+import { PrelineInit } from "@/components/admin/PrelineInit";
+import { authClient, useSession } from "@/lib/auth-client";
 
 // ── TanStack Query ─────────────────────────────────────────────────────────
 
@@ -13,7 +18,9 @@ function makeQueryClient() {
     defaultOptions: {
       queries: {
         staleTime: 60_000,
+        gcTime: 24 * 60 * 60_000,
         refetchOnWindowFocus: false,
+        refetchOnMount: false,
       },
     },
   });
@@ -25,6 +32,14 @@ function getQueryClient() {
   if (typeof window === "undefined") return makeQueryClient();
   if (!browserQueryClient) browserQueryClient = makeQueryClient();
   return browserQueryClient;
+}
+
+const CACHE_STORAGE_KEY = "fechi-cache";
+
+/** Wipes the persisted query cache — call this from every logout handler. */
+export function clearPersistedQueryCache() {
+  browserQueryClient?.clear();
+  if (typeof window !== "undefined") localStorage.removeItem(CACHE_STORAGE_KEY);
 }
 
 // ── Theme context ───────────────────────────────────────────────────────────
@@ -40,12 +55,9 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
 
   useEffect(() => {
-    // Prefer stored preference; fall back to OS preference
+    // Light by default; only dark if the user explicitly toggled it before.
     const stored = localStorage.getItem("fechi-theme") as "light" | "dark" | null;
-    const preferred = window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-    const initial = stored ?? preferred;
+    const initial = stored ?? "light";
     setTheme(initial);
     document.documentElement.classList.toggle("dark", initial === "dark");
   }, []);
@@ -140,17 +152,121 @@ export function useCurrency() {
   return useContext(CurrencyContext);
 }
 
+// ── Portal session guard ────────────────────────────────────────────────────
+
+/**
+ * Signs out an admin-role session found anywhere outside /admin/* — an admin
+ * session must never look "logged in" on the customer storefront. Deliberately
+ * skips /admin/* (AdminGuard already redirects a wrong-role session to /403
+ * there; forcibly destroying a client's legitimate session over a mistyped
+ * admin URL would be needlessly punitive).
+ *
+ * This is what catches the one gap the /login and /admin/login pages' own
+ * precheck (lib/portal-check.ts) can't cover: signIn.social() does a full
+ * OAuth redirect with no email step first, so an existing admin who
+ * authenticates via a social button on /login can't be intercepted before a
+ * session exists — this guard catches it on the very next render instead.
+ *
+ * Uses the shared useSession() hook (not a fresh authClient.getSession()
+ * call) deliberately — Better Auth's client caches that hook's result across
+ * every consumer in the app, so this adds no extra request beyond what
+ * Navbar/PostHogProvider/etc. already trigger. An earlier version called
+ * getSession() imperatively on every pathname change, which fired a fresh
+ * network request per route and tripped Better Auth's global auth-route rate
+ * limit (lib/auth.ts, max 10/60s) for anyone navigating quickly — including
+ * admins browsing the storefront.
+ */
+function PortalSessionGuard() {
+  const pathname = usePathname();
+  const { data, isPending } = useSession();
+
+  useEffect(() => {
+    if (pathname.startsWith("/admin")) return;
+    if (isPending || !data?.session) return;
+    if ((data.user as { role?: string } | undefined)?.role !== "admin") return;
+
+    // The cached useSession() value can be stale for up to the 5-minute
+    // cookieCache window — re-verify with a cache-bypassing read before
+    // actually destroying the session, so a stale "admin" read doesn't sign
+    // out a session that's genuinely fine by now. This extra request only
+    // fires in this already-rare branch (role looked like "admin" on a
+    // client path), not on every navigation, so it doesn't reintroduce the
+    // rate-limit issue the file-header comment above describes.
+    let cancelled = false;
+    authClient.getSession({ query: { disableCookieCache: true } }).then(({ data: fresh }) => {
+      if (cancelled) return;
+      if ((fresh?.user as { role?: string } | undefined)?.role === "admin") {
+        authClient.signOut();
+      }
+    });
+    return () => { cancelled = true; };
+  }, [pathname, data, isPending]);
+
+  return null;
+}
+
+// ── Cart sync guard ─────────────────────────────────────────────────────────
+
+/**
+ * Merges any guest cart into the account cart the moment a session appears
+ * for a new user id, then drops the cached ["cart"] query so every consumer
+ * (Navbar, CartClient, DeliveryClient, payment page, ...) refetches the real
+ * DB cart instead of continuing to show whatever was persisted to
+ * localStorage before login (stale guest cart, or a previous account's cart
+ * on a shared browser). Mirrors clearPersistedQueryCache(), which already
+ * runs on every logout — this is the missing login-side counterpart.
+ */
+function CartSyncGuard() {
+  const { data, isPending } = useSession();
+  const qc = useQueryClient();
+  const lastUserId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (isPending) return;
+    const user = data?.session
+      ? (data.user as { id: string; role?: string })
+      : null;
+    if (!user) {
+      lastUserId.current = null;
+      return;
+    }
+    if (user.role === "admin" || user.id === lastUserId.current) return;
+    lastUserId.current = user.id;
+    fetch("/api/cart/merge", { method: "POST" })
+      .catch(() => {})
+      .finally(() => {
+        qc.removeQueries({ queryKey: ["cart"] });
+        qc.invalidateQueries({ queryKey: ["cart"] });
+      });
+  }, [data, isPending, qc]);
+
+  return null;
+}
+
 // ── Root providers wrapper ──────────────────────────────────────────────────
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const qc = getQueryClient();
+  const [persister] = useState(() =>
+    createSyncStoragePersister({
+      storage: typeof window !== "undefined" ? window.localStorage : undefined,
+      key: CACHE_STORAGE_KEY,
+      throttleTime: 2000,
+    }),
+  );
   return (
     <PostHogProvider>
-      <QueryClientProvider client={qc}>
+      <PrelineInit />
+      <PortalSessionGuard />
+      <PersistQueryClientProvider
+        client={qc}
+        persistOptions={{ persister, maxAge: 24 * 60 * 60_000 }}
+      >
+        <CartSyncGuard />
         <ThemeProvider>
           <CurrencyProvider>{children}</CurrencyProvider>
         </ThemeProvider>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </PostHogProvider>
   );
 }

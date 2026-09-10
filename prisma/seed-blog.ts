@@ -207,7 +207,7 @@ const posts = [
 <p>By 2027, our goal is for 80% of our key actives to be sourced within East Africa. This supports local agricultural economies, reduces our logistics carbon footprint, and lets us verify quality at source rather than trusting third-party certificates.</p>
 <p>Every time you buy a FECHI product, part of what you're paying for is a supply chain that was built to benefit the people and land that make it possible.</p>
 
-<blockquote><p>"Local sourcing isn't a marketing decision. It's a quality decision." — Jefferson Kimotho, Founder</p></blockquote>
+<blockquote><p>"Local sourcing isn't a marketing decision. It's a quality decision." — Joe Mwangi, Founder</p></blockquote>
 
 <p>Learn more about who we are on our <a href="/about">About page</a>, or explore our <a href="/shop">full product range</a>.</p>
 `,

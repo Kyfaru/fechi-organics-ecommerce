@@ -1,23 +1,19 @@
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-
-async function requireAdmin(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user) return null;
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  return user?.role === "admin" ? session.user : null;
-}
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
   await connection();
-  try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { contact_messages: ["view"] });
+  if (denied) return denied;
+
+  try {
     const sp = req.nextUrl.searchParams;
     const status = sp.get("status") as "new" | "read" | "archived" | null;
     const cursor = sp.get("cursor") ?? undefined;
@@ -35,6 +31,7 @@ export async function GET(req: NextRequest) {
     const items = messages.slice(0, limit);
     return ok({ items, nextCursor: hasMore ? items[items.length - 1].id : null });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/contact-messages", tags: { domain: "contact-messages" } });
     console.error("[admin/contact-messages] GET error", e);
     return Err.internal();
   }
@@ -43,14 +40,17 @@ export async function GET(req: NextRequest) {
 const UpdateSchema = z.object({
   id: z.string().uuid(),
   status: z.enum(["new", "read", "archived"]),
-});
+}).strict();
 
 export async function PATCH(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
-  try {
-    const admin = await requireAdmin(req);
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { contact_messages: ["update"] });
+  if (denied) return denied;
+
+  try {
     const body = await req.json().catch(() => ({}));
     const parsed = UpdateSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
@@ -61,6 +61,7 @@ export async function PATCH(req: NextRequest) {
     });
     return ok(updated);
   } catch (e) {
+    reportError(e, { route: "PATCH /api/admin/contact-messages", tags: { domain: "contact-messages" } });
     console.error("[admin/contact-messages] PATCH error", e);
     return Err.internal();
   }

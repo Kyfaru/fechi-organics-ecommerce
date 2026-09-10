@@ -2,54 +2,27 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { getAccountUser } from "@/lib/account/get-account-user"
 import ProfileForm from "@/components/account/profile/ProfileForm"
 import AccountRightPanel from "@/components/account/AccountRightPanel"
-import type { AccountUser } from "@/types/account"
 
 export default async function ProfilePage() {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user) redirect("/login")
 
-  const u = session.user
-  const dbUser = await db.user.findUnique({
-    where: { id: u.id },
-    select: {
-      usernameChanges: true,
-      lastUsernameChange: true,
-      phoneCode: true,
-      langPreference: true,
-      currencyDisplay: true,
-      notifBotanicalUpdates: true,
-      notifOrderTracking: true,
-      notifPersonalized: true,
-    },
-  })
+  const user = await getAccountUser(session.user.id)
+  if (!user) redirect("/login")
 
-  const user: AccountUser = {
-    id: u.id,
-    name: u.name,
-    firstName: (u as any).firstName ?? null,
-    lastName: (u as any).lastName ?? null,
-    username: (u as any).username ?? null,
-    email: u.email,
-    image: u.image ?? null,
-    phone: (u as any).phone ?? null,
-    phoneCode: dbUser?.phoneCode ?? null,
-    country: (u as any).country ?? null,
-    city: (u as any).city ?? null,
-    usernameChanges: dbUser?.usernameChanges ?? 0,
-    lastUsernameChange: dbUser?.lastUsernameChange ?? null,
-    langPreference: dbUser?.langPreference ?? "en-GB",
-    currencyDisplay: dbUser?.currencyDisplay ?? "KES",
-    notifBotanicalUpdates: dbUser?.notifBotanicalUpdates ?? true,
-    notifOrderTracking: dbUser?.notifOrderTracking ?? true,
-    notifPersonalized: dbUser?.notifPersonalized ?? true,
-    twoFactorEnabled: (u as any).twoFactorEnabled ?? false,
-  }
+  // Only social sign-ins need the "email change won't affect Google/Facebook
+  // login" note — a user with a credential (password) account doesn't.
+  const socialAccount = await db.account.findFirst({
+    where: { userId: session.user.id, providerId: { in: ["google", "facebook"] } },
+    select: { providerId: true },
+  })
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[1fr_260px] gap-8">
-      <ProfileForm user={user} />
+      <ProfileForm user={user} socialProvider={socialAccount?.providerId ?? null} />
       <AccountRightPanel user={user} />
     </div>
   )

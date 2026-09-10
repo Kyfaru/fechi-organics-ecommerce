@@ -17,13 +17,15 @@ const CANCELLED: OrderStatus[] = ["CANCELLED"]
 export default async function OrdersPage({
   searchParams,
 }: {
-  searchParams: { tab?: string; page?: string }
+  searchParams: Promise<{ tab?: string; page?: string }>
 }) {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user) redirect("/login")
 
-  const tab = searchParams.tab ?? "all"
-  const page = Math.max(1, parseInt(searchParams.page ?? "1"))
+  const { tab: tabParam, page: pageParam } = await searchParams
+
+  const tab = tabParam ?? "all"
+  const page = Math.max(1, parseInt(pageParam ?? "1"))
   const take = 10
 
   const statusFilter: OrderStatus[] | undefined =
@@ -47,11 +49,12 @@ export default async function OrdersPage({
         id: true,
         orderNumber: true,
         status: true,
+        paymentStatus: true,
         createdAt: true,
         totalKes: true,
         deliveryType: true,
         items: {
-          take: 1,
+          take: 3,
           select: {
             product: {
               select: {
@@ -105,13 +108,13 @@ export default async function OrdersPage({
               id={o.id}
               orderNumber={o.orderNumber}
               status={o.status}
+              paymentStatus={o.paymentStatus}
               createdAt={o.createdAt}
               totalKes={o.totalKes}
-              thumbnail={
-                o.items[0]?.product.images[0]?.objectKey
-                  ? r2PublicUrl(o.items[0].product.images[0].objectKey)
-                  : null
-              }
+              thumbnails={o.items
+                .map((i) => i.product.images[0]?.objectKey)
+                .filter((k): k is string => !!k)
+                .map((k) => r2PublicUrl(k))}
               itemCount={o._count.items}
               deliveryType={o.deliveryType}
             />

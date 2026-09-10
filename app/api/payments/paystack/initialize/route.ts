@@ -14,37 +14,28 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
+import { reportError } from "@/lib/observability";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
+import { isCardEligible } from "@/lib/payments/card-eligibility";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
-import { resolvePromo } from "@/lib/promo";
+import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
 import { initializeTransaction } from "@/lib/paystack/client";
+import { buildTimestampOrderNumber } from "@/lib/orders/generate-order-number";
 import { getRedis } from "@/lib/redis";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { publishQstashJSON } from "@/lib/qstash";
+import { deliveryDataSchema } from "@/lib/payments/delivery-schema";
+import { readUtmCookie } from "@/lib/attribution";
 
-const deliveryDataSchema = z.object({
-  fullName: z.string().min(1),
-  phone: z.string().min(9),
-  email: z.string().email().optional(),
-  country: z.string().min(2).default("KE"),
-  county: z.string().optional().default(""),
-  state: z.string().optional(),
-  zoneId: z.string().optional().nullable(),
-  deliveryZone: z.string().optional().nullable(),
-  deliveryKes: z.number().int().nonnegative().optional(),
-  promoCode: z.string().optional().nullable(),
-  address: z.string().optional(),
-  city: z.string().optional(),
-  postalCode: z.string().optional(),
-  notes: z.string().optional(),
-  deliveryType: z.enum(["PICKUP", "DELIVERY"]),
-  branchId: z.string().optional().nullable(),
-  branchName: z.string().optional().nullable(),
-});
+const PAYMENT_TIMEOUT_SECONDS = 5 * 60; // abandon unpaid orders 5 minutes after STK push / checkout init
 
 const bodySchema = z.object({
   deliveryData: deliveryDataSchema,
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   // 1. Authenticate
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return Err.authRequired();
@@ -57,7 +48,8 @@ export async function POST(req: NextRequest) {
   try {
     const raw = await req.json();
     parsed = bodySchema.parse(raw);
-  } catch {
+  } catch (bodyErr) {
+    reportError(bodyErr, { route: "POST /api/payments/paystack/initialize", tags: { stage: "body_validation" } });
     return Err.validation("Invalid request body");
   }
 
@@ -110,11 +102,12 @@ export async function POST(req: NextRequest) {
     let resolvedPromoId: string | null = null;
     if (promoCode) {
       try {
-        const r = await resolvePromo(promoCode, subtotalCents);
+        const r = await resolvePromo(promoCode, subtotalCents, userId);
         discountCents = r.discountKes;
         if (r.deliveryFree) deliveryCents = 0;
         resolvedPromoId = r.promo.id;
-      } catch {
+      } catch (promoErr) {
+        reportError(promoErr, { route: "POST /api/payments/paystack/initialize", tags: { stage: "promo_resolution" } });
         /* invalid/expired — discount stays 0 */
       }
     }
@@ -147,11 +140,17 @@ export async function POST(req: NextRequest) {
       return err("NO_BRANCH", "No active branch available", 503);
     }
 
-    if (!branch.paystackSubaccount) {
-      return Err.internal("Branch not configured for card payments");
+    if (!isCardEligible(isInternational, branch.cardEligible)) {
+      return err(
+        "CARD_NOT_AVAILABLE",
+        "Card payment is not available for this delivery location. Please use M-Pesa.",
+        400,
+      );
     }
 
     // 6. Create order
+    const now = new Date();
+    const utm = readUtmCookie(req);
     const order = await db.order.create({
       data: {
         userId,
@@ -162,20 +161,29 @@ export async function POST(req: NextRequest) {
         promoCode: promoCode ?? null,
         paymentStatus: "PENDING",
         status: "PENDING",
+        orderNumber: buildTimestampOrderNumber(now, "PAYSTACK"),
+        createdAt: now,
         deliveryType: deliveryData.deliveryType,
         deliveryPhone: deliveryData.phone,
         deliveryAddress: deliveryData.address ?? null,
         deliveryCity: deliveryData.city ?? deliveryData.state ?? null,
         deliveryCounty: deliveryData.county || deliveryData.country,
         deliveryZone: deliveryData.deliveryZone ?? pricing.label,
+        deliveryPostalCode: deliveryData.postalCode ?? null,
+        deliveryCountry: deliveryData.countryName ?? null,
         isInternational,
         branchId: branch.id,
+        utmSource: utm?.source ?? null,
+        utmMedium: utm?.medium ?? null,
+        utmCampaign: utm?.campaign ?? null,
         items: {
           create: activeItems.map((item) => ({
             productId: item.product.id,
             name: item.product.name,
             priceKes: item.product.priceKes,
             quantity: item.quantity,
+            variantId: item.variantId,
+            variantLabel: item.variantLabel,
           })),
         },
       },
@@ -183,21 +191,15 @@ export async function POST(req: NextRequest) {
 
     // Record coupon redemption
     if (resolvedPromoId && promoCode) {
-      await db.couponRedemption.upsert({
-        where: { couponId_userId: { couponId: resolvedPromoId, userId } },
-        create: { couponId: resolvedPromoId, userId, orderId: order.id },
-        update: {},
-      });
-      await db.promotion.update({
-        where: { id: resolvedPromoId },
-        data: { usedCount: { increment: 1 } },
-      });
+      await recordCouponRedemption(resolvedPromoId, userId, order.id);
     }
 
     // 7. Generate reference and create transaction record (PENDING)
-    const reference = `fechi_${order.id}_${Date.now()}`;
+    // Paystack only allows alphanumeric + -.= in a reference, and a literal
+    // "#" would also truncate the callback_url query string at a URL fragment.
+    const reference = order.orderNumber!.replace(/^#/, "");
 
-    await db.transaction.create({
+    const transaction = await db.transaction.create({
       data: {
         orderId: order.id,
         provider: "PAYSTACK",
@@ -209,15 +211,32 @@ export async function POST(req: NextRequest) {
     });
 
     // 8. Initialize Paystack transaction
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.MPESA_CALLBACK_BASE_URL ?? "";
+    // Derived from the incoming request's own origin rather than
+    // NEXT_PUBLIC_APP_URL — that's inlined at build time, so a production
+    // image built without it passed through as a Docker build arg silently
+    // ships whatever it defaulted to (e.g. "http://localhost:3000"), sending
+    // customers back to a URL that only resolves on a developer's machine.
+    // req.nextUrl.origin reflects whatever domain the customer's browser is
+    // actually on right now — the same source verify/route.ts's redirects
+    // already rely on downstream.
+    const baseUrl = req.nextUrl.origin;
     const paystackRes = await initializeTransaction({
       email: userEmail,
       amount: totalCents,
       reference,
-      subaccount: branch.paystackSubaccount,
       callback_url: `${baseUrl}/api/payments/paystack/verify?reference=${reference}`,
       metadata: { orderId: order.id, userId },
     });
+
+    // Schedule a timeout: if the customer abandons the hosted checkout and no
+    // webhook/verify call arrives within 5 minutes, flip the order to FAILED.
+    // Placed after initializeTransaction succeeds so we don't schedule a
+    // timeout for a transaction that never got a live Paystack session.
+    await publishQstashJSON(
+      "/api/admin/workers/check-failed-payment",
+      { orderId: order.id, transactionId: transaction.id },
+      { delay: PAYMENT_TIMEOUT_SECONDS },
+    );
 
     console.info(
       `[paystack/initialize] transaction initialized — order=${order.id} reference=${reference}`,
@@ -229,6 +248,7 @@ export async function POST(req: NextRequest) {
       orderId: order.id,
     });
   } catch (e) {
+    reportError(e, { route: "POST /api/payments/paystack/initialize", tags: { stage: "handler" }, extra: { userId } });
     console.error("[paystack/initialize] POST error", e);
     return Err.internal();
   }

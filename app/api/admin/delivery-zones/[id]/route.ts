@@ -1,16 +1,11 @@
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-
-async function requireAdmin(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user) return null;
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  return user?.role === "admin" ? user : null;
-}
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 const PatchSchema = z.object({
   county: z.string().min(1).optional(),
@@ -18,34 +13,50 @@ const PatchSchema = z.object({
   branchId: z.string().optional().nullable(),
   deliveryFeeKes: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
-});
+}).strict();
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
-  const admin = await requireAdmin(req);
-  if (!admin) return Err.forbidden();
+  const denied = await requirePermission(req, { delivery: ["update"] });
+  if (denied) return denied;
 
   const { id } = await params;
   const body = await req.json().catch(() => null);
   const parsed = PatchSchema.safeParse(body);
   if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
-  const zone = await db.deliveryZone.update({ where: { id }, data: parsed.data });
-  return ok({ zone });
+  try {
+    const zone = await db.deliveryZone.update({ where: { id }, data: parsed.data });
+    return ok({ zone });
+  } catch (e) {
+    reportError(e, { route: "PATCH /api/admin/delivery-zones/[id]", tags: { domain: "delivery-zones" } });
+    console.error("[admin/delivery-zones/[id]] PATCH error", e);
+    return Err.internal();
+  }
 }
 
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
-  const admin = await requireAdmin(req);
-  if (!admin) return Err.forbidden();
+  const denied = await requirePermission(req, { delivery: ["delete"] });
+  if (denied) return denied;
 
   const { id } = await params;
-  await db.deliveryZone.delete({ where: { id } });
-  return ok({ id });
+  try {
+    await db.deliveryZone.delete({ where: { id } });
+    return ok({ id });
+  } catch (e) {
+    reportError(e, { route: "DELETE /api/admin/delivery-zones/[id]", tags: { domain: "delivery-zones" } });
+    console.error("[admin/delivery-zones/[id]] DELETE error", e);
+    return Err.internal();
+  }
 }

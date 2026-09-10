@@ -5,33 +5,42 @@
 
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
-import { requireAdminPage } from "@/lib/admin-guard";
+import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
   await connection();
 
-  const denied = await requireAdminPage(req, 'staff');
+  const denied = await requirePermission(req, { staff: ["view"] });
   if (denied) return denied;
-
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const caller = await db.user.findUnique({ where: { id: session.user.id } });
-  if (caller?.role !== "admin") return Err.forbidden();
 
   try {
     const staff = await db.user.findMany({
       where: { role: "admin" },
-      include: {
-        adminProfile: true,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        banned: true,
+        banReason: true,
+        createdAt: true,
+        updatedAt: true,
+        adminProfile: {
+          // `role` (the app-level role template, distinct from user.role) is
+          // read by AdminStaffClient's RolePill/change-role modal and by
+          // AuthorPicker — it was missing from this select, so those screens
+          // were silently rendering `undefined`.
+          select: { id: true, fullName: true, department: true, permissions: true, isSuperAdmin: true, isActive: true, role: true },
+        },
         sessions: {
           where: { expiresAt: { gt: new Date() } },
           orderBy: { updatedAt: "desc" },
           take: 1,
+          select: { updatedAt: true },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -42,6 +51,7 @@ export async function GET(req: NextRequest) {
       id: u.id,
       name: u.name,
       email: u.email,
+      phone: u.phone,
       role: u.role,
       banned: u.banned,
       banReason: u.banReason,
@@ -52,9 +62,14 @@ export async function GET(req: NextRequest) {
       lastActiveAt: u.sessions[0]?.updatedAt ?? null,
     }));
 
-    return ok({ staff: shaped });
+    const activeSessions = await db.session.count({
+      where: { userId: { in: staff.map((u) => u.id) }, expiresAt: { gt: new Date() } },
+    });
+
+    return ok({ staff: shaped, stats: { activeSessions } });
   } catch (err) {
     console.error("[GET /api/admin/staff]", err);
+    reportError(err, { route: "GET /api/admin/staff" });
     return Err.internal();
   }
 }

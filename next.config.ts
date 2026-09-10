@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   skipTrailingSlashRedirect: true,
@@ -30,6 +31,12 @@ const nextConfig: NextConfig = {
         hostname: "*.cloudflarestorage.com",
         pathname: "/**",
       },
+      // Cloudflare R2 Custom domain public bucket
+      {
+        protocol: "https",
+        hostname: "media.fechiorganics.shop",
+        pathname: "/**",
+      },
       {
         protocol: "https",
         hostname: "*.r2.cloudflarestorage.com",
@@ -52,4 +59,11 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  widenClientFileUpload: true,
+  disableLogger: true,
+});

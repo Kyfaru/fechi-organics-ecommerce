@@ -19,11 +19,16 @@ export type ProductCard = {
   categoryName: string;
   categorySlug: string;
   stock: number;
+  outOfStock: boolean;
 };
 
 export type ProductDetail = ProductCard & {
   description: string;
   sizes: string[];
+  variantMode: string;
+  variantGroupLabel: string | null;
+  variantImagesHidden: boolean;
+  variants: { id: string; label: string; imageUrl: string | null }[];
   howToUse: string | null;
   ingredients: string | null;
   images: { url: string; alt: string; isPrimary: boolean }[];
@@ -41,6 +46,7 @@ function toCard(p: {
   ratingAvg: number;
   ratingCount: number;
   stock: number;
+  outOfStock: boolean;
   images: { objectKey: string; isPrimary: boolean }[];
   category: { name: string; slug: string };
 }): ProductCard {
@@ -60,6 +66,7 @@ function toCard(p: {
     categoryName: p.category.name,
     categorySlug: p.category.slug,
     stock: p.stock,
+    outOfStock: p.outOfStock,
   };
 }
 
@@ -89,6 +96,7 @@ export async function getProducts(opts: {
   sort?: "newest" | "price_asc" | "price_desc" | "best";
   cursor?: string;
   limit?: number;
+  search?: string;
 }): Promise<{ items: ProductCard[]; nextCursor: string | null }> {
   "use cache";
   cacheTag("products");
@@ -109,8 +117,18 @@ export async function getProducts(opts: {
     ? { category: { slug: opts.category } }
     : {};
 
+  const search = opts.search?.trim();
+  const searchFilter = search
+    ? {
+        OR: [
+          { name: { contains: search, mode: "insensitive" as const } },
+          { shortDescription: { contains: search, mode: "insensitive" as const } },
+        ],
+      }
+    : {};
+
   const rows = await db.product.findMany({
-    where: { isActive: true, ...categoryFilter },
+    where: { isActive: true, ...categoryFilter, ...searchFilter },
     orderBy,
     take: limit + 1,
     ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
@@ -120,6 +138,18 @@ export async function getProducts(opts: {
   const hasMore = rows.length > limit;
   const items = rows.slice(0, limit).map(toCard);
   return { items, nextCursor: hasMore ? items[items.length - 1].id : null };
+}
+
+/** Slugs + last-modified timestamps for every active product, for the sitemap. */
+export async function getAllProductSlugs(): Promise<{ slug: string; updatedAt: Date }[]> {
+  "use cache";
+  cacheTag("products");
+  cacheLife("minutes");
+
+  return db.product.findMany({
+    where: { isActive: true },
+    select: { slug: true, updatedAt: true },
+  });
 }
 
 /** Single product detail. */
@@ -133,14 +163,29 @@ export async function getProductBySlug(slug: string): Promise<ProductDetail | nu
     include: {
       images: { orderBy: { sortOrder: "asc" } },
       category: { select: { name: true, slug: true } },
+      variants: {
+        orderBy: { sortOrder: "asc" },
+        select: { id: true, label: true, image: { select: { objectKey: true } } },
+      },
     },
   });
   if (!p) return null;
 
   return {
     ...toCard(p),
-    description: p.description,
+    // Zoho sync nulls description when Zoho doesn't provide one (visible as
+    // a gap in the admin view) — the public storefront has no use for that
+    // distinction, so it just reads as empty here.
+    description: p.description ?? "",
     sizes: p.sizes,
+    variantMode: p.variantMode,
+    variantGroupLabel: p.variantGroupLabel,
+    variantImagesHidden: p.variantImagesHidden,
+    variants: p.variants.map((v) => ({
+      id: v.id,
+      label: v.label,
+      imageUrl: v.image ? r2PublicUrl(v.image.objectKey) : null,
+    })),
     howToUse: p.howToUse,
     ingredients: p.ingredients,
     images: p.images.map((i) => ({

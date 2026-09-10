@@ -1,14 +1,14 @@
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
-import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
+import { bucketKey, generateBuckets, type Granularity } from "@/lib/date-buckets";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-type Granularity = "hourly" | "daily" | "weekly" | "monthly";
 type Range = "24h" | "7d" | "14d" | "30d" | "3m" | "6m" | "12m" | "all" | "custom";
 
 // ---------------------------------------------------------------------------
@@ -64,86 +64,13 @@ function resolveWindow(
 }
 
 // ---------------------------------------------------------------------------
-// Bucket key builders
-// ---------------------------------------------------------------------------
-function hourKey(d: Date): string {
-  // "2026-06-21T14:00"
-  return d.toISOString().slice(0, 13) + ":00";
-}
-
-function dayKey(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function weekKey(d: Date): string {
-  // ISO week: find the Monday of the week
-  const date = new Date(d);
-  const day = date.getUTCDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  date.setUTCDate(date.getUTCDate() + diff);
-  const year = date.getUTCFullYear();
-  const startOfYear = new Date(Date.UTC(year, 0, 1));
-  const weekNum = Math.ceil(((date.getTime() - startOfYear.getTime()) / 86_400_000 + startOfYear.getUTCDay() + 1) / 7);
-  return `${year}-W${String(weekNum).padStart(2, "0")}`;
-}
-
-function monthKey(d: Date): string {
-  return d.toISOString().slice(0, 7);
-}
-
-function bucketKey(d: Date, granularity: Granularity): string {
-  switch (granularity) {
-    case "hourly": return hourKey(d);
-    case "daily": return dayKey(d);
-    case "weekly": return weekKey(d);
-    case "monthly": return monthKey(d);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Generate the ordered list of bucket labels between gte and lte
-// ---------------------------------------------------------------------------
-function generateBuckets(gte: Date | null, lte: Date, granularity: Granularity): string[] {
-  const start = gte ?? new Date(0);
-  const buckets: string[] = [];
-  const seen = new Set<string>();
-
-  const cursor = new Date(start);
-
-  while (cursor <= lte) {
-    const key = bucketKey(cursor, granularity);
-    if (!seen.has(key)) {
-      seen.add(key);
-      buckets.push(key);
-    }
-    switch (granularity) {
-      case "hourly": cursor.setHours(cursor.getHours() + 1); break;
-      case "daily": cursor.setDate(cursor.getDate() + 1); break;
-      case "weekly": cursor.setDate(cursor.getDate() + 7); break;
-      case "monthly": cursor.setMonth(cursor.getMonth() + 1); break;
-    }
-  }
-
-  // Always include the lte bucket
-  const lastKey = bucketKey(lte, granularity);
-  if (!seen.has(lastKey)) {
-    buckets.push(lastKey);
-  }
-
-  return buckets;
-}
-
-// ---------------------------------------------------------------------------
 // GET /api/admin/dashboard/analytics
 // ---------------------------------------------------------------------------
 export async function GET(req: NextRequest) {
   await connection();
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
-    if (!session?.user) return Err.authRequired();
-
-    const user = await db.user.findUnique({ where: { id: session.user.id } });
-    if (user?.role !== "admin") return Err.forbidden();
+    const denied = await requirePermission(req, { dashboard: ["view"] });
+    if (denied) return denied;
 
     const { searchParams } = new URL(req.url);
     const range = (searchParams.get("range") ?? "30d") as Range;
@@ -218,6 +145,7 @@ export async function GET(req: NextRequest) {
       productSales,
     });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/dashboard/analytics", tags: { domain: "dashboard" } });
     console.error("[admin/dashboard/analytics] GET error", e);
     return Err.internal();
   }

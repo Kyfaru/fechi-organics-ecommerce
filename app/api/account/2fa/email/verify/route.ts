@@ -1,9 +1,13 @@
+import { assertTrustedOrigin } from "@/lib/origin-check";
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { getRedis } from "@/lib/redis"
+import { verifyOtp } from "@/lib/otp"
+import { reportError } from "@/lib/observability"
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   try {
     const session = await auth.api.getSession({ headers: req.headers })
     if (!session?.user) return NextResponse.json({ ok: false, error: { message: "Sign in required" } }, { status: 401 })
@@ -14,9 +18,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: { message: "Invalid OTP format" } }, { status: 400 })
     }
 
-    const redis = getRedis()
-    const stored = await redis.get(`2fa:otp:email:${session.user.id}`)
-    if (!stored || stored !== otp) {
+    // verifyOtp deletes the code on success, so it can't be replayed
+    const valid = await verifyOtp(`2fa:otp:email:${session.user.id}`, otp)
+    if (!valid) {
       return NextResponse.json({ ok: false, error: { message: "Invalid or expired code" } }, { status: 400 })
     }
 
@@ -25,13 +29,11 @@ export async function POST(req: NextRequest) {
       data: { twoFaEmail: true },
     })
 
-    // Invalidate the OTP
-    await redis.set(`2fa:otp:email:${session.user.id}`, "", { ex: 1 })
-
     console.info("[2fa/email/verify] Email 2FA enabled for", session.user.id)
     return NextResponse.json({ ok: true })
   } catch (e) {
     console.error("[2fa/email/verify] error", e)
+    reportError(e, { route: "POST /api/account/2fa/email/verify", tags: { flow: "account-2fa" } })
     return NextResponse.json({ ok: false, error: { message: "Verification failed" } }, { status: 500 })
   }
 }

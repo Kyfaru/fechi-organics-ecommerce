@@ -6,7 +6,24 @@ interface Transaction {
   amount: number
   status: string
   mpesaReceiptNumber?: string | null
+  failureReason?: string | null
   createdAt: string | Date
+}
+
+// Raw M-Pesa/provider failure strings vary in exact wording, so this matches
+// on the common substring rather than an exact string, falling back to the
+// stripped raw reason for anything unmapped.
+const FAILURE_REASON_PATTERNS: [RegExp, string][] = [
+  [/cancelled by user/i, "You cancelled the payment request"],
+  [/insufficient/i, "Insufficient funds — try a different payment method"],
+  [/timeout/i, "The payment request timed out — please try again"],
+  [/invalid.*(pin|account)/i, "Incorrect PIN or account details — please try again"],
+  [/unable to lock|cannot be reached/i, "We couldn't reach your phone — please try again"],
+]
+
+function humanizeFailureReason(raw: string): string {
+  const stripped = raw.replace(/^\d+:\s*/, "").trim()
+  return FAILURE_REASON_PATTERNS.find(([re]) => re.test(stripped))?.[1] ?? stripped
 }
 
 export default function PaymentCard({
@@ -22,7 +39,9 @@ export default function PaymentCard({
   deliveryKes: number
   discountKes: number
 }) {
-  const paid = transactions.find((t) => t.status === "PAID")
+  const paid = transactions.find((t) => t.status === "SUCCESS")
+  const latest = transactions[0]
+  const failed = !paid && latest?.status === "FAILED" ? latest : null
 
   function fmt(n: number) {
     return (n / 100).toLocaleString("en-KE", { minimumFractionDigits: 2 })
@@ -67,6 +86,19 @@ export default function PaymentCard({
               Receipt: {paid.mpesaReceiptNumber}
             </p>
           )}
+        </div>
+      )}
+
+      {failed && (
+        <div className="pt-3 border-t border-neutral-100">
+          <div className="flex items-center gap-2 text-[12px] text-red-600">
+            <Icon icon="lucide:x-circle" width={13} />
+            <span className="font-medium">Payment failed</span>
+          </div>
+          <p className="text-[12px] text-neutral-600 mt-1">
+            {failed.failureReason ? humanizeFailureReason(failed.failureReason) : "No failure reason on file."}
+          </p>
+          <p className="text-[11px] text-neutral-400 mt-1">If this keeps happening, contact support.</p>
         </div>
       )}
     </div>

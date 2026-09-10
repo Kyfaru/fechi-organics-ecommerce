@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
+import { reportError } from "@/lib/observability";
 
 /**
  * GET /api/branches?county=<name>
@@ -13,7 +14,7 @@ import { ok, Err } from "@/lib/api";
  *   county (required) — the Kenyan county name
  *
  * Returns:
- *   200 { data: { id, name, county, mpesaType, shortcode } }
+ *   200 { data: { id, name, county, mpesaType, shortcode, phone } }
  *   400 when county param is missing
  *   500 on unexpected errors
  */
@@ -32,6 +33,8 @@ export async function GET(req: NextRequest) {
           county: true,
           mpesaType: true,
           shortcode: true,
+          phone: true,
+          cardEligible: true,
         },
       });
       return ok({ branches });
@@ -45,6 +48,8 @@ export async function GET(req: NextRequest) {
         county: true,
         mpesaType: true,
         shortcode: true,
+        phone: true,
+        cardEligible: true,
       },
     });
 
@@ -59,12 +64,14 @@ export async function GET(req: NextRequest) {
           county: true,
           mpesaType: true,
           shortcode: true,
+          phone: true,
         },
       }));
 
     return ok(result);
   } catch (e) {
     console.error("[branches] GET error", e);
+    reportError(e, { route: "GET /api/branches" });
     return Err.internal();
   }
 }

@@ -4,8 +4,13 @@ import { useState, useMemo, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { motion, useInView } from "framer-motion";
-import { Search, BookOpen } from "lucide-react";
+import { Search, BookOpen, Eye, Heart } from "lucide-react";
 import type { BlogPostCard } from "@/lib/queries/blog";
+import { r2PublicUrl } from "@/lib/r2";
+
+function coverImageUrl(key: string | null): string {
+  return key ? r2PublicUrl(key) : "/blog/placeholder.webp";
+}
 
 /* ─── tiny animation helpers (copied verbatim from AboutClient.tsx) ─── */
 function FadeUp({
@@ -110,7 +115,10 @@ export function BlogClient({ posts }: BlogClientProps) {
     <div className="overflow-x-hidden">
 
       {/* ── 1. HERO ───────────────────────────────────────────────────── */}
-      <section className="relative bg-[#27731e] py-24 md:py-32 flex flex-col items-center justify-center overflow-hidden">
+      <section
+        id="blog-search"
+        className="relative bg-[#27731e] py-24 md:py-32 flex flex-col items-center justify-center overflow-hidden scroll-mt-20"
+      >
 
         {/* animated blob backgrounds */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -232,7 +240,7 @@ export function BlogClient({ posts }: BlogClientProps) {
               {/* left: image */}
               <div className="relative h-72 md:h-96 rounded-2xl overflow-hidden">
                 <Image
-                  src={featuredPost.featuredImage ?? "/blog/placeholder.webp"}
+                  src={coverImageUrl(featuredPost.featuredImage)}
                   alt={featuredPost.title}
                   fill
                   className="object-cover"
@@ -270,6 +278,16 @@ export function BlogClient({ posts }: BlogClientProps) {
                     : ""}
                 </p>
 
+                {/* engagement badges */}
+                <div className="flex items-center gap-4 text-xs text-[#40493c]/60">
+                  <span className="inline-flex items-center gap-1">
+                    <Eye size={14} /> {featuredPost.views.toLocaleString()}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <Heart size={14} /> {featuredPost.likeCount.toLocaleString()}
+                  </span>
+                </div>
+
                 {/* CTA */}
                 <Link
                   href={`/blog/${featuredPost.slug}`}
@@ -302,7 +320,7 @@ export function BlogClient({ posts }: BlogClientProps) {
                   {/* card image */}
                   <div className="relative h-48 overflow-hidden">
                     <Image
-                      src={post.featuredImage ?? "/blog/placeholder.webp"}
+                      src={coverImageUrl(post.featuredImage)}
                       alt={post.title}
                       fill
                       className="object-cover transition-transform duration-500 group-hover:scale-105"
@@ -336,6 +354,16 @@ export function BlogClient({ posts }: BlogClientProps) {
                       {post.author?.name ?? "Fechi Organics"}
                       {post.publishedAt ? ` · ${formatDate(post.publishedAt)}` : ""}
                     </p>
+
+                    {/* engagement badges */}
+                    <div className="flex items-center gap-3 text-xs text-[#40493c]/60">
+                      <span className="inline-flex items-center gap-1">
+                        <Eye size={13} /> {post.views.toLocaleString()}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Heart size={13} /> {post.likeCount.toLocaleString()}
+                      </span>
+                    </div>
                   </div>
                 </Link>
               </ScaleIn>

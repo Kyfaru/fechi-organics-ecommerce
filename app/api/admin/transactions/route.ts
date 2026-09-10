@@ -11,25 +11,16 @@
 
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-
-// ---------------------------------------------------------------------------
-// Auth helper — same pattern as app/api/admin/orders/route.ts
-// ---------------------------------------------------------------------------
-async function requireAdmin(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user) return null;
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  return user?.role === "admin" ? user : null;
-}
+import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
   await connection();
 
-  const admin = await requireAdmin(req);
-  if (!admin) return Err.forbidden();
+  const denied = await requirePermission(req, { transactions: ["view"] });
+  if (denied) return denied;
 
   try {
     const { searchParams } = new URL(req.url);
@@ -39,7 +30,7 @@ export async function GET(req: NextRequest) {
       Math.max(1, parseInt(searchParams.get("pageSize") ?? "50", 10)),
     );
 
-    const [transactions, total] = await Promise.all([
+    const [transactions, total, orderRevenueAgg, inStoreRevenueAgg, pendingCount, inStoreTxCount] = await Promise.all([
       db.transaction.findMany({
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
@@ -59,6 +50,17 @@ export async function GET(req: NextRequest) {
         },
       }),
       db.transaction.count(),
+      // Real, all-time revenue — sum of PAID order totals, not a page-limited
+      // sum of payment-attempt amounts (a transaction is a single payment
+      // attempt, not a sale; multiple can exist per order via retries).
+      db.order.aggregate({ _sum: { totalKes: true }, where: { paymentStatus: "PAID" } }),
+      // In-store sales use a separate table entirely — omitting this was why
+      // Finance revenue excluded every walk-in sale.
+      db.inStoreOrder.aggregate({ _sum: { totalKes: true }, where: { paymentStatus: "PAID" } }),
+      db.transaction.count({ where: { status: "PENDING" } }),
+      // In-store payment attempts — same "count every attempt" convention as
+      // the online `total` above, merged into stats.totalTransactions.
+      db.inStoreTransaction.count(),
     ]);
 
     console.info(
@@ -73,8 +75,17 @@ export async function GET(req: NextRequest) {
         total,
         totalPages: Math.ceil(total / pageSize),
       },
+      stats: {
+        // order/inStoreOrder.totalKes is stored in the same smallest-unit
+        // (cents) convention as transaction.amount — both go through the
+        // client's formatKes(), which divides by 100 — so no scaling needed.
+        totalRevenue: (orderRevenueAgg._sum.totalKes ?? 0) + (inStoreRevenueAgg._sum.totalKes ?? 0),
+        pending: pendingCount,
+        totalTransactions: total + inStoreTxCount,
+      },
     });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/transactions", tags: { domain: "transactions" } });
     console.error("[admin/transactions] GET error", e);
     return Err.internal();
   }

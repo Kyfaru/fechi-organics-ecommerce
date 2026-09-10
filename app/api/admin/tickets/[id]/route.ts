@@ -1,31 +1,26 @@
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { headers } from "next/headers";
 import { connection } from "next/server";
 import { ok, Err } from "@/lib/api";
 import { z } from "zod";
 import { NextRequest } from "next/server";
-
-async function requireAdmin() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return null;
-  const u = await db.user.findUnique({ where: { id: session.user.id } });
-  return u?.role === "admin" ? u : null;
-}
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/tickets/[id]
 // Returns the full ticket with all messages and user details.
 // ---------------------------------------------------------------------------
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   await connection();
-  try {
-    const admin = await requireAdmin();
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { tickets: ["view"] });
+  if (denied) return denied;
+
+  try {
     const { id } = await params;
 
     const ticket = await db.supportTicket.findUnique({
@@ -41,6 +36,9 @@ export async function GET(
             createdAt: true,
           },
         },
+        assignedAdmin: {
+          select: { id: true, name: true },
+        },
         messages: {
           orderBy: { createdAt: "asc" },
         },
@@ -52,6 +50,7 @@ export async function GET(
     return ok({ ticket });
   } catch (e) {
     console.error("[admin/tickets/[id]] GET error", e);
+    reportError(e, { route: "GET /api/admin/tickets/[id]" });
     return Err.internal();
   }
 }
@@ -63,26 +62,37 @@ export async function GET(
 // ---------------------------------------------------------------------------
 const PatchSchema = z.object({
   status: z.enum(["OPEN", "RESOLVED"]),
-});
+}).strict();
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
-  try {
-    const admin = await requireAdmin();
-    if (!admin) return Err.forbidden();
 
+  const denied = await requirePermission(req, { tickets: ["update"] });
+  if (denied) return denied;
+
+  try {
     const { id } = await params;
 
     const body = await req.json().catch(() => ({}));
     const parsed = PatchSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
+    // Reopening (status -> OPEN) also pushes expiresAt forward — otherwise a
+    // ticket manually reopened from EXPIRED looks re-expired on the very next
+    // lazy-sweep read, since its old expiresAt is still in the past.
+    const data =
+      parsed.data.status === "OPEN"
+        ? { status: parsed.data.status, expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000) }
+        : { status: parsed.data.status };
+
     const ticket = await db.supportTicket.update({
       where: { id },
-      data: { status: parsed.data.status },
+      data,
       select: { id: true, status: true, ticketNumber: true },
     });
 
@@ -90,6 +100,7 @@ export async function PATCH(
     return ok({ ticket });
   } catch (e) {
     console.error("[admin/tickets/[id]] PATCH error", e);
+    reportError(e, { route: "PATCH /api/admin/tickets/[id]" });
     return Err.internal();
   }
 }

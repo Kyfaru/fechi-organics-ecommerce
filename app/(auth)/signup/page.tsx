@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useEffect, useRef, FormEvent, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@iconify/react";
 import type { Value as PhoneValue } from "react-phone-number-input";
 import AuthToggle from "@/components/auth/AuthToggle";
@@ -12,12 +12,35 @@ import PasswordChecklist, { checkRequirements } from "@/components/auth/Password
 import PhoneInput from "@/components/auth/PhoneInput";
 import CountrySelect from "@/components/auth/CountrySelect";
 import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
-import { authClient, signUpWithProfile } from "@/lib/auth-client";
+import Turnstile, { TurnstileHandle } from "@/components/auth/Turnstile";
+import { authClient, signUpWithProfile, useSession } from "@/lib/auth-client";
 import { storeUser } from "@/lib/user-store";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
 import { SignupLoader } from "@/components/ui/signup-loader";
 import { posthog } from "@/lib/posthog";
+import { reportError } from "@/lib/observability";
+
+// Isolated component so useSearchParams is inside a Suspense boundary.
+// Better Auth redirects OAuth errors (e.g. a banned user) back here as
+// ?error=CODE&error_description=... instead of its own bare error page —
+// show it as a toast rather than leaving the raw query string on screen.
+function SignupSearchParamsReader() {
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const error = searchParams.get("error");
+    if (!error) return;
+    const description = searchParams.get("error_description");
+    toast.error(
+      error === "BANNED_USER" ? "Account suspended" : "Sign-in failed",
+      { message: description || "Please try again or contact support." }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return null;
+}
 
 interface SignupErrors {
   firstName?: string;
@@ -46,11 +69,35 @@ export default function SignupPage() {
   const [errors, setErrors] = useState<SignupErrors>({});
   const [isLoading, setIsLoading] = useState(false);
   const [showSignupLoader, setShowSignupLoader] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileHandle>(null);
 
   // PasswordChecklist visibility — show once the password field receives focus
   const [passwordFocused, setPasswordFocused] = useState(false);
   // Track whether the form has been submitted (so checklist shows red X on unmet reqs)
   const [submitted, setSubmitted] = useState(false);
+
+  const { data: sessionData, isPending: sessionPending } = useSession();
+
+  // ---------------------------------------------------------------------------
+  // On mount: an already-correct client session skips straight to /. A
+  // session for the wrong portal (an admin's) is signed out silently — this
+  // only replaces the convenience redirect proxy.ts used to provide; it
+  // overlaps intentionally with the app-wide PortalSessionGuard.
+  //
+  // Reads the shared useSession() hook rather than calling getSession()
+  // imperatively — see app/providers.tsx's PortalSessionGuard for why.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (sessionPending || !sessionData?.session) return;
+    const role = (sessionData.user as { role?: string } | undefined)?.role;
+    if (role === "admin") {
+      authClient.signOut();
+    } else {
+      router.replace("/");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionPending, sessionData]);
 
   // ---------------------------------------------------------------------------
   // Validation
@@ -101,21 +148,27 @@ export default function SignupPage() {
       }
       return;
     }
+    if (!captchaToken) return;
 
     setErrors({});
     setIsLoading(true);
+    const tokenForThisAttempt = captchaToken;
+    setCaptchaToken(null);
 
     try {
-      const result = await signUpWithProfile({
-        name: `${firstName.trim()} ${lastName.trim()}`,
-        email,
-        password,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        phone: phone ?? "",
-        country,
-        city: city.trim(),
-      });
+      const result = await signUpWithProfile(
+        {
+          name: `${firstName.trim()} ${lastName.trim()}`,
+          email,
+          password,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          phone: phone ?? "",
+          country,
+          city: city.trim(),
+        },
+        { headers: { "x-captcha-response": tokenForThisAttempt } }
+      );
 
       if (result.error) {
         const code = result.error.code ?? "";
@@ -148,10 +201,12 @@ export default function SignupPage() {
 
       // Successful signup — show animated loader then redirect
       setShowSignupLoader(true);
-    } catch {
+    } catch (err) {
+      reportError(err, { route: "signup", tags: { step: "submit" } });
       toast.error("An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
+      turnstileRef.current?.reset();
     }
   }
 
@@ -161,8 +216,9 @@ export default function SignupPage() {
   async function handleGoogleSignIn() {
     setIsLoading(true);
     try {
-      await authClient.signIn.social({ provider: "google", callbackURL: "/" });
-    } catch {
+      await authClient.signIn.social({ provider: "google", callbackURL: "/", errorCallbackURL: "/signup" });
+    } catch (err) {
+      reportError(err, { route: "signup", tags: { step: "google-signin" } });
       toast.error("Google sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
@@ -172,8 +228,9 @@ export default function SignupPage() {
   async function handleFacebookSignIn() {
     setIsLoading(true);
     try {
-      await authClient.signIn.social({ provider: "facebook", callbackURL: "/" });
-    } catch {
+      await authClient.signIn.social({ provider: "facebook", callbackURL: "/", errorCallbackURL: "/signup" });
+    } catch (err) {
+      reportError(err, { route: "signup", tags: { step: "facebook-signin" } });
       toast.error("Facebook sign-in failed. Please try again.");
     } finally {
       setIsLoading(false);
@@ -185,6 +242,9 @@ export default function SignupPage() {
   // ---------------------------------------------------------------------------
   return (
     <main className="flex min-h-screen">
+      <Suspense fallback={null}>
+        <SignupSearchParamsReader />
+      </Suspense>
       {/* ====================================================================
           LEFT PANEL — deep green botanical
       ==================================================================== */}
@@ -265,8 +325,7 @@ export default function SignupPage() {
           RIGHT PANEL — light gray form area
       ==================================================================== */}
       <section
-        className="flex-1 flex items-center justify-center px-6 py-12 overflow-y-auto dark:bg-gray-950"
-        style={{ backgroundColor: "#f9f9f9" }}
+        className="flex-1 flex items-center justify-center px-6 py-12 overflow-y-auto bg-[#f9f9f9] dark:bg-gray-950"
       >
         <div className="w-full max-w-lg sm:max-w-xl">
 
@@ -468,10 +527,17 @@ export default function SignupPage() {
               )}
             </div>
 
+            <Turnstile
+              ref={turnstileRef}
+              onVerify={setCaptchaToken}
+              onExpire={() => setCaptchaToken(null)}
+              className="flex justify-center"
+            />
+
             {/* CTA */}
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || !captchaToken}
               className="w-full py-3.5 rounded-full font-bold text-sm tracking-wide text-[#1a1c1c] transition-all duration-150 hover:brightness-95 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed mt-1"
               style={{ backgroundColor: "#fec700" }}
             >
@@ -508,7 +574,7 @@ export default function SignupPage() {
       </section>
 
       {showSignupLoader && (
-        <SignupLoader onDone={() => router.push("/")} />
+        <SignupLoader onDone={() => router.replace("/")} />
       )}
     </main>
   );

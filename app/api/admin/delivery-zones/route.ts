@@ -1,16 +1,11 @@
 import { NextRequest } from "next/server";
 import { connection } from "next/server";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
-
-async function requireAdmin(req: NextRequest) {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user) return null;
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  return user?.role === "admin" ? user : null;
-}
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 const ZoneSchema = z.object({
   county: z.string().min(1),
@@ -18,31 +13,45 @@ const ZoneSchema = z.object({
   branchId: z.string().optional().nullable(),
   deliveryFeeKes: z.number().int().min(0),
   isActive: z.boolean().optional(),
-});
+}).strict();
 
 export async function GET(req: NextRequest) {
   await connection();
-  const admin = await requireAdmin(req);
-  if (!admin) return Err.forbidden();
+  const denied = await requirePermission(req, { delivery: ["view"] });
+  if (denied) return denied;
 
-  const county = req.nextUrl.searchParams.get("county");
-  const zones = await db.deliveryZone.findMany({
-    where: county ? { county } : {},
-    orderBy: [{ county: "asc" }, { name: "asc" }],
-    include: { branch: { select: { id: true, name: true, county: true } } },
-  });
-  return ok({ zones });
+  try {
+    const county = req.nextUrl.searchParams.get("county");
+    const zones = await db.deliveryZone.findMany({
+      where: county ? { county } : {},
+      orderBy: [{ county: "asc" }, { name: "asc" }],
+      include: { branch: { select: { id: true, name: true, county: true } } },
+    });
+    return ok({ zones });
+  } catch (e) {
+    reportError(e, { route: "GET /api/admin/delivery-zones", tags: { domain: "delivery-zones" } });
+    console.error("[admin/delivery-zones] GET error", e);
+    return Err.internal();
+  }
 }
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
-  const admin = await requireAdmin(req);
-  if (!admin) return Err.forbidden();
+  const denied = await requirePermission(req, { delivery: ["create"] });
+  if (denied) return denied;
 
   const body = await req.json().catch(() => null);
   const parsed = ZoneSchema.safeParse(body);
   if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
-  const zone = await db.deliveryZone.create({ data: parsed.data });
-  return created({ zone });
+  try {
+    const zone = await db.deliveryZone.create({ data: parsed.data });
+    return created({ zone });
+  } catch (e) {
+    reportError(e, { route: "POST /api/admin/delivery-zones", tags: { domain: "delivery-zones" } });
+    console.error("[admin/delivery-zones] POST error", e);
+    return Err.internal();
+  }
 }

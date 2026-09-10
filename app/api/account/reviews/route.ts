@@ -1,9 +1,13 @@
+import { assertTrustedOrigin } from "@/lib/origin-check";
 import { NextRequest } from "next/server"
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { ok, Err } from "@/lib/api"
+import { reportError } from "@/lib/observability"
 
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   try {
     const session = await auth.api.getSession({ headers: req.headers })
     if (!session) return Err.authRequired()
@@ -59,6 +63,7 @@ export async function POST(req: NextRequest) {
     return ok({ success: true })
   } catch (e) {
     console.error("[account/reviews] POST error", e)
+    reportError(e, { route: "POST /api/account/reviews" })
     return Err.internal()
   }
 }

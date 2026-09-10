@@ -71,6 +71,22 @@ async function main() {
         sortOrder: 5,
       },
     }),
+    // Fallback for products created by Zoho sync whose category_name doesn't
+    // match any of the above — kept inactive so it never appears in
+    // storefront nav/filters, only used as a create-time landing spot for
+    // admins to manually reassign (see lib/zoho-sync.ts).
+    prisma.category.upsert({
+      where: { key: "UNCATEGORIZED" },
+      update: {},
+      create: {
+        key: "UNCATEGORIZED",
+        name: "Uncategorized",
+        slug: "uncategorized",
+        imageKey: "img/face care.jpg",
+        sortOrder: 999,
+        isActive: false,
+      },
+    }),
   ]);
 
   const [faceCare, bodyCare, hairCare, wellness, babyKids] = categories;
@@ -405,16 +421,30 @@ async function main() {
   // Replace consumerKeyEnc / consumerSecretEnc / passkeyEnc via the admin
   // panel or a direct DB update once real Daraja credentials are available.
   // ---------------------------------------------------------------------------
-  const branchDefs = [
+  const branchDefs: Array<{
+    id: string;
+    name: string;
+    county: string;
+    address?: string;
+    isMain: boolean;
+    mpesaGateway: "DARAJA" | "KCB_BUNI";
+    mpesaType: "PAYBILL" | "TILL";
+    shortcode: string;
+    paystackSubaccount?: string;
+    cardEligible: boolean;
+  }> = [
     {
       id: "branch-nairobi",
       name: "Nairobi Branch",
       county: "Nairobi",
+      address: "Spur Mall, Nairobi",
       isMain: true,
       mpesaGateway: "KCB_BUNI" as const,
       mpesaType: "PAYBILL" as const,
       shortcode: "placeholder",
-      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_NAIROBI ?? "ACCT_cd1z3skedyfumdv",
+      // Real subaccount codes optional — money goes to the main Paystack account unless set.
+      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_NAIROBI,
+      cardEligible: true,
     },
     {
       id: "branch-nakuru",
@@ -424,7 +454,8 @@ async function main() {
       mpesaGateway: "KCB_BUNI" as const,
       mpesaType: "PAYBILL" as const,
       shortcode: "placeholder",
-      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_NAKURU ?? "ACCT_par1ka0zbibyhxk",
+      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_NAKURU,
+      cardEligible: true,
     },
     {
       id: "branch-mwea",
@@ -434,7 +465,8 @@ async function main() {
       mpesaGateway: "DARAJA" as const,
       mpesaType: "TILL" as const,
       shortcode: "placeholder",
-      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_MWEA ?? "ACCT_uq3xnsh72bgijv5",
+      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_MWEA,
+      cardEligible: false,
     },
     {
       id: "branch-eldoret",
@@ -444,7 +476,8 @@ async function main() {
       mpesaGateway: "DARAJA" as const,
       mpesaType: "TILL" as const,
       shortcode: "placeholder",
-      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_ELDORET ?? "ACCT_par1ka0zbibyhxk",
+      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_ELDORET,
+      cardEligible: false,
     },
     {
       id: "branch-kitengela",
@@ -454,7 +487,8 @@ async function main() {
       mpesaGateway: "DARAJA" as const,
       mpesaType: "TILL" as const,
       shortcode: "placeholder",
-      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_KITENGELA ?? "ACCT_par1ka0zbibyhxk",
+      paystackSubaccount: process.env.PAYSTACK_SUBACCOUNT_KITENGELA,
+      cardEligible: false,
     },
   ];
 
@@ -464,21 +498,25 @@ async function main() {
       update: {
         name: b.name,
         county: b.county,
+        address: b.address,
         isMain: b.isMain,
         mpesaGateway: b.mpesaGateway,
         mpesaType: b.mpesaType,
         paystackSubaccount: b.paystackSubaccount,
+        cardEligible: b.cardEligible,
         isActive: true,
       },
       create: {
         id: b.id,
         name: b.name,
         county: b.county,
+        address: b.address,
         isMain: b.isMain,
         mpesaGateway: b.mpesaGateway,
         mpesaType: b.mpesaType,
         shortcode: b.shortcode,
         paystackSubaccount: b.paystackSubaccount,
+        cardEligible: b.cardEligible,
         consumerKeyEnc: encrypt("PLACEHOLDER"),
         consumerSecretEnc: encrypt("PLACEHOLDER"),
         passkeyEnc: encrypt("PLACEHOLDER"),

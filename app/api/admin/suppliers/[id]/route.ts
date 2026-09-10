@@ -1,21 +1,21 @@
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
-import { connection } from "next/server";
+import { connection, NextRequest } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 /** PATCH /api/admin/suppliers/[id] — update supplier */
 export async function PATCH(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { suppliers: ["update"] });
+  if (denied) return denied;
 
   const { id } = await params;
 
@@ -44,6 +44,7 @@ export async function PATCH(
     console.info(`[suppliers/PATCH] Updated supplier: ${id}`);
     return ok(supplier);
   } catch (e) {
+    reportError(e, { route: "PATCH /api/admin/suppliers/[id]", tags: { domain: "suppliers" } });
     console.error("[suppliers/PATCH]", e);
     return Err.internal();
   }
@@ -51,16 +52,15 @@ export async function PATCH(
 
 /** DELETE /api/admin/suppliers/[id] — soft delete (set status to inactive) */
 export async function DELETE(
-  _req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { suppliers: ["delete"] });
+  if (denied) return denied;
 
   const { id } = await params;
 
@@ -72,6 +72,7 @@ export async function DELETE(
     console.info(`[suppliers/DELETE] Soft-deleted supplier: ${id}`);
     return ok({ id: supplier.id, status: "inactive" });
   } catch (e) {
+    reportError(e, { route: "DELETE /api/admin/suppliers/[id]", tags: { domain: "suppliers" } });
     console.error("[suppliers/DELETE]", e);
     return Err.internal();
   }

@@ -6,6 +6,11 @@ import { ok, Err } from "@/lib/api";
 import { qstash } from "@/lib/qstash";
 import { z } from "zod";
 import { NextRequest } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { getRedis } from "@/lib/redis";
+import { ticketChannel } from "@/lib/ticket-channel";
+import { uploadTicketAttachment, AttachmentValidationError, type TicketAttachment } from "@/lib/tickets/upload-attachment";
+import { reportError } from "@/lib/observability";
 
 async function requireUser() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -14,7 +19,7 @@ async function requireUser() {
 }
 
 const ReplySchema = z.object({
-  content: z.string().min(1).max(5000),
+  content: z.string().max(5000).optional(),
 });
 
 // Each customer reply extends the window by 48 hours
@@ -29,6 +34,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
     const user = await requireUser();
@@ -36,9 +43,20 @@ export async function POST(
 
     const { id } = await params;
 
-    const body = await req.json().catch(() => ({}));
-    const parsed = ReplySchema.safeParse(body);
+    const formData = await req.formData().catch(() => null);
+    if (!formData) return Err.validation("Invalid form data");
+
+    const rawContent = formData.get("content");
+    const parsed = ReplySchema.safeParse({
+      content: typeof rawContent === "string" ? rawContent.trim() : undefined,
+    });
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
+
+    const file = formData.get("file");
+    const hasFile = file instanceof File && file.size > 0;
+    if (!parsed.data.content && !hasFile) {
+      return Err.validation("Message cannot be empty");
+    }
 
     // Load ticket to verify ownership and status
     const ticket = await db.supportTicket.findUnique({
@@ -57,6 +75,18 @@ export async function POST(
       return Err.validation("This ticket has expired. Please open a new ticket.");
     }
 
+    let attachment: TicketAttachment | null = null;
+    if (hasFile) {
+      try {
+        attachment = await uploadTicketAttachment(id, file as File);
+      } catch (uploadErr) {
+        if (uploadErr instanceof AttachmentValidationError) {
+          return Err.validation(uploadErr.message);
+        }
+        throw uploadErr;
+      }
+    }
+
     const now = new Date();
     const newExpiry = new Date(now.getTime() + REPLY_EXPIRY_MS);
 
@@ -65,7 +95,8 @@ export async function POST(
         data: {
           ticketId: id,
           senderType: "CUSTOMER",
-          content: parsed.data.content,
+          content: parsed.data.content ?? "",
+          ...attachment,
         },
       }),
       db.supportTicket.update({
@@ -73,6 +104,9 @@ export async function POST(
         data: { lastActivityAt: now, expiresAt: newExpiry },
       }),
     ]);
+
+    const notifyContent =
+      parsed.data.content || (attachment ? `📎 Sent an attachment: ${attachment.attachmentName}` : "");
 
     // Notify admin in background — non-fatal if Qstash fails
     try {
@@ -83,16 +117,28 @@ export async function POST(
           messageId: message.id,
           customerName: user.name,
           subject: ticket.subject,
-          content: parsed.data.content,
+          content: notifyContent,
         },
       });
     } catch (qstashErr) {
       console.error("[tickets/reply] Qstash enqueue failed", qstashErr);
     }
 
+    // Notify any open SSE stream on this ticket — best-effort, non-blocking
+    try {
+      await getRedis().set(
+        ticketChannel(id),
+        JSON.stringify({ type: "new_message", messageId: message.id, senderType: "CUSTOMER" }),
+        { ex: 30 }
+      );
+    } catch (redisErr) {
+      console.error("[tickets/reply] Redis publish failed", redisErr);
+    }
+
     return ok({ message });
   } catch (e) {
     console.error("[tickets/[id]/reply] POST error", e);
+    reportError(e, { route: "POST /api/tickets/[id]/reply" });
     return Err.internal();
   }
 }

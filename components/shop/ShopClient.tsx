@@ -13,6 +13,9 @@ import type { CategoryItem } from "@/lib/queries/categories";
 import type { ProductCard as ProductCardType } from "@/lib/queries/products";
 import { useSearchParams, useRouter } from "next/navigation";
 import { posthog } from "@/lib/posthog";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+
+const ONE_HOUR_MS = 60 * 60 * 1000;
 
 type Sort = "newest" | "best" | "price_asc" | "price_desc";
 type ProductsPage = { items: ProductCardType[]; nextCursor: string | null; total?: number };
@@ -35,6 +38,8 @@ export function ShopClient({ categories }: Props) {
     searchParams.get("category") ?? "all"
   );
   const [sort, setSort] = useState<Sort>("best");
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search.trim(), 300);
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
   // Sync URL param on mount
@@ -50,12 +55,13 @@ export function ShopClient({ categories }: Props) {
     isFetchingNextPage,
     isLoading,
   } = useInfiniteQuery<ProductsPage>({
-    queryKey: ["shop-products", activeCategory, sort],
+    queryKey: ["shop-products", activeCategory, sort, debouncedSearch],
     queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams();
       if (activeCategory !== "all") params.set("category", activeCategory);
       params.set("sort", sort);
       params.set("limit", "12");
+      if (debouncedSearch) params.set("q", debouncedSearch);
       if (pageParam) params.set("cursor", pageParam as string);
       const res = await fetch(`/api/storefront/products?${params.toString()}`);
       const json = await res.json();
@@ -63,6 +69,14 @@ export function ShopClient({ categories }: Props) {
     },
     initialPageParam: undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    // Product prices/availability change from the admin/Zoho side outside of
+    // any client action, so this list can't rely on the app-wide "never
+    // refetch a cached query" defaults (app/providers.tsx) the way cart/session
+    // queries do — it needs its own bounded expiry plus a standing refresh.
+    staleTime: ONE_HOUR_MS,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    refetchInterval: ONE_HOUR_MS,
   });
 
   const allProducts = data?.pages.flatMap((p) => p.items) ?? [];
@@ -153,6 +167,18 @@ export function ShopClient({ categories }: Props) {
             ))}
           </div>
 
+          {/* Product search */}
+          <div className="relative flex-shrink-0 w-full sm:w-[240px]">
+            <Icon icon="mdi:magnify" width={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a1a1a1]" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search products..."
+              aria-label="Search products"
+              className="w-full h-10 pl-10 pr-4 font-body text-[14px] text-[#1a1c1c] dark:text-white border border-[#c0cab8] dark:border-gray-600 rounded-full bg-white dark:bg-gray-800 outline-none focus:border-[#27731e]"
+            />
+          </div>
+
           {/* Sort dropdown */}
           <div className="relative flex items-center gap-2 flex-shrink-0">
             <span className="font-body text-[#40493c] dark:text-gray-300 text-[14px]">Sort by:</span>
@@ -190,7 +216,7 @@ export function ShopClient({ categories }: Props) {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.3 }}
-                  className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 justify-items-center"
+                  className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 justify-items-center"
                 >
                   {allProducts.map((product, idx) => (
                     <motion.div
@@ -198,9 +224,9 @@ export function ShopClient({ categories }: Props) {
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.3, delay: (idx % 12) * 0.05 }}
-                      className="w-full max-w-[310px]"
+                      className="w-full lg:max-w-[310px]"
                     >
-                      <ProductCard product={product} />
+                      <ProductCard product={product} variant="compact" />
                     </motion.div>
                   ))}
                 </motion.div>

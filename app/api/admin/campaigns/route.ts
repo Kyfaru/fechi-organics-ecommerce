@@ -1,23 +1,20 @@
 import { db } from "@/lib/db";
 import { ok, created, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
 import { connection } from "next/server";
 import { NextRequest } from "next/server";
-import { requireAdminPage } from "@/lib/admin-guard";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { logActivity } from "@/lib/admin-activity";
+import { reportError } from "@/lib/observability";
 
 /** GET /api/admin/campaigns */
 export async function GET(req: NextRequest) {
   await connection();
 
-  const denied = await requireAdminPage(req, 'campaigns');
+  const denied = await requirePermission(req, { campaigns: ["view"] });
   if (denied) return denied;
-
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
 
   try {
     const campaigns = await db.campaign.findMany({
@@ -40,6 +37,7 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/campaigns", tags: { domain: "campaigns" } });
     console.error("[campaigns/GET]", e);
     return Err.internal();
   }
@@ -47,16 +45,12 @@ export async function GET(req: NextRequest) {
 
 /** POST /api/admin/campaigns — create campaign */
 export async function POST(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
-  const denied = await requireAdminPage(req, 'campaigns');
+  const denied = await requirePermission(req, { campaigns: ["create"] });
   if (denied) return denied;
-
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
 
   let body: {
     name: string;
@@ -80,23 +74,20 @@ export async function POST(req: NextRequest) {
   if (!["EMAIL", "SMS", "PUSH", "WHATSAPP", "ALL"].includes(body.type)) return Err.validation("Invalid campaign type");
 
   try {
-    const campaign = await db.campaign.create({
-      data: {
-        name: body.name.trim(),
-        type: body.type,
-        audienceType: body.audienceType ?? "ALL",
-        subject: body.subject ?? null,
-        heading: body.heading ?? null,
-        previewText: body.previewText ?? null,
-        content: body.content ?? null,
-        audienceCustomerIds: body.audienceCustomerIds ?? [],
-        status: body.status ?? "DRAFT",
-        scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
-      },
-    });
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return Err.forbidden();
+
+    const outcome = await requireApprovalOrProceed(ctx, "campaigns", "create", body);
+    if (!outcome.proceed) return Approval.queued(outcome.requestId);
+
+    const campaign = await approvalExecutors["campaigns:create"](body, null) as
+      Awaited<ReturnType<typeof db.campaign.create>>;
+
     console.info(`[campaigns/POST] Created campaign: ${campaign.id} — ${campaign.name}`);
+    logActivity(ctx.id, `Created campaign "${campaign.name}"`, "campaign", campaign.id, req);
     return created(campaign);
   } catch (e) {
+    reportError(e, { route: "POST /api/admin/campaigns", tags: { domain: "campaigns" } });
     console.error("[campaigns/POST]", e);
     return Err.internal();
   }

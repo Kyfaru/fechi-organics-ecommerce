@@ -15,8 +15,10 @@
  */
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { User, Settings, Bell, Lock, Eye, EyeOff } from "lucide-react";
+import { signOut } from "@/lib/auth-client";
 
 const R2_BASE = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "").replace(/\/$/, "");
 
@@ -396,10 +398,41 @@ function NotificationsTab() {
 // ---------------------------------------------------------------------------
 // Tab: Password
 // ---------------------------------------------------------------------------
+function PwInput({ id, value, show, onToggle, onChange, placeholder, error }: {
+  id: string; value: string; show: boolean; onToggle: () => void;
+  onChange: (v: string) => void; placeholder: string; error?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="relative">
+        <input
+          id={id}
+          type={show ? "text" : "password"}
+          className={`${inputCls} pr-10 ${error ? "border-(--danger)" : ""}`}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          autoComplete={id === "current" ? "current-password" : "new-password"}
+        />
+        <button
+          type="button"
+          onClick={onToggle}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-(--neutral-400) hover:text-(--neutral-600)"
+        >
+          {show ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+      </div>
+      {error && <p className="font-dm text-[12px] text-(--danger)">{error}</p>}
+    </div>
+  );
+}
+
 function PasswordTab() {
+  const router = useRouter();
   const [form, setForm] = useState({ current: "", next: "", confirm: "" });
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNext,    setShowNext]    = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -427,8 +460,10 @@ function PasswordTab() {
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error?.message ?? "Password update failed.");
-      toast.success("Password updated successfully.");
+      toast.success("Password updated successfully.", { message: "Signing you out for a fresh login…" });
       setForm({ current: "", next: "", confirm: "" });
+      await signOut();
+      router.replace("/admin/login");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to update password.";
       if (msg.toLowerCase().includes("current") || msg.toLowerCase().includes("incorrect")) {
@@ -439,35 +474,6 @@ function PasswordTab() {
     } finally {
       setSaving(false);
     }
-  }
-
-  function PwInput({ id, value, show, onToggle, onChange, placeholder, error }: {
-    id: string; value: string; show: boolean; onToggle: () => void;
-    onChange: (v: string) => void; placeholder: string; error?: string;
-  }) {
-    return (
-      <div className="flex flex-col gap-1">
-        <div className="relative">
-          <input
-            id={id}
-            type={show ? "text" : "password"}
-            className={`${inputCls} pr-10 ${error ? "border-(--danger)" : ""}`}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-            autoComplete={id === "current" ? "current-password" : "new-password"}
-          />
-          <button
-            type="button"
-            onClick={onToggle}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-(--neutral-400) hover:text-(--neutral-600)"
-          >
-            {show ? <EyeOff size={16} /> : <Eye size={16} />}
-          </button>
-        </div>
-        {error && <p className="font-dm text-[12px] text-(--danger)">{error}</p>}
-      </div>
-    );
   }
 
   return (
@@ -501,17 +507,15 @@ function PasswordTab() {
           </Field>
 
           <Field label="Confirm new password">
-            <div>
-              <input
-                type={showNext ? "text" : "password"}
-                className={`${inputCls} ${errors.confirm ? "border-(--danger)" : ""}`}
-                value={form.confirm}
-                onChange={(e) => setForm((p) => ({ ...p, confirm: e.target.value }))}
-                placeholder="Repeat the new password"
-                autoComplete="new-password"
-              />
-              {errors.confirm && <p className="font-dm text-[12px] text-(--danger) mt-1">{errors.confirm}</p>}
-            </div>
+            <PwInput
+              id="confirm"
+              value={form.confirm}
+              show={showConfirm}
+              onToggle={() => setShowConfirm((s) => !s)}
+              onChange={(v) => setForm((p) => ({ ...p, confirm: v }))}
+              placeholder="Repeat the new password"
+              error={errors.confirm}
+            />
           </Field>
 
           <div className="pt-2 flex justify-end">

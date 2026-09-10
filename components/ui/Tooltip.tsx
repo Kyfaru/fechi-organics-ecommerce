@@ -6,10 +6,13 @@ type TooltipProps = {
   label: string;
   children: React.ReactNode;
   position?: "top" | "bottom";
+  /** Extra classes merged onto the wrapper div — e.g. "w-full" so a
+   *  full-width child button isn't shrink-wrapped by the default inline-flex. */
+  className?: string;
 };
 
 /** Custom hover tooltip wrapper for icon-only buttons. */
-export function Tooltip({ label, children, position = "bottom" }: TooltipProps) {
+export function Tooltip({ label, children, position = "bottom", className }: TooltipProps) {
   const [visible, setVisible] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(null);
 
@@ -23,7 +26,7 @@ export function Tooltip({ label, children, position = "bottom" }: TooltipProps) 
 
   return (
     <div
-      className="relative inline-flex"
+      className={["relative inline-flex", className].filter(Boolean).join(" ")}
       onMouseEnter={show}
       onMouseLeave={hide}
       onFocus={show}

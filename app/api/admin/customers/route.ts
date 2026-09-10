@@ -5,13 +5,10 @@ import { connection } from "next/server";
 import { ok, Err } from "@/lib/api";
 import { z } from "zod";
 import { NextRequest } from "next/server";
-
-async function requireAdmin() {
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return null;
-  const u = await db.user.findUnique({ where: { id: session.user.id } });
-  return u?.role === "admin" ? u : null;
-}
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { getPeriodChange } from "@/lib/stats";
+import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/customers
@@ -21,8 +18,8 @@ async function requireAdmin() {
 export async function GET(req: NextRequest) {
   await connection();
   try {
-    const admin = await requireAdmin();
-    if (!admin) return Err.forbidden();
+    const denied = await requirePermission(req, { customers: ["view"] });
+    if (denied) return denied;
 
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search")?.trim() ?? "";
@@ -68,6 +65,24 @@ export async function GET(req: NextRequest) {
       },
     });
 
+    // Combined online + successful in-store order count under the same
+    // `_count.orders` key the client already reads/sorts on — a walk-in
+    // customer created via in-store order creation (see
+    // lib/customers/find-or-create-walkin.ts) previously showed 0 orders
+    // here even after paying, since only the online `order` relation was
+    // counted. inStoreOrder.customerUserId has no back-relation declared on
+    // `user`, so this is a separate grouped count, not a nested Prisma _count.
+    const inStoreCounts = await db.inStoreOrder.groupBy({
+      by: ["customerUserId"],
+      where: { customerUserId: { in: users.map((u) => u.id) }, paymentStatus: "PAID" },
+      _count: { _all: true },
+    });
+    const inStoreCountByUserId = new Map(inStoreCounts.map((c) => [c.customerUserId, c._count._all]));
+    const shapedUsers = users.map((u) => ({
+      ...u,
+      _count: { orders: u._count.orders + (inStoreCountByUserId.get(u.id) ?? 0) },
+    }));
+
     // Derive stats on the fetched set (always unfiltered for stat cards)
     const allUsers = await db.user.findMany({
       select: { banned: true, createdAt: true },
@@ -77,6 +92,7 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
     // Active = not banned and joined within last 90 days (simplest proxy)
     const stats = {
@@ -88,9 +104,20 @@ export async function GET(req: NextRequest) {
       banned: allUsers.filter((u) => u.banned).length,
     };
 
-    console.info("[admin/customers] GET — returned", users.length, "users");
-    return ok({ users, stats });
+    // Only "total" (growth vs start of this month) and "newThisMonth" (vs
+    // last calendar month) have a clean historical basis to compare against —
+    // active/banned are live snapshots with no reliable "as of last month" state.
+    const totalAsOfMonthStart = allUsers.filter((u) => u.createdAt < monthStart).length;
+    const newLastMonth = allUsers.filter((u) => u.createdAt >= prevMonthStart && u.createdAt < monthStart).length;
+    const statsChange = {
+      total: getPeriodChange(stats.total, totalAsOfMonthStart),
+      newThisMonth: getPeriodChange(stats.newThisMonth, newLastMonth),
+    };
+
+    console.info("[admin/customers] GET — returned", shapedUsers.length, "users");
+    return ok({ users: shapedUsers, stats, statsChange });
   } catch (e) {
+    reportError(e, { route: "GET /api/admin/customers", tags: { domain: "customers" } });
     console.error("[admin/customers] GET error", e);
     return Err.internal();
   }
@@ -103,19 +130,22 @@ export async function GET(req: NextRequest) {
 const RoleSchema = z.object({
   id: z.string().uuid(),
   role: z.enum(["client", "admin"]),
-});
+}).strict();
 
 export async function PATCH(req: NextRequest) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
   try {
-    const admin = await requireAdmin();
-    if (!admin) return Err.forbidden();
+    const denied = await requirePermission(req, { customers: ["update"] });
+    if (denied) return denied;
 
     const body = await req.json().catch(() => ({}));
     const parsed = RoleSchema.safeParse(body);
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
-    if (parsed.data.id === admin.id && parsed.data.role === "client") {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (parsed.data.id === session?.user.id && parsed.data.role === "client") {
       return Err.validation("You cannot demote your own account");
     }
 
@@ -128,6 +158,7 @@ export async function PATCH(req: NextRequest) {
     console.info("[admin/customers] PATCH — updated role for", user.id, "->", user.role);
     return ok({ user });
   } catch (e) {
+    reportError(e, { route: "PATCH /api/admin/customers", tags: { domain: "customers" } });
     console.error("[admin/customers] PATCH error", e);
     return Err.internal();
   }

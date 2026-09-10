@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { Icon } from "@iconify/react"
+import { motion, AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
 import { authClient } from "@/lib/auth-client"
 
@@ -21,9 +22,10 @@ function OtpInput({ value, onChange }: { value: string; onChange: (v: string) =>
 }
 
 // ── TOTP method (Authenticator App) ─────────────────────────────────────────
-function AuthAppMethod({ enabled }: { enabled: boolean }) {
+function AuthAppMethod({ enabled, isOAuthOnly, onRequirePasswordFirst }: { enabled: boolean; isOAuthOnly: boolean; onRequirePasswordFirst: () => void }) {
   const [open, setOpen] = useState(false)
-  const [step, setStep] = useState<"idle" | "qr" | "verify" | "disable">("idle")
+  const [step, setStep] = useState<"idle" | "password" | "qr" | "verify" | "disable">("idle")
+  const [enablePw, setEnablePw] = useState("")
   const [qrUri, setQrUri] = useState("")
   const [totpCode, setTotpCode] = useState("")
   const [disablePw, setDisablePw] = useState("")
@@ -31,10 +33,11 @@ function AuthAppMethod({ enabled }: { enabled: boolean }) {
   const [pending, start] = useTransition()
 
   function handleEnable() {
+    if (!enablePw) { toast.error("Enter your password"); return }
     start(async () => {
-      const res = await (authClient.twoFactor as any).enable({ password: "" })
-      if (res?.data?.totpURI) { setQrUri(res.data.totpURI); setStep("qr") }
-      else toast.error("Could not initiate 2FA setup")
+      const res = await (authClient.twoFactor as any).enable({ password: enablePw })
+      if (res?.data?.totpURI) { setQrUri(res.data.totpURI); setEnablePw(""); setStep("qr") }
+      else toast.error(res?.error?.message ?? "Could not initiate 2FA setup — check your password")
     })
   }
 
@@ -70,11 +73,39 @@ function AuthAppMethod({ enabled }: { enabled: boolean }) {
       actionLabel={isEnabled ? "Manage" : "Set up"}
     >
       {!isEnabled && step === "idle" && (
-        <button onClick={handleEnable} disabled={pending}
+        <button
+          onClick={() => {
+            // A Google-only account has no credential password to validate
+            // against — Better Auth's enable() would always reject with
+            // "Invalid password" no matter what's typed. Send them to set a
+            // real password first instead of showing an unwinnable prompt.
+            if (isOAuthOnly) {
+              onRequirePasswordFirst()
+              toast.error("Set up a password first", { description: "Two-factor authentication needs a password on your account — set one above, then come back." })
+              return
+            }
+            setStep("password")
+          }}
+          disabled={pending}
           className="px-4 py-2 rounded-lg bg-[#15803D] text-white text-sm font-semibold hover:bg-[#16A34A] disabled:opacity-50 flex items-center gap-2">
           {pending && <Icon icon="lucide:loader-2" width={13} className="animate-spin" />}
           Get started
         </button>
+      )}
+      {step === "password" && (
+        <div className="space-y-3 p-4 bg-neutral-100 border border-neutral-200 rounded-lg">
+          <p className="text-sm text-neutral-700 font-medium">Enter your password to set up the authenticator app</p>
+          <input type="password" value={enablePw} onChange={(e) => setEnablePw(e.target.value)}
+            placeholder="Current password" className="w-full px-3 py-2 border border-neutral-300 rounded text-sm bg-white focus:outline-none focus:border-[#15803D]" />
+          <div className="flex gap-2">
+            <button onClick={() => { setStep("idle"); setEnablePw("") }} className="px-3 py-1.5 rounded border border-neutral-200 text-sm">Cancel</button>
+            <button onClick={handleEnable} disabled={pending}
+              className="px-3 py-1.5 rounded bg-[#15803D] text-white text-sm font-semibold hover:bg-[#16A34A] disabled:opacity-50 flex items-center gap-1.5">
+              {pending && <Icon icon="lucide:loader-2" width={12} className="animate-spin" />}
+              Continue
+            </button>
+          </div>
+        </div>
       )}
       {step === "qr" && qrUri && (
         <div className="space-y-3">
@@ -134,15 +165,16 @@ function AuthAppMethod({ enabled }: { enabled: boolean }) {
 function EmailOTPMethod({ isEnabled: initialEnabled, userEmail }: { isEnabled: boolean; userEmail: string }) {
   const [open, setOpen] = useState(false)
   const [isEnabled, setIsEnabled] = useState(initialEnabled)
-  const [step, setStep] = useState<"idle" | "sent">("idle")
+  const [step, setStep] = useState<"idle" | "sending" | "sent">("idle")
   const [otp, setOtp] = useState("")
   const [pending, start] = useTransition()
 
   function handleSend() {
+    setStep("sending")
     start(async () => {
       const res = await fetch("/api/account/2fa/email/send", { method: "POST" })
       const j = await res.json()
-      if (!j.ok) { toast.error(j.error?.message ?? "Failed to send code"); return }
+      if (!j.ok) { setStep("idle"); toast.error(j.error?.message ?? "Failed to send code"); return }
       setStep("sent"); toast.success(`Code sent to ${userEmail}`)
     })
   }
@@ -172,29 +204,35 @@ function EmailOTPMethod({ isEnabled: initialEnabled, userEmail }: { isEnabled: b
       onToggle={() => { setOpen((v) => !v); setStep("idle") }}
       actionLabel={isEnabled ? "Active" : "Set up"}
     >
-      {step === "idle" && !isEnabled && (
-        <button onClick={handleSend} disabled={pending}
+      {(step === "idle" || step === "sending") && !isEnabled && (
+        <button onClick={handleSend} disabled={step === "sending"}
           className="px-4 py-2 rounded-lg bg-[#15803D] text-white text-sm font-semibold hover:bg-[#16A34A] disabled:opacity-50 flex items-center gap-2">
-          {pending && <Icon icon="lucide:loader-2" width={13} className="animate-spin" />}
-          Send verification code
+          {step === "sending" && <Icon icon="lucide:loader-2" width={13} className="animate-spin" />}
+          {step === "sending" ? "Sending…" : "Send verification code"}
         </button>
       )}
-      {step === "sent" && (
-        <div className="space-y-3">
-          <p className="text-sm text-neutral-600">Enter the 6-digit code sent to <strong>{userEmail}</strong></p>
-          <OtpInput value={otp} onChange={setOtp} />
-          <div className="flex gap-2">
-            <button onClick={handleSend} disabled={pending} className="px-3 py-1.5 rounded border border-neutral-200 text-sm text-neutral-600">
-              Resend
-            </button>
-            <button onClick={handleVerify} disabled={pending || otp.length !== 6}
-              className="px-4 py-2 rounded-lg bg-[#15803D] text-white text-sm font-semibold hover:bg-[#16A34A] disabled:opacity-50 flex items-center gap-2">
-              {pending && <Icon icon="lucide:loader-2" width={13} className="animate-spin" />}
-              Verify
-            </button>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {step === "sent" && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-3"
+          >
+            <p className="text-sm text-neutral-600">Enter the 6-digit code sent to <strong>{userEmail}</strong></p>
+            <OtpInput value={otp} onChange={setOtp} />
+            <div className="flex gap-2">
+              <button onClick={handleSend} disabled={pending} className="px-3 py-1.5 rounded border border-neutral-200 text-sm text-neutral-600">
+                Resend
+              </button>
+              <button onClick={handleVerify} disabled={pending || otp.length !== 6}
+                className="px-4 py-2 rounded-lg bg-[#15803D] text-white text-sm font-semibold hover:bg-[#16A34A] disabled:opacity-50 flex items-center gap-2">
+                {pending && <Icon icon="lucide:loader-2" width={13} className="animate-spin" />}
+                Verify
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {isEnabled && (
         <div className="flex items-start gap-2 p-3 bg-[#F0FDF4] border border-[#DCFCE7] rounded-lg">
           <Icon icon="lucide:check-circle" width={15} className="text-[#15803D] mt-0.5 shrink-0" />
@@ -209,16 +247,17 @@ function EmailOTPMethod({ isEnabled: initialEnabled, userEmail }: { isEnabled: b
 function PhoneSMSMethod({ isEnabled: initialEnabled, userPhone }: { isEnabled: boolean; userPhone: string | null }) {
   const [open, setOpen] = useState(false)
   const [isEnabled, setIsEnabled] = useState(initialEnabled)
-  const [step, setStep] = useState<"idle" | "sent">("idle")
+  const [step, setStep] = useState<"idle" | "sending" | "sent">("idle")
   const [otp, setOtp] = useState("")
   const [pending, start] = useTransition()
 
   function handleSend() {
     if (!userPhone) { toast.error("No phone number on your account. Add one in Profile settings first."); return }
+    setStep("sending")
     start(async () => {
       const res = await fetch("/api/account/2fa/phone/send", { method: "POST" })
       const j = await res.json()
-      if (!j.ok) { toast.error(j.error?.message ?? "Failed to send SMS"); return }
+      if (!j.ok) { setStep("idle"); toast.error(j.error?.message ?? "Failed to send SMS"); return }
       setStep("sent"); toast.success("Code sent via SMS")
     })
   }
@@ -253,27 +292,33 @@ function PhoneSMSMethod({ isEnabled: initialEnabled, userPhone }: { isEnabled: b
           Add a phone number in your Profile settings first.
         </p>
       )}
-      {userPhone && step === "idle" && !isEnabled && (
-        <button onClick={handleSend} disabled={pending}
+      {userPhone && (step === "idle" || step === "sending") && !isEnabled && (
+        <button onClick={handleSend} disabled={step === "sending"}
           className="px-4 py-2 rounded-lg bg-[#15803D] text-white text-sm font-semibold hover:bg-[#16A34A] disabled:opacity-50 flex items-center gap-2">
-          {pending && <Icon icon="lucide:loader-2" width={13} className="animate-spin" />}
-          Send SMS code
+          {step === "sending" && <Icon icon="lucide:loader-2" width={13} className="animate-spin" />}
+          {step === "sending" ? "Sending…" : "Send SMS code"}
         </button>
       )}
-      {step === "sent" && (
-        <div className="space-y-3">
-          <p className="text-sm text-neutral-600">Enter the 6-digit code sent to <strong>{userPhone}</strong></p>
-          <OtpInput value={otp} onChange={setOtp} />
-          <div className="flex gap-2">
-            <button onClick={handleSend} disabled={pending} className="px-3 py-1.5 rounded border border-neutral-200 text-sm text-neutral-600">Resend</button>
-            <button onClick={handleVerify} disabled={pending || otp.length !== 6}
-              className="px-4 py-2 rounded-lg bg-[#15803D] text-white text-sm font-semibold hover:bg-[#16A34A] disabled:opacity-50 flex items-center gap-2">
-              {pending && <Icon icon="lucide:loader-2" width={13} className="animate-spin" />}
-              Verify
-            </button>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {step === "sent" && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-3"
+          >
+            <p className="text-sm text-neutral-600">Enter the 6-digit code sent to <strong>{userPhone}</strong></p>
+            <OtpInput value={otp} onChange={setOtp} />
+            <div className="flex gap-2">
+              <button onClick={handleSend} disabled={pending} className="px-3 py-1.5 rounded border border-neutral-200 text-sm text-neutral-600">Resend</button>
+              <button onClick={handleVerify} disabled={pending || otp.length !== 6}
+                className="px-4 py-2 rounded-lg bg-[#15803D] text-white text-sm font-semibold hover:bg-[#16A34A] disabled:opacity-50 flex items-center gap-2">
+                {pending && <Icon icon="lucide:loader-2" width={13} className="animate-spin" />}
+                Verify
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {isEnabled && (
         <div className="flex items-start gap-2 p-3 bg-[#F0FDF4] border border-[#DCFCE7] rounded-lg">
           <Icon icon="lucide:check-circle" width={15} className="text-[#15803D] mt-0.5 shrink-0" />
@@ -285,29 +330,51 @@ function PhoneSMSMethod({ isEnabled: initialEnabled, userPhone }: { isEnabled: b
 }
 
 // ── Backup Codes method ──────────────────────────────────────────────────────
-function BackupCodesMethod() {
+// Note: totpEnabled can only ever be true for a user who already has a
+// credential password (enabling the authenticator app requires one — see
+// AuthAppMethod), so the isOAuthOnly branch below is unreachable in
+// practice. Kept for defense in depth rather than assuming that invariant
+// holds forever.
+function BackupCodesMethod({ totpEnabled, isOAuthOnly, onRequirePasswordFirst }: { totpEnabled: boolean; isOAuthOnly: boolean; onRequirePasswordFirst: () => void }) {
   const [open, setOpen] = useState(false)
+  const [step, setStep] = useState<"idle" | "password" | "codes">("idle")
+  const [password, setPassword] = useState("")
   const [codes, setCodes] = useState<string[]>([])
-  const [loading, setLoading] = useState(false)
+  const [pending, start] = useTransition()
 
-  async function fetchCodes() {
-    setLoading(true)
-    try {
-      const res = await fetch("/api/account/2fa/backup-codes")
-      const j = await res.json()
-      if (j.ok && j.codes) setCodes(j.codes)
-      else toast.error("Could not load backup codes")
-    } catch {
-      toast.error("Could not load backup codes")
-    } finally {
-      setLoading(false)
-    }
+  function handleGenerate() {
+    if (!password) { toast.error("Enter your password"); return }
+    start(async () => {
+      const res = await (authClient.twoFactor as any).generateBackupCodes({ password })
+      if (res?.error) { toast.error(res.error.message ?? "Failed to generate backup codes"); return }
+      const newCodes: string[] = res?.data?.backupCodes ?? []
+      setCodes(newCodes)
+      setStep("codes")
+      setPassword("")
+      toast.success("New backup codes generated")
+    })
   }
 
   function handleOpen() {
     const next = !open
     setOpen(next)
-    if (next && codes.length === 0) fetchCodes()
+    if (!next) { setStep("idle"); setPassword("") }
+  }
+
+  function handleCopy() {
+    navigator.clipboard.writeText(codes.join("\n"))
+      .then(() => toast.success("Codes copied to clipboard"))
+      .catch(() => toast.error("Could not copy codes"))
+  }
+
+  function handleDownload() {
+    const blob = new Blob([codes.join("\n") + "\n"], { type: "text/plain" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "fechi-organics-backup-codes.txt"
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -315,36 +382,88 @@ function BackupCodesMethod() {
       icon="lucide:key"
       title="Backup Codes"
       description="One-time codes for account recovery"
-      statusLabel="Available"
+      statusLabel={totpEnabled ? "Available" : "TOTP Required"}
       isEnabled={false}
       open={open}
       onToggle={handleOpen}
       actionLabel="View codes"
     >
-      {loading && (
-        <div className="flex items-center gap-2 text-neutral-500 text-sm">
-          <Icon icon="lucide:loader-2" width={14} className="animate-spin" />
-          Loading codes…
-        </div>
+      {!totpEnabled && (
+        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+          Set up the Authenticator App method first — backup codes are generated alongside it.
+        </p>
       )}
-      {!loading && codes.length > 0 && (
+      {totpEnabled && step === "idle" && (
         <div className="space-y-3">
-          <p className="text-sm text-neutral-600">Keep these codes safe. Each can be used once.</p>
-          <div className="grid grid-cols-2 gap-1.5">
-            {codes.map((code, i) => (
-              <code key={i} className="px-2 py-1 bg-neutral-100 rounded text-[12px] font-mono text-neutral-700 text-center">
-                {code}
-              </code>
-            ))}
-          </div>
-          <button onClick={fetchCodes} className="text-sm text-[#15803D] hover:underline">
-            Refresh
+          <p className="text-sm text-neutral-600">
+            Generate a fresh set of one-time recovery codes. This will invalidate any previously generated codes.
+          </p>
+          <button
+            onClick={() => {
+              if (isOAuthOnly) {
+                onRequirePasswordFirst()
+                toast.error("Set up a password first", { description: "Backup codes need a password on your account — set one above, then come back." })
+                return
+              }
+              setStep("password")
+            }}
+            className="px-4 py-2 rounded-lg bg-[#15803D] text-white text-sm font-semibold hover:bg-[#16A34A]">
+            Generate backup codes
           </button>
         </div>
       )}
-      {!loading && codes.length === 0 && open && (
-        <p className="text-sm text-neutral-500">No backup codes available. Enable TOTP first.</p>
+      {totpEnabled && step === "password" && (
+        <div className="space-y-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+          <p className="text-sm text-amber-800 font-medium">Enter your password to generate new codes</p>
+          <p className="text-[12px] text-amber-700">Any codes you generated previously will stop working.</p>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+            placeholder="Current password" className="w-full px-3 py-2 border border-amber-200 rounded text-sm bg-white focus:outline-none focus:border-amber-400" />
+          <div className="flex gap-2">
+            <button onClick={() => { setStep("idle"); setPassword("") }} className="px-3 py-1.5 rounded border border-neutral-200 text-sm">Cancel</button>
+            <button onClick={handleGenerate} disabled={pending}
+              className="px-3 py-1.5 rounded bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 disabled:opacity-50 flex items-center gap-1.5">
+              {pending && <Icon icon="lucide:loader-2" width={12} className="animate-spin" />}
+              Confirm & Generate
+            </button>
+          </div>
+        </div>
       )}
+      <AnimatePresence>
+        {step === "codes" && codes.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-3"
+          >
+            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <Icon icon="lucide:alert-triangle" width={15} className="text-red-600 mt-0.5 shrink-0" />
+              <p className="text-sm text-red-700">
+                Save these codes now — they are shown only once. Each can be used a single time, and regenerating invalidates them.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {codes.map((code, i) => (
+                <code key={i} className="px-2 py-1 bg-neutral-100 rounded text-[12px] font-mono text-neutral-700 text-center">
+                  {code}
+                </code>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleCopy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 text-sm text-neutral-700 hover:bg-neutral-100">
+                <Icon icon="lucide:copy" width={14} />
+                Copy
+              </button>
+              <button onClick={handleDownload} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-200 text-sm text-neutral-700 hover:bg-neutral-100">
+                <Icon icon="lucide:download" width={14} />
+                Download .txt
+              </button>
+            </div>
+            <button onClick={() => setStep("password")} className="text-sm text-[#15803D] hover:underline">
+              Generate new codes
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </MethodRow>
   )
 }
@@ -395,12 +514,20 @@ export default function TwoFactorSection({
   twoFaPhone = false,
   userEmail,
   userPhone,
+  isOAuthOnly = false,
+  onRequirePasswordFirst = () => {},
 }: {
   enabled: boolean
   twoFaEmail?: boolean
   twoFaPhone?: boolean
   userEmail: string
   userPhone?: string | null
+  // True for a Google-only account with no credential password set.
+  isOAuthOnly?: boolean
+  // Called instead of proceeding when such a user tries to set up a
+  // password-gated method — lets a parent wrapper highlight the password
+  // form elsewhere on the page.
+  onRequirePasswordFirst?: () => void
 }) {
   const anyEnabled = enabled || twoFaEmail || twoFaPhone
 
@@ -430,10 +557,10 @@ export default function TwoFactorSection({
       <div>
         <p className="text-[11px] font-bold uppercase tracking-widest text-neutral-400 mb-3 px-1">Verification Methods</p>
         <div className="space-y-3">
-          <AuthAppMethod enabled={enabled} />
+          <AuthAppMethod enabled={enabled} isOAuthOnly={isOAuthOnly} onRequirePasswordFirst={onRequirePasswordFirst} />
           <EmailOTPMethod isEnabled={twoFaEmail} userEmail={userEmail} />
           <PhoneSMSMethod isEnabled={twoFaPhone} userPhone={userPhone ?? null} />
-          <BackupCodesMethod />
+          <BackupCodesMethod totpEnabled={enabled} isOAuthOnly={isOAuthOnly} onRequirePasswordFirst={onRequirePasswordFirst} />
         </div>
       </div>
     </div>

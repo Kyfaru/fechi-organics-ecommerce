@@ -1,21 +1,21 @@
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
-import { connection } from "next/server";
+import { connection, NextRequest } from "next/server";
+import { assertTrustedOrigin } from "@/lib/origin-check";
+import { requirePermission } from "@/lib/require-permission";
+import { reportError } from "@/lib/observability";
 
 /** PATCH /api/admin/faqs/[id] */
 export async function PATCH(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { content: ["update"] });
+  if (denied) return denied;
 
   const { id } = await params;
 
@@ -41,22 +41,22 @@ export async function PATCH(
     return ok(faq);
   } catch (e) {
     console.error("[faqs/PATCH]", e);
+    reportError(e, { route: "PATCH /api/admin/faqs/[id]", extra: { faqId: id } });
     return Err.internal();
   }
 }
 
 /** DELETE /api/admin/faqs/[id] */
 export async function DELETE(
-  _req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
   await connection();
 
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
-  if (user?.role !== "admin") return Err.forbidden();
+  const denied = await requirePermission(req, { content: ["delete"] });
+  if (denied) return denied;
 
   const { id } = await params;
 
@@ -66,6 +66,7 @@ export async function DELETE(
     return ok({ deleted: true });
   } catch (e) {
     console.error("[faqs/DELETE]", e);
+    reportError(e, { route: "DELETE /api/admin/faqs/[id]", extra: { faqId: id } });
     return Err.internal();
   }
 }

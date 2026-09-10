@@ -3,6 +3,7 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { qstashReceiver } from "@/lib/qstash";
 import { r2Client } from "@/lib/r2";
 import { db } from "@/lib/db";
+import { reportError } from "@/lib/observability";
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
@@ -17,46 +18,51 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  const { productId, fileBase64, fileName, category } = JSON.parse(rawBody) as {
-    productId: string;
-    fileBase64: string;
-    fileName: string;
-    category: string;
-  };
+  try {
+    const { productId, fileBase64, fileName, category } = JSON.parse(rawBody) as {
+      productId: string;
+      fileBase64: string;
+      fileName: string;
+      category: string;
+    };
 
-  const buffer = Buffer.from(fileBase64, "base64");
-  const ext = fileName.split(".").pop()?.toLowerCase() ?? "jpg";
-  const objectKey = `media/${category}/${crypto.randomUUID()}.${ext}`;
-  const contentType =
-    ext === "png" ? "image/png"
-    : ext === "webp" ? "image/webp"
-    : ext === "gif" ? "image/gif"
-    : "image/jpeg";
+    const buffer = Buffer.from(fileBase64, "base64");
+    const ext = fileName.split(".").pop()?.toLowerCase() ?? "jpg";
+    const objectKey = `media/${category}/${crypto.randomUUID()}.${ext}`;
+    const contentType =
+      ext === "png" ? "image/png"
+      : ext === "webp" ? "image/webp"
+      : ext === "gif" ? "image/gif"
+      : "image/jpeg";
 
-  await r2Client.send(
-    new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME!,
-      Key: objectKey,
-      Body: buffer,
-      ContentType: contentType,
-    })
-  );
+    await r2Client.send(
+      new PutObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME!,
+        Key: objectKey,
+        Body: buffer,
+        ContentType: contentType,
+      })
+    );
 
-  const existing = await db.productImage.findFirst({
-    where: { productId },
-    orderBy: { sortOrder: "asc" },
-  });
-
-  if (existing) {
-    await db.productImage.update({
-      where: { id: existing.id },
-      data: { objectKey, isPrimary: true },
+    const existing = await db.productImage.findFirst({
+      where: { productId },
+      orderBy: { sortOrder: "asc" },
     });
-  } else {
-    await db.productImage.create({
-      data: { productId, objectKey, isPrimary: true, sortOrder: 0 },
-    });
+
+    if (existing) {
+      await db.productImage.update({
+        where: { id: existing.id },
+        data: { objectKey, isPrimary: true },
+      });
+    } else {
+      await db.productImage.create({
+        data: { productId, objectKey, isPrimary: true, sortOrder: 0 },
+      });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    reportError(error, { route: "POST /api/admin/workers/upload-product-image" });
+    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
   }
-
-  return NextResponse.json({ ok: true });
 }

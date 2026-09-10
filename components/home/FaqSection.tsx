@@ -29,7 +29,7 @@ export function FaqSection() {
   }
 
   return (
-    <section className="py-16 px-4 md:px-8 bg-white dark:bg-gray-950">
+    <section className="py-16 px-4 md:px-8 bg-white dark:bg-gray-950"> 
       <div className="max-w-[1440px] mx-auto">
         {/* Eyebrow row */}
         <div className="flex items-center gap-6 mb-3">
@@ -106,10 +106,10 @@ export function FaqSection() {
                         ? "border-[#27731e] bg-[#27731e] text-white rotate-90"
                         : "border-[#c0c0c0] dark:border-gray-600 text-[#1a1c1c] dark:text-gray-300",
                     ].join(" ")}
-                    style={{ transform: openIndex === idx ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}
+                    style={{ transform: openIndex === idx ? "rotate(280deg)" : "rotate(90deg)", transition: "transform 0.1s" }}
                   >
                     <Icon
-                      icon={openIndex === idx ? "mdi:chevron-right" : "mdi:chevron-right"}
+                      icon={openIndex === idx ? "iconamoon:arrow-top-right-1-light" : "mdi:chevron-right"}
                       width={18}
                     />
                   </span>
@@ -144,7 +144,7 @@ export function FaqSection() {
               className="flex justify-end mt-8"
             >
               <Link
-                href="/contact#faq"
+                href="/faq"
                 className="inline-flex items-center gap-2 border border-black dark:border-gray-600 rounded-full px-7 py-4 font-body font-medium text-[#27731e] text-[15px] tracking-[0.3px] hover:bg-[#27731e] hover:text-white hover:border-[#27731e] transition-all"
               >
                 See more FAQs

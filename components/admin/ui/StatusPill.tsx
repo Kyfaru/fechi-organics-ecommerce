@@ -19,7 +19,7 @@ const STATUS_MAP: Record<string, { text: string; bg: string; dot: string }> = {
   out_of_stock: { text: "text-(--danger)", bg: "bg-(--danger-bg) dark:bg-red-950/40", dot: "bg-(--danger)" },
   expired:      { text: "text-(--danger)", bg: "bg-(--danger-bg) dark:bg-red-950/40", dot: "bg-(--danger)" },
   draft:        { text: "text-(--green-700) dark:text-(--dark-muted)", bg: "bg-(--neutral-100) dark:bg-(--dark-border)", dot: "bg-(--neutral-400)" },
-  archived:     { text: "text-(--green-700) dark:text-(--dark-muted)", bg: "bg-(--neutral-100) dark:bg-(--dark-border)", dot: "bg-(--neutral-400)" },
+  archived:     { text: "text-(--orange-700)", bg: "bg-(--orange-500)/15", dot: "bg-(--orange-500)" },
   resolved:     { text: "text-(--green-700) dark:text-(--dark-muted)", bg: "bg-(--neutral-100) dark:bg-(--dark-border)", dot: "bg-(--neutral-400)" },
 };
 

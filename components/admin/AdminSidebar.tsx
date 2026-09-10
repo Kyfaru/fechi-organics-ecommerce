@@ -3,73 +3,21 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  LayoutDashboard, Package, ShoppingBag, Users, Warehouse, Truck,
-  Mail, Tag, Heart, FileText, Layout, Star, HelpCircle, Image as ImageIcon,
-  BarChart2, CreditCard, Shield, Settings, LogOut, ArrowLeft,
-  ChevronLeft, ChevronRight, Menu, X, User, Bell,
+  LogOut, History, ChevronLeft, ChevronRight, Menu, X,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { signOut } from "@/lib/auth-client";
-import { ConfirmModal } from "@/components/admin/ui/ConfirmModal";
-import { canAccess, type AdminPage } from "@/lib/permissions";
+import { signOut, authClient } from "@/lib/auth-client";
+import { clearPersistedQueryCache } from "@/app/providers";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { useAdminMe } from "@/hooks/use-can";
+import { NAV_GROUPS, isActive, type NavItem } from "@/lib/admin-nav";
+import type { PermissionCheck } from "@/lib/require-permission";
 
-// Each nav item optionally maps to an AdminPage key for permission filtering.
-// Items without a page key (e.g. Dashboard) are always shown.
-type NavItem = {
-  href: string;
-  icon: React.ElementType;
-  label: string;
-  exact?: boolean;
-  page?: AdminPage;
-};
-
-type NavGroup = {
+interface VisibleGroup {
   label: string;
   items: NavItem[];
-};
-
-const NAV_GROUPS: NavGroup[] = [
-  { label: "STORE", items: [
-    { href: "/admin",          icon: LayoutDashboard, label: "Dashboard", exact: true },
-    { href: "/admin/products", icon: Package,         label: "Products",  page: "products" },
-    { href: "/admin/orders",   icon: ShoppingBag,     label: "Orders",    page: "orders" },
-    { href: "/admin/customers",icon: Users,           label: "Customers", page: "customers" },
-  ]},
-  { label: "OPERATIONS", items: [
-    { href: "/admin/inventory", icon: Warehouse, label: "Inventory", page: "inventory" },
-    { href: "/admin/suppliers", icon: Truck,     label: "Suppliers", page: "suppliers" },
-  ]},
-  { label: "MARKETING", items: [
-    { href: "/admin/marketing",             icon: Mail,  label: "Campaigns",   page: "campaigns" },
-    { href: "/admin/marketing/promotions",  icon: Tag,   label: "Promotions",  page: "promotions" },
-    { href: "/admin/loyalty",               icon: Heart, label: "Loyalty",     page: "marketing" },
-  ]},
-  { label: "CONTENT", items: [
-    { href: "/admin/content/blog",         icon: FileText,  label: "Blog",         page: "content" },
-    { href: "/admin/content/homepage",     icon: Layout,    label: "Homepage",     page: "content" },
-    { href: "/admin/content/testimonials", icon: Star,      label: "Testimonials", page: "content" },
-    { href: "/admin/content/faqs",         icon: HelpCircle,label: "FAQs",         page: "content" },
-    { href: "/admin/content/banners",      icon: ImageIcon, label: "Banners",      page: "content" },
-  ]},
-  { label: "ANALYTICS", items: [
-    { href: "/admin/analytics", icon: BarChart2, label: "Reports", page: "analytics" },
-    { href: "/admin/finance",   icon: CreditCard,label: "Finance", page: "finance" },
-  ]},
-  { label: "SETTINGS", items: [
-    { href: "/admin/notifications", icon: Bell,    label: "Notifications" },
-    { href: "/admin/staff",    icon: Shield,  label: "Staff & Roles", page: "staff" },
-    { href: "/admin/profile",  icon: User,    label: "My Profile",    page: "profile" },
-    { href: "/admin/security", icon: Shield,  label: "Security",      page: "settings" },
-    { href: "/admin/settings", icon: Settings,label: "Settings",      page: "settings" },
-  ]},
-];
-
-function isActive(pathname: string, href: string, exact?: boolean) {
-  if (exact) return pathname === href;
-  return pathname === href || pathname.startsWith(href + "/");
 }
 
 export function AdminSidebar() {
@@ -80,21 +28,28 @@ export function AdminSidebar() {
 
   // Fetch current admin profile to drive permission-based nav filtering.
   // Cached for 5 minutes — sidebar doesn't need real-time permission updates.
-  const { data: me } = useQuery({
-    queryKey: ["admin-me"],
-    queryFn: () => fetch("/api/admin/me").then((r) => r.json()),
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: me } = useAdminMe();
+  // /admin/activity is admin/super_admin-only (see its page + API route) —
+  // hide the link entirely for roles that would just hit a 403.
+  const showActivityLink = Boolean(me?.isSuperAdmin || me?.role === "admin");
 
-  // Returns true if the current user can see this nav item.
-  function canSeeItem(item: NavItem): boolean {
-    // Items with no page key (e.g. Dashboard) are always shown.
-    if (!item.page) return true;
-    // Super-admins see everything.
-    if (me?.isSuperAdmin) return true;
-    const perms = (me?.permissions ?? {}) as Record<string, unknown>;
-    return canAccess(perms, item.page);
-  }
+  // Precomputed once per `me` change (not per render/navigation) and passed
+  // down as plain data — keeps SidebarContent a stable component so it never
+  // remounts (and loses its scroll position) on route changes.
+  const visibleGroups: VisibleGroup[] = useMemo(() => {
+    function canSeeItem(item: NavItem): boolean {
+      if (!item.resource) return true;
+      if (!me?.role) return false;
+      if (me.isSuperAdmin) return true;
+      const deny: string[] = me.permissions?.deny ?? [];
+      if (deny.includes(item.resource)) return false;
+      const permissions = { [item.resource]: [item.action ?? "view"] } as PermissionCheck;
+      return authClient.admin.checkRolePermission({ role: me.role, permissions });
+    }
+    return NAV_GROUPS.map((group) => ({ label: group.label, items: group.items.filter(canSeeItem) })).filter(
+      (group) => group.items.length > 0
+    );
+  }, [me]);
 
   useEffect(() => {
     const stored = localStorage.getItem("adminSidebarCollapsed");
@@ -115,112 +70,11 @@ export function AdminSidebar() {
 
   async function handleLogout() {
     await signOut();
+    clearPersistedQueryCache();
     router.push("/admin/login");
   }
 
   const [logoutConfirming, setLogoutConfirming] = useState(false);
-
-  function SidebarContent({ mobile = false }: { mobile?: boolean }) {
-    return (
-      <div className="flex flex-col h-full bg-(--green-900) dark:bg-(--dark-surface)">
-        {/* Logo zone */}
-        <div className="h-[72px] flex items-center px-4 border-b border-(--green-800) dark:border-(--dark-border) shrink-0">
-          {(!collapsed || mobile) ? (
-            <div className="flex items-center gap-3">
-              <Image src="/logo/Asset 16@5x.webp" alt="Fechi Organics" width={32} height={32} className="rounded" />
-              <div>
-                <div className="font-syne text-[14px] font-semibold text-white dark:text-(--dark-text) leading-tight">Fechi Organics</div>
-                <div className="font-dm text-[11px] text-white/60 dark:text-(--dark-muted)">Admin Panel</div>
-              </div>
-            </div>
-          ) : (
-            <div className="w-full flex justify-center">
-              <Image src="/logo/Asset 16@5x.webp" alt="Fechi" width={32} height={32} className="rounded" />
-            </div>
-          )}
-        </div>
-
-        {/* Nav groups */}
-        <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
-          {NAV_GROUPS.map((group) => {
-            const visibleItems = group.items.filter(canSeeItem);
-            // Hide the entire group when all items are filtered out
-            if (visibleItems.length === 0) return null;
-            return (
-              <div key={group.label}>
-                {(!collapsed || mobile) && (
-                  <div className="font-dm text-[11px] font-semibold uppercase tracking-wider text-(--green-200) dark:text-(--dark-muted) px-2 mb-2">
-                    {group.label}
-                  </div>
-                )}
-                <div className="space-y-0.5">
-                  {visibleItems.map((item) => {
-                    const active = isActive(pathname, item.href, item.exact);
-                    const Icon = item.icon;
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        title={collapsed && !mobile ? item.label : undefined}
-                        onClick={() => mobile && setMobileOpen(false)}
-                        className={[
-                          "relative flex items-center gap-3 h-11 rounded-[8px] transition-colors overflow-hidden",
-                          collapsed && !mobile ? "justify-center px-0" : "px-3",
-                          active
-                            ? "bg-white/15 text-white dark:bg-(--dark-accent)/15 dark:text-(--dark-accent)"
-                            : "text-white/80 dark:text-(--dark-text) hover:bg-(--green-800) dark:hover:bg-(--dark-border)",
-                        ].join(" ")}
-                      >
-                        {active && (
-                          <span className="absolute left-0 top-[20%] h-[60%] w-[3px] bg-(--gold-500) dark:bg-(--dark-accent) rounded-r" />
-                        )}
-                        <Icon size={20} className="shrink-0" />
-                        {(!collapsed || mobile) && (
-                          <span className="font-dm text-[14px] font-medium">{item.label}</span>
-                        )}
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </nav>
-
-        {/* Bottom section */}
-        <div className="border-t border-(--green-800) dark:border-(--dark-border) p-3 space-y-0.5 shrink-0">
-          <Link
-            href="/"
-            className={["flex items-center gap-3 h-10 rounded-[8px] px-3 text-white/70 dark:text-(--dark-muted) hover:bg-(--green-800) dark:hover:bg-(--dark-border) transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}
-            title={collapsed && !mobile ? "Back to Store" : undefined}
-          >
-            <ArrowLeft size={18} />
-            {(!collapsed || mobile) && <span className="font-dm text-[13px]">Back to Store</span>}
-          </Link>
-          <button
-            onClick={() => setLogoutConfirming(true)}
-            className={["w-full flex items-center gap-3 h-10 rounded-[8px] px-3 text-[#ff4545] hover:text-[#ff0f0f] hover:bg-(--green-800) dark:hover:bg-(--dark-border) transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}
-            title={collapsed && !mobile ? "Sign out" : undefined}
-          >
-            <LogOut size={18} />
-            {(!collapsed || mobile) && <span className="font-dm text-[13px]">Sign out</span>}
-          </button>
-        </div>
-
-        {/* Collapse toggle — desktop only */}
-        {!mobile && (
-          <div className="border-t border-(--green-800) dark:border-(--dark-border) p-2 shrink-0">
-            <button
-              onClick={toggleCollapsed}
-              className="w-full flex items-center justify-center h-8 rounded-[6px] text-white/40 hover:bg-(--green-800) dark:hover:bg-(--dark-border) transition-colors"
-            >
-              {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
 
   return (
     <>
@@ -228,7 +82,14 @@ export function AdminSidebar() {
       <aside
         className={["hidden md:flex flex-col fixed left-0 top-0 h-full border-r border-(--green-800) dark:border-(--dark-border) z-30 transition-all duration-200 overflow-hidden", collapsed ? "w-[72px]" : "w-[264px]"].join(" ")}
       >
-        <SidebarContent />
+        <SidebarContent
+          collapsed={collapsed}
+          pathname={pathname}
+          visibleGroups={visibleGroups}
+          showActivityLink={showActivityLink}
+          onToggleCollapsed={toggleCollapsed}
+          onLogoutClick={() => setLogoutConfirming(true)}
+        />
       </aside>
 
       {/* Mobile hamburger */}
@@ -259,7 +120,16 @@ export function AdminSidebar() {
               >
                 <X size={18} />
               </button>
-              <SidebarContent mobile />
+              <SidebarContent
+                mobile
+                collapsed={collapsed}
+                pathname={pathname}
+                visibleGroups={visibleGroups}
+                showActivityLink={showActivityLink}
+                onNavClick={() => setMobileOpen(false)}
+                onToggleCollapsed={toggleCollapsed}
+                onLogoutClick={() => setLogoutConfirming(true)}
+              />
             </motion.div>
           </>
         )}
@@ -275,5 +145,122 @@ export function AdminSidebar() {
         danger={true}
       />
     </>
+  );
+}
+
+// Hoisted to module scope — defining this inside AdminSidebar's render body
+// gave it a new function identity on every render (every pathname change),
+// which made React treat it as a different component type and remount the
+// whole nav tree, resetting the scrollable nav's scroll position on every
+// navigation. Kept as a stable top-level component instead.
+interface SidebarContentProps {
+  mobile?: boolean;
+  collapsed: boolean;
+  pathname: string;
+  visibleGroups: VisibleGroup[];
+  showActivityLink: boolean;
+  onNavClick?: () => void;
+  onToggleCollapsed: () => void;
+  onLogoutClick: () => void;
+}
+
+function SidebarContent({
+  mobile = false, collapsed, pathname, visibleGroups, showActivityLink, onNavClick, onToggleCollapsed, onLogoutClick,
+}: SidebarContentProps) {
+  return (
+    <div className="flex flex-col h-full bg-(--green-900) dark:bg-(--dark-surface)">
+      {/* Logo zone */}
+      <div className="h-[72px] flex items-center px-4 border-b border-(--green-800) dark:border-(--dark-border) shrink-0">
+        {(!collapsed || mobile) ? (
+          <div className="flex items-center gap-3">
+            <Image src="/logo/symbol-white.webp" alt="Fechi Organics" width={32} height={32} className="rounded" />
+            <div>
+              <div className="font-syne text-[14px] font-semibold text-white dark:text-(--dark-text) leading-tight">Fechi Organics</div>
+              <div className="font-dm text-[11px] text-white/60 dark:text-(--dark-muted)">Admin Panel</div>
+            </div>
+          </div>
+        ) : (
+          <div className="w-full flex justify-center">
+            <Image src="/logo/symbol-white.webp" alt="Fechi" width={32} height={32} className="rounded" />
+          </div>
+        )}
+      </div>
+
+      {/* Nav groups */}
+      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
+        {visibleGroups.map((group) => (
+          <div key={group.label}>
+            {(!collapsed || mobile) && (
+              <div className="font-dm text-[11px] font-semibold uppercase tracking-wider text-(--green-200) dark:text-(--dark-muted) px-2 mb-2">
+                {group.label}
+              </div>
+            )}
+            <div className="space-y-0.5">
+              {group.items.map((item) => {
+                const active = isActive(pathname, item.href, item.exact);
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    title={collapsed && !mobile ? item.label : undefined}
+                    onClick={() => mobile && onNavClick?.()}
+                    className={[
+                      "relative flex items-center gap-3 h-11 rounded-[8px] transition-colors overflow-hidden",
+                      collapsed && !mobile ? "justify-center px-0" : "px-3",
+                      active
+                        ? "bg-white/15 text-white dark:bg-(--dark-accent)/15 dark:text-(--dark-accent)"
+                        : "text-white/80 dark:text-(--dark-text) hover:bg-(--green-800) dark:hover:bg-(--dark-border)",
+                    ].join(" ")}
+                  >
+                    {active && (
+                      <span className="absolute left-0 top-[20%] h-[60%] w-[3px] bg-(--gold-500) dark:bg-(--dark-accent) rounded-r" />
+                    )}
+                    <Icon size={20} className="shrink-0" />
+                    {(!collapsed || mobile) && (
+                      <span className="font-dm text-[14px] font-medium">{item.label}</span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
+
+      {/* Bottom section */}
+      <div className="border-t border-(--green-800) dark:border-(--dark-border) p-3 space-y-0.5 shrink-0">
+        {showActivityLink && (
+          <Link
+            href="/admin/activity"
+            className={["flex items-center gap-3 h-10 rounded-[8px] px-3 text-white/70 dark:text-(--dark-muted) hover:bg-(--green-800) dark:hover:bg-(--dark-border) transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}
+            title={collapsed && !mobile ? "Activity Log" : undefined}
+          >
+            <History size={18} />
+            {(!collapsed || mobile) && <span className="font-dm text-[13px]">Activity Log</span>}
+          </Link>
+        )}
+        <button
+          onClick={onLogoutClick}
+          className={["w-full flex items-center gap-3 h-10 rounded-[8px] px-3 text-[#ff4545] hover:text-[#ff0f0f] hover:bg-(--green-800) dark:hover:bg-(--dark-border) transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}
+          title={collapsed && !mobile ? "Sign out" : undefined}
+        >
+          <LogOut size={18} />
+          {(!collapsed || mobile) && <span className="font-dm text-[13px]">Sign out</span>}
+        </button>
+      </div>
+
+      {/* Collapse toggle — desktop only */}
+      {!mobile && (
+        <div className="border-t border-(--green-800) dark:border-(--dark-border) p-2 shrink-0">
+          <button
+            onClick={onToggleCollapsed}
+            className="w-full flex items-center justify-center h-8 rounded-[6px] text-white/40 hover:bg-(--green-800) dark:hover:bg-(--dark-border) transition-colors"
+          >
+            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

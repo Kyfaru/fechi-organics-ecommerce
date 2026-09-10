@@ -13,10 +13,12 @@
  *   Transitions: ease all 0.6s
  *
  * Props: { checked, onChange?, disabled?, className? }
+ * Styles: app/globals.css (.checkbox-green-*) — kept in globals so multiple
+ * instances on one page don't each inject their own <style>/keyframes.
  */
 
 import React from "react";
-import styled, { css, keyframes } from "styled-components";
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -29,79 +31,6 @@ export interface CheckboxGreenProps {
 }
 
 // ---------------------------------------------------------------------------
-// Keyframes
-// ---------------------------------------------------------------------------
-const drawCheck = keyframes`
-  from { stroke-dashoffset: 30; }
-  to   { stroke-dashoffset: 0; }
-`;
-
-// ---------------------------------------------------------------------------
-// Styled components
-// ---------------------------------------------------------------------------
-const Wrapper = styled.label<{ $disabled: boolean }>`
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  cursor: ${({ $disabled }) => ($disabled ? "not-allowed" : "pointer")};
-  opacity: ${({ $disabled }) => ($disabled ? 0.5 : 1)};
-
-  /* Hidden native checkbox */
-  input {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    opacity: 0;
-    cursor: inherit;
-  }
-
-  svg {
-    display: block;
-    pointer-events: none;
-  }
-`;
-
-const StyledSvg = styled.svg<{ $checked: boolean }>`
-  .background {
-    fill: ${({ $checked }) => ($checked ? "#6cbe45" : "#cccccc")};
-    transition: fill 0.6s ease;
-  }
-
-  .stroke {
-    stroke-dasharray: 113;
-    stroke-dashoffset: ${({ $checked }) => ($checked ? 0 : 113)};
-    transition: stroke-dashoffset 0.6s ease;
-  }
-
-  .check {
-    stroke-dasharray: 30;
-    stroke-dashoffset: ${({ $checked }) => ($checked ? 0 : 30)};
-    ${({ $checked }) =>
-      $checked &&
-      css`
-        animation: ${drawCheck} 0.4s ease 0.1s both;
-      `}
-    transition: stroke-dashoffset 0.6s ease;
-  }
-
-  /* Hover preview — partially reveal checkmark even when unchecked */
-  ${({ $checked }) =>
-    !$checked &&
-    css`
-      label:hover & .check {
-        stroke-dashoffset: 15;
-        transition: stroke-dashoffset 0.3s ease;
-      }
-    `}
-`;
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 export default function CheckboxGreen({
@@ -111,7 +40,13 @@ export default function CheckboxGreen({
   className,
 }: CheckboxGreenProps) {
   return (
-    <Wrapper $disabled={disabled} className={className}>
+    <label
+      className={cn(
+        "checkbox-green-wrapper relative inline-flex items-center justify-center w-10 h-10 shrink-0 [&_input]:absolute [&_input]:inset-0 [&_input]:w-full [&_input]:h-full [&_input]:m-0 [&_input]:opacity-0 [&_input]:cursor-inherit [&_svg]:block [&_svg]:pointer-events-none",
+        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+        className
+      )}
+    >
       <input
         type="checkbox"
         checked={checked}
@@ -120,29 +55,29 @@ export default function CheckboxGreen({
         aria-checked={checked}
       />
 
-      <StyledSvg
-        $checked={checked}
-        width="40"
-        height="40"
-        viewBox="0 0 40 40"
-        xmlns="http://www.w3.org/2000/svg"
-        aria-hidden="true"
-      >
+      <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         {/* Filled background circle */}
-        <circle className="background" cx="20" cy="20" r="18" />
+        <circle
+          className="checkbox-green-bg"
+          cx="20"
+          cy="20"
+          r="18"
+          fill={checked ? "#6cbe45" : "#cccccc"}
+        />
 
         {/*
           Stroke ring — SVG circumference of r=18 circle ≈ 113.
           Starts at 12 o'clock via transform.
         */}
         <circle
-          className="stroke"
+          className="checkbox-green-stroke"
           cx="20"
           cy="20"
           r="18"
           fill="none"
           stroke="white"
           strokeWidth="1.5"
+          strokeDashoffset={checked ? 0 : 113}
           style={{
             transformOrigin: "20px 20px",
             transform: "rotate(-90deg)",
@@ -151,15 +86,17 @@ export default function CheckboxGreen({
 
         {/* Checkmark polyline */}
         <polyline
-          className="check"
+          className="checkbox-green-check"
+          data-checked={checked}
           points="11,20 17,26.5 29,13"
           fill="none"
           stroke="white"
           strokeWidth="2.2"
           strokeLinecap="round"
           strokeLinejoin="round"
+          strokeDashoffset={checked ? 0 : 30}
         />
-      </StyledSvg>
-    </Wrapper>
+      </svg>
+    </label>
   );
 }
