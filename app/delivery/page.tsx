@@ -42,6 +42,7 @@ export default async function DeliveryPage() {
         phone: phone ?? "",
         country: sessionUser?.country ?? "KE",
       }}
+      isLoggedIn={!!sessionUser}
       branchLimited={isBranchLimitedDelivery()}
     />
   );

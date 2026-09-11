@@ -29,6 +29,10 @@ type SelectOption = { value: string; label: string; icon?: string };
 
 type Props = {
   user: { fullName: string; email: string; phone: string; country: string };
+  /** True only for a real session — `user` above is always a truthy object
+   * (empty strings for a guest), so this is what actually distinguishes the
+   * two rather than checking a field a guest is about to type into anyway. */
+  isLoggedIn: boolean;
   /** See lib/delivery-mode.ts — swaps the Kenya County step for a Branch step when true. */
   branchLimited: boolean;
 };
@@ -214,7 +218,7 @@ function SelectDropdown({
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
-export function DeliveryClient({ user, branchLimited }: Props) {
+export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
   const router = useRouter();
   const { format } = useCurrency();
   const searchParams = useSearchParams();
@@ -886,21 +890,23 @@ export function DeliveryClient({ user, branchLimited }: Props) {
               />
             </div>
 
-            <div className="my-6">
-              <PointsRedeemInput
-                grossCents={grossKes}
-                appliedPoints={pointsRequested}
-                disabled={submitting || paymentLocked}
-                onApply={(points, discountCents) => {
-                  setPointsRequested(points);
-                  setPointsDiscountKes(discountCents);
-                }}
-                onRemove={() => {
-                  setPointsRequested(0);
-                  setPointsDiscountKes(0);
-                }}
-              />
-            </div>
+            {isLoggedIn && (
+              <div className="my-6">
+                <PointsRedeemInput
+                  grossCents={grossKes}
+                  appliedPoints={pointsRequested}
+                  disabled={submitting || paymentLocked}
+                  onApply={(points, discountCents) => {
+                    setPointsRequested(points);
+                    setPointsDiscountKes(discountCents);
+                  }}
+                  onRemove={() => {
+                    setPointsRequested(0);
+                    setPointsDiscountKes(0);
+                  }}
+                />
+              </div>
+            )}
 
             {/* Coupon */}
             <div className="mt-6">

@@ -1,7 +1,7 @@
 import { getRedis } from "@/lib/redis";
 import { Err } from "@/lib/api";
 
-function clientIp(req: { headers: Headers }): string {
+export function clientIp(req: { headers: Headers }): string {
   return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
 }
 

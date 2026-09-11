@@ -5,30 +5,42 @@ import { getRedis } from '@/lib/redis'
 import { paymentChannel } from '@/lib/payment-channel'
 import { Ratelimit } from '@upstash/ratelimit'
 import { makeRatelimit } from '@/lib/ratelimit'
+import { clientIp } from '@/lib/payments/guest-abuse-guard'
 
 const ratelimit = makeRatelimit(Ratelimit.slidingWindow(5, '1 m'), 'sse_payment')
 
 export async function GET(req: NextRequest) {
-  // Gate 1: Auth
+  // Gate 1: Auth is optional — guest checkout has no session to check. A
+  // guest's browser is handed this orderId (an unguessable UUID) directly
+  // in the initiate response, which is the same "possession proves it's
+  // yours" model guest order-tracking uses everywhere; a logged-in caller
+  // still gets the stricter session-based ownership check below.
   const session = await auth.api.getSession({ headers: req.headers })
-  if (!session?.user) return new Response('Unauthorized', { status: 401 })
 
   const orderId = req.nextUrl.searchParams.get('orderId')
   if (!orderId || orderId.length < 10) {
     return new Response('Bad Request', { status: 400 })
   }
 
-  // Gate 2: Rate limit
+  // Gate 2: Rate limit — keyed on session id when logged in, else IP (a
+  // guest has no stable identity to key on otherwise).
   if (ratelimit) {
-    const { success } = await ratelimit.limit(session.user.id)
+    const { success } = await ratelimit.limit(session?.user?.id ?? clientIp(req))
     if (!success) return new Response('Too Many Requests', { status: 429 })
   }
 
-  // Gate 3: Ownership — orderId must belong to this user
-  const order = await db.order.findFirst({
-    where: { id: orderId, userId: session.user.id },
-    select: { id: true, paymentStatus: true, status: true },
-  })
+  // Gate 3: Ownership — a logged-in user must own the order; a guest may
+  // poll any order by id, since they were never asked to prove identity via
+  // session in the first place.
+  const order = session?.user
+    ? await db.order.findFirst({
+        where: { id: orderId, userId: session.user.id },
+        select: { id: true, paymentStatus: true, status: true },
+      })
+    : await db.order.findFirst({
+        where: { id: orderId },
+        select: { id: true, paymentStatus: true, status: true },
+      })
   if (!order) return new Response('Forbidden', { status: 403 })
 
   // Short-circuit: order already resolved — no stream needed
