@@ -1525,9 +1525,9 @@ export function AdminProductsClient() {
   // View / filter state
   const [view, setView] = useState<ViewMode>(() => {
     if (typeof window !== "undefined") {
-      return (localStorage.getItem("admin-products-view") as ViewMode) ?? "list";
+      return (localStorage.getItem("admin-products-view") as ViewMode) ?? "grid";
     }
-    return "list";
+    return "grid";
   });
   const [search, setSearch] = usePersistedFilter("products:search", "");
   const [filterCategory, setFilterCategory] = usePersistedFilter("products:category", "");

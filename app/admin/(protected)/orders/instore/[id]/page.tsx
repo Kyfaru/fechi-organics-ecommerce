@@ -195,7 +195,7 @@ export default async function AdminInStoreOrderDetailPage({ params }: { params: 
               <p>Amount: {latestTransaction ? kes(latestTransaction.amount) : "—"}</p>
               <p>Processed by: {order.createdByAdminName}</p>
               {order.invoiceNumber && <p>Invoice: {order.invoiceNumber}</p>}
-              <p>Receipt sent: {[order.receiptSentEmail && "Email", order.receiptSentSms && "SMS"].filter(Boolean).join(", ") || "Not sent"}</p>
+              <p>Receipt sent: {order.receiptSentEmail ? "Email" : "Not sent"}</p>
             </div>
           </div>
 

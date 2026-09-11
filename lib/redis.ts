@@ -6,7 +6,10 @@
 
 type RedisLike = {
   get: (key: string) => Promise<unknown>;
-  set: (key: string, value: unknown, options?: { ex?: number }) => Promise<unknown>;
+  // nx: only set if the key doesn't already exist (or has expired) — used
+  // for short-lived locks. Returns null/falsy when nx is set and the key
+  // already exists, matching real Redis's SET ... NX behavior.
+  set: (key: string, value: unknown, options?: { ex?: number; nx?: boolean }) => Promise<unknown>;
   incr: (key: string) => Promise<number>;
   expire: (key: string, seconds: number) => Promise<number>;
   del: (key: string) => Promise<number>;
@@ -30,6 +33,11 @@ function makeStub(): RedisLike {
       return entry.value;
     },
     async set(key, value, opts) {
+      if (opts?.nx) {
+        const existing = store.get(key);
+        const stillLive = existing && (!existing.expiresAt || Date.now() <= existing.expiresAt);
+        if (stillLive) return null;
+      }
       store.set(key, {
         value,
         expiresAt: opts?.ex ? Date.now() + opts.ex * 1000 : undefined,

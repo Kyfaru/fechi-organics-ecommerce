@@ -38,8 +38,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
   const { id } = await params;
 
   // Layout's AdminGuard already enforces orders:["view"] for any /admin/orders/*
-  // path — this is only the branch-scoping check it doesn't do (mirrors
-  // app/admin/(protected)/orders/payment-failed/[token]/page.tsx).
+  // path — this is only the branch-scoping check it doesn't do.
   const ctx = await loadCallerContext();
   if (ctx.denied) redirect("/admin/login");
 
@@ -281,6 +280,18 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
               )}
             </div>
           </div>
+
+          {/* Delivery notes — customer-entered, only shown when present */}
+          {order.deliveryNote && order.deliveryNote.trim().length > 0 && (
+            <div className={CARD}>
+              <div className={CARD_HEADER}>
+                <p className={CARD_LABEL}>Delivery Notes</p>
+              </div>
+              <div className={CARD_BODY}>
+                <p className="font-dm text-[13px] text-(--neutral-700) whitespace-pre-wrap">{order.deliveryNote}</p>
+              </div>
+            </div>
+          )}
 
           {/* Admin metadata */}
           <div className={CARD}>

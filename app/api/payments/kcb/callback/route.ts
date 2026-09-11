@@ -11,9 +11,8 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { markPaymentSuccess, markPaymentFailed } from "@/lib/payments/post-payment";
 import { reportError } from "@/lib/observability";
-import { trackServerEvent } from "@/lib/observability-server";
+import { trackServerEvent, logServerError } from "@/lib/observability-server";
 import { createNotification } from "@/lib/notify";
-import { createOrderDetailToken } from "@/lib/order-detail-token";
 
 export async function POST(req: NextRequest) {
   let body: {
@@ -93,12 +92,13 @@ export async function POST(req: NextRequest) {
         type: "PAYMENT_ERROR",
         title: `Payment failed — order #${orderId.slice(0, 8).toUpperCase()}`,
         body: `${customerLabel}'s KCB payment failed: ${callback.ResultDesc ?? "Payment failed"}`,
-        link: `/admin/orders/payment-failed/${await createOrderDetailToken(orderId, "order")}`,
+        link: `/admin/orders/${orderId}`,
         branchId: tx.order?.branchId ?? null,
       });
     }
   } catch (e) {
     reportError(e, { route: "POST /api/payments/kcb/callback", tags: { stage: "handler" } });
+    void logServerError(e, { route: "POST /api/payments/kcb/callback" });
     console.error("[kcb/callback] error", e);
   }
 

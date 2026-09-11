@@ -51,6 +51,11 @@ export async function pushSaleReceiptToZoho(args: {
   // this is the whole reference_number.
   paymentReference?: string | null;
   notes: string;
+  // Customer-entered delivery/pickup instructions (order.deliveryNote /
+  // inStoreOrder.deliveryNote) — appended to the receipt notes, right after
+  // the order number/discount summary, so it's visible below the M-Pesa
+  // code on the printed/emailed receipt.
+  deliveryNote?: string | null;
 }): Promise<{ salesReceiptId: string | null }> {
   const { organizationId, branchId, referenceType, referenceId, items } = args;
 
@@ -81,6 +86,7 @@ export async function pushSaleReceiptToZoho(args: {
       args.pointsDiscountKes
         ? `Loyalty points: ${(args.pointsRedeemed ?? 0).toLocaleString()} pts = KES ${(args.pointsDiscountKes / 100).toFixed(2)}`
         : null,
+      args.deliveryNote?.trim() ? `Delivery note: ${args.deliveryNote.trim()}` : null,
     ].filter(Boolean);
     const notes = [args.notes, ...extraNotes].filter(Boolean).join(" | ");
 

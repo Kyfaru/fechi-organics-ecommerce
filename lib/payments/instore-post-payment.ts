@@ -23,6 +23,7 @@ import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { paymentModeForInStore } from "@/lib/zoho/payment-mode";
 import { publishQstashJSON } from "@/lib/qstash";
 import { releaseRedeemedPoints } from "@/lib/points/redeem";
+import { classifyFailureReason } from "@/lib/payments/classify-failure";
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
@@ -58,6 +59,20 @@ export async function markInStorePaymentSuccess(args: {
     await tx.inStoreTransaction.update({
       where: { id: args.transactionId },
       data: args.transactionData,
+    });
+
+    await tx.inStoreTransactionEvent.create({
+      data: {
+        inStoreTransactionId: args.transactionId,
+        type: "SUCCEEDED",
+        detail:
+          typeof args.transactionData.mpesaReceiptNumber === "string"
+            ? args.transactionData.mpesaReceiptNumber
+            : typeof args.transactionData.paystackReference === "string"
+              ? args.transactionData.paystackReference
+              : null,
+        rawPayload: (args.transactionData as { rawCallbackPayload?: Prisma.InputJsonValue }).rawCallbackPayload ?? undefined,
+      },
     });
 
     const order = await tx.inStoreOrder.update({
@@ -216,6 +231,14 @@ export async function markInStorePaymentFailed(args: {
     await tx.inStoreTransaction.update({
       where: { id: args.transactionId },
       data: { status: "FAILED", failureReason: args.reason ?? null },
+    });
+
+    await tx.inStoreTransactionEvent.create({
+      data: {
+        inStoreTransactionId: args.transactionId,
+        type: classifyFailureReason(args.reason),
+        detail: args.reason ?? null,
+      },
     });
 
     await tx.inStoreOrder.update({

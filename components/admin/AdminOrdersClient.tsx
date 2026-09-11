@@ -66,6 +66,7 @@ type AdminOrder = {
   deliveryCity: string | null;
   deliveryCounty: string | null;
   deliveryPhone: string | null;
+  deliveryNote: string | null;
   deliveryType: "PICKUP" | "DELIVERY" | null;
   guestEmail: string | null;
   createdAt: string;
@@ -1056,6 +1057,16 @@ function OrderDetailDrawer({
                     <p>Customer will collect from store{order.branch?.name ? ` — ${order.branch.name}` : ""}</p>
                     {order.branch?.phone && <p className="text-(--neutral-500) mt-0.5">{order.branch.phone}</p>}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Delivery notes — customer-entered, only shown when present */}
+            {order.deliveryNote && order.deliveryNote.trim().length > 0 && (
+              <div>
+                <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Delivery Notes</p>
+                <div className="bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200)">
+                  <p className="font-dm text-[13px] text-(--neutral-700) whitespace-pre-wrap">{order.deliveryNote}</p>
                 </div>
               </div>
             )}

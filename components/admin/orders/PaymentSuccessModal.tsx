@@ -33,14 +33,11 @@ function formatKes(cents: number) {
 // Fire-and-forget receipt send used by the "×" and "Skip" exits — the admin
 // is closing regardless of whether this succeeds, so we don't block on it or
 // surface a loading/error state for this path.
-function sendReceiptFireAndForget(inStoreOrderId: string, channel: "email" | "sms" | "both") {
-  // Only ever called with "email" now that the modal no longer offers SMS —
-  // the union stays wide because the API route itself still supports sms/both
-  // for other callers (ContactCustomerPanel).
+function sendReceiptFireAndForget(inStoreOrderId: string) {
   fetch(`/api/admin/orders/instore/${inStoreOrderId}/send-receipt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ channel }),
+    body: JSON.stringify({ channel: "email" }),
   }).catch((err) => {
     console.error("[PaymentSuccessModal] fire-and-forget send-receipt failed", err);
   });
@@ -79,7 +76,7 @@ export default function PaymentSuccessModal({
   }, [open]);
 
   function handleSkipOrClose() {
-    sendReceiptFireAndForget(inStoreOrderId, "email");
+    sendReceiptFireAndForget(inStoreOrderId);
     onClose();
   }
 

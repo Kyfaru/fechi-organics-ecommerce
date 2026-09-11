@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
 import { toast } from "@/lib/toast";
 
@@ -27,12 +26,12 @@ export function Admin403() {
       <p className="font-dm text-[14px] text-(--neutral-500) dark:text-(--dark-muted) max-w-md mb-6">
         You don&apos;t have permission to view this page. Contact an administrator if you believe this is a mistake.
       </p>
-      <Link
+      <a
         href="/admin"
         className="h-10 px-5 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors inline-flex items-center"
       >
         Go to Dashboard
-      </Link>
+      </a>
     </div>
   );
 }

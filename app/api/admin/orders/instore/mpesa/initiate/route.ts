@@ -26,10 +26,12 @@ import { markInStorePaymentFailed } from "@/lib/payments/instore-post-payment";
 import { resolveMpesaGateway, otherGateway } from "@/lib/payments/mpesa/gateway";
 import type { MpesaGateway } from "@prisma/client";
 import { buildInStoreOrderNumber } from "@/lib/orders/generate-instore-order-number";
+import { createWithRetryableOrderNumber } from "@/lib/orders/create-with-retry";
 import { findOrCreateWalkInCustomer } from "@/lib/customers/find-or-create-walkin";
 import { requirePermission } from "@/lib/require-permission";
 import { logActivity } from "@/lib/admin-activity";
 import { reportError } from "@/lib/observability";
+import { logServerError } from "@/lib/observability-server";
 import { publishQstashJSON } from "@/lib/qstash";
 
 // Gives the client's 60s AbortSignal.timeout room to fire before the
@@ -223,42 +225,47 @@ export async function POST(req: NextRequest) {
         data: { paymentStatus: "PENDING" },
       });
     } else {
-      const now = new Date();
-      const orderNumber = buildInStoreOrderNumber(now, branch.id);
-      order = await db.inStoreOrder.create({
-        data: {
-          orderNumber,
-          branchId: branch.id,
-          createdByAdminId: admin.id,
-          createdByAdminName: admin.name,
-          customerUserId: resolvedCustomerUserId,
-          customerName: customerName ?? null,
-          customerPhone,
-          customerEmail: customerEmail ?? null,
-          subtotalKes,
-          discountKes,
-          pointsRedeemed,
-          pointsDiscountKes: pointsDiscountCents,
-          promoCode: normalizedPromoCode ?? null,
-          totalKes,
-          deliveryKes,
-          deliveryZoneId: deliveryZone?.id ?? null,
-          deliveryLocation: deliveryZone?.name ?? null,
-          deliveryCounty: deliveryZone?.county ?? null,
-          paymentStatus: "PENDING",
-          items: {
-            create: items.map((item) => {
-              const product = productById.get(item.productId)!;
-              return {
-                productId: product.id,
-                name: product.name,
-                priceKes: product.priceKes,
-                quantity: item.quantity,
-              };
-            }),
-          },
-        },
-      });
+      // Regenerates the order number and retries (once per second boundary)
+      // if it collides on the orderNumber unique constraint, instead of
+      // surfacing a raw DB error to the till (see lib/orders/create-with-retry.ts).
+      order = await createWithRetryableOrderNumber(
+        () => buildInStoreOrderNumber(new Date(), branch!.id),
+        (orderNumber) =>
+          db.inStoreOrder.create({
+            data: {
+              orderNumber,
+              branchId: branch!.id,
+              createdByAdminId: admin.id,
+              createdByAdminName: admin.name,
+              customerUserId: resolvedCustomerUserId,
+              customerName: customerName ?? null,
+              customerPhone,
+              customerEmail: customerEmail ?? null,
+              subtotalKes,
+              discountKes,
+              pointsRedeemed,
+              pointsDiscountKes: pointsDiscountCents,
+              promoCode: normalizedPromoCode ?? null,
+              totalKes,
+              deliveryKes,
+              deliveryZoneId: deliveryZone?.id ?? null,
+              deliveryLocation: deliveryZone?.name ?? null,
+              deliveryCounty: deliveryZone?.county ?? null,
+              paymentStatus: "PENDING",
+              items: {
+                create: items.map((item) => {
+                  const product = productById.get(item.productId)!;
+                  return {
+                    productId: product.id,
+                    name: product.name,
+                    priceKes: product.priceKes,
+                    quantity: item.quantity,
+                  };
+                }),
+              },
+            },
+          }),
+      );
 
       // Only on the initial creation path — retries reuse the same order and
       // must not record a second redemption for one order.
@@ -285,6 +292,9 @@ export async function POST(req: NextRequest) {
         amount: totalKes,
         status: "PENDING",
       },
+    });
+    await db.inStoreTransactionEvent.create({
+      data: { inStoreTransactionId: transaction.id, type: "INITIATED" },
     });
 
     // 2. Dispatch STK push — forced to KCB Buni until DARAJA_ENABLED=true
@@ -369,6 +379,7 @@ export async function POST(req: NextRequest) {
           tags: { stage: "gateway_dispatch_fallback", gateway: fallbackGateway },
         });
         console.error(`[instore/mpesa/initiate] ${fallbackGateway} fallback also failed`, fallbackErr);
+        void logServerError(fallbackErr, { route: "POST /api/admin/orders/instore/mpesa/initiate", userId: admin.id, orderId: order.id });
         await markInStorePaymentFailed({
           transactionId: transaction.id,
           inStoreOrderId: order.id,
@@ -382,6 +393,9 @@ export async function POST(req: NextRequest) {
     await db.inStoreTransaction.update({
       where: { id: transaction.id },
       data: { checkoutRequestId, mpesaGatewayUsed: gatewayUsed },
+    });
+    await db.inStoreTransactionEvent.create({
+      data: { inStoreTransactionId: transaction.id, type: "STK_SENT", detail: gatewayUsed },
     });
 
     // Schedule a timeout: if the walk-in customer abandons the STK prompt
@@ -412,6 +426,7 @@ export async function POST(req: NextRequest) {
       userId: admin.id,
       tags: { stage: "handler" },
     });
+    void logServerError(e, { route: "POST /api/admin/orders/instore/mpesa/initiate", userId: admin.id });
     console.error("[instore/mpesa/initiate] POST error", e);
 
     const prismaCode = (e as { code?: string })?.code;

@@ -1,21 +1,24 @@
 "use client";
 
-import { FormEvent, useMemo, useRef, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Icon } from "@iconify/react";
-import { AnimatePresence, motion } from "framer-motion";
 import type { Value as PhoneValue } from "react-phone-number-input";
 import { Navbar } from "@/components/layout/Navbar";
 import { StepIndicator } from "@/components/checkout/StepIndicator";
+import PointsRedeemInput from "@/components/checkout/PointsRedeemInput";
 import PhoneInput from "@/components/ui/PhoneInput";
 import { KENYA_COUNTIES } from "@/lib/kenya-counties";
 import { toast } from "@/lib/toast";
 import { useCurrency } from "@/app/providers";
 import { CHECKOUT_FLOW_FLAG_KEY } from "@/lib/checkout-flow";
+import { usePaymentStream } from "@/hooks/use-payment-stream";
+import { useDeviceSignal } from "@/hooks/use-device-signal";
 
 type DeliveryMode = "DELIVERY" | "PICKUP";
+type PaymentMethod = "mpesa" | "card";
 type Country = { code: string; name: string; flag: string };
 type Zone = { id: string; name: string; deliveryFeeKes: number; branchId: string | null };
 type Branch = { id: string; cardEligible: boolean };
@@ -26,6 +29,8 @@ type SelectOption = { value: string; label: string; icon?: string };
 
 type Props = {
   user: { fullName: string; email: string; phone: string; country: string };
+  /** See lib/delivery-mode.ts — swaps the Kenya County step for a Branch step when true. */
+  branchLimited: boolean;
 };
 
 const MODE_COPY: Record<DeliveryMode, { heading: string; description: string; icon: string }> = {
@@ -42,17 +47,42 @@ const MODE_COPY: Record<DeliveryMode, { heading: string; description: string; ic
 };
 
 const PICKUP_STORES = [
-  { id: "pickup-nairobi",   branchId: "branch-nairobi",  city: "Nairobi",     county: "Nairobi",      name: "Nairobi — Spur Mall, 1st Floor, Shop F12" },
-  { id: "pickup-nakuru",    branchId: "branch-nakuru",   city: "Nakuru",      county: "Nakuru",       name: "Nakuru — Baraka Plaza, 1st Floor, Shop F2" },
-  { id: "pickup-kitengela", branchId: null,              city: "Kitengela",   county: "Kajiado",      name: "Kitengela — Next to Eastmart, 2nd Floor, Shop 63" },
-  { id: "pickup-eldoret",   branchId: "branch-eldoret",  city: "Eldoret",     county: "Uasin Gishu",  name: "Eldoret — Eldo Center, 1st Floor, Shop 6" },
-  { id: "pickup-mwea",      branchId: null,              city: "Mwea",        county: "Kirinyaga",    name: "Mwea — MTC Building, Opp. Nice City, 1st Floor" },
+  { id: "pickup-nairobi",   branchId: "branch-nairobi",   city: "Nairobi",     county: "Nairobi",      name: "Nairobi — Spur Mall, 1st Floor, Shop F12" },
+  { id: "pickup-nakuru",    branchId: "branch-nakuru",    city: "Nakuru",      county: "Nakuru",       name: "Nakuru — Baraka Plaza, 1st Floor, Shop F2" },
+  { id: "pickup-kitengela", branchId: "branch-kitengela", city: "Kitengela",   county: "Kajiado",      name: "Kitengela — Next to Eastmart, 2nd Floor, Shop 63" },
+  { id: "pickup-eldoret",   branchId: "branch-eldoret",   city: "Eldoret",     county: "Uasin Gishu",  name: "Eldoret — Eldo Center, 1st Floor, Shop 6" },
+  { id: "pickup-mwea",      branchId: "branch-mwea",      city: "Mwea",        county: "Kirinyaga",    name: "Mwea — MTC Building, Opp. Nice City, 1st Floor" },
 ] as const;
+
+// The 5 locations delivery is currently limited to (see lib/delivery-mode.ts)
+// while real per-branch Daraja/KCB credentials only exist for Nairobi and
+// Nakuru. Maps each to the county its DeliveryZone rows are already keyed by,
+// so the existing zone/pricing plumbing below needs no other changes.
+const KENYA_DELIVERY_BRANCHES = [
+  { county: "Nairobi",     label: "Nairobi" },
+  { county: "Nakuru",      label: "Nakuru" },
+  { county: "Kajiado",     label: "Kitengela" },
+  { county: "Uasin Gishu", label: "Eldoret" },
+  { county: "Kirinyaga",   label: "Mwea" },
+] as const;
+
+const PAYSTACK_ERROR_MESSAGES: Record<string, string> = {
+  payment_failed: "Payment was not completed. Please try again.",
+  missing_reference: "Payment reference missing. Please try again.",
+  not_found: "Payment record not found. Please try again.",
+  forbidden: "Payment access denied. Please try again.",
+  verify_failed: "Could not verify payment. Please try again.",
+};
 
 const labelClass = "block mb-2 text-[12px] font-semibold tracking-[0.08em] text-[#40493c] dark:text-gray-300";
 const inputBase = "w-full h-13 rounded-[8px] border bg-[#fbfbfb] dark:bg-gray-800 px-4 text-[15px] text-[#1a1c1c] dark:text-white outline-none transition-colors placeholder:text-[#6b7280] focus:ring-2";
 const inputNormal = `${inputBase} border-[#c0cab8] focus:border-[#27731e] focus:ring-[#27731e]/10`;
 const inputError  = `${inputBase} border-red-400 focus:border-red-400 focus:ring-red-100`;
+// Contact-details and delivery-details cards: 15px radius, 24px of padding
+// between the inputs and the card border — deliberately its own treatment,
+// distinct from the payment-method and order-summary cards below, which keep
+// their old rounded-[12px]/p-6-8 styling.
+const tightCard = "rounded-[15px] border border-[#dce4d8] bg-white p-[24px] shadow-sm dark:border-gray-700 dark:bg-gray-900";
 
 function inputCls(hasError: boolean) { return hasError ? inputError : inputNormal; }
 
@@ -184,9 +214,22 @@ function SelectDropdown({
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
-export function DeliveryClient({ user }: Props) {
+export function DeliveryClient({ user, branchLimited }: Props) {
   const router = useRouter();
   const { format } = useCurrency();
+  const searchParams = useSearchParams();
+
+  // Paystack's verify route redirects failures back here (via the retired
+  // /payment route forwarding its ?error= — see app/payment/page.tsx) — show
+  // it immediately.
+  const paystackError = searchParams.get("error");
+  const paystackErrorMessage = paystackError
+    ? (PAYSTACK_ERROR_MESSAGES[paystackError] ?? "Payment failed. Please try again.")
+    : null;
+
+  // Records this browser for anti-farming scoring — checkout is the moment it
+  // matters, since the joining bonus unlocks against these signals once this pays.
+  useDeviceSignal();
 
   // Only reachable via the cart's "Place Order" button (which sets this
   // flag) — typing/bookmarking /delivery directly sends you back to /cart.
@@ -198,6 +241,7 @@ export function DeliveryClient({ user }: Props) {
         return;
       }
       setFlowChecked(true);
+      capture("checkout_started", { step: "delivery" });
     }, 0);
   }, [router]);
 
@@ -238,8 +282,25 @@ export function DeliveryClient({ user }: Props) {
     return v ? parseInt(v, 10) : 0;
   });
   const [freeDelivery, setFreeDelivery] = useState(() => ss("fechi_promo_free_shipping") === "1");
+  const [referralCode, setReferralCode] = useState("");
+
+  // Loyalty points the customer chose to spend. Sent as a *request* — the
+  // server re-checks the balance and re-derives the discount itself.
+  const [pointsRequested, setPointsRequested] = useState(0);
+  const [pointsDiscountKes, setPointsDiscountKes] = useState(0);
+
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("mpesa");
+  const [mpesaPhone, setMpesaPhone] = useState("");
+  useEffect(() => {
+    if (!mpesaPhone && phone) setMpesaPhone(phone as string);
+  }, [phone, mpesaPhone]);
+
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
+  const [failureCount, setFailureCount] = useState(0);
+  const [paymentLocked, setPaymentLocked] = useState(false);
 
   const isKenya = country === "KE";
   const selectedStore = PICKUP_STORES.find((s) => s.id === storeId) ?? PICKUP_STORES[0];
@@ -309,13 +370,20 @@ export function DeliveryClient({ user }: Props) {
   const items = cartQuery.data?.data?.items ?? [];
   const subtotalKes = cartQuery.data?.data?.subtotalKes ?? 0;
   const discountKes = promoStatus === "valid" ? discountAmountKes : 0;
-  const totalKes = subtotalKes + feeKes - discountKes;
   const branches = branchesQuery.data?.data?.branches ?? [];
   const selectedBranchId = mode === "PICKUP" ? selectedStore.branchId : (selectedZone?.branchId ?? null);
   const selectedBranchCardEligible = branches.find((b) => b.id === selectedBranchId)?.cardEligible ?? false;
   // Card is only offered for international orders or Nairobi/Nakuru branch locations —
   // mirrors lib/payments/card-eligibility.ts, which is the authoritative server-side check.
   const isCardEligible = !isKenya || selectedBranchCardEligible;
+
+  // Points always apply last, on top of any coupon — same order the server
+  // computes in lib/checkout/compute-totals.ts.
+  const grossKes = Math.max(0, subtotalKes + feeKes - discountKes);
+  const totalKes = Math.max(0, grossKes - pointsDiscountKes);
+  // Nothing left to pay in cash. The server re-derives this independently and
+  // refuses the points-checkout endpoint if any balance remains.
+  const fullyCoveredByPoints = pointsRequested > 0 && totalKes === 0;
 
   // ---------------------------------------------------------------------------
   // Validation errors (computed, only surfaced when submitted)
@@ -329,7 +397,7 @@ export function DeliveryClient({ user }: Props) {
     if (!phone) e.phone = "Please enter your phone number";
     if (mode === "DELIVERY") {
       if (isKenya) {
-        if (!county) e.county = "Please select your county";
+        if (!county) e.county = branchLimited ? "Please select a delivery branch" : "Please select your county";
         else if (noZones) e.zone = "No delivery zones available for this county — contact the store or pick another county";
         else if (!zoneId) e.zone = "Please select a delivery zone";
       } else {
@@ -339,7 +407,7 @@ export function DeliveryClient({ user }: Props) {
       }
     }
     return e;
-  }, [firstName, lastName, email, phone, mode, isKenya, county, noZones, zoneId, address, state, stateText, postalCode]);
+  }, [firstName, lastName, email, phone, mode, isKenya, county, noZones, zoneId, address, state, stateText, postalCode, branchLimited]);
 
   // ---------------------------------------------------------------------------
   // Promo handlers
@@ -399,8 +467,107 @@ export function DeliveryClient({ user }: Props) {
   }
 
   // ---------------------------------------------------------------------------
-  // Submit
+  // Submit — builds the order payload locally (no more sessionStorage
+  // handoff to a separate /payment page) and calls the matching
+  // payment-initiate route directly.
   // ---------------------------------------------------------------------------
+  function buildDeliveryData() {
+    return {
+      fullName: `${firstName} ${lastName}`.trim(),
+      firstName, lastName, email,
+      phone: phone as string,
+      country,
+      countryName: selectedCountry?.name ?? country,
+      county:  mode === "PICKUP" ? selectedStore.county : isKenya ? county : "",
+      state:   mode === "PICKUP" ? selectedStore.city  : isKenya ? county : state || stateText,
+      zoneId:  mode === "DELIVERY" ? (zoneId || null) : null,
+      deliveryZone: mode === "DELIVERY" ? (selectedZone?.name ?? null) : null,
+      address,
+      city:       mode === "PICKUP" ? selectedStore.city : isKenya ? county : state || stateText,
+      postalCode, notes,
+      deliveryType: mode,
+      branchId:   mode === "PICKUP" ? selectedStore.branchId : (selectedZone?.branchId ?? null),
+      branchName: mode === "PICKUP" ? selectedStore.name : null,
+      deliveryKes: feeKes,
+      deliveryFeeLabel: feeLabel,
+      promoCode: promoCode.trim().toUpperCase() || null,
+      referralCode: referralCode.trim().toUpperCase() || null,
+      isCardEligible,
+      pointsRequested,
+    };
+  }
+
+  async function handleMpesaPay() {
+    setSubmitting(true);
+    capture("payment_initiated", { method: "mpesa" });
+    try {
+      const res = await fetch("/api/payments/mpesa/initiate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: mpesaPhone, deliveryData: buildDeliveryData() }),
+      });
+      const json = await res.json() as { ok: boolean; data?: { orderId: string }; error?: { message: string } };
+      if (!res.ok || !json.data?.orderId) {
+        toast.error(json.error?.message ?? "Could not initiate payment. Please try again.");
+        return;
+      }
+      setActiveOrderId(json.data.orderId);
+      setShowModal(true);
+    } catch {
+      toast.error("Could not initiate payment. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleCardPay() {
+    setSubmitting(true);
+    capture("payment_initiated", { method: "card" });
+    try {
+      const res = await fetch("/api/payments/paystack/initialize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deliveryData: buildDeliveryData() }),
+      });
+      const json = await res.json() as { ok: boolean; data?: { authorization_url: string; reference: string; orderId: string }; error?: { message: string } };
+      if (!res.ok || !json.data?.authorization_url) {
+        toast.error(json.error?.message ?? "Could not start card payment. Please try again.");
+        return;
+      }
+      window.location.href = json.data.authorization_url;
+    } catch {
+      toast.error("Could not start card payment. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handlePointsPay() {
+    setSubmitting(true);
+    capture("payment_initiated", { method: "points" });
+    try {
+      const res = await fetch("/api/payments/points/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deliveryData: buildDeliveryData() }),
+      });
+      const json = (await res.json()) as {
+        ok: boolean;
+        data?: { orderId: string };
+        error?: { message: string };
+      };
+      if (!res.ok || !json.data?.orderId) {
+        toast.error(json.error?.message ?? "Could not complete your order. Please try again.");
+        return;
+      }
+      router.push(`/order-success/${json.data.orderId}`);
+    } catch {
+      toast.error("Could not complete your order. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setSubmitted(true);
@@ -413,38 +580,21 @@ export function DeliveryClient({ user }: Props) {
       return;
     }
     if (pricingQuery.isFetching) return;
-
-    setSubmitting(true);
-    try {
-      const deliveryData = {
-        fullName: `${firstName} ${lastName}`.trim(),
-        firstName, lastName, email,
-        phone: phone as string,
-        country,
-        countryName: selectedCountry?.name ?? country,
-        county:  mode === "PICKUP" ? selectedStore.county : isKenya ? county : "",
-        state:   mode === "PICKUP" ? selectedStore.city  : isKenya ? county : state || stateText,
-        zoneId:  mode === "DELIVERY" ? (zoneId || null) : null,
-        deliveryZone: mode === "DELIVERY" ? (selectedZone?.name ?? null) : null,
-        address,
-        city:       mode === "PICKUP" ? selectedStore.city : isKenya ? county : state || stateText,
-        postalCode, notes,
-        deliveryType: mode,
-        branchId:   mode === "PICKUP" ? selectedStore.branchId : (selectedZone?.branchId ?? null),
-        branchName: mode === "PICKUP" ? selectedStore.name : null,
-        deliveryKes: feeKes,
-        deliveryFeeLabel: feeLabel,
-        promoCode: promoCode.trim().toUpperCase() || null,
-        isCardEligible,
-      };
-      sessionStorage.setItem("fechi_delivery", JSON.stringify(deliveryData));
-      capture("delivery_form_completed", { country, mode, feeKes });
-      router.push("/payment");
-    } catch {
-      toast.error("Something went wrong. Please try again.");
-    } finally {
-      setSubmitting(false);
+    if (paymentLocked) {
+      toast.warning("Please wait a moment", { message: "Give it about 30 seconds before trying to pay again." });
+      return;
     }
+    if (!fullyCoveredByPoints && selectedMethod === "mpesa" && !mpesaPhone.trim()) {
+      toast.error("Please enter the M-Pesa phone number to receive the prompt on.");
+      return;
+    }
+
+    capture("delivery_form_completed", { country, mode, feeKes });
+    // Points covered the whole bill — there is nothing for a gateway to
+    // collect, so skip it entirely rather than pushing a KSh 0 STK request.
+    if (fullyCoveredByPoints) void handlePointsPay();
+    else if (selectedMethod === "mpesa") void handleMpesaPay();
+    else void handleCardPay();
   }
 
   // ---------------------------------------------------------------------------
@@ -453,7 +603,9 @@ export function DeliveryClient({ user }: Props) {
   const showErr = (key: string) => submitted ? errors[key] : undefined;
 
   const countryOptions: SelectOption[] = countries.map((c) => ({ value: c.code, label: c.name, icon: c.flag }));
-  const countyOptions: SelectOption[] = KENYA_COUNTIES.map((c) => ({ value: c, label: c }));
+  const countyOptions: SelectOption[] = branchLimited
+    ? KENYA_DELIVERY_BRANCHES.map((b) => ({ value: b.county, label: b.label }))
+    : KENYA_COUNTIES.map((c) => ({ value: c, label: c }));
   const zoneOptions: SelectOption[] = zones.map((z) => ({ value: z.id, label: `${z.name} — ${format(z.deliveryFeeKes)}` }));
   const storeOptions: SelectOption[] = PICKUP_STORES.map((s) => ({ value: s.id, label: s.name }));
   const stateSelectOptions: SelectOption[] = stateOptions.map((s) => ({ value: s.name, label: s.name }));
@@ -473,187 +625,233 @@ export function DeliveryClient({ user }: Props) {
     <>
     <Navbar />
     <div className="min-h-screen bg-[#f8f8f7] dark:bg-gray-950">
-      
+
       <main className="mx-auto w-full max-w-[1180px] px-4 py-10 md:py-14">
         <div className="mb-8"><StepIndicator step={2} /></div>
+        <h1 className="mb-6 font-heading text-[32px] font-bold text-[#1a1c1c] dark:text-white">Checkout</h1>
+
+        {paystackErrorMessage ? (
+          <div className="mb-6 flex items-start gap-3 rounded-[10px] border border-red-200 bg-red-50 px-5 py-4 text-[14px] text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+            <Icon icon="mdi:alert-circle-outline" width={20} className="mt-0.5 shrink-0" />
+            <span>{paystackErrorMessage}</span>
+          </div>
+        ) : null}
+
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_430px] lg:items-start">
 
           {/* ─── Left: form ─── */}
           <section>
-            <h1 className="mb-6 font-heading text-[32px] font-bold text-[#1a1c1c] dark:text-white">Delivery Details</h1>
-
-            {/* Mode toggle */}
-            <div className="mb-6 grid grid-cols-2 gap-2 rounded-[10px] bg-[#f0f0ef] p-2">
-              {(["DELIVERY", "PICKUP"] as const).map((v) => (
-                <button key={v} type="button" onClick={() => setMode(v)}
-                  className={`flex h-10 items-center justify-center gap-2 rounded-[8px] text-[13px] font-bold transition-colors ${mode === v ? "bg-white text-[#0b6b13] shadow-sm" : "text-[#40493c]"}`}>
-                  <Icon icon={v === "DELIVERY" ? "mdi:truck-delivery-outline" : "mdi:store-outline"} width={16} />
-                  {v === "DELIVERY" ? "Home Delivery" : "Pickup from Store"}
-                </button>
-              ))}
-            </div>
-
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={mode}
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 4 }}
-                transition={{ duration: 0.18 }}
-                className="mb-4 flex items-center gap-2.5"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e8f3e6] text-[#0b6b13] dark:bg-[#0b6b13]/20">
-                  <Icon icon={MODE_COPY[mode].icon} width={18} />
-                </span>
-                <div>
-                  <p className="text-[14px] font-bold text-[#1a1c1c] dark:text-white">{MODE_COPY[mode].heading}</p>
-                  <p className="text-[12px] text-[#6b7568] dark:text-gray-400">{MODE_COPY[mode].description}</p>
+            <form id="checkout-form" onSubmit={handleSubmit}>
+              {/* Contact details card */}
+              <div className={tightCard}>
+                <h2 className="mb-5 font-heading text-[18px] font-bold text-[#1a1c1c] dark:text-white">Contact Details</h2>
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <Field label="First Name" error={showErr("firstName")}>
+                    <input className={inputCls(!!showErr("firstName"))} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Jane" />
+                  </Field>
+                  <Field label="Last Name" error={showErr("lastName")}>
+                    <input className={inputCls(!!showErr("lastName"))} value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="e.g. Doe" />
+                  </Field>
+                  <PhoneInput label="Phone Number" value={phone} onChange={setPhone} error={showErr("phone")} />
+                  <Field label="Email Address" error={showErr("email")}>
+                    <input type="email" className={inputCls(!!showErr("email"))} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" />
+                  </Field>
                 </div>
-              </motion.div>
-            </AnimatePresence>
-
-            <form id="delivery-details-form" onSubmit={handleSubmit} className="rounded-[12px] border border-[#dce4d8] bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-900 md:p-8">
-              {/* Contact fields */}
-              <div className="grid gap-5 sm:grid-cols-2">
-                <Field label="First Name" error={showErr("firstName")}>
-                  <input className={inputCls(!!showErr("firstName"))} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Jane" />
-                </Field>
-                <Field label="Last Name" error={showErr("lastName")}>
-                  <input className={inputCls(!!showErr("lastName"))} value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="e.g. Doe" />
-                </Field>
-                <PhoneInput label="Phone Number" value={phone} onChange={setPhone} error={showErr("phone")} />
-                <Field label="Email Address" error={showErr("email")}>
-                  <input type="email" className={inputCls(!!showErr("email"))} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" />
-                </Field>
               </div>
 
-              <div className="my-6 h-px bg-[#e6ebe3]" />
+              {/* Mode toggle — between the contact and delivery cards */}
+              <div className="my-6 grid grid-cols-2 gap-2 rounded-[10px] bg-[#f0f0ef] p-2">
+                {(["DELIVERY", "PICKUP"] as const).map((v) => (
+                  <button key={v} type="button" onClick={() => setMode(v)}
+                    className={`flex h-10 items-center justify-center gap-2 rounded-[8px] text-[13px] font-bold transition-colors ${mode === v ? "bg-white text-[#0b6b13] shadow-sm" : "text-[#40493c]"}`}>
+                    <Icon icon={v === "DELIVERY" ? "mdi:truck-delivery-outline" : "mdi:store-outline"} width={16} />
+                    {v === "DELIVERY" ? "Home Delivery" : "Pickup from Store"}
+                  </button>
+                ))}
+              </div>
 
-              {/* ─── Delivery mode ─── */}
-              {mode === "DELIVERY" ? (
-                <div className="space-y-5">
-                  <div className="grid gap-5 sm:grid-cols-2">
-                    {/* Country */}
-                    <Field label="Country">
-                      <SelectDropdown
-                        value={country}
-                        onChange={handleCountryChange}
-                        options={countryOptions}
-                        placeholder="Select country..."
-                        loading={countriesQuery.isLoading}
-                        searchable
-                      />
-                    </Field>
-
-                    {/* County (Kenya) / State (International) */}
-                    {isKenya ? (
-                      <Field label="County" error={showErr("county")}>
-                        <SelectDropdown
-                          value={county}
-                          onChange={(v) => { setCounty(v); setZoneId(""); }}
-                          options={countyOptions}
-                          placeholder="Select a county"
-                          hasError={!!showErr("county")}
-                          searchable
-                        />
-                      </Field>
-                    ) : (
-                      <Field label="State / Province" error={showErr("state")}>
-                        {statesQuery.isLoading ? (
-                          <div className="h-13 rounded-[8px] bg-[#eef4eb] animate-pulse" />
-                        ) : stateFallback ? (
-                          <input
-                            className={inputCls(!!showErr("state"))}
-                            value={stateText}
-                            onChange={(e) => setStateText(e.target.value)}
-                            placeholder="State or province"
-                          />
-                        ) : (
-                          <SelectDropdown
-                            value={state}
-                            onChange={setState}
-                            options={stateSelectOptions}
-                            placeholder="Select state"
-                            hasError={!!showErr("state")}
-                            searchable
-                          />
-                        )}
-                      </Field>
-                    )}
+              {/* Delivery details card */}
+              <div className={tightCard}>
+                  <div className="mb-5 flex items-center gap-2.5">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e8f3e6] text-[#0b6b13] dark:bg-[#0b6b13]/20">
+                      <Icon icon={MODE_COPY[mode].icon} width={18} />
+                    </span>
+                    <div>
+                      <p className="text-[14px] font-bold text-[#1a1c1c] dark:text-white">{MODE_COPY[mode].heading}</p>
+                      <p className="text-[12px] text-[#6b7568] dark:text-gray-400">{MODE_COPY[mode].description}</p>
+                    </div>
                   </div>
 
-                  {/* Delivery Zone (Kenya only) */}
-                  {isKenya && (
-                    <Field label="Delivery Zone" error={showErr("zone")}>
-                      <SelectDropdown
-                        value={zoneId}
-                        onChange={(v) => { setZoneId(v); capture("delivery_zone_selected", { zoneId: v }); }}
-                        options={zoneOptions}
-                        placeholder={
-                          !county ? "Select a county first" :
-                          noZones ? "No zones available — contact us or pick another county" :
-                          "Select a delivery zone"
-                        }
-                        disabled={!county || noZones}
-                        loading={zonesQuery.isLoading && Boolean(county)}
-                        hasError={!!showErr("zone")}
-                        searchable
-                      />
-                    </Field>
-                  )}
+                  {mode === "DELIVERY" ? (
+                    <div className="space-y-5">
+                      <div className="grid gap-5 sm:grid-cols-2">
+                        {/* Country */}
+                        <Field label="Country">
+                          <SelectDropdown
+                            value={country}
+                            onChange={handleCountryChange}
+                            options={countryOptions}
+                            placeholder="Select country..."
+                            loading={countriesQuery.isLoading}
+                            searchable
+                          />
+                        </Field>
 
-                  {/* Town / Estate / Building (Kenya) or Address (International) */}
-                  {isKenya ? (
-                    <Field label="Town / Estate / Building (Optional)">
-                      <input
-                        className={inputNormal}
-                        value={address}
-                        onChange={(e) => setAddress(e.target.value)}
-                        placeholder={!zoneId ? "Select a delivery zone first" : "e.g. Westlands, The Mirage"}
-                        disabled={!zoneId}
-                      />
-                    </Field>
+                        {/* Branch (branch-limited Kenya) / County (full Kenya) / State (International) */}
+                        {isKenya ? (
+                          <Field label={branchLimited ? "Delivery Branch" : "County"} error={showErr("county")}>
+                            <SelectDropdown
+                              value={county}
+                              onChange={(v) => { setCounty(v); setZoneId(""); }}
+                              options={countyOptions}
+                              placeholder={branchLimited ? "Select a delivery branch" : "Select a county"}
+                              hasError={!!showErr("county")}
+                              searchable={!branchLimited}
+                            />
+                          </Field>
+                        ) : (
+                          <Field label="State / Province" error={showErr("state")}>
+                            {statesQuery.isLoading ? (
+                              <div className="h-13 rounded-[8px] bg-[#eef4eb] animate-pulse" />
+                            ) : stateFallback ? (
+                              <input
+                                className={inputCls(!!showErr("state"))}
+                                value={stateText}
+                                onChange={(e) => setStateText(e.target.value)}
+                                placeholder="State or province"
+                              />
+                            ) : (
+                              <SelectDropdown
+                                value={state}
+                                onChange={setState}
+                                options={stateSelectOptions}
+                                placeholder="Select state"
+                                hasError={!!showErr("state")}
+                                searchable
+                              />
+                            )}
+                          </Field>
+                        )}
+                      </div>
+
+                      {/* Delivery Zone (Kenya only) */}
+                      {isKenya && (
+                        <Field label="Delivery Zone" error={showErr("zone")}>
+                          <SelectDropdown
+                            value={zoneId}
+                            onChange={(v) => { setZoneId(v); capture("delivery_zone_selected", { zoneId: v }); }}
+                            options={zoneOptions}
+                            placeholder={
+                              !county ? (branchLimited ? "Select a delivery branch first" : "Select a county first") :
+                              noZones ? "No zones available — contact us or pick another county" :
+                              "Select a delivery zone"
+                            }
+                            disabled={!county || noZones}
+                            loading={zonesQuery.isLoading && Boolean(county)}
+                            hasError={!!showErr("zone")}
+                            searchable
+                          />
+                        </Field>
+                      )}
+
+                      {/* Town / Estate / Building (Kenya) or Address (International) */}
+                      {isKenya ? (
+                        <Field label="Town / Estate / Building (Optional)">
+                          <input
+                            className={inputNormal}
+                            value={address}
+                            onChange={(e) => setAddress(e.target.value)}
+                            placeholder={!zoneId ? "Select a delivery zone first" : "e.g. Westlands, The Mirage"}
+                            disabled={!zoneId}
+                          />
+                        </Field>
+                      ) : (
+                        <div className="grid gap-5 sm:grid-cols-2">
+                          <Field label="Address Line" error={showErr("address")}>
+                            <input
+                              className={inputCls(!!showErr("address"))}
+                              value={address}
+                              onChange={(e) => setAddress(e.target.value)}
+                              placeholder="Street, building, apartment"
+                            />
+                          </Field>
+                          <Field label="Zip / Postal Code" error={showErr("postalCode")}>
+                            <input
+                              className={inputCls(!!showErr("postalCode"))}
+                              value={postalCode}
+                              onChange={(e) => setPostalCode(e.target.value)}
+                              placeholder="Postal code"
+                            />
+                          </Field>
+                        </div>
+                      )}
+
+                      <Field label="Delivery Notes (Optional)">
+                        <textarea rows={4} className={`${inputNormal} h-auto resize-none py-4`} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any specific instructions for the rider?" />
+                      </Field>
+                    </div>
                   ) : (
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      <Field label="Address Line" error={showErr("address")}>
-                        <input
-                          className={inputCls(!!showErr("address"))}
-                          value={address}
-                          onChange={(e) => setAddress(e.target.value)}
-                          placeholder="Street, building, apartment"
+                    <div className="space-y-5">
+                      <Field label="Store Location">
+                        <SelectDropdown
+                          value={storeId}
+                          onChange={setStoreId}
+                          options={storeOptions}
+                          placeholder="Select a store"
                         />
                       </Field>
-                      <Field label="Zip / Postal Code" error={showErr("postalCode")}>
-                        <input
-                          className={inputCls(!!showErr("postalCode"))}
-                          value={postalCode}
-                          onChange={(e) => setPostalCode(e.target.value)}
-                          placeholder="Postal code"
-                        />
+                      <Field label="Additional Notes (Optional)">
+                        <textarea rows={4} className={`${inputNormal} h-auto resize-none py-4`} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the store team should know?" />
                       </Field>
                     </div>
                   )}
+              </div>
 
-                  <Field label="Delivery Notes (Optional)">
-                    <textarea rows={4} className={`${inputNormal} h-auto resize-none py-4`} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any specific instructions for the rider?" />
-                  </Field>
+              {/* Payment method — unchanged styling from the old /payment page */}
+              <section className="mt-6 rounded-[12px] border border-[#e1e8de] bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-900 md:p-8">
+                <div className="mb-6 flex items-center gap-3">
+                  <Icon icon="mdi:wallet-outline" width={22} className="text-[#0b6b13]" />
+                  <div>
+                    <h2 className="font-heading text-[24px] font-bold text-[#1a1c1c] dark:text-white">Choose Payment Method</h2>
+                    <p className="mt-2 text-[13px] text-[#40493c] dark:text-gray-400">All transactions are secure and encrypted.</p>
+                  </div>
                 </div>
-              ) : (
-                /* ─── Pickup mode ─── */
-                <div className="space-y-5">
-                  <Field label="Store Location">
-                    <SelectDropdown
-                      value={storeId}
-                      onChange={setStoreId}
-                      options={storeOptions}
-                      placeholder="Select a store"
-                    />
-                  </Field>
-                  <Field label="Additional Notes (Optional)">
-                    <textarea rows={4} className={`${inputNormal} h-auto resize-none py-4`} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the store team should know?" />
-                  </Field>
+
+                <div className="space-y-3">
+                  {fullyCoveredByPoints ? (
+                    <div className="rounded-[12px] border-2 border-[#27731e] bg-[#f4fff3] p-5">
+                      <div className="flex items-center gap-2">
+                        <Icon icon="mdi:trophy-outline" width={20} className="text-[#27731e]" />
+                        <h3 className="font-heading text-[17px] font-bold text-[#1a1c1c]">
+                          Paying with Fechi Points
+                        </h3>
+                      </div>
+                      <p className="mt-2 text-[13px] leading-relaxed text-[#40493c]">
+                        Your {pointsRequested.toLocaleString()} points cover this order in full, so
+                        there&apos;s nothing left to pay. No M-Pesa prompt or card needed — just
+                        place your order below.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <PaymentOption active={selectedMethod === "mpesa"} onClick={() => setSelectedMethod("mpesa")} title="M-Pesa STK Push" badge="M-PESA">
+                        <p className="mb-4 text-[13px] text-[#40493c] dark:text-gray-200">You will receive a prompt on your phone to complete the payment.</p>
+                        <label className="mb-2 block text-[12px] font-semibold tracking-[0.08em] text-[#40493c] dark:text-gray-200">Enter Your M-Pesa Phone Number</label>
+                        <input value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} className="h-12 w-full rounded-[8px] border border-[#c0cab8] dark:border-[#27731e] bg-[#fbfbfb] dark:bg-gray-800 px-4 text-[16px] text-text-dark dark:text-white/90 text-bold outline-none focus:border-yellow-cta" />
+                      </PaymentOption>
+                      {isCardEligible && (
+                        <PaymentOption active={selectedMethod === "card"} onClick={() => setSelectedMethod("card")} title="Credit / Debit Card" badge="VISA  MC" />
+                      )}
+                    </>
+                  )}
                 </div>
-              )}
+
+                <div className="mt-10 flex flex-wrap justify-center gap-8 text-[12px] font-bold uppercase tracking-[0.12em] text-[#707a6b]">
+                  <span className="flex items-center gap-2"><Icon icon="mdi:lock-outline" width={16} className="text-[#27731e]" /> SSL Secured</span>
+                  <span className="flex items-center gap-2"><Icon icon="mdi:shield-check-outline" width={16} className="text-[#27731e]" /> Encrypted</span>
+                  <span className="flex items-center gap-2"><Icon icon="mdi:message-outline" width={16} className="text-[#27731e]" /> 24/7 Support</span>
+                </div>
+              </section>
             </form>
           </section>
 
@@ -673,6 +871,35 @@ export function DeliveryClient({ user }: Props) {
                   <p className="text-[14px] font-bold text-[#1a1c1c] dark:text-white">{format(item.lineTotalKes)}</p>
                 </div>
               )) : <p className="text-sm text-[#40493c]">Your cart is empty.</p>}
+            </div>
+
+            <div className="my-6 h-px bg-[#e6ebe3]" />
+
+            {/* Referral code — doesn't discount this order; see prisma/schema.prisma's pendingReferralCode comment */}
+            <div>
+              <label className={labelClass}>Referral Code (Optional)</label>
+              <input
+                className={inputNormal}
+                value={referralCode}
+                onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                placeholder="Got a friend's code?"
+              />
+            </div>
+
+            <div className="my-6">
+              <PointsRedeemInput
+                grossCents={grossKes}
+                appliedPoints={pointsRequested}
+                disabled={submitting || paymentLocked}
+                onApply={(points, discountCents) => {
+                  setPointsRequested(points);
+                  setPointsDiscountKes(discountCents);
+                }}
+                onRemove={() => {
+                  setPointsRequested(0);
+                  setPointsDiscountKes(0);
+                }}
+              />
             </div>
 
             {/* Coupon */}
@@ -724,24 +951,41 @@ export function DeliveryClient({ user }: Props) {
                 value={pricingQuery.isFetching ? "Calculating..." : (feeKes ? format(feeKes) : "Free")}
               />
               {discountKes > 0 && <SummaryRow label="Discount" value={`- ${format(discountKes)}`} green />}
+              {pointsDiscountKes > 0 && (
+                <SummaryRow
+                  label={`Fechi points (${pointsRequested.toLocaleString()} pts)`}
+                  value={`- ${format(pointsDiscountKes)}`}
+                  green
+                />
+              )}
             </div>
 
             <div className="my-6 h-px bg-[#e6ebe3]" />
 
             <div className="flex items-end justify-between">
-              <span className="text-[22px] font-bold text-[#1a1c1c] dark:text-white">Total</span>
+              <span className="text-[22px] font-bold text-[#1a1c1c] dark:text-white">
+                {pointsDiscountKes > 0 ? "Left to pay" : "Total"}
+              </span>
               <span className="text-[32px] font-black text-[#1a1c1c] dark:text-white">{format(totalKes)}</span>
             </div>
 
             <button
               type="submit"
-              form="delivery-details-form"
-              disabled={submitting || pricingQuery.isFetching}
-              className="mt-8 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#fec700] text-[12px] font-black uppercase tracking-[0.12em] text-[#1a1c1c] transition-colors hover:bg-[#f0b800] disabled:cursor-not-allowed disabled:opacity-50"
+              form="checkout-form"
+              disabled={
+                submitting ||
+                pricingQuery.isFetching ||
+                paymentLocked ||
+                (!fullyCoveredByPoints && selectedMethod === "mpesa" && !mpesaPhone.trim())
+              }
+              className="mt-8 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-[#fec700] text-[15px] font-black uppercase tracking-[0.08em] text-[#1a1c1c] transition-colors hover:bg-[#f0b800] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {submitting ? <Icon icon="mdi:loading" width={16} className="animate-spin" /> : null}
-              Continue to Payment
-              <Icon icon="mdi:arrow-right" width={16} />
+              <Icon
+                icon={submitting ? "mdi:loading" : fullyCoveredByPoints ? "mdi:trophy-outline" : "mdi:lock-outline"}
+                width={18}
+                className={submitting ? "animate-spin" : ""}
+              />
+              {fullyCoveredByPoints ? "Complete Order with Points" : "Place Order & Pay"}
             </button>
             <p className="mt-4 flex items-center justify-center gap-1.5 text-[12px] tracking-[0.08em] text-[#707a6b]">
               <Icon icon="mdi:lock-outline" width={14} />
@@ -751,7 +995,132 @@ export function DeliveryClient({ user }: Props) {
         </div>
       </main>
     </div>
+
+    {showModal && activeOrderId ? (
+      <PaymentStatusModal
+        orderId={activeOrderId}
+        onClose={(wasFailure, reason) => {
+          setShowModal(false);
+          setActiveOrderId(null);
+          if (wasFailure) {
+            const next = failureCount + 1;
+            setFailureCount(next);
+            if (next >= 5) {
+              toast.error("Too many failed attempts. Please try again later or contact support.");
+              router.push("/cart");
+            }
+            if (reason?.split(":")[0] === "1032") {
+              setPaymentLocked(true);
+              window.setTimeout(() => setPaymentLocked(false), 30_000);
+            }
+          }
+        }}
+      />
+    ) : null}
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Payment-status modal (moved here from the retired /payment page)
+// ---------------------------------------------------------------------------
+function errorMessage(reason: string | null) {
+  const code = reason?.split(":")[0];
+  if (code === "1032") return "Payment cancelled. Tap 'Try Again' to restart.";
+  if (code === "1037") return "Request timed out,phone didn't respond. Try again.";
+  if (code === "2001") return "Wrong M-Pesa PIN entered. Try again.";
+  if (code === "1") return "Insufficient M-Pesa balance. Top up and try again, or switch payment method.";
+  if (code?.startsWith("4")) return "Payment not completed. Try again or contact support.";
+  if (code?.startsWith("5")) return "Payment service error. Please contact support.";
+  return reason?.replace(/^\d+:/, "") || "Payment not completed. Try again or contact support.";
+}
+
+function PaymentStatusModal({ orderId, onClose }: { orderId: string; onClose: (wasFailure?: boolean, reason?: string | null) => void }) {
+  const router = useRouter();
+  const { status, reason } = usePaymentStream(orderId);
+
+  const phase =
+    status === "success" ? "success" :
+    status === "failed"  ? "failed"  :
+    status === "timeout" ? "timeout" :
+    "waiting";
+
+  useEffect(() => {
+    if (status === "success") {
+      window.setTimeout(() => router.push(`/order-success/${orderId}`), 1500);
+    }
+  }, [status, orderId, router]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-[420px] rounded-[16px] border border-[#e1e8de] bg-white p-8 text-center shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+        {phase === "waiting" && (
+          <>
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#e7f6e4] text-[#27731e]">
+              <Icon icon="mdi:cellphone-message" width={38} />
+            </div>
+            <h2 className="mt-6 font-heading text-[25px] font-black text-[#1a1c1c] dark:text-white">Waiting for payment...</h2>
+            <p className="mt-3 text-[14px] leading-6 text-[#40493c] dark:text-gray-300">Check your phone and enter your M-Pesa PIN to complete the payment.</p>
+            <div className="mx-auto mt-6 h-8 w-8"><Icon icon="mdi:loading" width={32} className="animate-spin text-[#27731e]" /></div>
+          </>
+        )}
+        {phase === "success" && (
+          <>
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#e7f6e4] text-[#27731e]">
+              <Icon icon="mdi:check-bold" width={38} />
+            </div>
+            <h2 className="mt-6 font-heading text-[25px] font-black text-[#1a1c1c] dark:text-white">Payment successful!</h2>
+            <p className="mt-3 text-[14px] leading-6 text-[#40493c] dark:text-gray-300">Redirecting to your order...</p>
+            <div className="mx-auto mt-6 h-8 w-8"><Icon icon="mdi:loading" width={32} className="animate-spin text-[#27731e]" /></div>
+          </>
+        )}
+        {phase === "failed" && (
+          <>
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#fdeaea] text-[#b42318]">
+              <Icon icon="mdi:close-thick" width={38} />
+            </div>
+            <h2 className="mt-6 font-heading text-[25px] font-black text-[#1a1c1c] dark:text-white">Payment failed</h2>
+            <p className="mt-3 text-[14px] leading-6 text-[#40493c] dark:text-gray-300">{errorMessage(reason ?? null)}</p>
+            <button onClick={() => onClose(true, reason)} className="mt-6 h-12 w-full rounded-full bg-[#fec700] text-[14px] font-black text-[#1a1c1c] transition-colors hover:bg-[#f0b800]">Try Again</button>
+          </>
+        )}
+        {phase === "timeout" && (
+          <>
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#fff8e1] text-[#f59e0b]">
+              <Icon icon="mdi:clock-alert-outline" width={38} />
+            </div>
+            <h2 className="mt-6 font-heading text-[25px] font-black text-[#1a1c1c] dark:text-white">Payment timed out</h2>
+            <p className="mt-3 text-[14px] leading-6 text-[#40493c] dark:text-gray-300">Please check your M-Pesa and try again if you were charged.</p>
+            <button onClick={() => onClose(true)} className="mt-6 h-12 w-full rounded-full bg-[#fec700] text-[14px] font-black text-[#1a1c1c] transition-colors hover:bg-[#f0b800]">Try Again</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PaymentOption({ active, onClick, title, badge, icon, children }: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  badge?: string;
+  icon?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full rounded-[10px] border p-4 text-left transition-colors ${active ? "border-[#0b6b13] bg-[#f6fbf5] dark:bg-gray-700 ring-1 ring-[#0b6b13]" : "border-[#dce4d8] bg-white dark:bg-gray-700 hover:border-[#a9b8a2]"}`}
+    >
+      <div className="flex items-center gap-3">
+        <span className={`h-3 w-3 rounded-full border ${active ? "border-[#0b6b13] bg-[#a4f690] ring-2 ring-offset-2 ring-[#a4f690]" : "border-[#7b8975]"}`} />
+        <span className="flex-1 text-[16px] font-bold text-[#1a1c1c] dark:text-white">{title}</span>
+        {badge ? <span className="rounded-[4px] border border-[#dce4d8] dark:border-gray-600 px-2 py-1 text-[10px] font-black text-[#0b6b13] dark:text-green-400">{badge}</span> : null}
+        {icon ? <Icon icon={icon} width={22} className="text-[#707a6b]" /> : null}
+      </div>
+      {active && children ? <div className="ml-8 mt-5">{children}</div> : null}
+    </button>
   );
 }
 

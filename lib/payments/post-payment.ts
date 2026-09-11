@@ -8,6 +8,7 @@ import { pushSaleReceiptToZoho } from "@/lib/zoho/push-sale-receipt";
 import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { paymentModeForOnline } from "@/lib/zoho/payment-mode";
 import { releaseRedeemedPoints } from "@/lib/points/redeem";
+import { classifyFailureReason } from "@/lib/payments/classify-failure";
 
 export async function markPaymentSuccess(args: {
   transactionId: string;
@@ -40,6 +41,15 @@ export async function markPaymentSuccess(args: {
       where: { id: args.transactionId },
       data: args.transactionData,
       select: { mpesaReceiptNumber: true, paystackReference: true },
+    });
+
+    await tx.transactionEvent.create({
+      data: {
+        transactionId: args.transactionId,
+        type: "SUCCEEDED",
+        detail: updatedTransaction?.mpesaReceiptNumber ?? updatedTransaction?.paystackReference ?? null,
+        rawPayload: (args.transactionData as { rawCallbackPayload?: Prisma.InputJsonValue }).rawCallbackPayload ?? undefined,
+      },
     });
 
     for (const item of order.items) {
@@ -142,6 +152,7 @@ export async function markPaymentSuccess(args: {
           deliveryCountryName: order.deliveryCountry,
           paymentReference: isCard ? paystackReference : mpesaReceiptNumber,
           notes: `Fechi Organics order ${order.orderNumber ?? order.id}`,
+          deliveryNote: order.deliveryNote,
         });
 
         if (salesReceiptId) {
@@ -185,6 +196,14 @@ export async function markPaymentFailed(args: {
     await tx.transaction.update({
       where: { id: args.transactionId },
       data: { status: "FAILED", failureReason: args.reason ?? null },
+    });
+
+    await tx.transactionEvent.create({
+      data: {
+        transactionId: args.transactionId,
+        type: classifyFailureReason(args.reason),
+        detail: args.reason ?? null,
+      },
     });
 
     await tx.order.update({

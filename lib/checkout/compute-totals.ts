@@ -23,6 +23,13 @@ export type ComputeTotalsInput = {
   pointsRequested?: number;
   userId?: string | null;
   /**
+   * Checkout phone number, used only to widen the promo maxUsesPerUser
+   * check (see lib/promo.ts) beyond the current userId — guest checkout
+   * mints a fresh userId per unseen email, which otherwise makes that cap
+   * trivially bypassable.
+   */
+  phone?: string | null;
+  /**
    * Whether a coupon may eat into the delivery fee.
    *
    * true  — online checkout: max(0, subtotal + delivery - discount)
@@ -84,6 +91,7 @@ export async function computeOrderTotals(input: ComputeTotalsInput): Promise<Ord
     promoCode: rawPromo,
     pointsRequested = 0,
     userId,
+    phone,
     discountAppliesToDelivery = true,
     route,
   } = input;
@@ -96,7 +104,7 @@ export async function computeOrderTotals(input: ComputeTotalsInput): Promise<Ord
 
   if (promoCode) {
     try {
-      const r = await resolvePromo(promoCode, subtotalCents, userId ?? undefined);
+      const r = await resolvePromo(promoCode, subtotalCents, userId ?? undefined, phone ?? undefined);
       discountCents = r.discountKes;
       if (r.deliveryFree) deliveryCents = 0;
       promoId = r.promo.id;

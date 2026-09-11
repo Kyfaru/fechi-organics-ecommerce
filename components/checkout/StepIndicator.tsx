@@ -4,19 +4,18 @@ import Link from "next/link";
 
 const STEPS = [
   { num: 1, label: "Cart", href: "/cart" },
-  { num: 2, label: "Delivery", href: "/delivery" },
-  { num: 3, label: "Payment", href: "/payment" },
+  { num: 2, label: "Checkout", href: "/delivery" },
 ];
 
 interface StepIndicatorProps {
-  step: 1 | 2 | 3;
+  step: 1 | 2;
 }
 
 export function StepIndicator({ step }: StepIndicatorProps) {
   return (
-    <div className="flex items-center justify-center w-full max-w-[540px] mx-auto relative">
+    <div className="flex items-center justify-center w-full max-w-[360px] mx-auto relative">
       {/* Connector line behind the circles */}
-      <div className="absolute top-5 left-[10%] right-[10%] h-0.5 bg-[#e2e2e2] dark:bg-gray-700 z-0" />
+      <div className="absolute top-5 left-[20%] right-[20%] h-0.5 bg-[#e2e2e2] dark:bg-gray-700 z-0" />
 
       {STEPS.map((s) => {
         const isActive = s.num === step;

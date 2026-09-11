@@ -3,9 +3,7 @@
  * it must persist the failure reason onto transaction.failureReason, not
  * just orderStatusEvent.note — the column exists and callers already
  * compute the reason, but it was previously silently discarded, leaving the
- * payment-failed order detail page (app/admin/(protected)/orders/
- * payment-failed/[token]/page.tsx) with no real reason to show for actual
- * declines.
+ * admin order detail page with no real reason to show for actual declines.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -20,6 +18,7 @@ const mockDb = vi.hoisted(() => {
     },
     order: { update: vi.fn() },
     orderStatusEvent: { create: vi.fn() },
+    transactionEvent: { create: vi.fn() },
   };
   db.$transaction = vi.fn(async (fn: (tx: unknown) => unknown) => fn(db));
   return db;

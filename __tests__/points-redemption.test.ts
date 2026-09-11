@@ -91,7 +91,7 @@ describe("computeOrderTotals", () => {
       deliveryCents: 0,
       promoCode: "  save10  ",
     });
-    expect(resolvePromo).toHaveBeenCalledWith("SAVE10", 1_000 * KES, undefined);
+    expect(resolvePromo).toHaveBeenCalledWith("SAVE10", 1_000 * KES, undefined, undefined);
     expect(t.promoCode).toBe("SAVE10");
   });
 

@@ -132,6 +132,7 @@ describe("markInStorePaymentSuccess idempotency", () => {
         inStoreOrder: { update: mockInStoreOrderUpdate },
         inStoreOrderItem: { findMany: mockInStoreOrderItemFindMany },
         branchProductStock: { upsert: mockStockUpsert },
+        inStoreTransactionEvent: { create: vi.fn() },
       };
       return fn(tx);
     });
@@ -176,6 +177,7 @@ describe("markInStorePaymentFailed idempotency", () => {
       const tx = {
         inStoreTransaction: { findUnique: mockInStoreTransactionFindUnique, update: mockInStoreTransactionUpdate },
         inStoreOrder: { update: mockInStoreOrderUpdate },
+        inStoreTransactionEvent: { create: vi.fn() },
       };
       return fn(tx);
     });

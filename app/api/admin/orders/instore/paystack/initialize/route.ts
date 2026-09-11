@@ -23,6 +23,7 @@ import { getRedis } from "@/lib/redis";
 import { makeRatelimit } from "@/lib/ratelimit";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { buildInStoreOrderNumber } from "@/lib/orders/generate-instore-order-number";
+import { createWithRetryableOrderNumber } from "@/lib/orders/create-with-retry";
 import { findOrCreateWalkInCustomer } from "@/lib/customers/find-or-create-walkin";
 import { requirePermission } from "@/lib/require-permission";
 import { logActivity } from "@/lib/admin-activity";
@@ -220,41 +221,47 @@ export async function POST(req: NextRequest) {
         data: { paymentStatus: "PENDING" },
       });
     } else {
-      const now = new Date();
-      order = await db.inStoreOrder.create({
-        data: {
-          orderNumber: buildInStoreOrderNumber(now, branch.id),
-          branchId: branch.id,
-          createdByAdminId: admin.id,
-          createdByAdminName: admin.name,
-          customerUserId: resolvedCustomerUserId,
-          customerName: customerName ?? null,
-          customerPhone,
-          customerEmail: customerEmail ?? null,
-          subtotalKes,
-          discountKes,
-          pointsRedeemed,
-          pointsDiscountKes: pointsDiscountCents,
-          promoCode: normalizedPromoCode ?? null,
-          totalKes,
-          deliveryKes,
-          deliveryZoneId: deliveryZone?.id ?? null,
-          deliveryLocation: deliveryZone?.name ?? null,
-          deliveryCounty: deliveryZone?.county ?? null,
-          paymentStatus: "PENDING",
-          items: {
-            create: items.map((item) => {
-              const product = productById.get(item.productId)!;
-              return {
-                productId: product.id,
-                name: product.name,
-                priceKes: product.priceKes,
-                quantity: item.quantity,
-              };
-            }),
-          },
-        },
-      });
+      // Regenerates the order number and retries (once per second boundary)
+      // if it collides on the orderNumber unique constraint, instead of
+      // surfacing a raw DB error to the till (see lib/orders/create-with-retry.ts).
+      order = await createWithRetryableOrderNumber(
+        () => buildInStoreOrderNumber(new Date(), branch!.id),
+        (orderNumber) =>
+          db.inStoreOrder.create({
+            data: {
+              orderNumber,
+              branchId: branch!.id,
+              createdByAdminId: admin.id,
+              createdByAdminName: admin.name,
+              customerUserId: resolvedCustomerUserId,
+              customerName: customerName ?? null,
+              customerPhone,
+              customerEmail: customerEmail ?? null,
+              subtotalKes,
+              discountKes,
+              pointsRedeemed,
+              pointsDiscountKes: pointsDiscountCents,
+              promoCode: normalizedPromoCode ?? null,
+              totalKes,
+              deliveryKes,
+              deliveryZoneId: deliveryZone?.id ?? null,
+              deliveryLocation: deliveryZone?.name ?? null,
+              deliveryCounty: deliveryZone?.county ?? null,
+              paymentStatus: "PENDING",
+              items: {
+                create: items.map((item) => {
+                  const product = productById.get(item.productId)!;
+                  return {
+                    productId: product.id,
+                    name: product.name,
+                    priceKes: product.priceKes,
+                    quantity: item.quantity,
+                  };
+                }),
+              },
+            },
+          }),
+      );
 
       // Only on the initial creation path — retries reuse the same order and
       // must not record a second redemption for one order.

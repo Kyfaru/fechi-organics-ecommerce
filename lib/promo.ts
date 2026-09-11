@@ -1,11 +1,19 @@
 import { db } from "@/lib/db";
 import { Err } from "@/lib/api";
 import type { TxClient } from "@/lib/orders/generate-order-number";
+import { normalizePhoneE164 } from "@/lib/phone";
 
 export async function resolvePromo(
   promoCode: string,
   subtotalKes: number,
   userId?: string,
+  // Guest checkout mints a brand-new userId for every unseen email
+  // (findOrCreateGuestCustomer), which makes the userId-only maxUsesPerUser
+  // check below trivially bypassable by rotating emails. Passing the
+  // checkout phone number lets the count also catch redemptions by anyone
+  // who has previously used this coupon under the same phone, regardless of
+  // which userId that redemption happened under.
+  phone?: string | null,
 ): Promise<{
   promo: { id: string; type: string; value: number; ownerUserId: string | null; pointsAward: number };
   discountKes: number;
@@ -46,10 +54,26 @@ export async function resolvePromo(
   }
 
   // 0 = unlimited reuse for a single user; otherwise cap at maxUsesPerUser.
-  if (userId && promo.maxUsesPerUser !== 0) {
-    const timesUsed = await db.couponRedemption.count({
-      where: { couponId: promo.id, userId },
-    });
+  // Also counts redemptions by the same phone number, not just the same
+  // userId — guest checkout mints a brand-new userId for every unseen
+  // email (findOrCreateGuestCustomer), so a userId-only check here is
+  // trivially bypassed by resubmitting with a different email each time.
+  // Last-9-digits match tolerates 0712.../254712.../+254712... variations
+  // in how the phone ended up stored.
+  if (promo.maxUsesPerUser !== 0 && (userId || phone)) {
+    const last9 = phone ? (normalizePhoneE164(phone) ?? phone).replace(/\D/g, "").slice(-9) : null;
+    // couponRedemption.userId has no Prisma relation to `user` (a plain
+    // indexed string, no FK) — resolve matching user ids by phone first,
+    // rather than adding a relation that would need a real FK migration.
+    const phoneUserIds = last9
+      ? (await db.user.findMany({ where: { phone: { contains: last9 } }, select: { id: true } })).map((u) => u.id)
+      : [];
+    const candidateUserIds = [...new Set([...(userId ? [userId] : []), ...phoneUserIds])];
+    const timesUsed = candidateUserIds.length
+      ? await db.couponRedemption.count({
+          where: { couponId: promo.id, userId: { in: candidateUserIds } },
+        })
+      : 0;
     if (timesUsed >= promo.maxUsesPerUser) {
       throw Err.validation("You've already used this code the maximum number of times");
     }

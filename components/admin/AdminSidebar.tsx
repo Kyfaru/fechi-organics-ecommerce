@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  LogOut, History, ChevronLeft, ChevronRight, Menu, X,
+  LogOut, History, AlertTriangle, ChevronLeft, ChevronRight, Menu, X,
 } from "lucide-react";
 import { signOut, authClient } from "@/lib/auth-client";
 import { clearPersistedQueryCache } from "@/app/providers";
@@ -29,8 +29,9 @@ export function AdminSidebar() {
   // Fetch current admin profile to drive permission-based nav filtering.
   // Cached for 5 minutes — sidebar doesn't need real-time permission updates.
   const { data: me } = useAdminMe();
-  // /admin/activity is admin/super_admin-only (see its page + API route) —
-  // hide the link entirely for roles that would just hit a 403.
+  // /admin/activity and /admin/error-logs are both admin/super_admin-only
+  // (see their pages + API routes) — hide the links entirely for roles that
+  // would just hit a 403.
   const showActivityLink = Boolean(me?.isSuperAdmin || me?.role === "admin");
 
   // Precomputed once per `me` change (not per render/navigation) and passed
@@ -238,6 +239,16 @@ function SidebarContent({
           >
             <History size={18} />
             {(!collapsed || mobile) && <span className="font-dm text-[13px]">Activity Log</span>}
+          </Link>
+        )}
+        {showActivityLink && (
+          <Link
+            href="/admin/error-logs"
+            className={["flex items-center gap-3 h-10 rounded-[8px] px-3 text-white/70 dark:text-(--dark-muted) hover:bg-(--green-800) dark:hover:bg-(--dark-border) transition-colors", collapsed && !mobile ? "justify-center" : ""].join(" ")}
+            title={collapsed && !mobile ? "Error Logs" : undefined}
+          >
+            <AlertTriangle size={18} />
+            {(!collapsed || mobile) && <span className="font-dm text-[13px]">Error Logs</span>}
           </Link>
         )}
         <button

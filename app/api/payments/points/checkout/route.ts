@@ -4,6 +4,12 @@
  * Completes an order that loyalty points cover in full, with no payment
  * gateway involved. Only reachable when the cash remainder is exactly zero.
  *
+ * Guest checkout can technically reach this route (see
+ * lib/customers/find-or-create-guest.ts), but a brand-new guest always has a
+ * zero points balance, so computeOrderTotals' pointsRedeemed <= 0 guard below
+ * rejects it in practice — this path is realistically only ever exercised by
+ * a signed-in customer with a real balance.
+ *
  * Security — this endpoint hands over goods without taking money, so nothing
  * the browser sends is trusted:
  *
@@ -32,6 +38,9 @@ import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
 import { reportError } from "@/lib/observability";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { resolveCart } from "@/lib/cart";
+import { resolveCheckoutUserId } from "@/lib/customers/find-or-create-guest";
+import { checkGuestCheckoutAbuse } from "@/lib/payments/guest-abuse-guard";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
 import { deliveryDataSchema } from "@/lib/payments/delivery-schema";
@@ -40,6 +49,7 @@ import { recordCouponRedemption } from "@/lib/promo";
 import { holdRedeemedPoints } from "@/lib/points/redeem";
 import { markPaymentSuccess, markPaymentFailed } from "@/lib/payments/post-payment";
 import { buildTimestampOrderNumber } from "@/lib/orders/generate-order-number";
+import { createWithRetryableOrderNumber } from "@/lib/orders/create-with-retry";
 import { readUtmCookie } from "@/lib/attribution";
 import { getRedis } from "@/lib/redis";
 
@@ -50,8 +60,6 @@ export async function POST(req: NextRequest) {
   if (originCheck) return originCheck;
 
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
-  const userId = session.user.id;
 
   let parsed: z.infer<typeof bodySchema>;
   try {
@@ -67,8 +75,9 @@ export async function POST(req: NextRequest) {
   const { deliveryData } = parsed;
 
   try {
+    const { cartId } = await resolveCart(session?.user?.id ?? null);
     const cart = await db.cart.findUnique({
-      where: { userId },
+      where: { id: cartId },
       include: {
         items: {
           include: {
@@ -81,6 +90,23 @@ export async function POST(req: NextRequest) {
 
     const activeItems = cart.items.filter((item) => item.product.isActive);
     if (activeItems.length === 0) return err("CART_EMPTY", "No active products in cart", 400);
+
+    // Guest-specific abuse guard — must run BEFORE resolveCheckoutUserId,
+    // since that mints a fresh userId per unseen email and would otherwise
+    // make the per-userId limiter below useless against a guest rotating
+    // emails (see lib/payments/guest-abuse-guard.ts).
+    if (!session?.user) {
+      const abuseCheck = await checkGuestCheckoutAbuse(req, deliveryData.phone);
+      if (abuseCheck) return abuseCheck;
+    }
+
+    const identity = await resolveCheckoutUserId(session, {
+      fullName: deliveryData.fullName,
+      email: deliveryData.email,
+      phone: deliveryData.phone,
+    });
+    if ("error" in identity) return identity.error;
+    const userId = identity.userId;
 
     // Same throttle as the gateway routes — stops a double-tap creating two
     // orders while the first is still being written.
@@ -107,6 +133,7 @@ export async function POST(req: NextRequest) {
       promoCode: deliveryData.promoCode,
       pointsRequested: deliveryData.pointsRequested,
       userId,
+      phone: deliveryData.phone,
       route: "POST /api/payments/points/checkout",
     });
 
@@ -135,47 +162,51 @@ export async function POST(req: NextRequest) {
       if (resolved) branch = await db.branch.findUnique({ where: { id: resolved.id } });
     }
 
-    const now = new Date();
     const utm = readUtmCookie(req);
-    const order = await db.order.create({
-      data: {
-        userId,
-        subtotalKes: subtotalCents,
-        deliveryKes: totals.deliveryCents,
-        discountKes: totals.discountCents,
-        pointsRedeemed: totals.pointsRedeemed,
-        pointsDiscountKes: totals.pointsDiscountCents,
-        totalKes: 0,
-        promoCode: totals.promoCode,
-        paymentStatus: "PENDING",
-        status: "PENDING",
-        orderNumber: buildTimestampOrderNumber(now, "MPESA"),
-        createdAt: now,
-        deliveryType: deliveryData.deliveryType,
-        deliveryPhone: deliveryData.phone,
-        deliveryAddress: deliveryData.address ?? null,
-        deliveryCity: deliveryData.city ?? deliveryData.state ?? null,
-        deliveryCounty: deliveryData.county || deliveryData.country,
-        deliveryZone: deliveryData.deliveryZone ?? pricing.label,
-        deliveryPostalCode: deliveryData.postalCode ?? null,
-        deliveryCountry: deliveryData.countryName ?? null,
-        isInternational: deliveryData.country.toUpperCase() !== "KE",
-        branchId: branch?.id ?? null,
-        utmSource: utm?.source ?? null,
-        utmMedium: utm?.medium ?? null,
-        utmCampaign: utm?.campaign ?? null,
-        items: {
-          create: activeItems.map((item) => ({
-            productId: item.product.id,
-            name: item.product.name,
-            priceKes: item.product.priceKes,
-            quantity: item.quantity,
-            variantId: item.variantId,
-            variantLabel: item.variantLabel,
-          })),
-        },
-      },
-    });
+    const order = await createWithRetryableOrderNumber(
+      () => buildTimestampOrderNumber(new Date(), "MPESA"),
+      (orderNumber) =>
+        db.order.create({
+          data: {
+            userId,
+            subtotalKes: subtotalCents,
+            deliveryKes: totals.deliveryCents,
+            discountKes: totals.discountCents,
+            pointsRedeemed: totals.pointsRedeemed,
+            pointsDiscountKes: totals.pointsDiscountCents,
+            totalKes: 0,
+            promoCode: totals.promoCode,
+            pendingReferralCode: deliveryData.referralCode?.trim().toUpperCase() || null,
+            paymentStatus: "PENDING",
+            status: "PENDING",
+            orderNumber,
+            deliveryType: deliveryData.deliveryType,
+            deliveryPhone: deliveryData.phone,
+            deliveryAddress: deliveryData.address ?? null,
+            deliveryCity: deliveryData.city ?? deliveryData.state ?? null,
+            deliveryCounty: deliveryData.county || deliveryData.country,
+            deliveryZone: deliveryData.deliveryZone ?? pricing.label,
+            deliveryPostalCode: deliveryData.postalCode ?? null,
+            deliveryCountry: deliveryData.countryName ?? null,
+            deliveryNote: deliveryData.notes ?? null,
+            isInternational: deliveryData.country.toUpperCase() !== "KE",
+            branchId: branch?.id ?? null,
+            utmSource: utm?.source ?? null,
+            utmMedium: utm?.medium ?? null,
+            utmCampaign: utm?.campaign ?? null,
+            items: {
+              create: activeItems.map((item) => ({
+                productId: item.product.id,
+                name: item.product.name,
+                priceKes: item.product.priceKes,
+                quantity: item.quantity,
+                variantId: item.variantId,
+                variantLabel: item.variantLabel,
+              })),
+            },
+          },
+        }),
+    );
 
     if (totals.promoId && totals.promoCode) {
       await recordCouponRedemption(totals.promoId, userId, order.id);

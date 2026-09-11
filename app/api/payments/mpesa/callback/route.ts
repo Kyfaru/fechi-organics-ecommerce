@@ -13,9 +13,8 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { markPaymentFailed, markPaymentSuccess } from "@/lib/payments/post-payment";
 import { reportError } from "@/lib/observability";
-import { trackServerEvent } from "@/lib/observability-server";
+import { trackServerEvent, logServerError } from "@/lib/observability-server";
 import { createNotification } from "@/lib/notify";
-import { createOrderDetailToken } from "@/lib/order-detail-token";
 
 function safaricomOk() {
   return Response.json({ ResultCode: 0, ResultDesc: "Accepted" }, { status: 200 });
@@ -128,7 +127,7 @@ export async function POST(req: NextRequest) {
         type: "PAYMENT_ERROR",
         title: `Payment failed — order #${transaction.orderId.slice(0, 8).toUpperCase()}`,
         body: `${customerLabel}'s M-Pesa payment failed: ${ResultDesc}`,
-        link: `/admin/orders/payment-failed/${await createOrderDetailToken(transaction.orderId, "order")}`,
+        link: `/admin/orders/${transaction.orderId}`,
         branchId: transaction.order?.branchId ?? null,
       });
     }
@@ -138,6 +137,7 @@ export async function POST(req: NextRequest) {
     );
   } catch (e) {
     reportError(e, { route: "POST /api/payments/mpesa/callback", tags: { stage: "handler" } });
+    void logServerError(e, { route: "POST /api/payments/mpesa/callback" });
     // Log but do NOT return a non-200 — Safaricom must not retry
     console.error("[mpesa/callback] Processing error", e);
   }

@@ -585,6 +585,20 @@ model order {
   // collected on the checkout form but never persisted.
   deliveryPostalCode        String?
   deliveryCountry           String?
+  // Customer-entered delivery/pickup instructions, collected on the checkout
+  // form and validated (lib/payments/delivery-schema.ts) but historically
+  // never persisted — surfaced in the admin drawer, order detail page, and
+  // the Zoho sales receipt notes.
+  // Capped to match lib/payments/delivery-schema.ts's Zod validation —
+  // defense-in-depth in case a future caller ever bypasses that schema.
+  deliveryNote              String?            @db.VarChar(500)
+  // Referral code typed in at guest checkout (components/checkout/DeliveryClient.tsx).
+  // Does not discount this order — it is only read back out by the Better
+  // Auth signup hook (lib/auth.ts) when this guest later creates a real
+  // account with the same email, so lib/points/referrals.ts can attach it
+  // to that new account. Left null for orders placed by an already
+  // logged-in customer; nothing reads it in that case.
+  pendingReferralCode       String?            @db.VarChar(32)
   deliveryType              DeliveryType       @default(DELIVERY)
   isInternational           Boolean            @default(false)
   paymentStatus             PaymentStatus      @default(PENDING)
@@ -867,16 +881,16 @@ model zohoPushLog {
 }
 
 model transaction {
-  id                 String          @id @default(uuid())
+  id                 String             @id @default(uuid())
   orderId            String
-  order              order           @relation(fields: [orderId], references: [id])
+  order              order              @relation(fields: [orderId], references: [id])
   branchId           String?
-  branch             branch?         @relation(fields: [branchId], references: [id])
+  branch             branch?            @relation(fields: [branchId], references: [id])
   provider           PaymentProvider
-  checkoutRequestId  String?         @unique
-  paystackReference  String?         @unique
+  checkoutRequestId  String?            @unique
+  paystackReference  String?            @unique
   amount             Int
-  status             TxStatus        @default(PENDING)
+  status             TxStatus           @default(PENDING)
   // Which gateway actually handled this M-Pesa payment — null for non-M-Pesa
   // providers. Recorded from the dispatch result, not inferred from
   // branch.mpesaGateway, since a fallback can route a payment through the
@@ -886,12 +900,42 @@ model transaction {
   rawCallbackPayload Json?
   mpesaReceiptNumber String?
   failureReason      String?
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+  events             transactionEvent[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
   @@index([orderId])
   @@index([checkoutRequestId])
   @@index([status, createdAt])
+  @@schema("public")
+}
+
+// Full per-transaction timeline (initiated/stk_sent/callback/succeeded/
+// failed/timed_out/cancelled) so support can reconstruct exactly what
+// happened to a payment instead of only seeing its final status — mirrors
+// the existing orderStatusEvent log pattern.
+enum TransactionEventType {
+  INITIATED
+  STK_SENT
+  CALLBACK_RECEIVED
+  SUCCEEDED
+  FAILED
+  TIMED_OUT
+  CANCELLED_BY_USER
+
+  @@schema("public")
+}
+
+model transactionEvent {
+  id            String               @id @default(cuid())
+  transactionId String
+  transaction   transaction          @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  type          TransactionEventType
+  detail        String?
+  rawPayload    Json?
+  occurredAt    DateTime             @default(now())
+
+  @@index([transactionId])
   @@schema("public")
 }
 
@@ -914,32 +958,32 @@ model contactMessage {
 // ============================================================================
 
 model adminProfile {
-  id                 String            @id @default(uuid())
-  userId             String            @unique
-  user               user              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  branchId           String?
-  branch             branch?           @relation(fields: [branchId], references: [id])
-  fullName           String
-  permissions        Json              @default("{}")
-  department         String?
-  role               String            @default("viewer")
-  twoFaMethod        String            @default("totp")
-  mutedNotificationTypes NotificationType[] @default([])
-  isSuperAdmin       Boolean           @default(false)
-  isActive           Boolean           @default(true)
-  accessExpiresAt    DateTime?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  id                     String                @id @default(uuid())
+  userId                 String                @unique
+  user                   user                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branchId               String?
+  branch                 branch?               @relation(fields: [branchId], references: [id])
+  fullName               String
+  permissions            Json                  @default("{}")
+  department             String?
+  role                   String                @default("viewer")
+  twoFaMethod            String                @default("totp")
+  mutedNotificationTypes NotificationType[]    @default([])
+  isSuperAdmin           Boolean               @default(false)
+  isActive               Boolean               @default(true)
+  accessExpiresAt        DateTime?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
   // Points a super admin may hand out over their lifetime. Deliberately not
   // renewable through any UI or API — only a direct DB UPDATE tops it back up.
-  pointsAllowance      Int   @default(100000)
-  pointsAllowanceSpent Int   @default(0)
-  auditLogs          auditLog[]
-  requestedApprovals approvalRequest[] @relation("RequestedApprovals")
-  reviewedApprovals  approvalRequest[] @relation("ReviewedApprovals")
-  exportRequests     exportRequest[]
-  pointsGrantRequests  pointsGrantRequest[]
-  pointsGrantApprovals pointsGrantApproval[]
+  pointsAllowance        Int                   @default(100000)
+  pointsAllowanceSpent   Int                   @default(0)
+  auditLogs              auditLog[]
+  requestedApprovals     approvalRequest[]     @relation("RequestedApprovals")
+  reviewedApprovals      approvalRequest[]     @relation("ReviewedApprovals")
+  exportRequests         exportRequest[]
+  pointsGrantRequests    pointsGrantRequest[]
+  pointsGrantApprovals   pointsGrantApproval[]
 
   @@index([branchId])
   @@schema("admin")
@@ -1024,22 +1068,22 @@ enum ExportRequestStatus {
 // app/api/admin/exports/[id]/download/route.ts for the ownership-gated
 // streaming download that reads fileKey back out of R2.
 model exportRequest {
-  id                        String               @id @default(uuid())
+  id                        String              @id @default(uuid())
   requestedByAdminProfileId String
-  requestedBy               adminProfile         @relation(fields: [requestedByAdminProfileId], references: [id])
+  requestedBy               adminProfile        @relation(fields: [requestedByAdminProfileId], references: [id])
   resource                  String // "orders" | "finance"
   format                    String // "pdf" | "csv" | "xml"
   filters                   Json
-  status                    ExportRequestStatus  @default(PENDING)
-  approvalRequestId         String?              @unique
-  approvalRequest           approvalRequest?     @relation(fields: [approvalRequestId], references: [id])
+  status                    ExportRequestStatus @default(PENDING)
+  approvalRequestId         String?             @unique
+  approvalRequest           approvalRequest?    @relation(fields: [approvalRequestId], references: [id])
   fileKey                   String?
   fileName                  String?
   fileSizeBytes             Int?
   errorMessage              String?
   deliveredAt               DateTime?
-  createdAt                 DateTime             @default(now())
-  updatedAt                 DateTime             @updatedAt
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
 
   @@index([requestedByAdminProfileId, status, createdAt])
   @@schema("admin")
@@ -1192,6 +1236,12 @@ enum PointsReason {
   STREAK_6M_WEEKLY
   STREAK_6M_MONTHLY
   BADGE_AWARD
+  /// One-time correction for BADGE_AWARD points earned from badge families
+  /// retired when the achievements system was cut down to spend-only badges
+  /// (see lib/points/badge-families.ts). The badge/userBadge tables were
+  /// dropped, but the ledger is append-only, so the points those retired
+  /// badges paid out had to be written off with a compensating entry instead.
+  BADGE_AWARD_REVERSED
   SUPER_ADMIN_GRANT
   COUPON_BONUS
   REDEEM
@@ -1380,38 +1430,38 @@ model campaignRecipient {
 }
 
 model promotion {
-  id             String    @id @default(cuid())
-  name           String
-  type           String
-  value          Float
-  code           String?   @unique
-  minOrder       Int?
-  maxUses        Int?
+  id                       String         @id @default(cuid())
+  name                     String
+  type                     String
+  value                    Float
+  code                     String?        @unique
+  minOrder                 Int?
+  maxUses                  Int?
   // How many times a single user may reuse this coupon. 0 = unlimited, 1 = default (one use per user).
-  maxUsesPerUser Int       @default(1)
-  usedCount      Int       @default(0)
-  startDate      DateTime?
-  endDate        DateTime?
-  status         String    @default("active")
+  maxUsesPerUser           Int            @default(1)
+  usedCount                Int            @default(0)
+  startDate                DateTime?
+  endDate                  DateTime?
+  status                   String         @default("active")
   // Caps the absolute discount a PERCENTAGE or FIXED coupon may produce, in
   // cents. Null = uncapped. Used by the auto-issued VIP coupons.
-  maxDiscountKes Int?
+  maxDiscountKes           Int?
   // Null = a store coupon, created by staff. Set = a customer coupon: that
   // customer's personal referral code, created automatically alongside their
   // loyalty account. This one column is the Store/Customer tab discriminator
   // and the link that lets payment success credit the right referrer.
-  ownerUserId    String?
+  ownerUserId              String?
   // Loyalty points the coupon grants the customer who redeems it, credited at
   // payment success. Capped at 3000 and gated by the approval queue.
-  pointsAward    Int       @default(0)
+  pointsAward              Int            @default(0)
   // Only PENDING blocks redemption. Defaults to APPROVED so every pre-existing
   // coupon keeps working untouched.
-  approvalStatus ApprovalStatus @default(APPROVED)
+  approvalStatus           ApprovalStatus @default(APPROVED)
   // Soft delete. The row and its redemption history survive so the audit trail
   // stays intact — couponRedemption has no FK to cascade from anyway.
-  disabledAt     DateTime?
+  disabledAt               DateTime?
   disabledByAdminProfileId String?
-  createdAt      DateTime  @default(now())
+  createdAt                DateTime       @default(now())
 
   @@index([ownerUserId])
   @@index([approvalStatus])
@@ -1734,7 +1784,6 @@ model inStoreOrder {
   invoiceNumber      String?                  @unique
   invoicePdfKey      String?
   receiptSentEmail   Boolean                  @default(false)
-  receiptSentSms     Boolean                  @default(false)
   pickedUpAt         DateTime?
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
@@ -1759,25 +1808,58 @@ model inStoreOrderItem {
 }
 
 model inStoreTransaction {
-  id                      String               @id @default(cuid())
+  id                      String                    @id @default(cuid())
   inStoreOrderId          String
-  inStoreOrder            inStoreOrder         @relation(fields: [inStoreOrderId], references: [id])
+  inStoreOrder            inStoreOrder              @relation(fields: [inStoreOrderId], references: [id])
   provider                InStoreProvider
   amount                  Int
-  status                  TxStatus             @default(PENDING)
-  checkoutRequestId       String?              @unique
-  paystackReference       String?              @unique
+  status                  TxStatus                  @default(PENDING)
+  checkoutRequestId       String?                   @unique
+  paystackReference       String?                   @unique
   mpesaReceiptNumber      String?
   mpesaGatewayUsed        MpesaGateway?
-  matchedC2bTransactionId String?              @unique
-  matchedC2bTransaction   mpesaC2bTransaction? @relation(fields: [matchedC2bTransactionId], references: [id])
+  matchedC2bTransactionId String?                   @unique
+  matchedC2bTransaction   mpesaC2bTransaction?      @relation(fields: [matchedC2bTransactionId], references: [id])
   rawCallbackPayload      Json?
   failureReason           String?
-  createdAt               DateTime             @default(now())
-  updatedAt               DateTime             @updatedAt
+  events                  inStoreTransactionEvent[]
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
 
   @@index([inStoreOrderId])
   @@index([status, createdAt])
+  @@schema("admin")
+}
+
+model inStoreTransactionEvent {
+  id                   String               @id @default(cuid())
+  inStoreTransactionId String
+  inStoreTransaction   inStoreTransaction   @relation(fields: [inStoreTransactionId], references: [id], onDelete: Cascade)
+  type                 TransactionEventType
+  detail               String?
+  rawPayload           Json?
+  occurredAt           DateTime             @default(now())
+
+  @@index([inStoreTransactionId])
+  @@schema("admin")
+}
+
+// Lightweight in-app error log, written alongside the existing Sentry
+// capture in lib/observability.ts's reportError() — powers the admin
+// "error logs" page with a plain-language interpretation per error code,
+// without needing to proxy Sentry's API.
+model errorLog {
+  id         String   @id @default(cuid())
+  code       String?
+  category   String
+  message    String
+  route      String?
+  userId     String?
+  orderId    String?
+  occurredAt DateTime @default(now())
+
+  @@index([occurredAt])
+  @@index([category])
   @@schema("admin")
 }
 
