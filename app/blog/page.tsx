@@ -6,7 +6,7 @@ import { RankingStrip } from "@/components/blog/RankingStrip";
 import { getPublishedPosts, getBlogRankings } from "@/lib/queries/blog";
 
 export const metadata = {
-  title: "Blog | Fechi Organics",
+  title: "Blog",
   description: "Tips, stories & natural living from the Fechi Organics team.",
 };
 

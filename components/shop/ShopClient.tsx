@@ -54,6 +54,8 @@ export function ShopClient({ categories }: Props) {
     hasNextPage,
     isFetchingNextPage,
     isLoading,
+    isError,
+    refetch,
   } = useInfiniteQuery<ProductsPage>({
     queryKey: ["shop-products", activeCategory, sort, debouncedSearch],
     queryFn: async ({ pageParam }) => {
@@ -65,6 +67,9 @@ export function ShopClient({ categories }: Props) {
       if (pageParam) params.set("cursor", pageParam as string);
       const res = await fetch(`/api/storefront/products?${params.toString()}`);
       const json = await res.json();
+      if (!res.ok || json.ok !== true) {
+        throw new Error(json.error?.message ?? "Failed to load products");
+      }
       return { items: json.data?.items ?? [], nextCursor: json.data?.nextCursor ?? null };
     },
     initialPageParam: undefined,
@@ -207,6 +212,19 @@ export function ShopClient({ categories }: Props) {
         <div className="max-w-[1440px] mx-auto">
           {isLoading ? (
             <SkeletonShopGrid count={8} />
+          ) : isError ? (
+            <div className="text-center py-20">
+              <Icon icon="mdi:alert-circle-outline" width={64} className="text-[#c0cab8] mx-auto mb-4" />
+              <p className="font-body text-[#40493c] dark:text-gray-400 text-[18px]">
+                Something went wrong loading products.
+              </p>
+              <button
+                onClick={() => refetch()}
+                className="mt-4 inline-flex items-center gap-2 bg-[#27731e] text-white rounded-full px-6 py-3 font-body text-[14px] hover:bg-[#045a03] transition-colors"
+              >
+                Try Again
+              </button>
+            </div>
           ) : (
             <>
               <AnimatePresence mode="wait">

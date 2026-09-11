@@ -4,7 +4,7 @@ import { Footer } from "@/components/layout/Footer";
 import { PrivacyPolicyContent } from "@/components/legal/PrivacyPolicyContent";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | Fechi Organics",
+  title: "Privacy Policy",
   description:
     "How we collect, use, and protect your personal data — in compliance with the Kenya Data Protection Act 2019.",
 };

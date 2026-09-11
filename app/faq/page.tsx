@@ -3,7 +3,7 @@ import { Navbar } from "@/components/layout/Navbar"
 import { Footer } from "@/components/layout/Footer"
 import { FaqPageClient } from "@/components/faq/FaqPageClient"
 
-export const metadata = { title: "FAQs | Fechi Organics", description: "Answers to your most common questions about Fechi Organics products and services." }
+export const metadata = { title: "FAQs", description: "Answers to your most common questions about Fechi Organics products and services." }
 
 export default async function FaqPage() {
   const faqs = await db.faq.findMany({

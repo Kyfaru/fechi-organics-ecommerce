@@ -5,7 +5,7 @@ import { ShopClient } from "@/components/shop/ShopClient";
 import { getCategories } from "@/lib/queries/categories";
 
 export const metadata = {
-  title: "Shop All Products | Fechi Organics",
+  title: "Shop All Products",
   description: "Browse our full range of natural skincare, haircare, wellness and baby products.",
 };
 
