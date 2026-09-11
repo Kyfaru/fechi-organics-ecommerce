@@ -186,7 +186,10 @@ export function ProductDetailClient({ product }: Props) {
   const qtyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Derived values ─────────────────────────────────────────────────────────
-  const hasDiscount = !!product.compareAtPriceKes && product.compareAtPriceKes > product.priceKes;
+  // A variant's own price (when set) overrides the product's base price —
+  // 0/null on the variant means "inherit".
+  const effectivePriceKes = selectedVariant?.priceKes || product.priceKes;
+  const hasDiscount = !!product.compareAtPriceKes;
   const pct = hasDiscount
     ? discountPct(product.priceKes, product.compareAtPriceKes!)
     : null;
