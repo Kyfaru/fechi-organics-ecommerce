@@ -17,8 +17,10 @@ export async function DELETE(
 ) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
+  // Session is optional — a guest has no session to check, and the orderId
+  // itself (an unguessable UUID handed only to the browser that placed the
+  // order) is the ownership proof, same as GET /api/payments/stream.
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
 
   const { orderId } = await params;
 
@@ -28,7 +30,7 @@ export async function DELETE(
       select: { id: true, userId: true, paymentStatus: true },
     });
 
-    if (!order || order.userId !== session.user.id) return ok({ deleted: false });
+    if (!order || (session?.user && order.userId !== session.user.id)) return ok({ deleted: false });
     if (order.paymentStatus !== "PENDING") return ok({ deleted: false });
 
     const tx = await db.transaction.findFirst({ where: { orderId }, select: { id: true } });
@@ -39,7 +41,7 @@ export async function DELETE(
   } catch (e) {
     reportError(e, {
       route: "DELETE /api/payments/status/[orderId]",
-      userId: session.user.id,
+      userId: session?.user?.id,
       tags: { stage: "handler" },
       extra: { orderId },
     });
