@@ -13,8 +13,11 @@ export async function POST(
 ) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
+  // Session is optional — the order-success page (which calls this right
+  // after checkout) is guest-checkout capable. The orderId itself (an
+  // unguessable UUID handed only to the browser that placed the order) is
+  // the ownership proof for a guest, same model as GET /api/payments/stream.
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
 
   const { id } = await params;
 
@@ -24,7 +27,7 @@ export async function POST(
       select: { id: true, userId: true, paymentStatus: true, receiptSent: true },
     });
     if (!order) return Err.notFound("Order");
-    if (order.userId !== session.user.id) return Err.forbidden();
+    if (session?.user && order.userId !== session.user.id) return Err.forbidden();
     if (order.paymentStatus !== "PAID") return Err.validation("Receipt is only available for paid orders");
 
     if (!order.receiptSent) {

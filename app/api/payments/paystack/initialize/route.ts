@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
       fullName: deliveryData.fullName,
       email: deliveryData.email,
       phone: deliveryData.phone,
-    });
+    }, req.cookies.get("fechi_device")?.value);
     if ("error" in identity) return identity.error;
     const userId = identity.userId;
     // Paystack needs an email either way — session users always have one;

@@ -14,6 +14,7 @@ import { logActivity } from "@/lib/admin-activity";
 import { grantJoiningBonus, attachReferral } from "@/lib/points/referrals";
 import { acquireGuestMigrationLock } from "@/lib/customers/guest-migration-lock";
 import { logServerError } from "@/lib/observability-server";
+import { hashValue } from "@/lib/points/anti-abuse";
 
 // ---------------------------------------------------------------------------
 // Guest checkout → real account merge.
@@ -102,6 +103,37 @@ async function mergeGuestIntoNewAccount(guestUserId: string, newUserId: string):
     .catch(() => {
       /* best-effort — a missing clientProfile row here changes nothing that matters */
     });
+}
+
+/**
+ * The silent counterpart to the email-based merge above, for the case the
+ * customer explicitly asked for: they check out as a guest, then later log
+ * into (or sign up for) a real account with a DIFFERENT email — so there is
+ * no email match to hook into. Instead, whoever resolved that guest checkout
+ * (resolveCheckoutUserId, lib/customers/find-or-create-guest.ts) tagged the
+ * guest's user row with a DEVICE identitySignal keyed off a cookie planted by
+ * getOrCreateDeviceId() (lib/points/fingerprint.ts). If this browser's cookie
+ * still matches, that guest's orders get folded into the account that just
+ * logged in — same reassignment helper, just found by device instead of email.
+ *
+ * A deviceId is a random per-browser cookie we mint ourselves, not a fuzzy
+ * trait fingerprint, so a match is about as trustworthy as a shared session
+ * would be — safe to act on without asking the customer first.
+ */
+async function mergeGuestOrdersByDevice(newUserId: string, deviceId: string): Promise<void> {
+  const valueHash = hashValue("DEVICE", deviceId);
+  const signals = await db.identitySignal.findMany({
+    where: { kind: "DEVICE", valueHash, userId: { not: newUserId } },
+    select: { userId: true },
+  });
+  if (signals.length === 0) return;
+
+  const candidateIds = [...new Set(signals.map((s) => s.userId))];
+  for (const guestUserId of candidateIds) {
+    const account = await db.account.findFirst({ where: { userId: guestUserId }, select: { id: true } });
+    if (account) continue; // has a real login of its own — never merge into someone else's session
+    await mergeGuestIntoNewAccount(guestUserId, newUserId);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -270,6 +302,20 @@ export const auth = betterAuth({
             hadCaptchaHeader || path.includes("/sign-in/email-otp")
               ? new Date()
               : undefined;
+
+          // Silent device-based guest-order merge (see mergeGuestOrdersByDevice
+          // above) — runs on every session creation (sign-in AND sign-up, any
+          // method), scoped to non-admin accounts only. Best-effort: a failure
+          // here must never block login.
+          if (user?.role !== "admin") {
+            const cookieHeader = context?.request?.headers?.get("cookie") ?? "";
+            const deviceId = cookieHeader.match(/(?:^|;\s*)fechi_device=([^;]+)/)?.[1];
+            if (deviceId) {
+              await mergeGuestOrdersByDevice(session.userId, decodeURIComponent(deviceId)).catch((e) =>
+                logServerError(e, { route: "databaseHooks.session.create.before (device-merge)", userId: session.userId }),
+              );
+            }
+          }
 
           // Admin sessions expire at the next midnight (Africa/Nairobi)
           // rather than a rolling window, so every admin is forced to

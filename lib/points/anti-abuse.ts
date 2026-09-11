@@ -45,7 +45,8 @@ const WEIGHTS: Record<IdentityKind, number> = {
 export const VOID_AT = 100;
 export const FLAG_AT = 15;
 
-function hashValue(kind: IdentityKind, raw: string): string {
+/** Exported so callers outside this file (lib/auth.ts's device-based guest-order match) can look up the same hash without duplicating the HMAC scheme. */
+export function hashValue(kind: IdentityKind, raw: string): string {
   return createHmac("sha256", process.env.REDIS_CHANNEL_SECRET ?? "dev-secret")
     .update(`${kind}:${raw.trim().toLowerCase()}`)
     .digest("hex")
