@@ -9,9 +9,20 @@ type StateOption = { code: string; name: string };
 export async function GET(req: NextRequest) {
   await connection();
   const code = req.nextUrl.searchParams.get("code")?.toUpperCase();
-  if (!code) return ok({ states: [] as StateOption[], fallback: true });
+  // Real ISO-3166-1 alpha-2 codes only — rejects garbage before it ever
+  // becomes a fresh cache key or an upstream call (this route is public and
+  // unauthenticated, and each distinct code value burns a real request
+  // against countrystatecity.in's own metered quota on a cache miss).
+  if (!code || !/^[A-Z]{2}$/.test(code)) return ok({ states: [] as StateOption[], fallback: true });
 
   const redis = getRedis();
+
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const rateKey = `ratelimit:country-states:${ip}`;
+  const attempts = await redis.incr(rateKey);
+  if (attempts === 1) await redis.expire(rateKey, 60);
+  if (attempts > 30) return ok({ states: [] as StateOption[], fallback: true });
+
   const cacheKey = `states:${code}`;
 
   try {

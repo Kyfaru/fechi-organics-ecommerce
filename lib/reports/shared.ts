@@ -6,6 +6,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   MPESA_C2B: "M-Pesa (Till)",
   PAYSTACK: "Paystack",
   KCB: "KCB",
+  POINTS: "Fechi Points",
 };
 
 interface TxLike {
@@ -41,16 +42,30 @@ export const itemsSummaryFromOnline = summarizeItems;
 export const itemsSummaryFromInStore = summarizeItems;
 
 export function buildSummary(rows: ReportRow[], from: Date, to: Date): ReportSummary {
-  const totalRevenueKes = rows.reduce((s, r) => s + r.totalKes, 0);
+  // Revenue excludes delivery fee (both channels) — tracked separately on Finance.
+  const totalRevenueKes = rows.reduce((s, r) => s + r.totalKes - r.deliveryKes, 0);
 
   const dailyMap: Record<string, number> = {};
   for (const r of rows) {
     const key = r.date.toISOString().slice(0, 10);
-    dailyMap[key] = (dailyMap[key] ?? 0) + r.totalKes;
+    dailyMap[key] = (dailyMap[key] ?? 0) + r.totalKes - r.deliveryKes;
   }
   const dailySeries = Object.entries(dailyMap)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, amountKes]) => ({ date, amountKes }));
 
-  return { totalRevenueKes, orderCount: rows.length, from, to, dailySeries };
+  // Points-funded value is already netted out of totalKes, so it is NOT part
+  // of revenue above — reported separately so the two never get conflated.
+  const totalPointsRedeemed = rows.reduce((s, r) => s + r.pointsRedeemed, 0);
+  const totalPointsValueKes = rows.reduce((s, r) => s + r.pointsDiscountKes, 0);
+
+  return {
+    totalRevenueKes,
+    orderCount: rows.length,
+    totalPointsRedeemed,
+    totalPointsValueKes,
+    from,
+    to,
+    dailySeries,
+  };
 }

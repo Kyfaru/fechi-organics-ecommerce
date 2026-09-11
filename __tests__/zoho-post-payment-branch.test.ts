@@ -56,6 +56,7 @@ const mockDb = vi.hoisted(() => {
     cart: { findUnique: vi.fn().mockResolvedValue(null) },
     cartItem: { deleteMany: vi.fn() },
     branch: { findFirst: vi.fn() },
+    transactionEvent: { create: vi.fn() },
   };
   db.$transaction = vi.fn(async (fn: (tx: unknown) => unknown) => fn(db));
   return db;

@@ -29,15 +29,17 @@ function notifyOrderStatusChange(
   status: string,
   phone?: string | null,
   phoneCode?: string | null,
+  overrides?: { title?: string; body?: string },
 ) {
   const msg = STATUS_MESSAGES[status];
-  if (!msg || !userId) return;
-  const body = `Hi! Your Fechi Organics order ${orderRef} ${msg}.`;
+  if (!userId || (!msg && !overrides?.body)) return;
+  const title = overrides?.title ?? `Order ${orderRef} — ${status}`;
+  const body = overrides?.body ?? `Hi! Your Fechi Organics order ${orderRef} ${msg}.`;
   // fire-and-forget — don't block the admin response
   Promise.resolve().then(async () => {
     try {
       await db.inboxMessage.create({
-        data: { userId, type: "SYSTEM", title: `Order ${orderRef} — ${status}`, body, orderId },
+        data: { userId, type: "SYSTEM", title, body, orderId },
       });
     } catch (e) {
       reportError(e, { route: "PATCH /api/admin/orders/[id]", tags: { domain: "orders", stage: "notify-inbox" } });
@@ -362,20 +364,18 @@ async function handleFulfillmentAction(
       });
       await db.orderStatusEvent.create({ data: { orderId, status: "READY_FOR_PICKUP", occurredAt: new Date() } });
       console.info("[admin/orders/[id]] set_ready —", orderId);
-      // Custom message for ready — override STATUS_MESSAGES
-      if (order.userId) {
-        const orderRef = order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`;
-        Promise.resolve().then(async () => {
-          try {
-            await db.inboxMessage.create({
-              data: { userId: order.userId!, type: "SYSTEM", title: `Order ${orderRef} — Ready for Pickup`, body: readyMsg, orderId },
-            });
-          } catch (e) {
-            reportError(e, { route: "PATCH /api/admin/orders/[id]", tags: { domain: "orders", stage: "notify-ready-inbox" } });
-            console.error("[notify] inbox failed:", e);
-          }
-        });
-      }
+      // Custom message for ready (includes branch name) — same helper as
+      // every other status transition, so this is the one that also sends
+      // the SMS (previously inbox-only, the SMS leg was missing entirely).
+      notifyOrderStatusChange(
+        orderId,
+        order.userId,
+        order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`,
+        "READY_FOR_PICKUP",
+        order.user?.phone,
+        order.user?.phoneCode,
+        { title: `Order ${order.orderNumber ?? `#FO-${orderId.slice(0, 8).toUpperCase()}`} — Ready for Pickup`, body: readyMsg },
+      );
       logFulfillment("set_ready", order.orderNumber ?? orderId, order.status, "READY_FOR_PICKUP");
       return ok({ order: updated });
     }

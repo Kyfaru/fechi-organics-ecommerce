@@ -12,7 +12,7 @@ function esc(v: string): string {
 const HEADER = [
   "Order #", "Date", "Time", "Customer", "Contact", "Channel", "Status", "Payment Status",
   "Payment Method", "Items", "Item Count", "Subtotal (KES)", "Delivery (KES)", "Discount (KES)",
-  "Total (KES)", "Branch",
+  "Points Redeemed", "Points Value (KES)", "Total (KES)", "Branch",
 ];
 
 export function renderCsv(data: ReportData): string {
@@ -34,6 +34,8 @@ export function renderCsv(data: ReportData): string {
         (r.subtotalKes / 100).toFixed(2),
         (r.deliveryKes / 100).toFixed(2),
         (r.discountKes / 100).toFixed(2),
+        String(r.pointsRedeemed),
+        (r.pointsDiscountKes / 100).toFixed(2),
         (r.totalKes / 100).toFixed(2),
         esc(r.branchName),
       ].join(","),
@@ -44,5 +46,9 @@ export function renderCsv(data: ReportData): string {
   lines.push("");
   lines.push(`Total orders,${data.summary.orderCount}`);
   lines.push(`Total revenue (KES),${(data.summary.totalRevenueKes / 100).toFixed(2)}`);
+  // Points-funded value is NOT part of revenue above — it was already netted
+  // out of each order's total. Listed separately so the two are never added.
+  lines.push(`Points redeemed,${data.summary.totalPointsRedeemed}`);
+  lines.push(`Points value (KES),${(data.summary.totalPointsValueKes / 100).toFixed(2)}`);
   return lines.join("\n");
 }

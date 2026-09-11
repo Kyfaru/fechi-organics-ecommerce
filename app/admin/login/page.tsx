@@ -16,6 +16,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { toast } from "@/lib/toast";
 import { checkPortalMatch } from "@/lib/portal-check";
 import { reportError } from "@/lib/observability";
+import { useReloadOnBfcacheRestore } from "@/hooks/use-reload-on-bfcache-restore";
 
 // ---------------------------------------------------------------------------
 // State machine for the admin login flow:
@@ -52,6 +53,7 @@ interface AdminMeResponse {
 
 export default function AdminLoginPage() {
   const router = useRouter();
+  useReloadOnBfcacheRestore();
 
   // Step 1 — credential fields
   const [email, setEmail] = useState("");
@@ -87,6 +89,9 @@ export default function AdminLoginPage() {
   // true when the account has no 2FA configured yet (brand-new admin, must
   // set up a method now) — false means "verify an existing method" instead.
   const [isNewUser, setIsNewUser] = useState(false);
+  // Returning-admin equivalent of adminMe?.phone — see the precheck fetch
+  // in handleCredentialsSubmit (no real session exists yet to read adminMe).
+  const [existingUserHasPhone, setExistingUserHasPhone] = useState(false);
   // which method-choice card is mid-request, if any
   const [methodChoiceLoading, setMethodChoiceLoading] = useState<"totp" | "email" | "sms" | "otp" | null>(null);
 
@@ -194,6 +199,15 @@ export default function AdminLoginPage() {
       // AdminGuard (app/admin/(protected)/layout.tsx) re-verifies server-side.
       reportError(err, { route: "admin-login", tags: { step: "finish-login" } });
     }
+    // Reset the page's own state immediately, before navigating away — so if
+    // this exact instance is ever shown again (bfcache/history restore), it
+    // reflects a fresh credentials step instead of a completed 2FA step with
+    // stale typed credentials/codes still sitting in memory.
+    setStep("credentials");
+    setEmail("");
+    setPassword("");
+    setCode("");
+    setErrors({});
     router.replace("/admin");
   }
 
@@ -258,6 +272,17 @@ export default function AdminLoginPage() {
         setAdminMe(null);
         setIsNewUser(false);
         setStep("method-choice");
+        // No real session yet (Better Auth withheld it pending 2FA) — same
+        // precheck the customer login form uses, since /api/admin/me would
+        // 401 here.
+        fetch("/api/account/2fa/precheck", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        })
+          .then((r) => r.json())
+          .then((j) => setExistingUserHasPhone(!!j?.data?.hasPhone))
+          .catch(() => setExistingUserHasPhone(false));
         return;
       }
 
@@ -707,9 +732,9 @@ export default function AdminLoginPage() {
       // before). Offer both Email and SMS explicitly rather than one generic
       // card — the chosen one rides along as a per-request header (see
       // handleMethodChoice), so this works without needing a real session.
-      // lib/auth.ts's sendOTP falls back to email if SMS turns out not to be
-      // viable (no phone on file), so it's safe to always offer the SMS card
-      // here even though we can't check phone-on-file pre-session.
+      // existingUserHasPhone comes from /api/account/2fa/precheck, fetched
+      // right after the twoFactorRedirect response (see handleCredentialsSubmit)
+      // since there's no real session yet to read adminMe.phone from.
       cards = [
         ...(twoFactorMethods.includes("totp") ? [totpCard] : []),
         ...(twoFactorMethods.includes("otp")
@@ -722,14 +747,16 @@ export default function AdminLoginPage() {
                 title: "Email OTP",
                 description: "Receive a one-time code at your email address.",
               },
-              {
-                method: "sms" as const,
-                icon: MessageSquare,
-                iconBg: "bg-purple-50",
-                iconColor: "text-purple-700",
-                title: "SMS OTP",
-                description: "Receive a one-time code via text message.",
-              },
+              ...(existingUserHasPhone
+                ? [{
+                    method: "sms" as const,
+                    icon: MessageSquare,
+                    iconBg: "bg-purple-50",
+                    iconColor: "text-purple-700",
+                    title: "SMS OTP",
+                    description: "Receive a one-time code via text message.",
+                  }]
+                : []),
             ]
           : []),
       ];

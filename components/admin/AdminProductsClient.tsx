@@ -39,6 +39,7 @@ type ProductVariant = {
   id: string;
   label: string;
   sortOrder: number;
+  priceKes: number | null;
   image: { objectKey: string } | null;
 };
 
@@ -95,7 +96,7 @@ type DrawerFormData = {
   variantMode: "sizes" | "variants";
   variantGroupLabel: string;
   variantImagesHidden: boolean;
-  variants: { label: string; imageObjectKey: string }[];
+  variants: { label: string; imageObjectKey: string; priceKes: string }[];
   howToUse: string;
   ingredients: string;
   // SEO
@@ -244,7 +245,7 @@ function productToForm(p: AdminProduct): DrawerFormData {
     variants: (p.variants ?? [])
       .slice()
       .sort((a, b) => a.sortOrder - b.sortOrder)
-      .map((v) => ({ label: v.label, imageObjectKey: v.image?.objectKey ?? "" })),
+      .map((v) => ({ label: v.label, imageObjectKey: v.image?.objectKey ?? "", priceKes: v.priceKes ? String(v.priceKes) : "" })),
     howToUse: p.howToUse ?? "", ingredients: p.ingredients ?? "",
     seoTitle: "", metaDescription: "",
   };
@@ -965,7 +966,22 @@ function SizeTagInput({ sizes, onChange }: { sizes: string[]; onChange: (s: stri
 // Variant editor — color/flavour/etc. options, each optionally tied to a
 // photo (either one already uploaded above, or its own upload).
 // ---------------------------------------------------------------------------
-type FormVariant = { label: string; imageObjectKey: string };
+type FormVariant = { label: string; imageObjectKey: string; priceKes: string };
+
+// Compact price input for one variant row — usePriceMask is a hook, so this
+// needs to be its own component (can't call a hook inside variants.map()).
+function VariantPriceInput({ digits, setDigits }: { digits: string; setDigits: (d: string) => void }) {
+  const maskProps = usePriceMask(digits, setDigits);
+  return (
+    <input
+      className={`${inputCls} !w-28 shrink-0`}
+      placeholder="Base price"
+      title="Leave blank to use the product's base price"
+      {...maskProps}
+      value={maskProps.value}
+    />
+  );
+}
 
 function VariantEditor({
   variants, onChange, imageKeys, groupLabel, onGroupLabelChange, imagesHidden, onImagesHiddenChange,
@@ -981,7 +997,7 @@ function VariantEditor({
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
 
   function addVariant() {
-    onChange([...variants, { label: "", imageObjectKey: "" }]);
+    onChange([...variants, { label: "", imageObjectKey: "", priceKes: "" }]);
   }
   function updateVariant(idx: number, patch: Partial<FormVariant>) {
     onChange(variants.map((v, i) => (i === idx ? { ...v, ...patch } : v)));
@@ -1048,8 +1064,12 @@ function VariantEditor({
                 value={v.label}
                 onChange={(e) => updateVariant(idx, { label: e.target.value })}
               />
+              <VariantPriceInput
+                digits={v.priceKes}
+                setDigits={(d) => updateVariant(idx, { priceKes: d })}
+              />
               <select
-                className={`${inputCls} w-36 shrink-0`}
+                className={`${inputCls} !w-36 shrink-0`}
                 value={v.imageObjectKey}
                 onChange={(e) => updateVariant(idx, { imageObjectKey: e.target.value })}
               >
@@ -1505,9 +1525,9 @@ export function AdminProductsClient() {
   // View / filter state
   const [view, setView] = useState<ViewMode>(() => {
     if (typeof window !== "undefined") {
-      return (localStorage.getItem("admin-products-view") as ViewMode) ?? "list";
+      return (localStorage.getItem("admin-products-view") as ViewMode) ?? "grid";
     }
-    return "list";
+    return "grid";
   });
   const [search, setSearch] = usePersistedFilter("products:search", "");
   const [filterCategory, setFilterCategory] = usePersistedFilter("products:category", "");
@@ -1832,6 +1852,7 @@ export function AdminProductsClient() {
         ? form.variants.filter((v) => v.label.trim()).map((v) => ({
             label: v.label.trim(),
             imageObjectKey: v.imageObjectKey || undefined,
+            priceKes: v.priceKes ? parseInt(v.priceKes, 10) : undefined,
           }))
         : [],
       howToUse: form.howToUse.trim() || null,

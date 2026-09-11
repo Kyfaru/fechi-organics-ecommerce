@@ -150,19 +150,30 @@ export default async function AdminInStoreOrderDetailPage({ params }: { params: 
                   </div>
                 ))}
               </div>
-              {/* No delivery line — in-store orders never have one */}
               <div className="mt-4 pt-4 border-t border-(--neutral-100) flex flex-col gap-2">
                 <div className="flex justify-between font-dm text-[13px] text-(--neutral-500)">
                   <span>Subtotal</span><span>{kes(order.subtotalKes)}</span>
                 </div>
+                {order.deliveryKes > 0 && (
+                  <div className="flex justify-between font-dm text-[13px] text-(--neutral-500)">
+                    <span>Delivery Fee{order.deliveryLocation ? ` — ${order.deliveryLocation}` : ""}</span>
+                    <span>{kes(order.deliveryKes)}</span>
+                  </div>
+                )}
                 {order.discountKes > 0 && (
                   <div className="flex justify-between font-dm text-[13px] text-(--success)">
                     <span>Discount</span><span>-{kes(order.discountKes)}</span>
                   </div>
                 )}
+                {order.pointsRedeemed > 0 && (
+                  <div className="flex justify-between font-dm text-[13px] text-(--success)">
+                    <span>Paid with points ({order.pointsRedeemed.toLocaleString()} pts)</span>
+                    <span>-{kes(order.pointsDiscountKes)}</span>
+                  </div>
+                )}
                 <div className="h-px bg-(--neutral-200) my-1" />
                 <div className="flex justify-between font-syne text-[16px] font-semibold text-(--neutral-900)">
-                  <span>Total</span><span>{kes(order.totalKes)}</span>
+                  <span>{order.pointsRedeemed > 0 ? "Paid in cash" : "Total"}</span><span>{kes(order.totalKes)}</span>
                 </div>
               </div>
             </div>
@@ -184,7 +195,7 @@ export default async function AdminInStoreOrderDetailPage({ params }: { params: 
               <p>Amount: {latestTransaction ? kes(latestTransaction.amount) : "—"}</p>
               <p>Processed by: {order.createdByAdminName}</p>
               {order.invoiceNumber && <p>Invoice: {order.invoiceNumber}</p>}
-              <p>Receipt sent: {[order.receiptSentEmail && "Email", order.receiptSentSms && "SMS"].filter(Boolean).join(", ") || "Not sent"}</p>
+              <p>Receipt sent: {order.receiptSentEmail ? "Email" : "Not sent"}</p>
             </div>
           </div>
 

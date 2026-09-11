@@ -56,19 +56,24 @@ type AdminOrder = {
   subtotalKes: number;
   deliveryKes: number;
   discountKes: number;
+  // Loyalty points spent, and their cash value in cents. pointsDiscountKes is
+  // already subtracted inside totalKes.
+  pointsRedeemed: number;
+  pointsDiscountKes: number;
   totalKes: number;
   paymentStatus: PaymentStatus;
   deliveryAddress: string | null;
   deliveryCity: string | null;
   deliveryCounty: string | null;
   deliveryPhone: string | null;
+  deliveryNote: string | null;
   deliveryType: "PICKUP" | "DELIVERY" | null;
   guestEmail: string | null;
   createdAt: string;
   user: { name: string; email: string } | null;
   branch: { id: string; name: string; county: string; phone: string | null } | null;
   items: OrderItemDetail[];
-  transactions: { provider: "MPESA" | "PAYSTACK" | "KCB" }[];
+  transactions: { provider: "MPESA" | "PAYSTACK" | "KCB" | "POINTS" }[];
   customerPickupConfirmedAt: string | null;
   staffPickupConfirmedAt: string | null;
 };
@@ -86,7 +91,11 @@ type AdminInStoreOrder = {
   paymentStatus: PaymentStatus;
   subtotalKes: number;
   discountKes: number;
+  pointsRedeemed: number;
+  pointsDiscountKes: number;
   totalKes: number;
+  deliveryKes: number;
+  deliveryLocation: string | null;
   createdByAdminId: string;
   createdByAdminName: string;
   customerUserId: string | null;
@@ -117,6 +126,8 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
 const PROVIDER_LABELS: Record<string, string> = {
   MPESA: "M-Pesa", PAYSTACK: "Paystack", KCB: "KCB Buni",
   MPESA_STK: "M-Pesa", MPESA_C2B: "M-Pesa",
+  // No money moved — the order was covered entirely by loyalty points.
+  POINTS: "Fechi Points",
 };
 
 const R2_BASE = process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "";
@@ -462,21 +473,32 @@ function InStoreOrderDrawerContent({
               })}
             </div>
 
-            {/* Price summary — no delivery line, in-store orders never have one */}
             <div className="mt-4 bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200) flex flex-col gap-2">
               <div className="flex justify-between font-dm text-[13px] text-(--neutral-500)">
                 <span>Subtotal</span>
                 <span>{formatKes(order.subtotalKes)}</span>
               </div>
+              {order.deliveryKes > 0 && (
+                <div className="flex justify-between font-dm text-[13px] text-(--neutral-500)">
+                  <span>Delivery Fee{order.deliveryLocation ? ` — ${order.deliveryLocation}` : ""}</span>
+                  <span>{formatKes(order.deliveryKes)}</span>
+                </div>
+              )}
               {order.discountKes > 0 && (
                 <div className="flex justify-between font-dm text-[13px] text-(--success)">
                   <span>Discount</span>
                   <span>-{formatKes(order.discountKes)}</span>
                 </div>
               )}
+              {order.pointsRedeemed > 0 && (
+                <div className="flex justify-between font-dm text-[13px] text-(--success)">
+                  <span>Paid with points ({order.pointsRedeemed.toLocaleString()} pts)</span>
+                  <span>-{formatKes(order.pointsDiscountKes)}</span>
+                </div>
+              )}
               <div className="h-px bg-(--neutral-200) my-1" />
               <div className="flex justify-between font-syne text-[16px] font-semibold text-(--neutral-900)">
-                <span>Total</span>
+                <span>{order.pointsRedeemed > 0 ? "Paid in cash" : "Total"}</span>
                 <span>{formatKes(order.totalKes)}</span>
               </div>
             </div>
@@ -997,9 +1019,15 @@ function OrderDetailDrawer({
                     <span>-{formatKes(order.discountKes)}</span>
                   </div>
                 )}
+                {order.pointsRedeemed > 0 && (
+                  <div className="flex justify-between font-dm text-[13px] text-(--success)">
+                    <span>Paid with points ({order.pointsRedeemed.toLocaleString()} pts)</span>
+                    <span>-{formatKes(order.pointsDiscountKes)}</span>
+                  </div>
+                )}
                 <div className="h-px bg-(--neutral-200) my-1" />
                 <div className="flex justify-between font-syne text-[16px] font-semibold text-(--neutral-900)">
-                  <span>Total</span>
+                  <span>{order.pointsRedeemed > 0 ? "Paid in cash" : "Total"}</span>
                   <span>{formatKes(order.totalKes)}</span>
                 </div>
               </div>
@@ -1029,6 +1057,16 @@ function OrderDetailDrawer({
                     <p>Customer will collect from store{order.branch?.name ? ` — ${order.branch.name}` : ""}</p>
                     {order.branch?.phone && <p className="text-(--neutral-500) mt-0.5">{order.branch.phone}</p>}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Delivery notes — customer-entered, only shown when present */}
+            {order.deliveryNote && order.deliveryNote.trim().length > 0 && (
+              <div>
+                <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Delivery Notes</p>
+                <div className="bg-(--neutral-50) rounded-[10px] p-4 border border-(--neutral-200)">
+                  <p className="font-dm text-[13px] text-(--neutral-700) whitespace-pre-wrap">{order.deliveryNote}</p>
                 </div>
               </div>
             )}

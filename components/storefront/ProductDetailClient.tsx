@@ -293,7 +293,7 @@ export function ProductDetailClient({ product }: Props) {
       posthog.capture("product_added_to_cart", {
         product_id: product.id,
         product_name: product.name,
-        price_kes: product.priceKes,
+        price_kes: effectivePriceKes,
         quantity,
         source: "detail_page",
       });
@@ -554,7 +554,7 @@ export function ProductDetailClient({ product }: Props) {
           {/* Price block */}
           <div className="flex items-center gap-3 flex-wrap">
             <span className="font-body font-bold text-[32px] text-[#1a1c1c] dark:text-white">
-              {format(product.priceKes)}
+              {format(effectivePriceKes)}
             </span>
             {hasDiscount && (
               <>

@@ -6,9 +6,19 @@ import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
 import { approvalExecutors } from "@/lib/approval-executors";
 import { logActivity } from "@/lib/admin-activity";
+import { promotionCreateSchema } from "@/lib/promotions/schema";
 import { reportError } from "@/lib/observability";
 
-/** GET /api/admin/promotions */
+/**
+ * GET /api/admin/promotions?scope=store|customer
+ *
+ * `store`    — coupons staff created (ownerUserId is null)
+ * `customer` — customers' own referral codes, created automatically
+ * omitted    — everything, as before
+ *
+ * Customer rows are enriched with the owner's name and email so the tab can
+ * show who a code belongs to without a second round trip.
+ */
 export async function GET(req: NextRequest) {
   await connection();
 
@@ -16,10 +26,37 @@ export async function GET(req: NextRequest) {
   if (denied) return denied;
 
   try {
+    const scope = new URL(req.url).searchParams.get("scope");
+    const where =
+      scope === "store"
+        ? { ownerUserId: null }
+        : scope === "customer"
+          ? { ownerUserId: { not: null } }
+          : {};
+
     const promotions = await db.promotion.findMany({
+      where,
       orderBy: { createdAt: "desc" },
     });
-    return ok(promotions);
+
+    // `promotion` lives in the `admin` Postgres schema and `user` in `public`,
+    // with no relation between them — so this is a second query joined in code,
+    // not an include.
+    const ownerIds = [...new Set(promotions.map((p) => p.ownerUserId).filter(Boolean))] as string[];
+    const owners = ownerIds.length
+      ? await db.user.findMany({
+          where: { id: { in: ownerIds } },
+          select: { id: true, name: true, email: true, image: true },
+        })
+      : [];
+    const ownerById = new Map(owners.map((o) => [o.id, o]));
+
+    return ok(
+      promotions.map((p) => ({
+        ...p,
+        owner: p.ownerUserId ? (ownerById.get(p.ownerUserId) ?? null) : null,
+      })),
+    );
   } catch (e) {
     console.error("[promotions/GET]", e);
     reportError(e, { route: "GET /api/admin/promotions" });
@@ -36,27 +73,20 @@ export async function POST(req: NextRequest) {
   const denied = await requirePermission(req, { promotions: ["create"] });
   if (denied) return denied;
 
-  let body: {
-    name: string;
-    type: string;
-    value: number;
-    code?: string;
-    minOrder?: number;
-    maxUses?: number;
-    maxUsesPerUser?: number;
-    startDate?: string;
-    endDate?: string;
-    status?: string;
-  };
+  let raw: unknown;
   try {
-    body = await req.json();
+    raw = await req.json();
   } catch {
     return Err.validation("Invalid JSON body");
   }
 
-  if (!body.name?.trim()) return Err.validation("Promotion name is required");
-  if (!body.type) return Err.validation("Type is required");
-  if (body.value == null) return Err.validation("Value is required");
+  // Replaces three hand-rolled `if` checks. The points ceiling in particular
+  // has to be enforced here — the client can be bypassed.
+  const parsed = promotionCreateSchema.safeParse(raw);
+  if (!parsed.success) {
+    return Err.validation(parsed.error.issues[0]?.message ?? "Invalid promotion");
+  }
+  const body = parsed.data;
 
   try {
     const ctx = await loadCallerContext();

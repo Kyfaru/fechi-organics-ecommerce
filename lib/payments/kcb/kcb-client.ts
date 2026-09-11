@@ -48,6 +48,9 @@ async function getKcbToken(branch: KcbStkPushOpts["branch"]): Promise<string> {
       Authorization: `Basic ${credentials}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
+    // Matches Daraja's token-fetch timeout (lib/payments/mpesa/daraja-client.ts)
+    // — a hung KCB Buni token endpoint must fail fast, not stall the request.
+    signal: AbortSignal.timeout(10_000),
   });
 
   const rawBody = await res.text();
@@ -103,6 +106,10 @@ export async function initiateKcbStkPush(
       callbackUrl: opts.callbackUrl,
       transactionDescription: `Fechi Organics Order ${opts.orderId.slice(0, 8).toUpperCase()}`,
     }),
+    // Matches Daraja's STK-push timeout (lib/payments/mpesa/stk-push.ts) — a
+    // hung KCB Buni STK endpoint must fail fast so the dual-gateway fallback
+    // (or a clear error) kicks in instead of the request stalling indefinitely.
+    signal: AbortSignal.timeout(15_000),
   });
 
   const rawBody = await res.text();

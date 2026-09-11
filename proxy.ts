@@ -60,12 +60,21 @@ const PUBLIC_PATHS = [
   "/",
   "/shop",
   "/cart",
+  // Guest checkout — components/checkout/DeliveryClient.tsx no longer
+  // requires a session. /payment stays public too: it now just redirects to
+  // /delivery (the two steps were merged), but a stale bookmark/link should
+  // still resolve instead of bouncing through /login first.
+  "/delivery",
+  "/payment",
   "/contact",
   "/blog",
   "/about",
   "/terms",
   "/privacy-policy",
   "/faq",
+  // Explains the points programme — must be readable before signing up, since
+  // it is what persuades someone to.
+  "/loyalty-points",
   "/testimonials",
   "/shipping",
   "/403",
@@ -88,8 +97,26 @@ const PUBLIC_PATHS = [
   "/api/zoho/webhook",
   "/api/countries",
   "/api/testimonials",
+  // Guest checkout (components/checkout/DeliveryClient.tsx) reads all of
+  // these before an order/payment ever exists, with no session cookie yet.
+  // Note: /api/payments/** never reaches this list at all — the middleware
+  // matcher below excludes that whole prefix, so those routes always ran
+  // unauthenticated and enforce their own guest/session branching inline.
+  "/api/delivery-zones",
+  "/api/delivery-pricing",
+  "/api/branches",
+  "/api/country-states",
+  "/api/coupons",
+  // Pre-existing gap, unrelated to guest checkout: the cart page's coupon box
+  // (components/cart/CartClient.tsx) has called this since before this
+  // change, but it was never added here, so a guest applying a coupon on
+  // /cart already 401'd at this gate.
+  "/api/promo",
   "/api/admin/forgot-password",
   "/api/admin/reset-password",
+  // Called from the login method-choice screen for a RETURNING user, before
+  // Better Auth's twoFactorRedirect flow has minted any real session.
+  "/api/account/2fa/precheck",
   "/api/products/options",
   "/api/track",
   "/api/webhooks",
@@ -127,7 +154,11 @@ const SESSION_COOKIE = "better-auth.session_token";
  * cached copy of it on Back with no network round trip at all, skipping that
  * redirect entirely. Cache-Control: no-store forces a fresh request instead.
  */
-const NO_STORE_PATHS = ["/login", "/signup", "/admin/login"];
+const NO_STORE_PATHS = [
+  "/login", "/signup", "/admin/login",
+  "/forgot-password", "/reset-password",
+  "/admin/forgot-password", "/admin/reset-password",
+];
 
 /**
  * Apply security headers to every response that passes through to the app.

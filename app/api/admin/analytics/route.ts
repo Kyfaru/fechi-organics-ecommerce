@@ -131,7 +131,7 @@ export async function GET(req: NextRequest) {
         trafficSourceGroups,
       ] = await Promise.all([
         db.order.aggregate({
-          _sum: { totalKes: true },
+          _sum: { totalKes: true, deliveryKes: true },
           where: { paymentStatus: "PAID", createdAt: dateFilter },
         }),
         db.user.count({ where: { role: "client", createdAt: dateFilter } }),
@@ -157,7 +157,7 @@ export async function GET(req: NextRequest) {
         // Daily revenue for chart
         db.order.findMany({
           where: { paymentStatus: "PAID", createdAt: dateFilter },
-          select: { createdAt: true, totalKes: true },
+          select: { createdAt: true, totalKes: true, deliveryKes: true },
         }),
         // All orders for order-status area chart (F2/F5)
         db.order.findMany({
@@ -165,7 +165,7 @@ export async function GET(req: NextRequest) {
           select: { createdAt: true, status: true, paymentStatus: true },
         }),
         db.inStoreOrder.aggregate({
-          _sum: { totalKes: true },
+          _sum: { totalKes: true, deliveryKes: true },
           where: { paymentStatus: "PAID", createdAt: dateFilter },
         }),
         db.inStoreOrder.count({ where: { paymentStatus: "PAID", createdAt: dateFilter } }),
@@ -187,7 +187,7 @@ export async function GET(req: NextRequest) {
         }),
         db.inStoreOrder.findMany({
           where: { paymentStatus: "PAID", createdAt: dateFilter },
-          select: { createdAt: true, totalKes: true },
+          select: { createdAt: true, totalKes: true, deliveryKes: true },
         }),
         // fulfillmentStatus values (CONFIRMED/PICKED_UP) double as OrderStatus
         // members, except PICKED_UP — mapped to DELIVERED below so it counts
@@ -207,15 +207,18 @@ export async function GET(req: NextRequest) {
       // Build daily revenue chart — also tracks a per-day order count so the
       // CSV/PDF export can show real Orders/AOV columns instead of leaving
       // them blank (the payload used to only carry a daily revenue sum).
+      // Revenue excludes delivery fee (both channels) — tracked separately on Finance.
       const dailyMap: Record<string, number> = {};
       const dailyCountMap: Record<string, number> = {};
       for (const ord of [...revenueChartOrders, ...inStoreRevenueChartOrders]) {
         const key = ord.createdAt.toISOString().slice(0, 10);
-        dailyMap[key] = (dailyMap[key] ?? 0) + ord.totalKes;
+        dailyMap[key] = (dailyMap[key] ?? 0) + ord.totalKes - ord.deliveryKes;
         dailyCountMap[key] = (dailyCountMap[key] ?? 0) + 1;
       }
 
-      const totalRevenue = (revenueAgg._sum.totalKes ?? 0) + (inStoreRevenueAgg._sum.totalKes ?? 0);
+      const totalRevenue =
+        (revenueAgg._sum.totalKes ?? 0) - (revenueAgg._sum.deliveryKes ?? 0) +
+        (inStoreRevenueAgg._sum.totalKes ?? 0) - (inStoreRevenueAgg._sum.deliveryKes ?? 0);
       const combinedPaidOrders = paidOrders + inStorePaidOrders;
       const aov = combinedPaidOrders > 0 ? Math.round(totalRevenue / combinedPaidOrders) : 0;
 
@@ -332,7 +335,7 @@ export async function GET(req: NextRequest) {
         }),
         db.order.findMany({
           where: { paymentStatus: "PAID", createdAt: dateFilter },
-          select: { createdAt: true, totalKes: true },
+          select: { createdAt: true, totalKes: true, deliveryKes: true },
         }),
         // Orders for order-status area chart (F2/F5)
         db.order.findMany({
@@ -356,7 +359,7 @@ export async function GET(req: NextRequest) {
         }),
         db.inStoreOrder.findMany({
           where: { paymentStatus: "PAID", createdAt: dateFilter },
-          select: { createdAt: true, totalKes: true },
+          select: { createdAt: true, totalKes: true, deliveryKes: true },
         }),
         db.inStoreOrder.findMany({
           where: { createdAt: dateFilter },
@@ -364,10 +367,11 @@ export async function GET(req: NextRequest) {
         }),
       ]);
 
+      // Revenue excludes delivery fee (both channels) — tracked separately on Finance.
       const dailyMap: Record<string, number> = {};
       for (const ord of [...revenueByDay, ...inStoreRevenueByDay]) {
         const key = ord.createdAt.toISOString().slice(0, 10);
-        dailyMap[key] = (dailyMap[key] ?? 0) + ord.totalKes;
+        dailyMap[key] = (dailyMap[key] ?? 0) + ord.totalKes - ord.deliveryKes;
       }
 
       const diffDays = Math.round((to.getTime() - from.getTime()) / 86400000);

@@ -21,6 +21,9 @@ import { getOrCreateInStoreInvoice } from "@/lib/invoice/get-or-create-instore-i
 import { pushSaleReceiptToZoho } from "@/lib/zoho/push-sale-receipt";
 import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { paymentModeForInStore } from "@/lib/zoho/payment-mode";
+import { publishQstashJSON } from "@/lib/qstash";
+import { releaseRedeemedPoints } from "@/lib/points/redeem";
+import { classifyFailureReason } from "@/lib/payments/classify-failure";
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
@@ -58,6 +61,20 @@ export async function markInStorePaymentSuccess(args: {
       data: args.transactionData,
     });
 
+    await tx.inStoreTransactionEvent.create({
+      data: {
+        inStoreTransactionId: args.transactionId,
+        type: "SUCCEEDED",
+        detail:
+          typeof args.transactionData.mpesaReceiptNumber === "string"
+            ? args.transactionData.mpesaReceiptNumber
+            : typeof args.transactionData.paystackReference === "string"
+              ? args.transactionData.paystackReference
+              : null,
+        rawPayload: (args.transactionData as { rawCallbackPayload?: Prisma.InputJsonValue }).rawCallbackPayload ?? undefined,
+      },
+    });
+
     const order = await tx.inStoreOrder.update({
       where: { id: args.inStoreOrderId },
       data: { paymentStatus: "PAID" },
@@ -81,6 +98,16 @@ export async function markInStorePaymentSuccess(args: {
       });
     }
   });
+
+  // Loyalty points, badges and referral conversion. `provider` is still null
+  // when the idempotency guard above short-circuited, so a replayed callback
+  // does not queue a second award pass.
+  if (provider) {
+    await publishQstashJSON("/api/admin/workers/award-points", {
+      orderId: args.inStoreOrderId,
+      refType: "inStoreOrder",
+    }).catch((e) => console.error("[instore-post-payment] award-points enqueue failed:", e));
+  }
 
   // Pre-warm the invoice PDF synchronously (not queued, unlike the customer
   // flow's 60s-delayed worker) so it's already cached in R2 by the time the
@@ -135,6 +162,9 @@ export async function markInStorePaymentSuccess(args: {
             customerEmail: true,
             customerPhone: true,
             discountKes: true,
+            pointsDiscountKes: true,
+            pointsRedeemed: true,
+            deliveryKes: true,
             orderNumber: true,
           },
         });
@@ -155,6 +185,9 @@ export async function markInStorePaymentSuccess(args: {
           paymentMode: paymentModeForInStore(provider!),
           items: paidItems,
           discountKes: order?.discountKes,
+          pointsDiscountKes: order?.pointsDiscountKes,
+          pointsRedeemed: order?.pointsRedeemed,
+          shippingKes: order?.deliveryKes,
           paymentReference,
           notes: `Fechi Organics in-store order ${order?.orderNumber ?? args.inStoreOrderId}`,
         });
@@ -200,11 +233,27 @@ export async function markInStorePaymentFailed(args: {
       data: { status: "FAILED", failureReason: args.reason ?? null },
     });
 
+    await tx.inStoreTransactionEvent.create({
+      data: {
+        inStoreTransactionId: args.transactionId,
+        type: classifyFailureReason(args.reason),
+        detail: args.reason ?? null,
+      },
+    });
+
     await tx.inStoreOrder.update({
       where: { id: args.inStoreOrderId },
       data: { paymentStatus: "FAILED" },
     });
   });
+
+  // Give back any loyalty points held against this order. Idempotent — a
+  // replayed failure hits the ledger's unique constraint and no-ops.
+  try {
+    await releaseRedeemedPoints({ orderId: args.inStoreOrderId, refType: "inStoreOrder" });
+  } catch (e) {
+    console.error("[instore-post-payment] point release failed:", e);
+  }
 
   try {
     await getRedis().set(

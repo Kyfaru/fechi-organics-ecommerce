@@ -27,6 +27,7 @@ interface NotificationRow {
   createdAt: string;
   isRead: boolean;
   isPinned: boolean;
+  occurrenceCount: number;
 }
 
 const TABS: [Tab, string][] = [
@@ -439,6 +440,15 @@ function NotificationRowItem({
   });
   const receipts: { userId: string; name: string; readAt: string }[] = data?.data?.receipts ?? [];
 
+  const hasOccurrences = n.occurrenceCount > 1;
+  const { data: occurrencesData } = useQuery({
+    queryKey: ["admin-notification-occurrences", n.id],
+    queryFn: () => fetch(`/api/admin/notifications/${n.id}/occurrences`).then((r) => r.json()),
+    enabled: hasOccurrences && expanded,
+  });
+  const occurrences: { id: string; link: string | null; detail: string | null; occurredAt: string }[] =
+    occurrencesData?.data?.occurrences ?? [];
+
   const sev = SEVERITY_MAP[n.severity];
   const barColor = n.severity === "CRITICAL" ? "bg-red-600" : n.severity === "WARNING" ? "bg-amber-500" : "bg-blue-500";
   const icon = TYPE_ICON[n.type] ?? "material-symbols:notifications-outline-rounded";
@@ -454,11 +464,16 @@ function NotificationRowItem({
       <div className="flex-1 min-w-0 flex flex-col gap-1.5">
         <div className="flex justify-between items-start gap-4">
           <h3
-            className={`font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) truncate ${
+            className={`font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) truncate flex items-center gap-2 ${
               n.isRead ? "font-medium" : "font-semibold"
             }`}
           >
-            {n.title}
+            <span className="truncate">{n.title}</span>
+            {hasOccurrences && (
+              <span className="shrink-0 rounded-full bg-(--neutral-100) dark:bg-(--dark-border) px-2 py-0.5 text-[11px] font-semibold text-(--neutral-500) dark:text-(--dark-muted)">
+                ×{n.occurrenceCount}
+              </span>
+            )}
           </h3>
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
             {n.link && (
@@ -513,10 +528,22 @@ function NotificationRowItem({
           )}
         </div>
 
-        {isGlobal && (
+        {(isGlobal || hasOccurrences) && (
           <button onClick={onToggleReceipts} className="mt-0.5 text-[11px] font-dm text-(--green-700) hover:underline self-start">
-            {expanded ? "Hide read receipts" : "Read by…"}
+            {expanded ? "Hide details" : hasOccurrences ? `Show ${n.occurrenceCount} occurrences…` : "Read by…"}
           </button>
+        )}
+        {expanded && hasOccurrences && (
+          <div className="text-[12px] font-dm text-(--neutral-500) dark:text-(--dark-muted) space-y-1 border-l-2 border-(--neutral-100) dark:border-(--dark-border) pl-3">
+            {occurrences.length === 0
+              ? "Loading…"
+              : occurrences.map((o) => (
+                  <div key={o.id}>
+                    {new Date(o.occurredAt).toLocaleString("en-KE", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}
+                    {o.detail ? ` — ${o.detail}` : ""}
+                  </div>
+                ))}
+          </div>
         )}
         {isGlobal && expanded && (
           <div className="text-[12px] font-dm text-(--neutral-500) dark:text-(--dark-muted) space-y-0.5">

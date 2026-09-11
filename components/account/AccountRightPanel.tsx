@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
 import { Icon } from "@iconify/react"
 import type { AccountUser } from "@/types/account"
@@ -39,6 +40,67 @@ export function BotanicalDashboardCard({ user: initialUser }: { user: AccountUse
   )
 }
 
+type PointsSummary = {
+  points: { available: number; locked: number; cashValueCents: number };
+}
+
+/**
+ * Points at a glance, on the profile tab. Reuses the achievements endpoint
+ * rather than adding a second one — TanStack dedupes the request with the
+ * rewards page's own query.
+ */
+export function PointsSummaryCard() {
+  const { data } = useQuery<PointsSummary>({
+    queryKey: ["achievements"],
+    queryFn: async () => {
+      const res = await fetch("/api/account/achievements")
+      const json = await res.json()
+      if (!json.ok) throw new Error(json.error?.message ?? "Failed to load points")
+      return json.data
+    },
+    // Shares a key with the achievements page — keep the revalidation policy
+    // identical, or whichever mounts first pins a stale balance for both.
+    staleTime: 0,
+    refetchOnMount: "always",
+  })
+
+  if (!data) return null
+
+  return (
+    <Link
+      href="/account/achievements"
+      className="block bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl p-4 hover:border-[#15803D] transition-colors group"
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5">
+          <Icon icon="lucide:trophy" width={14} className="text-[#15803D]" />
+          <p className="text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+            Fechi Points
+          </p>
+        </div>
+        <Icon
+          icon="lucide:arrow-right"
+          width={14}
+          className="text-neutral-300 transition-transform group-hover:translate-x-0.5"
+        />
+      </div>
+
+      <p className="text-2xl font-bold text-neutral-900 dark:text-white leading-none">
+        {data.points.available.toLocaleString()}
+      </p>
+      <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+        worth KSh {(data.points.cashValueCents / 100).toLocaleString("en-KE", { maximumFractionDigits: 0 })}
+      </p>
+
+      {data.points.locked > 0 && (
+        <p className="mt-1.5 text-[11px] text-amber-600">
+          +{data.points.locked.toLocaleString()} unlock once you've spent KSh 3,000
+        </p>
+      )}
+    </Link>
+  )
+}
+
 export default function AccountRightPanel({
   user,
   hideExtras = false,
@@ -59,6 +121,11 @@ export default function AccountRightPanel({
           usage in profile/security/settings pages). */}
       <div className="max-tablet:hidden">
         <BotanicalDashboardCard user={user} />
+      </div>
+
+      {/* Points + level */}
+      <div className={hideExtras ? "max-tablet:hidden" : ""}>
+        <PointsSummaryCard />
       </div>
 
       {/* Security + Identity badges */}

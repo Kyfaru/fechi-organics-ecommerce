@@ -16,6 +16,7 @@ import { toast } from "@/lib/toast";
 import { useOtpResend } from "@/hooks/use-otp-resend";
 import { PWRESET_COMPLETION_FLAG_KEY, PWRESET_PAGE_WINDOW_MS } from "@/lib/pwreset-flag";
 import { reportError } from "@/lib/observability";
+import { useReloadOnBfcacheRestore } from "@/hooks/use-reload-on-bfcache-restore";
 
 type Channel = "email" | "phone";
 type Step = "request" | "otp" | "set-password" | "success";
@@ -42,6 +43,7 @@ type Step = "request" | "otp" | "set-password" | "success";
  */
 export default function ForgotPasswordPage() {
   const router = useRouter();
+  useReloadOnBfcacheRestore();
 
   const [step, setStep] = useState<Step>("request");
   const [channel, setChannel] = useState<Channel>("email");

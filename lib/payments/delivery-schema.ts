@@ -21,10 +21,21 @@ export const deliveryDataSchema = z.object({
   deliveryKes: z.number().int().nonnegative().optional(),
   deliveryFeeLabel: z.string().optional(),
   promoCode: z.string().optional().nullable(),
+  // Plain referral code typed at checkout (components/checkout/DeliveryClient.tsx).
+  // Doesn't discount this order — persisted as order.pendingReferralCode and
+  // only ever read back out by the guest-checkout signup merge in
+  // lib/auth.ts. See prisma/schema.prisma's pendingReferralCode comment.
+  referralCode: z.string().max(32).optional().nullable(),
+  // Loyalty points the customer chose to spend. The server re-checks the
+  // balance and re-derives the discount — this is a request, not an amount.
+  pointsRequested: z.number().int().nonnegative().optional(),
   address: z.string().optional(),
   city: z.string().optional(),
   postalCode: z.string().optional(),
-  notes: z.string().optional(),
+  // Zoho Books' own notes field has a much lower real-world limit; capped
+  // well under that plus leaving room for the order-number/discount summary
+  // lib/zoho/push-sale-receipt.ts prepends to it.
+  notes: z.string().max(500).optional(),
   deliveryType: z.enum(["PICKUP", "DELIVERY"]),
   branchId: z.string().optional().nullable(),
   branchName: z.string().optional().nullable(),

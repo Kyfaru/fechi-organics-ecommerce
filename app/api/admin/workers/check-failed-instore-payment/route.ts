@@ -9,8 +9,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyQstashRequest } from "@/lib/qstash";
 import { markInStorePaymentFailed } from "@/lib/payments/instore-post-payment";
-import { createNotification } from "@/lib/notify";
-import { createOrderDetailToken } from "@/lib/order-detail-token";
 import { reportError } from "@/lib/observability";
 
 export async function POST(req: NextRequest) {
@@ -40,19 +38,9 @@ export async function POST(req: NextRequest) {
       reason: "Payment timed out after 15 minutes with no callback",
     });
 
-    const order = await db.inStoreOrder.findUnique({
-      where: { id: inStoreOrderId },
-      select: { orderNumber: true, branchId: true, customerName: true, customerPhone: true },
-    });
-    if (order) {
-      await createNotification({
-        type: "PAYMENT_ERROR",
-        title: `In-store payment failed — ${order.orderNumber ?? inStoreOrderId}`,
-        body: `${order.customerName ?? order.customerPhone ?? "A walk-in customer"}'s payment timed out with no callback.`,
-        link: `/admin/orders/payment-failed/${await createOrderDetailToken(inStoreOrderId, "instore")}`,
-        branchId: order.branchId,
-      });
-    }
+    // In-store: staff are physically at the register, so a "payment failed"
+    // admin alert would be redundant — no notification here (unlike the
+    // online-order equivalent, check-failed-payment/route.ts).
 
     return NextResponse.json({ ok: true });
   } catch (error) {

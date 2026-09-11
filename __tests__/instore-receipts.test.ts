@@ -1,7 +1,7 @@
 /**
  * Unit tests for the in-store receipt/retry/cancel/stream plumbing:
- *  - app/api/admin/orders/instore/[id]/send-receipt/route.ts — per-channel
- *    missing-contact-info rejections
+ *  - app/api/admin/orders/instore/[id]/send-receipt/route.ts — email-only,
+ *    missing-contact-info rejection
  *  - app/api/admin/orders/instore/mpesa/initiate/route.ts — retry branch's
  *    "order not FAILED" rejection
  *  - app/api/admin/orders/instore/[id]/cancel-wait/route.ts — no-op when
@@ -10,7 +10,7 @@
  *    responses for already-resolved orders
  *
  * Mocks: @/lib/auth, @/lib/db, @/lib/redis, @/lib/ratelimit,
- * @/lib/invoice/get-or-create-instore-invoice, @/lib/email, @/lib/twilio,
+ * @/lib/invoice/get-or-create-instore-invoice, @/lib/email,
  * @/lib/payments/instore-post-payment (same pattern as __tests__/instore-payments.test.ts)
  */
 
@@ -65,11 +65,6 @@ vi.mock("@/lib/invoice/get-or-create-instore-invoice", () => ({
 const mockSendInvoiceEmail = vi.fn();
 vi.mock("@/lib/email", () => ({
   sendInvoiceEmail: (...args: unknown[]) => mockSendInvoiceEmail(...args),
-}));
-
-const mockSendSms = vi.fn();
-vi.mock("@/lib/twilio", () => ({
-  sendSms: (...args: unknown[]) => mockSendSms(...args),
 }));
 
 // ---------------------------------------------------------------------------
@@ -169,22 +164,6 @@ describe("POST /api/admin/orders/instore/[id]/send-receipt", () => {
     expect(res.status).toBe(400);
     expect(json.error.code).toBe("NO_EMAIL");
     expect(mockSendInvoiceEmail).not.toHaveBeenCalled();
-  });
-
-  it("rejects channel=sms with 400 NO_PHONE when the order has no phone on file", async () => {
-    mockInStoreOrderFindUnique.mockResolvedValue({
-      id: "order-1", orderNumber: "#IS-001", totalKes: 300000, customerEmail: "walkin@example.com", customerPhone: null,
-    });
-
-    const res = await sendReceiptPOST(
-      makeRequest("http://localhost/api/admin/orders/instore/order-1/send-receipt", "POST", { channel: "sms" }),
-      { params: Promise.resolve({ id: "order-1" }) },
-    );
-    const json = await res.json();
-
-    expect(res.status).toBe(400);
-    expect(json.error.code).toBe("NO_PHONE");
-    expect(mockSendSms).not.toHaveBeenCalled();
   });
 
   it("sends the email channel successfully when an address is on file", async () => {

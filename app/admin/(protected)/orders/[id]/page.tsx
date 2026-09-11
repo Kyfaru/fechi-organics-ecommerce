@@ -14,6 +14,8 @@ export const metadata = { title: "Order Detail | Fechi Organics Admin" };
 
 const PROVIDER_LABELS: Record<string, string> = {
   MPESA: "M-Pesa", PAYSTACK: "Paystack", KCB: "KCB Buni",
+  // No money moved — the order was covered entirely by loyalty points.
+  POINTS: "Fechi Points",
 };
 
 // Shared card chrome — header strip + p-6 body, matching the Stitch design
@@ -36,8 +38,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
   const { id } = await params;
 
   // Layout's AdminGuard already enforces orders:["view"] for any /admin/orders/*
-  // path — this is only the branch-scoping check it doesn't do (mirrors
-  // app/admin/(protected)/orders/payment-failed/[token]/page.tsx).
+  // path — this is only the branch-scoping check it doesn't do.
   const ctx = await loadCallerContext();
   if (ctx.denied) redirect("/admin/login");
 
@@ -192,9 +193,15 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
                     <span>Discount</span><span>-{kes(order.discountKes)}</span>
                   </div>
                 )}
+                {order.pointsRedeemed > 0 && (
+                  <div className="flex justify-between font-dm text-[13px] text-(--success)">
+                    <span>Paid with points ({order.pointsRedeemed.toLocaleString()} pts)</span>
+                    <span>-{kes(order.pointsDiscountKes)}</span>
+                  </div>
+                )}
                 <div className="h-px bg-(--neutral-200) my-1" />
                 <div className="flex justify-between font-syne text-[16px] font-semibold text-(--neutral-900)">
-                  <span>Total</span><span>{kes(order.totalKes)}</span>
+                  <span>{order.pointsRedeemed > 0 ? "Paid in cash" : "Total"}</span><span>{kes(order.totalKes)}</span>
                 </div>
               </div>
             </div>
@@ -273,6 +280,18 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
               )}
             </div>
           </div>
+
+          {/* Delivery notes — customer-entered, only shown when present */}
+          {order.deliveryNote && order.deliveryNote.trim().length > 0 && (
+            <div className={CARD}>
+              <div className={CARD_HEADER}>
+                <p className={CARD_LABEL}>Delivery Notes</p>
+              </div>
+              <div className={CARD_BODY}>
+                <p className="font-dm text-[13px] text-(--neutral-700) whitespace-pre-wrap">{order.deliveryNote}</p>
+              </div>
+            </div>
+          )}
 
           {/* Admin metadata */}
           <div className={CARD}>

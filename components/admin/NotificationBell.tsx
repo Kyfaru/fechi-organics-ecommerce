@@ -19,6 +19,7 @@ interface PreviewNotification {
   link: string | null;
   createdAt: string;
   isRead: boolean;
+  occurrenceCount: number;
 }
 
 function timeAgo(iso: string) {
@@ -136,9 +137,14 @@ export function NotificationBell() {
                   <SeverityBadge severity={n.severity} dotOnly />
                   <div className="flex-1 min-w-0">
                     <p
-                      className={`text-[13px] ${n.isRead ? "font-normal" : "font-semibold"} text-(--neutral-900) dark:text-(--dark-text) truncate`}
+                      className={`text-[13px] ${n.isRead ? "font-normal" : "font-semibold"} text-(--neutral-900) dark:text-(--dark-text) truncate flex items-center gap-1.5`}
                     >
-                      {n.title}
+                      <span className="truncate">{n.title}</span>
+                      {n.occurrenceCount > 1 && (
+                        <span className="shrink-0 rounded-full bg-(--neutral-100) dark:bg-(--dark-border) px-1.5 py-0.5 text-[10px] font-semibold text-(--neutral-500) dark:text-(--dark-muted)">
+                          ×{n.occurrenceCount}
+                        </span>
+                      )}
                     </p>
                     <p className="text-[12px] text-(--neutral-500) dark:text-(--dark-muted) truncate">{n.body}</p>
                     <p className="text-[11px] text-(--neutral-400) mt-0.5">{timeAgo(n.createdAt)}</p>

@@ -25,6 +25,23 @@ import { r2Client } from "@/lib/r2";
 import { generateExportFile } from "@/lib/reports/generate-export";
 import type { ExportFilters } from "@/lib/reports/types";
 import { sendSms, hasSmsConfig } from "@/lib/sms";
+
+/** Shared by the promotions create/update executors and the routes that queue them. */
+type PromotionPayload = {
+  id?: string;
+  name?: string;
+  type?: string;
+  value?: number;
+  code?: string | null;
+  minOrder?: number | null;
+  maxUses?: number | null;
+  maxUsesPerUser?: number;
+  maxDiscountKes?: number | null;
+  pointsAward?: number;
+  startDate?: string | null;
+  endDate?: string | null;
+  status?: string;
+};
 import { combineLegacyPhone, normalizePhoneE164 } from "@/lib/phone";
 import { sendOrderContactEmail } from "@/lib/email";
 import { buildContactMessage, buildContactEmailHtml } from "@/lib/orders/build-contact-message";
@@ -390,24 +407,64 @@ export const approvalExecutors: Record<string, Executor> = {
   },
 
   // Mirrors POST /api/admin/promotions' shaping (app/api/admin/promotions/route.ts).
+  //
+  // Fields are enumerated, not spread — anything added to the promotion model
+  // and not listed here is silently dropped when a queued request is approved.
+  // maxDiscountKes was missing for exactly that reason.
   "promotions:create": async (payload) => {
-    const body = payload as {
-      name: string; type: string; value: number; code?: string; minOrder?: number;
-      maxUses?: number; maxUsesPerUser?: number; startDate?: string; endDate?: string; status?: string;
-    };
+    const body = payload as PromotionPayload;
     return db.promotion.create({
       data: {
-        name: body.name.trim(),
+        name: (body.name ?? "").trim(),
         type: body.type,
         value: body.value,
         code: body.code ?? null,
         minOrder: body.minOrder ?? null,
         maxUses: body.maxUses ?? null,
         maxUsesPerUser: body.maxUsesPerUser ?? 1,
+        maxDiscountKes: body.maxDiscountKes ?? null,
+        pointsAward: body.pointsAward ?? 0,
         startDate: body.startDate ? new Date(body.startDate) : null,
         endDate: body.endDate ? new Date(body.endDate) : null,
         status: body.status ?? "active",
+        // Reaching this executor means the request was approved (or the caller
+        // bypassed the queue), so the coupon is live either way.
+        approvalStatus: "APPROVED",
       } as unknown as Prisma.promotionCreateInput,
+    });
+  },
+
+  // Without this, PATCH wrote straight to the database and any role holding
+  // promotions:update could create a 0-point coupon then edit points onto it,
+  // bypassing approval entirely.
+  "promotions:update": async (payload, resourceId) => {
+    const body = payload as PromotionPayload;
+    const id = resourceId ?? body.id;
+    if (!id) throw new Error("promotions:update requires a promotion id");
+
+    return db.promotion.update({
+      where: { id },
+      data: {
+        ...(body.name !== undefined && { name: String(body.name).trim() }),
+        ...(body.type !== undefined && { type: String(body.type) }),
+        ...(body.value !== undefined && { value: Number(body.value) }),
+        ...(body.code !== undefined && { code: body.code ? String(body.code) : null }),
+        // `?? null` rather than a truthiness check — a minOrder of 0 is a real
+        // value and must not be silently turned into "no minimum".
+        ...(body.minOrder !== undefined && { minOrder: body.minOrder ?? null }),
+        ...(body.maxUses !== undefined && { maxUses: body.maxUses ?? null }),
+        ...(body.maxUsesPerUser !== undefined && { maxUsesPerUser: Number(body.maxUsesPerUser) }),
+        ...(body.maxDiscountKes !== undefined && { maxDiscountKes: body.maxDiscountKes ?? null }),
+        ...(body.pointsAward !== undefined && { pointsAward: Number(body.pointsAward) }),
+        ...(body.startDate !== undefined && {
+          startDate: body.startDate ? new Date(body.startDate) : null,
+        }),
+        ...(body.endDate !== undefined && {
+          endDate: body.endDate ? new Date(body.endDate) : null,
+        }),
+        ...(body.status !== undefined && { status: String(body.status) }),
+        approvalStatus: "APPROVED",
+      },
     });
   },
 

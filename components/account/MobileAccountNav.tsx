@@ -6,6 +6,7 @@ import { Icon } from "@iconify/react"
 
 const TABS: Array<{ href: string; icon: string; label: string }> = [
   { href: "/account/profile",  icon: "lucide:user",         label: "Profile"    },
+  { href: "/account/achievements", icon: "lucide:trophy",   label: "Rewards"    },
   { href: "/account/security", icon: "lucide:shield",       label: "Security"   },
   { href: "/account/orders",   icon: "lucide:shopping-bag", label: "Orders"     },
   { href: "/account/wishlist", icon: "lucide:heart",        label: "Favourites" },

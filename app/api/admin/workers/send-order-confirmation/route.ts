@@ -5,6 +5,7 @@ import { sendOrderConfirmationEmail } from "@/lib/email";
 import { emailShell, emailSection, emailIconCircle, emailLineItem, emailTotalRow, EMAIL_BRAND, FONT_HEADING } from "@/lib/email-template";
 import { reportError } from "@/lib/observability";
 import { trackServerEvent } from "@/lib/observability-server";
+import { sendSms, hasSmsConfig } from "@/lib/sms";
 
 function kes(cents: number) {
   return `KES ${(cents / 100).toLocaleString("en-KE", { minimumFractionDigits: 0 })}`;
@@ -44,6 +45,22 @@ export async function POST(req: NextRequest) {
     const email = order.user?.email ?? order.guestEmail;
     if (email) {
       await sendOrderConfirmationEmail({ email, orderId: order.id, html: buildConfirmationHtml(order) });
+    }
+
+    // Online orders never got an automatic SMS confirmation (only the manual
+    // in-store "send receipt" action sends one) — send one here, queued via
+    // this same Qstash worker so it never blocks the payment response.
+    if (hasSmsConfig() && order.deliveryPhone) {
+      try {
+        const orderRef = order.orderNumber ?? `#FO-${order.id.slice(0, 8).toUpperCase()}`;
+        await sendSms(
+          order.deliveryPhone,
+          `Hi! Your Fechi Organics order ${orderRef} was received — total ${kes(order.totalKes)}. We'll notify you when it ships or is ready for pickup.`,
+        );
+      } catch (e) {
+        reportError(e, { route: "POST /api/admin/workers/send-order-confirmation", tags: { stage: "sms" }, extra: { orderId } });
+        console.error("[send-order-confirmation] SMS failed:", e);
+      }
     }
 
     return NextResponse.json({ ok: true });

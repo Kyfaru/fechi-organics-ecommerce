@@ -8,6 +8,16 @@ const ALLOWED_ORIGINS = [process.env.BETTER_AUTH_URL, process.env.NEXT_PUBLIC_AP
   (v): v is string => !!v,
 );
 
+if (ALLOWED_ORIGINS.length === 0) {
+  // Silent fail-open otherwise — every route relying on this (including the
+  // unauthenticated guest-checkout payment routes, which sit entirely
+  // outside proxy.ts's own middleware matcher) would have zero CSRF
+  // protection with no indication why.
+  console.warn(
+    "[origin-check] BETTER_AUTH_URL and NEXT_PUBLIC_APP_URL are both unset — assertTrustedOrigin() will allow every origin (CSRF protection disabled).",
+  );
+}
+
 function originFromHeaderValue(value: string | null): string | null {
   if (!value) return null;
   try {

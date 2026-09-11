@@ -6,9 +6,12 @@ import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
-import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
+import { recordCouponRedemption } from "@/lib/promo";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { reportError } from "@/lib/observability";
+import { computeOrderTotals } from "@/lib/checkout/compute-totals";
+import { holdRedeemedPoints, releaseRedeemedPoints } from "@/lib/points/redeem";
+import { publishQstashJSON } from "@/lib/qstash";
 
 const DeliverySchema = z.object({
   fullName: z.string().min(1),
@@ -30,6 +33,7 @@ const DeliverySchema = z.object({
   branchId: z.string().optional().nullable(),
   branchName: z.string().optional().nullable(),
   promoCode: z.string().optional().nullable(),
+  pointsRequested: z.number().int().nonnegative().optional(),
 }).strict();
 
 const BodySchema = z.object({
@@ -82,22 +86,22 @@ export async function POST(req: NextRequest) {
       zoneId: deliveryData.zoneId,
       deliveryType: deliveryData.deliveryType,
     });
-    const promoCode = deliveryData.promoCode?.trim().toUpperCase() || null;
-    let discountKes = 0;
-    let deliveryFeeKes = pricing.feeKes;
-    let resolvedPromoId: string | null = null;
-    if (promoCode) {
-      try {
-        const r = await resolvePromo(promoCode, subtotalKes, session.user.id);
-        discountKes = r.discountKes;
-        if (r.deliveryFree) deliveryFeeKes = 0;
-        resolvedPromoId = r.promo.id;
-      } catch (promoErr) {
-        reportError(promoErr, { route: "POST /api/payments/mock/checkout", tags: { stage: "promo_resolution" } });
-        /* invalid/expired — discount stays 0 */
-      }
-    }
-    const totalKes = Math.max(0, subtotalKes + deliveryFeeKes - discountKes);
+    const {
+      deliveryCents: deliveryFeeKes,
+      discountCents: discountKes,
+      promoCode,
+      promoId: resolvedPromoId,
+      pointsRedeemed,
+      pointsDiscountCents,
+      totalCents: totalKes,
+    } = await computeOrderTotals({
+      subtotalCents: subtotalKes,
+      deliveryCents: pricing.feeKes,
+      promoCode: deliveryData.promoCode,
+      pointsRequested: deliveryData.pointsRequested,
+      userId: session.user.id,
+      route: "POST /api/payments/mock/checkout",
+    });
 
     const branch = deliveryData.branchId
       ? await db.branch.findUnique({ where: { id: deliveryData.branchId, isActive: true } })
@@ -110,6 +114,8 @@ export async function POST(req: NextRequest) {
           subtotalKes,
           deliveryKes: deliveryFeeKes,
           discountKes,
+          pointsRedeemed,
+          pointsDiscountKes: pointsDiscountCents,
           totalKes,
           promoCode,
           status: outcome === "success" ? "CONFIRMED" : "PENDING",
@@ -163,8 +169,23 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Debit points on both outcomes so the mock mirrors production; the
+      // failure branch below hands them straight back.
+      await holdRedeemedPoints({
+        userId: session.user.id,
+        orderId: created.id,
+        points: pointsRedeemed,
+        tx,
+      });
+
       return created;
     });
+
+    if (outcome === "success") {
+      await publishQstashJSON("/api/admin/workers/award-points", { orderId: order.id });
+    } else {
+      await releaseRedeemedPoints({ orderId: order.id });
+    }
 
     return ok({ orderId: order.id, paymentStatus: order.paymentStatus });
   } catch (e) {

@@ -1,7 +1,9 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { createAuthMiddleware } from "better-auth/api";
 import { emailOTP, admin, twoFactor, captcha } from "better-auth/plugins";
 import { db } from "@/lib/db";
+import { getRedis } from "@/lib/redis";
 import { sendOTPEmail, sendWelcomeEmail, sendChangeEmailVerification } from "@/lib/email";
 import { sendSms, hasSmsConfig } from "@/lib/sms";
 import { combineLegacyPhone } from "@/lib/phone";
@@ -9,6 +11,98 @@ import { splitName } from "@/lib/name";
 import { Argon2id } from "oslo/password";
 import { ac, roles } from "@/lib/permissions";
 import { logActivity } from "@/lib/admin-activity";
+import { grantJoiningBonus, attachReferral } from "@/lib/points/referrals";
+import { acquireGuestMigrationLock } from "@/lib/customers/guest-migration-lock";
+import { logServerError } from "@/lib/observability-server";
+
+// ---------------------------------------------------------------------------
+// Guest checkout → real account merge.
+//
+// A guest checkout (components/checkout/DeliveryClient.tsx, no session) is
+// resolved to a real `user` row via lib/customers/find-or-create-guest.ts —
+// that row has no `account`, so nobody can log into it. If that same person
+// later signs up for real with the same email, Better Auth's OWN /sign-up/email
+// handler rejects it outright as a duplicate (it checks findUserByEmail
+// BEFORE any databaseHooks.user.create hook ever runs — confirmed by reading
+// node_modules/better-auth/dist/api/routes/sign-up.mjs — so there is no hook
+// point inside user-creation itself that can intercept this).
+//
+// The fix runs in two matched steps around that endpoint:
+//  1. hooks.before (global, path-matched) — if the incoming email belongs to
+//     an accountless guest row, take a short-lived Redis lock on that email
+//     (lib/customers/guest-migration-lock.ts — also checked by
+//     find-or-create-guest.ts) and rename that row's email to a reserved
+//     placeholder so Better Auth's own duplicate check no longer sees it,
+//     then stash the mapping in Redis. The lock closes the window where a
+//     concurrent guest checkout could otherwise create a second, unrelated
+//     guest row under the now-freed email (whichever guest row doesn't win
+//     the eventual merge would otherwise be orphaned permanently). Everything
+//     else about the request (CSRF, captcha, rate limiting, password
+//     hashing) still runs completely untouched, since this returns nothing
+//     rather than short-circuiting.
+//  2. databaseHooks.user.create.after — once Better Auth creates the genuinely
+//     new user row (with a NEW id — Better Auth's create-path has no way to
+//     reuse an existing id, see below), read the stash back and reassign the
+//     guest's orders (and any pending referral code) onto the new account.
+//     The old guest row is left in place under its placeholder email rather
+//     than deleted — deleting it would need auditing every FK that can point
+//     at user.id across this schema; leaving an inert, unreachable orphan is
+//     the safe tradeoff.
+//  3. hooks.after (global, same path) — safety net: if the signup ultimately
+//     failed (bad password, rate limit, DB error, etc.) after step 1 already
+//     renamed the guest row, restore its original email. Guarded by checking
+//     whether the Redis stash is still present — runWithTransaction's queued
+//     after-hooks (step 2) are awaited to completion before the endpoint's
+//     own promise resolves, so by the time this runs, a SUCCESSFUL signup has
+//     always already consumed the stash; only a failed one still has it.
+//
+// This does not preserve the guest's original user id (Better Auth's create()
+// call has no upsert-by-id path to hook into for that) — orders are
+// reassigned by FK instead, which is functionally equivalent for the
+// customer and avoids reimplementing signup's password hashing, session
+// creation and cookie-setting by hand.
+// ---------------------------------------------------------------------------
+
+const GUEST_MIGRATION_REDIS_PREFIX = "guest-signup-migration:";
+const GUEST_MIGRATION_TTL_SECONDS = 300;
+
+function guestPlaceholderEmail(guestUserId: string): string {
+  return `guest-migrating+${guestUserId}@fechi-internal.invalid`;
+}
+
+/** Reassigns a merged-away guest's orders (and any pending referral code) onto their new real account. */
+async function mergeGuestIntoNewAccount(guestUserId: string, newUserId: string): Promise<void> {
+  await db.order.updateMany({ where: { userId: guestUserId }, data: { userId: newUserId } });
+
+  // PAID only — an unpaid order costs an attacker nothing to create, so
+  // honoring a referral code from one would let anyone plant a fake
+  // "referral" onto a stranger's future account for free (no purchase ever
+  // has to complete) just by guest-checking-out under the victim's email.
+  // Requiring PAID means the attacker must actually complete a real payment
+  // to plant a code, which is the same cost any legitimate referral has.
+  const referralOrder = await db.order.findFirst({
+    where: { userId: newUserId, pendingReferralCode: { not: null }, paymentStatus: "PAID" },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, pendingReferralCode: true },
+  });
+  if (referralOrder?.pendingReferralCode) {
+    await attachReferral({
+      userId: newUserId,
+      code: referralOrder.pendingReferralCode,
+      ignoreOrderId: referralOrder.id,
+    }).catch((err) => console.error("[auth] guest-merge attachReferral failed:", err));
+  }
+  await db.order.updateMany({
+    where: { userId: newUserId, pendingReferralCode: { not: null } },
+    data: { pendingReferralCode: null },
+  });
+
+  await db.clientProfile
+    .update({ where: { userId: guestUserId }, data: { source: "ONLINE_GUEST_MERGED" } })
+    .catch(() => {
+      /* best-effort — a missing clientProfile row here changes nothing that matters */
+    });
+}
 
 // ---------------------------------------------------------------------------
 // Admin sessions are anchored to the next midnight in Africa/Nairobi (EAT,
@@ -259,6 +353,46 @@ export const auth = betterAuth({
               data: { userId: user.id },
             });
 
+            // Guest-checkout merge (see the block comment above the imports)
+            // — reassigns a prior guest's orders onto this brand-new account
+            // when this signup's email was freed from an accountless guest
+            // row by the hooks.before middleware below. Best-effort: a
+            // failure here must never block signup — it just leaves the
+            // guest's old orders under their old (now-orphaned) row.
+            try {
+              const redis = getRedis();
+              const migrationKey = `${GUEST_MIGRATION_REDIS_PREFIX}${user.email}`;
+              const raw = await redis.getdel(migrationKey);
+              if (raw) {
+                const { guestUserId } = JSON.parse(raw as string) as { guestUserId: string; originalEmail: string };
+                // Guards against the rare case where this hook fires from a
+                // transaction that ultimately rolled back (see the block
+                // comment above) — put the stash back so hooks.after's
+                // safety net still restores the guest's original email.
+                const stillExists = await db.user.findUnique({ where: { id: user.id }, select: { id: true } });
+                if (stillExists) {
+                  await mergeGuestIntoNewAccount(guestUserId, user.id);
+                } else {
+                  await redis.set(migrationKey, raw as string, { ex: GUEST_MIGRATION_TTL_SECONDS });
+                }
+              }
+            } catch (err) {
+              console.error("[auth] guest-checkout merge failed:", err);
+            }
+
+            // Open the loyalty account and credit the joining points. They are
+            // written LOCKED and stay unspendable until this customer's first
+            // successful payment, which is what stops the bonus being farmed
+            // across throwaway emails (see lib/points/anti-abuse.ts).
+            //
+            // Best-effort: a loyalty failure must never block signup. Any
+            // customer who slips through gets their account opened lazily on
+            // first read, and the bonus is re-granted idempotently by the
+            // referral route.
+            grantJoiningBonus({ userId: user.id }).catch((err) =>
+              console.error("[auth] Failed to grant joining points:", err)
+            );
+
             // Best-effort — a failed welcome email must never block signup.
             if (process.env.RESEND_API_KEY && user.email) {
               sendWelcomeEmail(user.email, user.name ?? "there").catch((err) =>
@@ -269,6 +403,86 @@ export const auth = betterAuth({
         },
       },
     },
+  },
+
+  // ---------------------------------------------------------------------------
+  // Guest-checkout merge, part 1 and 3 (see the block comment above the
+  // imports for the full design). This global hook fires for every request —
+  // both branches immediately no-op unless the path is /sign-up/email.
+  // ---------------------------------------------------------------------------
+  hooks: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- createAuthMiddleware's generic ctx type doesn't infer here (same gap affects every other Better Auth callback in this file, e.g. databaseHooks.session below)
+    before: createAuthMiddleware(async (ctx: any) => {
+      if (ctx.path !== "/sign-up/email") return;
+      const email = typeof ctx.body?.email === "string" ? ctx.body.email.trim().toLowerCase() : null;
+      if (!email) return;
+
+      try {
+        const guest = await db.user.findUnique({
+          where: { email },
+          select: { id: true, role: true },
+        });
+        if (!guest || guest.role !== "client") return;
+        const guestAccount = await db.account.findFirst({ where: { userId: guest.id }, select: { id: true } });
+        if (guestAccount) return; // has a real login already — not a guest placeholder
+
+        // Hold the migration lock for the rest of this signup request. While
+        // held, findOrCreateGuestCustomer refuses to create a NEW guest row
+        // under this email even though the row is about to be renamed away
+        // below — without this, a guest checkout landing in that narrow
+        // window would create an unrelated second guest row under the
+        // now-free email, and whichever of the two never gets merged is
+        // orphaned permanently (see the block comment above the imports).
+        const lockAcquired = await acquireGuestMigrationLock(email);
+        if (!lockAcquired) return; // another migration for this email is already in flight — let Better Auth's normal duplicate-email rejection handle it
+
+        await db.user.update({
+          where: { id: guest.id },
+          data: { email: guestPlaceholderEmail(guest.id) },
+        });
+        await getRedis().set(
+          `${GUEST_MIGRATION_REDIS_PREFIX}${email}`,
+          JSON.stringify({ guestUserId: guest.id, originalEmail: email }),
+          { ex: GUEST_MIGRATION_TTL_SECONDS },
+        );
+      } catch (err) {
+        // Never block signup over this — worst case, the customer just gets
+        // Better Auth's normal "email already in use" response instead of
+        // the merge, same as before this feature existed.
+        console.error("[auth] guest-checkout pre-signup check failed:", err);
+      }
+    }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see the `before` hook above
+    after: createAuthMiddleware(async (ctx: any) => {
+      if (ctx.path !== "/sign-up/email") return;
+      const email = typeof ctx.body?.email === "string" ? ctx.body.email.trim().toLowerCase() : null;
+      if (!email) return;
+
+      // Only reachable if step 2 (databaseHooks.user.create.after) never
+      // consumed the stash — i.e. this signup attempt failed. See the block
+      // comment above the imports for why this ordering is guaranteed.
+      let migrationRecovery: { guestUserId: string; originalEmail: string } | null = null;
+      try {
+        const migrationKey = `${GUEST_MIGRATION_REDIS_PREFIX}${email}`;
+        const raw = await getRedis().getdel(migrationKey);
+        if (!raw) return;
+        migrationRecovery = JSON.parse(raw as string) as { guestUserId: string; originalEmail: string };
+        await db.user.update({
+          where: { id: migrationRecovery.guestUserId },
+          data: { email: migrationRecovery.originalEmail },
+        });
+      } catch (err) {
+        console.error("[auth] guest-checkout rename rollback failed:", err);
+        // Not best-effort noise — an unrecovered rename here permanently
+        // strands the guest's order history under an unreachable placeholder
+        // email with no automatic retry path. Surface it on the admin
+        // error-logs page so a human can fix it manually.
+        await logServerError(err, {
+          route: "POST /api/auth/sign-up/email (guest-migration rollback)",
+          userId: migrationRecovery?.guestUserId,
+        }).catch(() => {});
+      }
+    }),
   },
 
   plugins: [

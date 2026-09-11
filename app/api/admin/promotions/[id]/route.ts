@@ -2,10 +2,20 @@ import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { connection, NextRequest } from "next/server";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { requirePermission } from "@/lib/require-permission";
+import { requirePermission, loadCallerContext } from "@/lib/require-permission";
+import { requireApprovalOrProceed, Approval } from "@/lib/require-approval";
+import { approvalExecutors } from "@/lib/approval-executors";
+import { promotionPatchSchema } from "@/lib/promotions/schema";
 import { reportError } from "@/lib/observability";
 
-/** PATCH /api/admin/promotions/[id] */
+/**
+ * PATCH /api/admin/promotions/[id]
+ *
+ * Routed through the approval queue, same as POST. Previously this wrote
+ * straight to the database, which meant any role holding `promotions:update`
+ * could create a coupon with 0 points and then edit points onto it — making the
+ * approval gate on create decorative.
+ */
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -19,29 +29,40 @@ export async function PATCH(
 
   const { id } = await params;
 
-  let body: Record<string, unknown>;
+  let raw: unknown;
   try {
-    body = await req.json();
+    raw = await req.json();
   } catch {
     return Err.validation("Invalid JSON body");
   }
 
+  const parsed = promotionPatchSchema.safeParse(raw);
+  if (!parsed.success) {
+    return Err.validation(parsed.error.issues[0]?.message ?? "Invalid promotion");
+  }
+  const body = parsed.data;
+
   try {
-    const promotion = await db.promotion.update({
+    const existing = await db.promotion.findUnique({
       where: { id },
-      data: {
-        ...(body.name !== undefined && { name: String(body.name) }),
-        ...(body.type !== undefined && { type: String(body.type) }),
-        ...(body.value !== undefined && { value: Number(body.value) }),
-        ...(body.code !== undefined && { code: body.code ? String(body.code) : null }),
-        ...(body.minOrder !== undefined && { minOrder: body.minOrder ? Number(body.minOrder) : null }),
-        ...(body.maxUses !== undefined && { maxUses: body.maxUses ? Number(body.maxUses) : null }),
-        ...(body.maxUsesPerUser !== undefined && { maxUsesPerUser: Number(body.maxUsesPerUser) }),
-        ...(body.startDate !== undefined && { startDate: body.startDate ? new Date(body.startDate as string) : null }),
-        ...(body.endDate !== undefined && { endDate: body.endDate ? new Date(body.endDate as string) : null }),
-        ...(body.status !== undefined && { status: String(body.status) }),
-      },
+      select: { ownerUserId: true, disabledAt: true },
     });
+    if (!existing) return Err.notFound("Promotion");
+
+    // Customer coupons are a customer's own referral code. They are viewable
+    // and can be disabled, but never edited — the terms are the programme's,
+    // not an individual staff member's to change.
+    if (existing.ownerUserId !== null) {
+      return Err.validation("Customer coupons can't be edited. Disable it instead.");
+    }
+
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return Err.forbidden();
+
+    const outcome = await requireApprovalOrProceed(ctx, "promotions", "update", body, id);
+    if (!outcome.proceed) return Approval.queued(outcome.requestId);
+
+    const promotion = await approvalExecutors["promotions:update"](body, id);
     console.info(`[promotions/PATCH] Updated promotion: ${id}`);
     return ok(promotion);
   } catch (e) {
@@ -51,7 +72,14 @@ export async function PATCH(
   }
 }
 
-/** DELETE /api/admin/promotions/[id] */
+/**
+ * DELETE /api/admin/promotions/[id] — soft delete.
+ *
+ * This used to be a hard `db.promotion.delete`. `couponRedemption` holds a bare
+ * `couponId` string with no foreign key, so a hard delete orphaned every
+ * redemption pointing at the coupon and destroyed the record of who used it.
+ * Disabling keeps the audit trail and is reversible.
+ */
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -66,9 +94,19 @@ export async function DELETE(
   const { id } = await params;
 
   try {
-    await db.promotion.delete({ where: { id } });
-    console.info(`[promotions/DELETE] Deleted promotion: ${id}`);
-    return ok({ deleted: true });
+    const ctx = await loadCallerContext();
+    if (ctx.denied) return Err.forbidden();
+
+    await db.promotion.update({
+      where: { id },
+      data: {
+        disabledAt: new Date(),
+        disabledByAdminProfileId: ctx.id,
+        status: "inactive",
+      },
+    });
+    console.info(`[promotions/DELETE] Disabled promotion: ${id}`);
+    return ok({ disabled: true });
   } catch (e) {
     console.error("[promotions/DELETE]", e);
     reportError(e, { route: "DELETE /api/admin/promotions/[id]", extra: { promotionId: id } });

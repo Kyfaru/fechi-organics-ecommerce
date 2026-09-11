@@ -25,16 +25,10 @@ export function OrderErrorClient({ order }: { order: Order }) {
   const router = useRouter();
 
   function handleTryAgain() {
-    // Check whether the user's delivery data is still in sessionStorage.
-    // If it is, go directly to the payment step so they don't have to
-    // re-enter their delivery details. If it's gone (tab was closed and
-    // re-opened, or sessionStorage was cleared), send them back to the
-    // delivery step to start fresh — the payment page would immediately
-    // redirect them there anyway.
-    const hasDelivery = Boolean(
-      typeof window !== "undefined" && sessionStorage.getItem("fechi_delivery")
-    );
-    router.push(hasDelivery ? "/payment" : "/delivery");
+    // /delivery is the single combined checkout step now (delivery details +
+    // payment method in one page) — there's no separate payment step to skip
+    // ahead to, so retrying always just goes back there.
+    router.push("/delivery");
   }
 
   return (
@@ -67,8 +61,7 @@ export function OrderErrorClient({ order }: { order: Order }) {
         </div>
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-          {/* Navigate to /payment if delivery sessionStorage is intact, else /delivery.
-              The cart stays on the server — nothing is cleared. */}
+          {/* The cart stays on the server — nothing is cleared. */}
           <button
             onClick={handleTryAgain}
             className="flex h-14 min-w-[184px] items-center justify-center rounded-full bg-[#fec700] px-8 text-[15px] font-black text-[#1a1c1c]"

@@ -17,6 +17,7 @@ import { Loader2, Tag, X } from "lucide-react";
 interface OrderSummaryProps {
   itemCount: number;
   subtotalKes: number;
+  deliveryKes: number;
   discountKes: number;
   totalKes: number;
   appliedCoupon: string | null;
@@ -35,6 +36,7 @@ function formatKes(cents: number) {
 export default function OrderSummary({
   itemCount,
   subtotalKes,
+  deliveryKes,
   discountKes,
   totalKes,
   appliedCoupon,
@@ -58,6 +60,12 @@ export default function OrderSummary({
           </span>
           <span>{formatKes(subtotalKes)}</span>
         </div>
+        {deliveryKes > 0 && (
+          <div className="flex justify-between font-dm text-[13px] text-(--neutral-500) dark:text-(--dark-muted)">
+            <span>Delivery Fee</span>
+            <span>{formatKes(deliveryKes)}</span>
+          </div>
+        )}
         {appliedCoupon && (
           <div className="flex justify-between font-dm text-[13px] text-(--success)">
             <span className="flex items-center gap-1.5">

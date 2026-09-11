@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -17,18 +18,20 @@ import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { EmptyState } from "@/components/admin/ui/EmptyState";
 import { DonutChart } from "@/components/ui/donut-chart";
-
-// Walk-in customers created from Create Order without an email get a
-// placeholder address (see lib/customers/find-or-create-walkin.ts) — surface
-// "No email" instead of the fake address until an admin fills in a real one.
-function isPlaceholderEmail(email: string): boolean {
-  return email.endsWith("@instore.local");
-}
+import { isPlaceholderEmail } from "@/lib/customers/placeholder-email";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-type LoyaltyPoints = { tier: string } | null;
+// Admin sees points but can never change them — the only write path is the
+// unanimous super-admin grant flow at /admin/loyalty/grants.
+type LoyaltyPoints = {
+  tier: string;
+  points: number;
+  lockedPoints: number;
+  lifetimeEarned: number;
+  userCode: string;
+} | null;
 
 type Customer = {
   id: string;
@@ -421,7 +424,21 @@ function CustomerDrawer({
                 { label: "City", value: customer.city ?? "—" },
                 { label: "Role", value: customer.role },
                 { label: "Member Since", value: formatDate(customer.createdAt) },
-                { label: "Loyalty Tier", value: customer.loyaltyPoints?.tier ?? "None" },
+                { label: "Customer Code", value: customer.loyaltyPoints?.userCode ?? "—" },
+                {
+                  label: "Points Balance",
+                  value: customer.loyaltyPoints
+                    ? `${customer.loyaltyPoints.points.toLocaleString()}${
+                        customer.loyaltyPoints.lockedPoints > 0
+                          ? ` (+${customer.loyaltyPoints.lockedPoints.toLocaleString()} locked)`
+                          : ""
+                      }`
+                    : "—",
+                },
+                {
+                  label: "Lifetime Earned",
+                  value: customer.loyaltyPoints?.lifetimeEarned.toLocaleString() ?? "—",
+                },
                 { label: "Total Orders", value: String(customer._count.orders) },
               ].map(({ label, value }) => (
                 <div key={label} className="flex justify-between items-start py-2 border-b border-(--neutral-200) dark:border-(--dark-border) last:border-0">
@@ -509,6 +526,20 @@ export function AdminCustomersClient() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sort, setSort] = useState("newest");
   const [activeCustomerId, setActiveCustomerId] = useState<string | null>(null);
+
+  // Deep links into this page. `?customer=` opens that customer's drawer (used
+  // by the coupon redemption list); `?q=` seeds the search box (used by admin
+  // global search, which has always linked here and been silently ignored).
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const customer = searchParams.get("customer");
+    if (customer) setActiveCustomerId(customer);
+    const q = searchParams.get("q");
+    if (q) setSearch(q);
+    // Read once on mount — after that the drawer is driven by clicks, and
+    // re-running would reopen it every time the user closed it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data, isLoading } = useQuery<ApiResponse>({
     queryKey: ["admin-customers"],
@@ -614,6 +645,31 @@ export function AdminCustomersClient() {
           {(row as unknown as Customer)._count.orders}
         </span>
       ),
+    },
+    {
+      key: "points",
+      label: "Points",
+      // ponytail: not sortable. DataTable sorts with String(...).localeCompare
+      // on a top-level row key, so a numeric column would both miss the nested
+      // value and order 1,000 before 200. Ranking by points already exists,
+      // done properly, on the /admin/loyalty leaderboard. Make DataTable
+      // numeric-aware if this is ever wanted here too.
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const lp = (row as unknown as Customer).loyaltyPoints;
+        if (!lp) return <span className="font-dm text-[13px] text-(--neutral-400)">—</span>;
+        return (
+          <div className="flex flex-col leading-tight">
+            <span className="font-dm text-[14px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
+              {lp.points.toLocaleString()}
+            </span>
+            {lp.lockedPoints > 0 && (
+              <span className="font-dm text-[11px] text-(--neutral-500) dark:text-(--dark-muted)">
+                {lp.lockedPoints.toLocaleString()} locked
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "status",

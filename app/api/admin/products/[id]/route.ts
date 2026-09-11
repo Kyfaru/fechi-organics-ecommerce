@@ -86,6 +86,8 @@ const UpdateSchema = z.object({
   variants: z.array(z.object({
     label: z.string().min(1),
     imageObjectKey: z.string().optional(),
+    // 0/omitted = inherit the product's own priceKes.
+    priceKes: z.number().int().nonnegative().optional(),
   })).optional(),
 }).strict();
 

@@ -365,19 +365,10 @@ export function AdminDashboardClient() {
       <ChannelStatCard title="Instore Revenue" metric="revenue" scope="instore" accent="rose" valueFormatter={formatKesCompact} />
       <ChannelStatCard title="Total Orders" metric="orders" scope="total" accent="blue" presets={TIME_RANGE_PRESETS.dashboard} valueFormatter={(v) => v.toLocaleString()} />
       <ChannelStatCard title="New Customers" metric="customers" accent="emerald" presets={TIME_RANGE_PRESETS.dashboard} valueFormatter={(v) => v.toLocaleString()} />
-      <div className="rounded-xl border border-neutral-200 bg-white p-5 dark:bg-dark-surface dark:border-dark-border">
-        <span className="text-sm font-medium text-neutral-500 dark:text-neutral-400">Open &amp; New Tickets</span>
-        <div className="mt-3 flex items-end gap-6">
-          <div>
-            <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{tickets.length}</p>
-            <p className="text-xs text-neutral-400">Open</p>
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">{newTicketsCount}</p>
-            <p className="text-xs text-neutral-400">New (24h)</p>
-          </div>
-        </div>
-      </div>
+      {/* Loyalty points spent, shown at their cash value. Deliberately not part
+          of revenue — points-funded value is already excluded from totalKes,
+          so this is what was shipped without money changing hands. */}
+      <ChannelStatCard title="Total Points Utilised" metric="points-utilised" scope="total" accent="violet" valueFormatter={formatKesCompact} />
     </div>
   );
 

@@ -82,6 +82,15 @@ const UNLISTED_RESOURCE_PATHS: { href: string; resource: AppResource }[] = [
   // admin/super_admin in the page itself and in GET /api/admin/activity —
   // this staff:view check is just the outer resource gate.
   { href: "/admin/activity", resource: "staff" },
+  // Same pattern as /admin/activity above — linked from the sidebar's bottom
+  // slot, hard-restricted to admin/super_admin in the page itself and in
+  // GET /api/admin/error-logs.
+  { href: "/admin/error-logs", resource: "staff" },
+  // Sub-pages of /admin/loyalty, linked from that page rather than the
+  // sidebar. Both carry a further isSuperAdmin check of their own — grants
+  // can mint points, and this resource gate alone is not enough.
+  { href: "/admin/loyalty/grants", resource: "loyalty" },
+  { href: "/admin/loyalty/flags", resource: "loyalty" },
 ];
 
 // The only admin paths allowed with NO resource check at all — self-service

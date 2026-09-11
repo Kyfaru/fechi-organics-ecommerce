@@ -1,11 +1,13 @@
 /**
  * POST /api/payments/paystack/initialize
  *
- * Creates an order from the authenticated user's cart and initializes a
- * Paystack card transaction. Returns the authorization URL so the client can
- * redirect the customer to Paystack's hosted checkout.
+ * Creates an order from the caller's cart and initializes a Paystack card
+ * transaction. Returns the authorization URL so the client can redirect the
+ * customer to Paystack's hosted checkout.
  *
- * Requires an active session. Guests cannot use this endpoint.
+ * Works for both a signed-in customer and a guest checkout (no session) —
+ * see lib/customers/find-or-create-guest.ts for how a guest's typed-in
+ * name/email/phone is resolved to the `userId` the order is created under.
  */
 
 import { NextRequest } from "next/server";
@@ -15,12 +17,18 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
 import { reportError } from "@/lib/observability";
+import { resolveCart } from "@/lib/cart";
+import { resolveCheckoutUserId } from "@/lib/customers/find-or-create-guest";
+import { checkGuestCheckoutAbuse } from "@/lib/payments/guest-abuse-guard";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
 import { isCardEligible } from "@/lib/payments/card-eligibility";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
-import { resolvePromo, recordCouponRedemption } from "@/lib/promo";
+import { recordCouponRedemption } from "@/lib/promo";
+import { computeOrderTotals } from "@/lib/checkout/compute-totals";
+import { holdRedeemedPoints } from "@/lib/points/redeem";
 import { initializeTransaction } from "@/lib/paystack/client";
 import { buildTimestampOrderNumber } from "@/lib/orders/generate-order-number";
+import { createWithRetryableOrderNumber } from "@/lib/orders/create-with-retry";
 import { getRedis } from "@/lib/redis";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { publishQstashJSON } from "@/lib/qstash";
@@ -36,12 +44,10 @@ const bodySchema = z.object({
 export async function POST(req: NextRequest) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
-  // 1. Authenticate
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user) return Err.authRequired();
 
-  const userId = session.user.id;
-  const userEmail = session.user.email;
+  // 1. A session is optional — guest checkout is allowed (see the identity
+  // resolution below, once the cart is confirmed non-empty).
+  const session = await auth.api.getSession({ headers: await headers() });
 
   // 2. Parse and validate body
   let parsed: z.infer<typeof bodySchema>;
@@ -56,9 +62,12 @@ export async function POST(req: NextRequest) {
   const { deliveryData } = parsed;
 
   try {
-    // 3. Load cart and validate it is not empty
+    // 3. Load cart and validate it is not empty. A guest's cart lives under
+    // the fechi_cart cookie token, not a userId — resolveCart() branches on
+    // that the same way GET /api/cart already does.
+    const { cartId } = await resolveCart(session?.user?.id ?? null);
     const cart = await db.cart.findUnique({
-      where: { userId },
+      where: { id: cartId },
       include: {
         items: {
           include: {
@@ -79,13 +88,35 @@ export async function POST(req: NextRequest) {
       return err("CART_EMPTY", "No active products in cart", 400);
     }
 
+    // 4. Guest-specific abuse guard — must run BEFORE resolveCheckoutUserId,
+    // since that mints a fresh userId per unseen email and would otherwise
+    // make the per-userId limiter below useless against a guest rotating
+    // emails (see lib/payments/guest-abuse-guard.ts).
+    if (!session?.user) {
+      const abuseCheck = await checkGuestCheckoutAbuse(req, deliveryData.phone);
+      if (abuseCheck) return abuseCheck;
+    }
+
+    // 5. Resolve who this order belongs to — the session, or a guest row
+    // found/created from the delivery form's contact details.
+    const identity = await resolveCheckoutUserId(session, {
+      fullName: deliveryData.fullName,
+      email: deliveryData.email,
+      phone: deliveryData.phone,
+    });
+    if ("error" in identity) return identity.error;
+    const userId = identity.userId;
+    // Paystack needs an email either way — session users always have one;
+    // guest checkout requires deliveryData.email (enforced above).
+    const userEmail = session?.user?.email ?? deliveryData.email!;
+
     const redis = getRedis();
     const rateKey = `payment_attempt:${userId}:paystack`;
     const attempts = await redis.incr(rateKey);
     if (attempts === 1) await redis.expire(rateKey, 60);
     if (attempts > 3) return Err.rateLimited();
 
-    // 4. Calculate totals — never trust client amounts
+    // 5. Calculate totals — never trust client amounts
     const subtotalCents = activeItems.reduce(
       (sum, item) => sum + item.product.priceKes * item.quantity,
       0,
@@ -96,24 +127,25 @@ export async function POST(req: NextRequest) {
       zoneId: deliveryData.zoneId,
       deliveryType: deliveryData.deliveryType,
     });
-    const promoCode = deliveryData.promoCode?.trim().toUpperCase();
-    let discountCents = 0;
-    let deliveryCents = pricing.feeKes;
-    let resolvedPromoId: string | null = null;
-    if (promoCode) {
-      try {
-        const r = await resolvePromo(promoCode, subtotalCents, userId);
-        discountCents = r.discountKes;
-        if (r.deliveryFree) deliveryCents = 0;
-        resolvedPromoId = r.promo.id;
-      } catch (promoErr) {
-        reportError(promoErr, { route: "POST /api/payments/paystack/initialize", tags: { stage: "promo_resolution" } });
-        /* invalid/expired — discount stays 0 */
-      }
-    }
-    const totalCents = Math.max(0, subtotalCents + deliveryCents - discountCents);
+    const {
+      deliveryCents,
+      discountCents,
+      promoCode,
+      promoId: resolvedPromoId,
+      pointsRedeemed,
+      pointsDiscountCents,
+      totalCents,
+    } = await computeOrderTotals({
+      subtotalCents,
+      deliveryCents: pricing.feeKes,
+      promoCode: deliveryData.promoCode,
+      pointsRequested: deliveryData.pointsRequested,
+      userId,
+      phone: deliveryData.phone,
+      route: "POST /api/payments/paystack/initialize",
+    });
 
-    // 5. Resolve branch — international orders route to the main branch
+    // 6. Resolve branch — international orders route to the main branch
     let branch: Awaited<ReturnType<typeof db.branch.findUnique>> | null = null;
     const isInternational = deliveryData.country.toUpperCase() !== "KE";
 
@@ -148,53 +180,65 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 6. Create order
-    const now = new Date();
+    // 7. Create order — regenerates the order number and retries (once per
+    // second boundary) if it collides on the orderNumber unique constraint,
+    // instead of surfacing a raw DB error (see lib/orders/create-with-retry.ts).
     const utm = readUtmCookie(req);
-    const order = await db.order.create({
-      data: {
-        userId,
-        subtotalKes: subtotalCents,
-        deliveryKes: deliveryCents,
-        discountKes: discountCents,
-        totalKes: totalCents,
-        promoCode: promoCode ?? null,
-        paymentStatus: "PENDING",
-        status: "PENDING",
-        orderNumber: buildTimestampOrderNumber(now, "PAYSTACK"),
-        createdAt: now,
-        deliveryType: deliveryData.deliveryType,
-        deliveryPhone: deliveryData.phone,
-        deliveryAddress: deliveryData.address ?? null,
-        deliveryCity: deliveryData.city ?? deliveryData.state ?? null,
-        deliveryCounty: deliveryData.county || deliveryData.country,
-        deliveryZone: deliveryData.deliveryZone ?? pricing.label,
-        deliveryPostalCode: deliveryData.postalCode ?? null,
-        deliveryCountry: deliveryData.countryName ?? null,
-        isInternational,
-        branchId: branch.id,
-        utmSource: utm?.source ?? null,
-        utmMedium: utm?.medium ?? null,
-        utmCampaign: utm?.campaign ?? null,
-        items: {
-          create: activeItems.map((item) => ({
-            productId: item.product.id,
-            name: item.product.name,
-            priceKes: item.product.priceKes,
-            quantity: item.quantity,
-            variantId: item.variantId,
-            variantLabel: item.variantLabel,
-          })),
-        },
-      },
-    });
+    const order = await createWithRetryableOrderNumber(
+      () => buildTimestampOrderNumber(new Date(), "PAYSTACK"),
+      (orderNumber) =>
+        db.order.create({
+          data: {
+            userId,
+            subtotalKes: subtotalCents,
+            deliveryKes: deliveryCents,
+            discountKes: discountCents,
+            pointsRedeemed,
+            pointsDiscountKes: pointsDiscountCents,
+            totalKes: totalCents,
+            promoCode: promoCode ?? null,
+            pendingReferralCode: deliveryData.referralCode?.trim().toUpperCase() || null,
+            paymentStatus: "PENDING",
+            status: "PENDING",
+            orderNumber,
+            deliveryType: deliveryData.deliveryType,
+            deliveryPhone: deliveryData.phone,
+            deliveryAddress: deliveryData.address ?? null,
+            deliveryCity: deliveryData.city ?? deliveryData.state ?? null,
+            deliveryCounty: deliveryData.county || deliveryData.country,
+            deliveryZone: deliveryData.deliveryZone ?? pricing.label,
+            deliveryPostalCode: deliveryData.postalCode ?? null,
+            deliveryCountry: deliveryData.countryName ?? null,
+            deliveryNote: deliveryData.notes ?? null,
+            isInternational,
+            branchId: branch.id,
+            utmSource: utm?.source ?? null,
+            utmMedium: utm?.medium ?? null,
+            utmCampaign: utm?.campaign ?? null,
+            items: {
+              create: activeItems.map((item) => ({
+                productId: item.product.id,
+                name: item.product.name,
+                priceKes: item.product.priceKes,
+                quantity: item.quantity,
+                variantId: item.variantId,
+                variantLabel: item.variantLabel,
+              })),
+            },
+          },
+        }),
+    );
 
     // Record coupon redemption
     if (resolvedPromoId && promoCode) {
       await recordCouponRedemption(resolvedPromoId, userId, order.id);
     }
 
-    // 7. Generate reference and create transaction record (PENDING)
+    // Debit points now so the same balance can't be spent in a parallel
+    // checkout. markPaymentFailed() gives them back if this never pays.
+    await holdRedeemedPoints({ userId, orderId: order.id, points: pointsRedeemed });
+
+    // 8. Generate reference and create transaction record (PENDING)
     // Paystack only allows alphanumeric + -.= in a reference, and a literal
     // "#" would also truncate the callback_url query string at a URL fragment.
     const reference = order.orderNumber!.replace(/^#/, "");
@@ -210,7 +254,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // 8. Initialize Paystack transaction
+    // 9. Initialize Paystack transaction
     // Derived from the incoming request's own origin rather than
     // NEXT_PUBLIC_APP_URL — that's inlined at build time, so a production
     // image built without it passed through as a Docker build arg silently
@@ -248,7 +292,7 @@ export async function POST(req: NextRequest) {
       orderId: order.id,
     });
   } catch (e) {
-    reportError(e, { route: "POST /api/payments/paystack/initialize", tags: { stage: "handler" }, extra: { userId } });
+    reportError(e, { route: "POST /api/payments/paystack/initialize", tags: { stage: "handler" } });
     console.error("[paystack/initialize] POST error", e);
     return Err.internal();
   }
