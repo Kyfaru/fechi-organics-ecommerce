@@ -69,17 +69,24 @@ function canvasSignature(): string {
 }
 
 /**
- * Returns a per-browser random id, persisted in localStorage. Complements the
- * trait fingerprint: clearing storage defeats this one, changing hardware
- * defeats the other, and defeating both at once is the point.
+ * Returns a per-browser random id, persisted in localStorage AND a cookie.
+ * The cookie is what lets the server see this id on a plain sign-in/sign-up
+ * request (login/signup never call collectDeviceSignals() themselves) — see
+ * mergeGuestOrdersByDevice() in lib/auth.ts, which reads it back to silently
+ * reattach a guest order to whichever real account next logs in from this
+ * browser. Complements the trait fingerprint: clearing storage defeats this
+ * one, changing hardware defeats the other, and defeating both at once is
+ * the point.
  */
 export function getOrCreateDeviceId(): string | null {
   if (typeof window === "undefined") return null;
   try {
     const existing = window.localStorage.getItem(FINGERPRINT_STORAGE_KEY);
-    if (existing) return existing;
-    const id = crypto.randomUUID();
-    window.localStorage.setItem(FINGERPRINT_STORAGE_KEY, id);
+    const id = existing ?? crypto.randomUUID();
+    if (!existing) window.localStorage.setItem(FINGERPRINT_STORAGE_KEY, id);
+    if (!document.cookie.includes(`${FINGERPRINT_STORAGE_KEY}=${id}`)) {
+      document.cookie = `${FINGERPRINT_STORAGE_KEY}=${id}; path=/; max-age=31536000; SameSite=Lax`;
+    }
     return id;
   } catch {
     // Private mode / storage disabled — the trait fingerprint still applies.

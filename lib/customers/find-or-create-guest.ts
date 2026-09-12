@@ -26,6 +26,7 @@
 import { db } from "@/lib/db";
 import { err } from "@/lib/api";
 import { isGuestMigrationLocked } from "@/lib/customers/guest-migration-lock";
+import { recordSignal } from "@/lib/points/anti-abuse";
 
 export type GuestCustomerResult =
   | { status: "resolved"; userId: string }
@@ -88,6 +89,7 @@ export async function findOrCreateGuestCustomer(input: {
 export async function resolveCheckoutUserId(
   session: { user: { id: string } } | null | undefined,
   contact: { fullName: string; email?: string | null; phone: string },
+  deviceId?: string | null,
 ): Promise<{ userId: string } | { error: Response }> {
   if (session?.user) return { userId: session.user.id };
 
@@ -118,5 +120,12 @@ export async function resolveCheckoutUserId(
       ),
     };
   }
+
+  // Tags this guest's account with the browser that checked out. When they
+  // later log into (or sign up for) a real account from the same browser —
+  // even with a different email — lib/auth.ts's mergeGuestOrdersByDevice
+  // reads this same signal back to silently reattach their orders.
+  if (deviceId) await recordSignal(guest.userId, "DEVICE", deviceId);
+
   return { userId: guest.userId };
 }

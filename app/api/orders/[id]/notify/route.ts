@@ -2,8 +2,6 @@ import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
-import { sendSms, hasSmsConfig } from "@/lib/sms";
-import { combineLegacyPhone } from "@/lib/phone";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { reportError } from "@/lib/observability";
 
@@ -13,19 +11,19 @@ export async function POST(
 ) {
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
+  // Session is optional — see the matching comment in ../receipt/route.ts.
   const session = await auth.api.getSession({ headers: req.headers });
-  if (!session?.user) return Err.authRequired();
 
   const { id: orderId } = await params;
 
   const order = await db.order.findFirst({
-    where: { id: orderId, userId: session.user.id },
+    where: session?.user ? { id: orderId, userId: session.user.id } : { id: orderId },
     select: {
       id: true,
       orderNumber: true,
       totalKes: true,
       userId: true,
-      user: { select: { name: true, phone: true, phoneCode: true } },
+      user: { select: { name: true } },
     },
   });
   if (!order?.userId) return Err.notFound("Order");
@@ -63,20 +61,12 @@ export async function POST(
     console.error("[notify] inbox create failed:", e);
   }
 
-  // 2. SMS — graceful no-op if no provider configured or user has no phone
-  let smsOk = true; // default true — missing config is not a user-visible error
-  const userPhone = order.user as { phone?: string | null; phoneCode?: string | null } | null;
-  const phone = userPhone?.phone ? combineLegacyPhone(userPhone.phone, userPhone.phoneCode ?? null) : null;
-
-  if (hasSmsConfig() && phone) {
-    try {
-      await sendSms(phone, messageBody);
-    } catch (e) {
-      reportError(e, { route: "POST /api/orders/[id]/notify", extra: { orderId } });
-      console.error("[notify] SMS failed:", e);
-      smsOk = false;
-    }
-  }
-
-  return ok({ inboxOk, smsOk });
+  // SMS for order confirmation is sent server-side from markPaymentSuccess()
+  // (queued via the send-order-confirmation Qstash worker) — not from here.
+  // That path fires the instant payment succeeds regardless of whether the
+  // customer's browser ever reaches this success page, and sending it again
+  // here too would double-text the customer. smsOk stays true so the client
+  // doesn't show a spurious "could not send confirmation" error for a leg
+  // that was never this endpoint's job to run.
+  return ok({ inboxOk, smsOk: true });
 }

@@ -20,6 +20,16 @@ interface DataTableProps {
   emptyTitle?: string;
   emptyDescription?: string;
   pageSize?: number;
+  // Row selection (opt-in, all-or-nothing with the props below) — a leading
+  // checkbox column, plus a header row that swaps to a selection toolbar
+  // once anything is checked. Every consumer that doesn't pass `selectable`
+  // renders exactly as before.
+  selectable?: boolean;
+  getRowId?: (row: Record<string, unknown>) => string;
+  selectedIds?: Set<string>;
+  onToggleRow?: (id: string) => void;
+  onToggleAllOnPage?: (ids: string[], checked: boolean) => void;
+  selectionActions?: ReactNode;
 }
 
 export function DataTable({
@@ -27,6 +37,12 @@ export function DataTable({
   emptyTitle = "No data",
   emptyDescription = "Nothing to show yet.",
   pageSize = 20,
+  selectable = false,
+  getRowId = (row) => String(row.id ?? ""),
+  selectedIds,
+  onToggleRow,
+  onToggleAllOnPage,
+  selectionActions,
 }: DataTableProps) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -76,53 +92,104 @@ export function DataTable({
   const windowStart = Math.max(0, Math.min(page - Math.floor(WINDOW / 2), totalPages - WINDOW));
   const pageButtons = Array.from({ length: Math.min(totalPages, WINDOW) }, (_, i) => windowStart + i);
 
+  const colCount = columns.length + (selectable ? 1 : 0);
+  const pageIds = paged.map(getRowId);
+  const selectedOnPageCount = selectable ? pageIds.filter((id) => selectedIds?.has(id)).length : 0;
+  const allOnPageSelected = pageIds.length > 0 && selectedOnPageCount === pageIds.length;
+  const someSelected = (selectedIds?.size ?? 0) > 0;
+
   return (
     <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1)">
       <div className="overflow-x-auto overflow-y-visible">
         <table className="w-full">
           <thead>
             <tr className="bg-(--green-50) dark:bg-(--dark-bg) border-b border-(--neutral-200) dark:border-(--dark-border)">
-              {columns.map(col => (
-                <th
-                  key={col.key}
-                  onClick={() => col.sortable && handleSort(col.key)}
-                  className={`px-4 py-3 text-left font-dm text-[13px] font-semibold uppercase tracking-wider text-(--neutral-500) dark:text-(--dark-muted) whitespace-nowrap ${col.sortable ? "cursor-pointer select-none hover:text-(--neutral-900) dark:hover:text-(--dark-accent)" : ""}`}
-                >
-                  <span className="flex items-center gap-1">
-                    {col.label}
-                    {col.sortable && sortKey === col.key && (
-                      sortDir === "asc" ? <ChevronUp size={14} /> : <ChevronDown size={14} />
-                    )}
-                  </span>
+              {selectable && someSelected ? (
+                <th colSpan={colCount} className="px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={allOnPageSelected}
+                      ref={(el) => { if (el) el.indeterminate = !allOnPageSelected && selectedOnPageCount > 0; }}
+                      onChange={(e) => onToggleAllOnPage?.(pageIds, e.target.checked)}
+                      className="h-4 w-4 rounded border-(--neutral-300) accent-(--green-800)"
+                    />
+                    <span className="font-dm text-[13px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
+                      {selectedIds?.size} selected
+                    </span>
+                    <div className="ml-2 flex items-center gap-2">{selectionActions}</div>
+                  </div>
                 </th>
-              ))}
+              ) : (
+                <>
+                  {selectable && (
+                    <th className="w-10 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={allOnPageSelected}
+                        ref={(el) => { if (el) el.indeterminate = !allOnPageSelected && selectedOnPageCount > 0; }}
+                        onChange={(e) => onToggleAllOnPage?.(pageIds, e.target.checked)}
+                        className="h-4 w-4 rounded border-(--neutral-300) accent-(--green-800)"
+                      />
+                    </th>
+                  )}
+                  {columns.map(col => (
+                    <th
+                      key={col.key}
+                      onClick={() => col.sortable && handleSort(col.key)}
+                      className={`px-4 py-3 text-left font-dm text-[13px] font-semibold uppercase tracking-wider text-(--neutral-500) dark:text-(--dark-muted) whitespace-nowrap ${col.sortable ? "cursor-pointer select-none hover:text-(--neutral-900) dark:hover:text-(--dark-accent)" : ""}`}
+                    >
+                      <span className="flex items-center gap-1">
+                        {col.label}
+                        {col.sortable && sortKey === col.key && (
+                          sortDir === "asc" ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                        )}
+                      </span>
+                    </th>
+                  ))}
+                </>
+              )}
             </tr>
           </thead>
           <tbody>
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i}><td colSpan={columns.length} className="p-0"><SkeletonTableRow /></td></tr>
+                <tr key={i}><td colSpan={colCount} className="p-0"><SkeletonTableRow /></td></tr>
               ))
             ) : paged.length === 0 ? (
               <tr>
-                <td colSpan={columns.length}>
+                <td colSpan={colCount}>
                   <EmptyState icon={Package} title={emptyTitle} description={emptyDescription} />
                 </td>
               </tr>
             ) : (
-              paged.map((row, i) => (
-                <tr
-                  key={i}
-                  onClick={() => onRowClick?.(row)}
-                  className={`border-b border-(--neutral-200) dark:border-(--dark-border) transition-colors h-14 ${i % 2 === 1 ? "bg-(--green-50) dark:bg-(--dark-bg)" : "bg-white dark:bg-(--dark-surface)"} ${onRowClick ? "cursor-pointer hover:bg-(--green-100) dark:hover:bg-(--dark-border)" : ""}`}
-                >
-                  {columns.map(col => (
-                    <td key={col.key} className="px-4 font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text)">
-                      {col.render ? col.render(row[col.key], row) : String(row[col.key] ?? "")}
-                    </td>
-                  ))}
-                </tr>
-              ))
+              paged.map((row, i) => {
+                const rowId = selectable ? getRowId(row) : "";
+                const isSelected = selectable && !!selectedIds?.has(rowId);
+                return (
+                  <tr
+                    key={i}
+                    onClick={() => onRowClick?.(row)}
+                    className={`border-b border-(--neutral-200) dark:border-(--dark-border) transition-colors h-14 ${isSelected ? "bg-(--green-100) dark:bg-(--dark-border)" : i % 2 === 1 ? "bg-(--green-50) dark:bg-(--dark-bg)" : "bg-white dark:bg-(--dark-surface)"} ${onRowClick ? "cursor-pointer hover:bg-(--green-100) dark:hover:bg-(--dark-border)" : ""}`}
+                  >
+                    {selectable && (
+                      <td className="w-10 px-4" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => onToggleRow?.(rowId)}
+                          className="h-4 w-4 rounded border-(--neutral-300) accent-(--green-800)"
+                        />
+                      </td>
+                    )}
+                    {columns.map(col => (
+                      <td key={col.key} className="px-4 font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text)">
+                        {col.render ? col.render(row[col.key], row) : String(row[col.key] ?? "")}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
