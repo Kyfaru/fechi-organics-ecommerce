@@ -5,12 +5,14 @@
  * session exists post-signIn.email(), before 2FA has ever been set up.
  */
 import { NextRequest } from "next/server";
+import { connection } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, Err } from "@/lib/api";
 import { reportError } from "@/lib/observability";
 
 export async function GET(req: NextRequest) {
+  await connection();
   try {
     const session = await auth.api.getSession({ headers: req.headers });
     if (!session?.user) return Err.authRequired();

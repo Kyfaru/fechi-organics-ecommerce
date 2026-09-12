@@ -9,7 +9,7 @@ import { Icon } from "@iconify/react";
 import {
   ShoppingBag, Clock, Truck, CheckCircle, Search, Download,
   ChevronDown, MoreHorizontal, X, Tag, User, CreditCard, Printer, Link2,
-  MapPin, Check, Copy, Receipt, Plus,
+  MapPin, Check, Copy, Receipt, Plus, Trash2,
 } from "lucide-react";
 import { StatsCard } from "@/components/ui/stats-card";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -726,6 +726,120 @@ const DELETE_REASON_TEMPLATES = [
 ];
 
 // ---------------------------------------------------------------------------
+// Bulk delete modal — same permanent deletion as DeleteOrderModal, applied to
+// every checked row at once. Accountability here is the acting admin's OWN
+// password rather than retyping every order number back — one check gates
+// the whole batch instead of forcing a per-order confirmation.
+// ---------------------------------------------------------------------------
+function BulkDeleteOrdersModal({
+  items,
+  open,
+  onClose,
+  onDeleted,
+}: {
+  items: { id: string; kind: "order" | "instore"; orderNumber: string | null }[];
+  open: boolean;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const qc = useQueryClient();
+  const [reason, setReason] = useState("");
+  const [password, setPassword] = useState("");
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/admin/orders/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((i) => ({ id: i.id, kind: i.kind })),
+          reason,
+          password,
+        }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error?.message ?? "Delete failed");
+      return json.data as { deleted: unknown[]; failed: { id: string; error: string }[] };
+    },
+    onSuccess: (data) => {
+      toast.success(
+        data.failed.length > 0
+          ? `Deleted ${data.deleted.length} order${data.deleted.length !== 1 ? "s" : ""}, ${data.failed.length} failed`
+          : `${data.deleted.length} order${data.deleted.length !== 1 ? "s" : ""} permanently deleted`,
+      );
+      qc.invalidateQueries({ queryKey: ["admin-orders"] });
+      setReason("");
+      setPassword("");
+      onClose();
+      onDeleted();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const canConfirm = reason.trim().length > 0 && password.length > 0 && items.length > 0;
+
+  return (
+    <ConfirmModal
+      open={open}
+      onClose={() => { onClose(); setReason(""); setPassword(""); }}
+      onConfirm={() => {
+        if (!canConfirm) { toast.error("Enter a reason and your password to confirm"); return; }
+        deleteMutation.mutate();
+      }}
+      title={`Permanently delete ${items.length} order${items.length !== 1 ? "s" : ""}?`}
+      description="This deletes each order, its items, transactions, and invoice. This cannot be undone. Customer records are not affected."
+      confirmLabel="Delete Permanently"
+      danger
+      loading={deleteMutation.isPending}
+    >
+      <div className="flex flex-col gap-3">
+        <div className="max-h-24 overflow-y-auto rounded-[8px] border border-(--neutral-200) bg-(--neutral-50) px-3 py-2">
+          <p className="font-dm text-[12px] font-mono text-(--neutral-600) leading-5">
+            {items.map((i) => i.orderNumber ?? i.id).join(", ")}
+          </p>
+        </div>
+        <div>
+          <label className="font-dm text-[12px] font-medium text-(--neutral-700) block mb-1">Reason</label>
+          <div className="flex flex-wrap gap-1.5 mb-1.5">
+            {DELETE_REASON_TEMPLATES.map((t) => (
+              <button
+                key={t.label}
+                type="button"
+                onClick={() => setReason(t.text)}
+                className="px-2.5 h-6 rounded-full border border-(--neutral-200) bg-(--neutral-50) font-dm text-[11px] font-medium text-(--neutral-700) hover:bg-(--neutral-100) transition-colors"
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value.slice(0, 200))}
+            rows={2}
+            maxLength={200}
+            className="w-full rounded-[8px] border border-(--neutral-200) px-3 py-2 font-dm text-[13px] resize-none"
+            placeholder={`Why are these ${items.length} orders being deleted?`}
+          />
+          <p className="font-dm text-[11px] text-(--neutral-400) text-right mt-0.5">{reason.length}/200</p>
+        </div>
+        <div>
+          <label className="font-dm text-[12px] font-medium text-(--neutral-700) block mb-1">
+            Enter your admin password to confirm
+          </label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Your password"
+            className="w-full h-9 rounded-[8px] border border-(--neutral-200) px-3 font-dm text-[13px]"
+          />
+        </div>
+      </div>
+    </ConfirmModal>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Order Detail Drawer
 // ---------------------------------------------------------------------------
 function OrderDetailDrawer({
@@ -1294,6 +1408,8 @@ export function AdminOrdersClient() {
   const [exportOpen, setExportOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<AdminOrderRow | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   // ── Data query ──
   const { data, isLoading } = useQuery<{ ok: boolean; data: { orders: AdminOrderRow[]; scope: { isSuperAdmin: boolean; branchId: string | null } } }>({
@@ -1370,7 +1486,25 @@ export function AdminOrdersClient() {
     setSelectedOrder(order);
     setDrawerOpen(true);
   }
-  
+
+  // ── Bulk selection ──
+  function toggleRowSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  function toggleAllOnPageSelected(ids: string[], checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) { if (checked) next.add(id); else next.delete(id); }
+      return next;
+    });
+  }
+  const selectedItems = orders
+    .filter((o) => selectedIds.has(o.id))
+    .map((o) => ({ id: o.id, kind: o.kind, orderNumber: o.orderNumber }));
 
   // ── Table columns ──
   const columns = [
@@ -1670,6 +1804,26 @@ export function AdminOrdersClient() {
           emptyTitle="No orders found"
           emptyDescription="Orders placed through the storefront will appear here."
           pageSize={25}
+          selectable={!!scope?.isSuperAdmin}
+          selectedIds={selectedIds}
+          onToggleRow={toggleRowSelected}
+          onToggleAllOnPage={toggleAllOnPageSelected}
+          selectionActions={
+            <>
+              <button
+                onClick={() => setBulkDeleteOpen(true)}
+                className="h-8 px-3 rounded-[8px] bg-(--danger) text-white font-dm text-[12px] font-medium flex items-center gap-1.5 hover:opacity-90 transition-colors"
+              >
+                <Trash2 size={13} /> Delete
+              </button>
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="h-8 px-3 rounded-[8px] border border-(--neutral-200) font-dm text-[12px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+              >
+                Deselect
+              </button>
+            </>
+          }
         />
       </motion.div>
 
@@ -1679,6 +1833,14 @@ export function AdminOrdersClient() {
         open={drawerOpen}
         onClose={() => { setDrawerOpen(false); setTimeout(() => setSelectedOrder(null), 250); }}
         isSuperAdmin={scope?.isSuperAdmin}
+      />
+
+      {/* ── Bulk delete ── */}
+      <BulkDeleteOrdersModal
+        items={selectedItems}
+        open={bulkDeleteOpen}
+        onClose={() => setBulkDeleteOpen(false)}
+        onDeleted={() => setSelectedIds(new Set())}
       />
     </div>
   );
