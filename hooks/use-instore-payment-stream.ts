@@ -12,7 +12,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-export type InStorePaymentStreamStatus = 'idle' | 'connecting' | 'pending' | 'success' | 'failed' | 'timeout'
+export type InStorePaymentStreamStatus = 'idle' | 'connecting' | 'pending' | 'stk_sent' | 'success' | 'failed' | 'timeout'
 
 export function useInStorePaymentStream(inStoreOrderId: string | null): {
   status: InStorePaymentStreamStatus
@@ -43,6 +43,12 @@ export function useInStorePaymentStream(inStoreOrderId: string | null): {
         switch (data.type) {
           case 'connected':
             setStatus('pending')
+            break
+          case 'stk_sent':
+            // Dispatch has actually called the gateway now — not terminal,
+            // so the stream stays open for the real success/failure that
+            // follows (see hooks/use-payment-stream.ts's identical case).
+            setStatus('stk_sent')
             break
           case 'payment_success':
             setStatus('success')

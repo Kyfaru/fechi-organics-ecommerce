@@ -11,6 +11,7 @@
 
 import { getDarajaToken } from "./daraja-client";
 import { decrypt, fingerprint } from "@/lib/crypto";
+import { StkSendError } from "@/lib/payments/stk-errors";
 import type { branch } from "@prisma/client";
 
 const DARAJA_BASE =
@@ -138,31 +139,52 @@ export async function initiateSTKPush(params: {
     TransactionDesc: "Fechi Order",  // max 13 chars per Daraja spec
   };
 
-  const res = await fetch(`${DARAJA_BASE}/mpesa/stkpush/v1/processrequest`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(15_000),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${DARAJA_BASE}/mpesa/stkpush/v1/processrequest`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (fetchErr) {
+    // No HTTP response ever arrived (DNS/connect error, or the AbortSignal
+    // fired first) — Daraja never received this, safe to fail over.
+    console.error(`[stk-push] request errored — branch=${branch.id}`, fetchErr);
+    throw new StkSendError(`Daraja STK push request failed: ${(fetchErr as Error).message}`, true);
+  }
 
   if (!res.ok) {
     const body = await res.text();
     console.error(
       `[stk-push] request failed — branch=${branch.id} status=${res.status} shortcode=${branch.shortcode} passkey=${fingerprint(passkey)} body="${body}"`,
     );
-    throw new Error(
+    // Only a 5xx means the gateway itself is down — a 4xx means Daraja
+    // received and rejected the request, which is an answer, not a
+    // non-event, so it must not trigger failover.
+    throw new StkSendError(
       `[stk-push] Daraja request failed: ${res.status} ${res.statusText} — ${body}`,
+      res.status >= 500,
     );
   }
 
-  const data = (await res.json()) as STKPushResponse;
+  // From here on we have a 2xx — Daraja processed the request, so nothing
+  // below is eligible for failover even if ResponseCode says no.
+  let data: STKPushResponse;
+  try {
+    data = (await res.json()) as STKPushResponse;
+  } catch (parseErr) {
+    console.error(`[stk-push] response wasn't JSON — branch=${branch.id}`, parseErr);
+    throw new StkSendError(`[stk-push] Daraja response wasn't JSON: ${(parseErr as Error).message}`, false);
+  }
 
   if (data.ResponseCode !== "0") {
-    throw new Error(
+    throw new StkSendError(
       `[stk-push] Daraja rejected the request: ${data.ResponseCode} — ${data.ResponseDescription}`,
+      false,
     );
   }
 

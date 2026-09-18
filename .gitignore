@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...except the template itself — it's never been tracked, so every real env
+# var this project needs (including the KCB block documented here) has only
+# ever existed in whichever developer's local checkout last edited this file.
+!.env.example
 
 # vercel
 .vercel
@@ -41,8 +45,12 @@ yarn-error.log*
 next-env.d.ts
 
 # prisma
-Prisma seed/scripts
-/seed.ts
-/set-daraja-creds.ts
-/create-admin.ts
-/seed-blog.ts
+# NOTE: these were root-anchored ("/seed.ts") but the files actually live
+# under prisma/, so none of these ever matched anything — every one of them
+# has been silently tracked despite the intent to ignore it. Fixed to be
+# path-correct; set-daraja-creds.ts also removed from the index (it carried
+# real credentials) — see prisma/set-daraja-creds.example.ts for the template.
+prisma/seed.ts
+prisma/set-daraja-creds.ts
+prisma/create-admin.ts
+prisma/seed-blog.ts

@@ -125,7 +125,11 @@ export function PaymentProcessingClient({ order, method }: { order: Order; metho
                   <Icon icon={method === "mpesa" ? "mdi:cellphone-message" : "mdi:credit-card-clock-outline"} width={34} className="text-[#27731e] animate-pulse" />
                 </div>
                 <p className="mt-4 text-sm font-semibold text-[#1a1c1c] dark:text-white">
-                  {method === "mpesa" ? "Enter your PIN on your phone" : "Redirecting to payment page..."}
+                  {method === "mpesa"
+                    ? status === "stk_sent"
+                      ? "Enter your PIN on your phone"
+                      : "Sending payment request..."
+                    : "Redirecting to payment page..."}
                 </p>
                 <Icon icon="mdi:loading" width={24} className="mt-5 mx-auto animate-spin text-[#27731e]" />
                 <p className="mt-4 text-xs text-[#40493c] dark:text-gray-400">Do not go back or refresh this page</p>
