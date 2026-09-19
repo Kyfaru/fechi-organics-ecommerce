@@ -19,13 +19,22 @@ import { useDeviceSignal } from "@/hooks/use-device-signal";
 
 type DeliveryMode = "DELIVERY" | "PICKUP";
 type PaymentMethod = "mpesa" | "card";
-type Country = { code: string; name: string; flag: string };
+type Country = { code: string; name: string; flag: string; aliases?: string[] };
 type Zone = { id: string; name: string; deliveryFeeKes: number; branchId: string | null };
 type Branch = { id: string; cardEligible: boolean };
 type StateOption = { code: string; name: string };
 type CartItem = { productId: string; name: string; quantity: number; lineTotalKes: number; primaryImageUrl?: string };
 type CartResponse = { ok: boolean; data: { items: CartItem[]; subtotalKes: number; itemCount: number } };
-type SelectOption = { value: string; label: string; icon?: string };
+type SelectOption = { value: string; label: string; icon?: string; aliases?: string[] };
+
+// Accent/case-insensitive: "turkiye" finds Türkiye.
+const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+// True if every char of `q` appears in `s` in order — typo tolerance ("sychelles" → Seychelles).
+const isSubsequence = (q: string, s: string) => {
+  let i = 0;
+  for (const ch of s) if (ch === q[i]) i++;
+  return i === q.length;
+};
 
 type Props = {
   user: { fullName: string; email: string; phone: string; country: string };
@@ -138,9 +147,14 @@ function SelectDropdown({
   }, [open]);
 
   const selected = options.find((o) => o.value === value);
-  const filtered = searchable && search
-    ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
+  // ponytail: subsequence fallback only kicks in when nothing matches; real fuzzy search (Levenshtein) if typos beyond dropped letters matter
+  const q = fold(search.trim());
+  const substringHits = searchable && q
+    ? options.filter((o) => [o.label, ...(o.aliases ?? [])].some((t) => fold(t).includes(q)))
     : options;
+  const filtered = searchable && q && substringHits.length === 0
+    ? options.filter((o) => isSubsequence(q, fold(o.label)))
+    : substringHits;
 
   const borderCls = hasError
     ? "border-red-400 focus:border-red-400"
@@ -314,7 +328,17 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
   // ---------------------------------------------------------------------------
   const countriesQuery = useQuery<{ ok: boolean; data: { countries: Country[] } }>({
     queryKey: ["countries"],
-    queryFn: () => fetch("/api/countries").then((r) => r.json()),
+    queryFn: async () => {
+      const res = await fetch("/api/countries");
+      const json = await res.json().catch(() => null);
+      // Throw on failure so a bad response is retried and never persisted to localStorage as "success".
+      if (!res.ok || !json?.ok || !Array.isArray(json.data?.countries)) {
+        console.error("[delivery] GET /api/countries failed", { status: res.status, body: json });
+        throw new Error(`/api/countries failed (${res.status})`);
+      }
+      console.log(`[delivery] GET /api/countries ok — ${json.data.countries.length} countries`);
+      return json;
+    },
     staleTime: 24 * 60 * 60 * 1000,
   });
 
@@ -606,7 +630,7 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
   // ---------------------------------------------------------------------------
   const showErr = (key: string) => submitted ? errors[key] : undefined;
 
-  const countryOptions: SelectOption[] = countries.map((c) => ({ value: c.code, label: c.name, icon: c.flag }));
+  const countryOptions: SelectOption[] = countries.map((c) => ({ value: c.code, label: c.name, icon: c.flag, aliases: c.aliases }));
   const countyOptions: SelectOption[] = branchLimited
     ? KENYA_DELIVERY_BRANCHES.map((b) => ({ value: b.county, label: b.label }))
     : KENYA_COUNTIES.map((c) => ({ value: c, label: c }));
