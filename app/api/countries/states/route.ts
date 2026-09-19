@@ -1,4 +1,4 @@
-nowimport { assertTrustedOrigin } from "@/lib/origin-check";
+import { assertTrustedOrigin } from "@/lib/origin-check";
 import { NextRequest, NextResponse } from "next/server"
 import { reportError } from "@/lib/observability"
 
