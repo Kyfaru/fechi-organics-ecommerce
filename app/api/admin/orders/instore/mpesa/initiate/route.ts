@@ -14,17 +14,16 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ok, err, Err } from "@/lib/api";
-import { getDarajaToken } from "@/lib/payments/mpesa/daraja-client";
-import { initiateSTKPush } from "@/lib/payments/mpesa/stk-push";
 import { recordCouponRedemption } from "@/lib/promo";
 import { computeOrderTotals } from "@/lib/checkout/compute-totals";
 import { holdRedeemedPoints } from "@/lib/points/redeem";
 import { getRedis } from "@/lib/redis";
+import { paymentChannel } from "@/lib/payment-channel";
 import { makeRatelimit } from "@/lib/ratelimit";
 import { assertTrustedOrigin } from "@/lib/origin-check";
-import { markInStorePaymentFailed } from "@/lib/payments/instore-post-payment";
-import { resolveMpesaGateway, otherGateway } from "@/lib/payments/mpesa/gateway";
-import type { MpesaGateway } from "@prisma/client";
+import { assertGatewayEnv } from "@/lib/payments/gateway-env";
+import { dispatchStk } from "@/lib/payments/dispatch-stk";
+import { finalizeStkDispatch } from "@/lib/payments/finalize-stk-dispatch";
 import { buildInStoreOrderNumber } from "@/lib/orders/generate-instore-order-number";
 import { createWithRetryableOrderNumber } from "@/lib/orders/create-with-retry";
 import { findOrCreateWalkInCustomer } from "@/lib/customers/find-or-create-walkin";
@@ -34,11 +33,10 @@ import { reportError } from "@/lib/observability";
 import { logServerError } from "@/lib/observability-server";
 import { publishQstashJSON } from "@/lib/qstash";
 
-// Gives the client's 60s AbortSignal.timeout room to fire before the
-// serverless function itself gets cut off mid-dispatch.
-export const maxDuration = 60;
-
-const PAYMENT_TIMEOUT_SECONDS = 15 * 60; // abandon unpaid in-store orders 15 minutes after STK push
+// Dispatch now happens off this request (see /api/admin/workers/dispatch-stk)
+// — this used to be 60 to give a synchronous primary+fallback gateway
+// round trip room to finish; no longer needed.
+export const maxDuration = 15;
 
 const bodySchema = z
   .object({
@@ -77,8 +75,17 @@ async function requireAdmin(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
+
+  try {
+    assertGatewayEnv();
+  } catch (envErr) {
+    reportError(envErr, { route: "POST /api/admin/orders/instore/mpesa/initiate", tags: { stage: "gateway_env" } });
+    console.error("[instore/mpesa/initiate] gateway env check failed:", envErr);
+    return Err.internal(envErr, "Payments are temporarily unavailable. Please try again shortly.");
+  }
 
   const denied = await requirePermission(req, { orders: ["update_status"] });
   if (denied) return denied;
@@ -224,6 +231,23 @@ export async function POST(req: NextRequest) {
         where: { id: retryOrderId },
         data: { paymentStatus: "PENDING" },
       });
+
+      // Found in review: this order id is reused on retry, but the previous
+      // attempt's terminal event (markInStorePaymentFailed writes
+      // instore_payment_failed unconditionally, TTL 900s) is still sitting
+      // in Redis at this same channel key. Without clearing it, the new
+      // PaymentWaitingModal's very first poll (within ~1s) would read that
+      // stale failure, report it as the outcome of THIS attempt, and close
+      // the stream before the real dispatch even runs — the admin would see
+      // "Failed" regardless of whether the retry actually succeeds. Clearing
+      // it here, once, before any new event can be written, avoids a race
+      // with the dispatch worker (which only ever writes AFTER this request
+      // returns).
+      try {
+        await getRedis().del(paymentChannel(order.id));
+      } catch (e) {
+        console.error("[instore/mpesa/initiate] Failed to clear stale payment channel on retry:", e);
+      }
     } else {
       // Regenerates the order number and retries (once per second boundary)
       // if it collides on the orderNumber unique constraint, instead of
@@ -297,117 +321,37 @@ export async function POST(req: NextRequest) {
       data: { inStoreTransactionId: transaction.id, type: "INITIATED" },
     });
 
-    // 2. Dispatch STK push — forced to KCB Buni until DARAJA_ENABLED=true
-    // (see lib/payments/mpesa/gateway.ts), with a same-request fallback to
-    // the other gateway if the primary attempt throws.
-    const callbackUrl = `${process.env.MPESA_CALLBACK_BASE_URL}/api/payments/mpesa/instore-callback`;
-
-    async function dispatchKcb(): Promise<string> {
-      const { initiateKcbStkPush } = await import("@/lib/payments/kcb/kcb-client");
-      const { resolveKcbBranch, originBranchTag } = await import("@/lib/payments/kcb/resolve-kcb-branch");
-      // Falls back to the head office KCB Buni paybill when this branch has
-      // no KCB account of its own (Eldoret/Kitengela/Mwea). order.branchId
-      // stays the customer's real branch either way — only these credentials
-      // and the invoice tag below change.
-      const kcbBranch = await resolveKcbBranch(branch!);
-      const formatOrderNumber = order.orderNumber?.slice(7, -1);
-      const invoiceCode = `${kcbBranch.invoiceNumber}-${originBranchTag(branch!)}-${formatOrderNumber}`;
-      const kcbRes = await initiateKcbStkPush({
-        branch: {
-          id: kcbBranch.id,
-          shortcode: kcbBranch.shortcode,
-          invoiceNumber: invoiceCode,
-          consumerKeyEnc: kcbBranch.consumerKeyEnc,
-          consumerSecretEnc: kcbBranch.consumerSecretEnc,
-          apiKeyEnc: kcbBranch.apiKeyEnc ?? null,
-        },
+    // 2. Dispatch moves off this request entirely — publish a job for
+    // /api/admin/workers/dispatch-stk to actually call the gateway. If
+    // QStash itself isn't configured (dev/local), dispatch inline instead of
+    // silently dropping the payment.
+    const instoreCallbackUrl = `${process.env.MPESA_CALLBACK_BASE_URL}/api/payments/mpesa/instore-callback`;
+    const published = await publishQstashJSON(
+      "/api/admin/workers/dispatch-stk",
+      { kind: "instore", transactionId: transaction.id },
+      { retries: 2 },
+    );
+    if (!published) {
+      console.warn(`[instore/mpesa/initiate] QStash unavailable — dispatching inline for order=${order.orderNumber}`);
+      const result = await dispatchStk({
+        branch,
         phone: customerPhone,
-        amountKes: totalKes,
+        amountCents: totalKes,
         orderId: order.id,
-        callbackUrl,
+        orderNumber: order.orderNumber,
+        kind: "instore",
+        kcbCallbackUrl: instoreCallbackUrl,
+        darajaCallbackUrl: instoreCallbackUrl,
       });
-      if (!kcbRes.CheckoutRequestID) {
-        throw new Error("KCB STK push did not return a CheckoutRequestID");
-      }
-      return kcbRes.CheckoutRequestID;
-    }
-
-    async function dispatchDaraja(): Promise<string> {
-      await getDarajaToken(branch!); // warm-up / validate credentials early
-      const stkResponse = await initiateSTKPush({
-        branch: branch!,
-        phone: customerPhone,
-        amountKes: totalKes / 100,
-        orderId: order.orderNumber?.slice(7, -1) ?? order.id,
-        callbackUrl,
-      });
-      return stkResponse.CheckoutRequestID;
-    }
-
-    async function dispatch(gateway: MpesaGateway): Promise<string> {
-      return gateway === "KCB_BUNI" ? dispatchKcb() : dispatchDaraja();
-    }
-
-    const primaryGateway = resolveMpesaGateway(branch);
-    const fallbackGateway = otherGateway(primaryGateway);
-    let checkoutRequestId: string;
-    let gatewayUsed: MpesaGateway = primaryGateway;
-    console.info(`[instore/mpesa/initiate] Dispatching STK via ${primaryGateway} — order=${order.orderNumber}`);
-    try {
-      checkoutRequestId = await dispatch(primaryGateway);
-      console.info(
-        `[instore/mpesa/initiate] ${primaryGateway} dispatch succeeded — order=${order.orderNumber} checkout=${checkoutRequestId}`,
-      );
-    } catch (primaryErr) {
-      reportError(primaryErr, {
-        route: "POST /api/admin/orders/instore/mpesa/initiate",
-        userId: admin.id,
-        tags: { stage: "gateway_dispatch", gateway: primaryGateway },
-      });
-      console.error(`[instore/mpesa/initiate] ${primaryGateway} dispatch failed, falling back to ${fallbackGateway}`, primaryErr);
-      console.info(`[instore/mpesa/initiate] Dispatching STK via fallback ${fallbackGateway} — order=${order.orderNumber}`);
-      try {
-        checkoutRequestId = await dispatch(fallbackGateway);
-        gatewayUsed = fallbackGateway;
-        console.info(
-          `[instore/mpesa/initiate] ${fallbackGateway} fallback dispatch succeeded — order=${order.orderNumber} checkout=${checkoutRequestId}`,
-        );
-      } catch (fallbackErr) {
-        reportError(fallbackErr, {
-          route: "POST /api/admin/orders/instore/mpesa/initiate",
-          userId: admin.id,
-          tags: { stage: "gateway_dispatch_fallback", gateway: fallbackGateway },
-        });
-        console.error(`[instore/mpesa/initiate] ${fallbackGateway} fallback also failed`, fallbackErr);
-        void logServerError(fallbackErr, { route: "POST /api/admin/orders/instore/mpesa/initiate", userId: admin.id, orderId: order.id });
-        await markInStorePaymentFailed({
-          transactionId: transaction.id,
-          inStoreOrderId: order.id,
-          reason: "Both M-Pesa gateways failed to initiate",
-        });
+      await finalizeStkDispatch({ kind: "instore", transactionId: transaction.id, orderId: order.id, result });
+      if (!result.success) {
+        void logServerError(new Error(result.reason), { route: "POST /api/admin/orders/instore/mpesa/initiate", userId: admin.id, orderId: order.id });
         return err("STK_FAILED", "Could not initiate M-Pesa prompt. Please try again.", 502);
       }
     }
 
-    // 3. Persist CheckoutRequestID + which gateway actually handled this.
-    await db.inStoreTransaction.update({
-      where: { id: transaction.id },
-      data: { checkoutRequestId, mpesaGatewayUsed: gatewayUsed },
-    });
-    await db.inStoreTransactionEvent.create({
-      data: { inStoreTransactionId: transaction.id, type: "STK_SENT", detail: gatewayUsed },
-    });
-
-    // Schedule a timeout: if the walk-in customer abandons the STK prompt
-    // and no callback arrives within 15 minutes, flip the order to FAILED.
-    await publishQstashJSON(
-      "/api/admin/workers/check-failed-instore-payment",
-      { inStoreOrderId: order.id, transactionId: transaction.id },
-      { delay: PAYMENT_TIMEOUT_SECONDS },
-    );
-
     console.info(
-      `[instore/mpesa/initiate] STK push initiated — order=${order.orderNumber} checkout=${checkoutRequestId}`,
+      `[instore/mpesa/initiate] responded in ${Date.now() - startedAt}ms — order=${order.orderNumber} dispatchQueued=${Boolean(published)}`,
     );
 
     if (!retryOrderId && admin.adminProfile) {

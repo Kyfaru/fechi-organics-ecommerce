@@ -21,19 +21,22 @@ import { resolveCart } from "@/lib/cart";
 import { resolveCheckoutUserId } from "@/lib/customers/find-or-create-guest";
 import { checkGuestCheckoutAbuse } from "@/lib/payments/guest-abuse-guard";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
-import { initiateKcbStkPush } from "@/lib/payments/kcb/kcb-client";
-import { resolvePaymentBranch } from "@/lib/payments/mpesa/gateway";
+import { assertGatewayEnv } from "@/lib/payments/gateway-env";
+import { dispatchStk } from "@/lib/payments/dispatch-stk";
+import { finalizeStkDispatch } from "@/lib/payments/finalize-stk-dispatch";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
 import { recordCouponRedemption } from "@/lib/promo";
 import { computeOrderTotals } from "@/lib/checkout/compute-totals";
 import { holdRedeemedPoints } from "@/lib/points/redeem";
 import { getRedis } from "@/lib/redis";
-import { markPaymentFailed } from "@/lib/payments/post-payment";
 import { assertTrustedOrigin } from "@/lib/origin-check";
+import { publishQstashJSON } from "@/lib/qstash";
 import { deliveryDataSchema } from "@/lib/payments/delivery-schema";
 import { buildTimestampOrderNumber } from "@/lib/orders/generate-order-number";
 import { createWithRetryableOrderNumber } from "@/lib/orders/create-with-retry";
 import { readUtmCookie } from "@/lib/attribution";
+
+export const maxDuration = 15;
 
 const bodySchema = z.object({
   phone: z.string().min(9),
@@ -41,8 +44,17 @@ const bodySchema = z.object({
 }).strict();
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
   const originCheck = assertTrustedOrigin(req);
   if (originCheck) return originCheck;
+
+  try {
+    assertGatewayEnv();
+  } catch (envErr) {
+    reportError(envErr, { route: "POST /api/payments/kcb/initiate", tags: { stage: "gateway_env" } });
+    console.error("[kcb/initiate] gateway env check failed:", envErr);
+    return Err.internal(envErr, "Payments are temporarily unavailable. Please try again shortly.");
+  }
 
   // 1. A session is optional — guest checkout is allowed (see the identity
   // resolution below, once the cart is confirmed non-empty).
@@ -236,58 +248,38 @@ export async function POST(req: NextRequest) {
       data: { transactionId: transaction.id, type: "INITIATED" },
     });
 
-    // 9. Initiate KCB Buni STK push — routed through resolvePaymentBranch()
-    // for whose credentials to bill against; order.branchId above stays the
-    // customer's real branch regardless (Zoho/reporting).
-    const paymentBranch = await resolvePaymentBranch(branch);
-    const callbackUrl = `${process.env.KCB_CALLBACK_BASE_URL ?? process.env.MPESA_CALLBACK_BASE_URL}/api/payments/kcb/callback`;
-    const consumer_secret = paymentBranch.consumerSecretEnc || process.env.KCB_CONSUMER_SECRET;
-    const consumer_key = paymentBranch.consumerKeyEnc || process.env.KCB_CONSUMER_KEY;
-    const api_key = paymentBranch.apiKeyEnc || process.env.KCB_API_KEY;
-    const shortcode = paymentBranch.shortcode || process.env.KCB_SHORTCODE || "null";
-    const formatOrderNumber = order.orderNumber?.slice(4,-1);
-    const invoiceCode = `${paymentBranch.invoiceNumber}-${formatOrderNumber}`;
-    if (!paymentBranch.invoiceNumber) {
-    return err("BRANCH", `Branch ${paymentBranch.id} is undefined number`, 500);
-    }
-
-    const kcbRes = await initiateKcbStkPush({
-      branch: {
-        id: paymentBranch.id,
-        shortcode: paymentBranch.shortcode ?? shortcode ?? null,
-        invoiceNumber: invoiceCode ?? paymentBranch.invoiceNumber,
-        consumerKeyEnc: paymentBranch.consumerKeyEnc ?? consumer_key,
-        consumerSecretEnc: paymentBranch.consumerSecretEnc ?? consumer_secret,
-        apiKeyEnc: api_key ?? null,
-      },
-      phone,
-      amountKes: totalCents, // function converts to whole KES internally
-      orderId: order.id,
-      callbackUrl,
-    });
-
-    // 10. Persist CheckoutRequestID so the callback can look up the transaction
-    if (!kcbRes.CheckoutRequestID) {
-      // KCB returned an unexpected response shape — fail fast so the SSE modal updates
-      await markPaymentFailed({
-        transactionId: transaction.id,
+    // 9. Dispatch moves off this request entirely, same pattern as
+    // /api/payments/mpesa/initiate — publish a job for
+    // /api/admin/workers/dispatch-stk to actually call the gateway (KCB
+    // primary per resolveMpesaGateway, with the same provably-sent-nothing
+    // failover rule as the other two routes — this route used to be
+    // KCB-only with no failover at all). If QStash itself isn't configured,
+    // dispatch inline instead of silently dropping the payment.
+    const published = await publishQstashJSON(
+      "/api/admin/workers/dispatch-stk",
+      { kind: "online", transactionId: transaction.id },
+      { retries: 2 },
+    );
+    if (!published) {
+      console.warn(`[kcb/initiate] QStash unavailable — dispatching inline for order=${order.orderNumber}`);
+      const result = await dispatchStk({
+        branch,
+        phone,
+        amountCents: totalCents,
         orderId: order.id,
-        reason: "STK push did not return a CheckoutRequestID",
+        orderNumber: order.orderNumber,
+        kind: "online",
+        kcbCallbackUrl: `${process.env.KCB_CALLBACK_BASE_URL ?? process.env.MPESA_CALLBACK_BASE_URL}/api/payments/kcb/callback`,
+        darajaCallbackUrl: `${process.env.MPESA_CALLBACK_BASE_URL}/api/payments/mpesa/callback`,
       });
-      console.error("[kcb/initiate] Missing CheckoutRequestID — order:", order.id);
-      return err("STK_FAILED", "Could not initiate M-Pesa prompt. Please try again.", 502);
+      await finalizeStkDispatch({ kind: "online", transactionId: transaction.id, orderId: order.id, result });
+      if (!result.success) {
+        return err("STK_FAILED", "Could not initiate M-Pesa prompt. Please try again.", 502);
+      }
     }
-
-    await db.transaction.update({
-      where: { id: transaction.id },
-      data: { checkoutRequestId: kcbRes.CheckoutRequestID },
-    });
-    await db.transactionEvent.create({
-      data: { transactionId: transaction.id, type: "STK_SENT", detail: "KCB_BUNI" },
-    });
 
     console.info(
-      `[kcb/initiate] STK push initiated — order=${order.id} checkout=${kcbRes.CheckoutRequestID}`,
+      `[kcb/initiate] responded in ${Date.now() - startedAt}ms — order=${order.orderNumber} dispatchQueued=${Boolean(published)}`,
     );
 
     return ok({ orderId: order.id, message: "Check your phone for the M-Pesa prompt" });

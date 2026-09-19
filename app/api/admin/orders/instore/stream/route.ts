@@ -42,6 +42,7 @@ async function requireAdmin(req: NextRequest) {
 function translateType(type: unknown): unknown {
   if (type === "instore_payment_success") return "payment_success";
   if (type === "instore_payment_failed") return "payment_failed";
+  if (type === "instore_stk_sent") return "stk_sent";
   return type;
 }
 
@@ -93,9 +94,16 @@ export async function GET(req: NextRequest) {
           const result = await redis.get(channel);
           if (result) {
             const payload = (typeof result === "string" ? JSON.parse(result) : result) as Record<string, unknown>;
-            send({ ...payload, type: translateType(payload.type) });
-            cleanup();
-            setTimeout(() => { try { controller.close(); } catch {} }, 100);
+            const translated = translateType(payload.type);
+            send({ ...payload, type: translated });
+            // "stk_sent" is a milestone, not an outcome — keep polling past
+            // it so the real terminal event (written to this same channel
+            // key later) still reaches this stream instead of an already-
+            // closed connection. See app/api/payments/stream/route.ts.
+            if (translated !== "stk_sent") {
+              cleanup();
+              setTimeout(() => { try { controller.close(); } catch {} }, 100);
+            }
           }
         } catch {}
       }, 1000);

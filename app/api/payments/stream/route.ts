@@ -78,10 +78,18 @@ export async function GET(req: NextRequest) {
           const result = await redis.get(channel)
           if (result) {
             // @upstash/redis auto-deserializes JSON on get() — result may already be an object
-            send(typeof result === 'string' ? JSON.parse(result) : result as object)
-            cleanup()
-            // Brief delay lets the event flush before close
-            setTimeout(() => { try { controller.close() } catch {} }, 100)
+            const payload = (typeof result === 'string' ? JSON.parse(result) : result) as { type?: string }
+            send(payload)
+            // "stk_sent" is a milestone, not an outcome — the dispatch worker
+            // (lib/payments/finalize-stk-dispatch.ts) writes it to this same
+            // channel key well before the real payment_success/payment_failed
+            // callback overwrites it. Keep polling past it instead of closing,
+            // or the terminal event would arrive at an already-closed stream.
+            if (payload.type !== 'stk_sent') {
+              cleanup()
+              // Brief delay lets the event flush before close
+              setTimeout(() => { try { controller.close() } catch {} }, 100)
+            }
           }
         } catch {}
       }, 1000)

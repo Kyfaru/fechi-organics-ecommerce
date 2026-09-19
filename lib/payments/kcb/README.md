@@ -31,9 +31,18 @@ All other branches use standard Daraja.
 ## Environment variables
 
 ```
-KCB_BASE_URL=https://uat.buni.kcbgroup.com   # Sandbox; change to prod URL for live
+KCB_BASE_URL=https://uat.buni.kcbgroup.com   # Sandbox only
 KCB_CALLBACK_BASE_URL=https://xxxx.ngrok-free.app   # Public URL for callbacks
 ```
+
+`KCB_BASE_URL` has **no default** — `lib/payments/kcb/kcb-client.ts` throws rather than
+silently falling back to the UAT host. In production it must be the real Buni
+production URL (contact KCB Buni support for it — see below); a missed env var
+now fails loudly at request time instead of accepting the STK push, returning
+success, and never ringing a real handset (`1037: DS timeout user cannot be
+reached` with no prompt ever received). `lib/payments/gateway-env.ts`'s
+`assertGatewayEnv()` also refuses to start a request if `NODE_ENV=production`
+and this still looks like a sandbox host.
 
 ## Branch credentials (stored encrypted in DB)
 

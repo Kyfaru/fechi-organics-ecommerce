@@ -34,7 +34,12 @@ export async function publishQstashJSON(
   // delay: relative, in seconds, from publish time (existing behavior).
   // notBefore: absolute Unix timestamp in seconds — used for exact-time scheduling
   // (e.g. a user-picked "send at" datetime) where a relative delay isn't precise enough.
-  opts?: { delay?: number; notBefore?: number }
+  // retries: QStash's own retry count for non-2xx responses (QStash default
+  // is 3) — pass a smaller number for jobs where a stuck retry loop is worse
+  // than a dropped one, e.g. STK dispatch, which claims an idempotency lock
+  // and returns 200 on any terminal (including business-failure) outcome, so
+  // a retry only ever fires when literally nothing was sent.
+  opts?: { delay?: number; notBefore?: number; retries?: number }
 ) {
   // The destination QStash delivers the job TO must be THIS app's own public
   // URL — never QSTASH_URL, which is Upstash's own QStash API endpoint
@@ -44,6 +49,17 @@ export async function publishQstashJSON(
   // retries, gives up, and the worker route is never actually invoked —
   // campaigns (and every other Qstash-triggered job) get stuck mid-flight
   // with no error, since the enqueue call itself still "succeeds".
+  // Must check this explicitly rather than trust the return value below:
+  // the unconfigured-token stub `qstash` client (module top) resolves with a
+  // truthy fake message ({messageId: "qstash-disabled"}), not null — callers
+  // that gate a synchronous fallback on `if (!published)` (e.g. the STK
+  // dispatch routes) would otherwise think a real job was enqueued when
+  // nothing was, and never fall back, silently dropping the job entirely.
+  if (!process.env.QSTASH_TOKEN) {
+    console.warn("[qstash] Skipping publish; QSTASH_TOKEN is not configured", pathOrUrl);
+    return null;
+  }
+
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.MPESA_CALLBACK_BASE_URL;
   const url = pathOrUrl.startsWith("http")
     ? pathOrUrl
@@ -65,5 +81,6 @@ export async function publishQstashJSON(
     body,
     // notBefore overrides delay when both are set, so only send one
     ...(opts?.notBefore ? { notBefore: opts.notBefore } : opts?.delay ? { delay: opts.delay } : {}),
+    ...(opts?.retries !== undefined ? { retries: opts.retries } : {}),
   });
 }

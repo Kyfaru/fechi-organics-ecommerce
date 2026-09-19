@@ -11,6 +11,7 @@
 
 import { decrypt, fingerprint } from "@/lib/crypto";
 import { getRedis } from "@/lib/redis";
+import { StkSendError } from "@/lib/payments/stk-errors";
 
 const DARAJA_BASE =
   process.env.DARAJA_ENV === "production"
@@ -58,29 +59,44 @@ export async function getDarajaToken(branch: {
     `[daraja] token request — branch=${branch.id} base=${DARAJA_BASE} consumerKey=${fingerprint(key)} consumerSecret=${fingerprint(secret)}`,
   );
 
-  const res = await fetch(
-    `${DARAJA_BASE}/oauth/v1/generate?grant_type=client_credentials`,
-    {
-      headers: { Authorization: `Basic ${basicAuth}` },
-      // Safaricom can be slow — 10-second timeout is safe for server-side use
-      signal: AbortSignal.timeout(10_000),
-    },
-  );
+  // A token-step failure of any kind means the STK push was never attempted
+  // — always safe to try the other gateway.
+  let res: Response;
+  try {
+    res = await fetch(
+      `${DARAJA_BASE}/oauth/v1/generate?grant_type=client_credentials`,
+      {
+        headers: { Authorization: `Basic ${basicAuth}` },
+        // Safaricom can be slow — 10-second timeout is safe for server-side use
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+  } catch (fetchErr) {
+    console.error(`[daraja] token request errored — branch=${branch.id}`, fetchErr);
+    throw new StkSendError(`Daraja token request failed: ${(fetchErr as Error).message}`, true);
+  }
 
   if (!res.ok) {
     const body = await res.text();
     console.error(
       `[daraja] token fetch failed — branch=${branch.id} status=${res.status} consumerKey=${fingerprint(key)} consumerSecret=${fingerprint(secret)} body="${body}"`,
     );
-    throw new Error(
+    throw new StkSendError(
       `[daraja] Token fetch failed: ${res.status} ${res.statusText} — ${body}`,
+      true,
     );
   }
 
-  const data = (await res.json()) as DarajaTokenResponse;
+  let data: DarajaTokenResponse;
+  try {
+    data = (await res.json()) as DarajaTokenResponse;
+  } catch (parseErr) {
+    console.error(`[daraja] token response wasn't JSON — branch=${branch.id}`, parseErr);
+    throw new StkSendError(`[daraja] Token response wasn't JSON: ${(parseErr as Error).message}`, true);
+  }
 
   if (!data.access_token) {
-    throw new Error("[daraja] Token response missing access_token field");
+    throw new StkSendError("[daraja] Token response missing access_token field", true);
   }
 
   // Cache for (expires_in − 60) seconds so we never serve a stale token.

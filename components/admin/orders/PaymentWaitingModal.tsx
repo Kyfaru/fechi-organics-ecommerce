@@ -100,7 +100,9 @@ export default function PaymentWaitingModal({
 
   const waitingCopy =
     method === "M-Pesa"
-      ? "Enter PIN on customer's phone"
+      ? status === "stk_sent"
+        ? "Enter PIN on customer's phone"
+        : "Sending payment request…"
       : "Confirming card payment…";
 
   return (
