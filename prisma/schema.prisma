@@ -569,6 +569,9 @@ model order {
   // (totalKes - deliveryKes) excludes points-funded value automatically.
   pointsRedeemed            Int                @default(0)
   pointsDiscountKes         Int                @default(0)
+  // Paystack card surcharge (3% local / 4% international), already included in
+  // totalKes. Card payments only; 0 for every other provider.
+  processingFeeKes          Int                @default(0)
   totalKes                  Int
   promoCode                 String?
   items                     orderItem[]

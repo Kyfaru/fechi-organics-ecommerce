@@ -142,6 +142,7 @@ export async function markPaymentSuccess(args: {
           discountKes: order.discountKes,
           pointsDiscountKes: order.pointsDiscountKes,
           pointsRedeemed: order.pointsRedeemed,
+          processingFeeKes: order.processingFeeKes,
           shippingKes: order.deliveryKes,
           deliveryTown: order.deliveryAddress,
           deliveryZoneLabel: order.deliveryZone,

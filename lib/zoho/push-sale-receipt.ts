@@ -33,6 +33,8 @@ export async function pushSaleReceiptToZoho(args: {
   pointsDiscountKes?: number;
   /** Raw point count, for the receipt's line-item label. */
   pointsRedeemed?: number;
+  /** Paystack card surcharge, in cents. Itemised so the receipt total equals what the card was charged. */
+  processingFeeKes?: number;
   // Delivery destination, formatted "town/building/estate, zone, county" —
   // pass whatever's known, blanks are dropped rather than left as empty segments.
   deliveryTown?: string | null;
@@ -115,6 +117,18 @@ export async function pushSaleReceiptToZoho(args: {
         : []),
     ];
 
+    const processingFeeLineItem =
+      args.processingFeeKes && args.processingFeeKes > 0
+        ? [
+            {
+              name: "Card processing fee",
+              quantity: 1,
+              rate: args.processingFeeKes / 100,
+              location_id: branch?.zohoLocationId ?? undefined,
+            },
+          ]
+        : [];
+
     const deliveryTitleParts = [args.deliveryTown, args.deliveryZoneLabel, args.deliveryCounty].filter(
       (p): p is string => !!p && p.trim().length > 0,
     );
@@ -147,6 +161,7 @@ export async function pushSaleReceiptToZoho(args: {
           location_id: branch?.zohoLocationId ?? undefined,
         })),
         ...deliveryLineItem,
+        ...processingFeeLineItem,
         ...reductionLineItems,
       ],
       reference_number: referenceNumber,

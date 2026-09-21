@@ -63,6 +63,7 @@ interface Order {
   subtotalKes: number
   deliveryKes: number
   discountKes: number
+  processingFeeKes: number
   deliveryType: string
   deliveryAddress?: string | null
   deliveryCity?: string | null
@@ -227,6 +228,7 @@ export default function OrderDetailContent({ order }: { order: Order }) {
             subtotalKes={order.subtotalKes}
             deliveryKes={order.deliveryKes}
             discountKes={order.discountKes}
+            processingFeeKes={order.processingFeeKes}
           />
           <DeliveryCard
             deliveryType={order.deliveryType}

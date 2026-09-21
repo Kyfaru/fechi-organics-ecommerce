@@ -45,6 +45,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ or
     subtotalKes: order.subtotalKes,
     deliveryKes: order.deliveryKes,
     discountKes: order.discountKes,
+    processingFeeKes: order.processingFeeKes,
     deliveryType: order.deliveryType,
     deliveryAddress: order.deliveryAddress,
     deliveryCity: order.deliveryCity,
