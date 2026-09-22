@@ -16,6 +16,7 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requireStaffSession } from "@/lib/require-permission";
 import { reportError } from "@/lib/observability";
 import { logActivity } from "@/lib/admin-activity";
+import { splitPhoneE164 } from "@/lib/phone";
 
 export async function GET(req: NextRequest) {
   await connection();
@@ -72,11 +73,34 @@ export async function PATCH(req: NextRequest) {
     image?: string;
   };
 
+  // Phone is sent as a full E.164 string by the PhoneInput component (or ""
+  // to clear it — the field is optional on the admin side). It's stored
+  // split across two legacy columns (phone = local digits, phoneCode = dial
+  // code) so lib/phone.ts's combineLegacyPhone can reconstruct it for SMS —
+  // validating and splitting it here (rather than trusting whatever string
+  // the client sends) is what was missing before: the old plain-text input
+  // let admins save unparseable phone strings that combineLegacyPhone could
+  // never turn back into a valid number, so 2FA SMS silently fell back to
+  // email with "no phone on file or not configured" even though a phone was
+  // technically on file.
+  let phoneSplit: { phone: string; phoneCode: string } | null | undefined;
+  if (typeof phone === "string") {
+    if (!phone.trim()) {
+      phoneSplit = null;
+    } else {
+      phoneSplit = splitPhoneE164(phone.trim());
+      if (!phoneSplit) return Err.validation("Please enter a valid phone number, or clear the field.");
+    }
+  }
+
   try {
     // Update user-level fields
     const userUpdate: Record<string, unknown> = {};
     if (name && typeof name === "string") userUpdate.name = name.trim();
-    if (typeof phone === "string") userUpdate.phone = phone.trim() || null;
+    if (phoneSplit !== undefined) {
+      userUpdate.phone = phoneSplit?.phone ?? null;
+      userUpdate.phoneCode = phoneSplit?.phoneCode ?? null;
+    }
     if (typeof image === "string") userUpdate.image = image.trim() || null;
 
     if (Object.keys(userUpdate).length > 0) {

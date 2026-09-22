@@ -18,6 +18,10 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { User, Settings, Bell, Lock, Eye, EyeOff } from "lucide-react";
+import type { Value as PhoneValue } from "react-phone-number-input";
+import { isValidPhoneNumber, validatePhoneNumberLength } from "libphonenumber-js";
+import PhoneInput from "@/components/ui/PhoneInput";
+import { combineLegacyPhone } from "@/lib/phone";
 import { signOut } from "@/lib/auth-client";
 
 const R2_BASE = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "").replace(/\/$/, "");
@@ -39,6 +43,7 @@ interface AdminUser {
   name: string;
   email: string;
   phone: string | null;
+  phoneCode: string | null;
   image: string | null;
   role: string;
   twoFactorEnabled: boolean;
@@ -143,16 +148,26 @@ function StrengthMeter({ password }: { password: string }) {
 function ProfileTab({ user, saving, onSave }: { user: AdminUser; saving: boolean; onSave: (data: Record<string, unknown>) => void }) {
   const [form, setForm] = useState({
     name:       user.name ?? "",
-    phone:      user.phone ?? "",
+    phone:      (user.phone ? combineLegacyPhone(user.phone, user.phoneCode) ?? undefined : undefined) as PhoneValue | undefined,
     fullName:   user.adminProfile?.fullName ?? user.name ?? "",
     department: user.adminProfile?.department ?? "",
   });
   const avatarRef = useRef<HTMLInputElement>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
+  // Rejects any keystroke that would push the number past the selected
+  // country's max valid length — same behavior as the checkout phone input.
+  function handlePhoneChange(next: PhoneValue | undefined) {
+    if (next && validatePhoneNumberLength(next) === "TOO_LONG") return;
+    setForm((p) => ({ ...p, phone: next }));
+  }
+  // Optional field — only flag a format error once something's been typed.
+  const phoneFormatError = form.phone && !isValidPhoneNumber(form.phone) ? "Enter a complete, valid phone number" : undefined;
+
   function handleSave() {
     if (!form.name.trim()) { toast.error("Name is required."); return; }
-    onSave(form);
+    if (phoneFormatError) { toast.error(phoneFormatError); return; }
+    onSave({ ...form, phone: form.phone ?? "" });
   }
 
   async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -216,9 +231,7 @@ function ProfileTab({ user, saving, onSave }: { user: AdminUser; saving: boolean
           <Field label="Display name" description="Shown in the admin panel header and activity logs">
             <input className={inputCls} value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} placeholder="Your full name" />
           </Field>
-          <Field label="Phone number">
-            <input type="tel" className={inputCls} value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} placeholder="+254 700 000 000" />
-          </Field>
+          <PhoneInput label="Phone Number (optional)" value={form.phone} onChange={handlePhoneChange} error={phoneFormatError} />
           <div className="border-t border-(--neutral-100) dark:border-(--dark-border) pt-4">
             <div className="font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-400) mb-3">Admin Profile</div>
             <div className="space-y-4">

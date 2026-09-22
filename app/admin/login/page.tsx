@@ -815,16 +815,6 @@ export default function AdminLoginPage() {
             {methodChoiceLoading === method && <Spinner size={16} />}
           </button>
         ))}
-
-        <button
-          type="button"
-          onClick={handleBackToCredentials}
-          disabled={!!methodChoiceLoading}
-          className="group inline-flex w-fit items-center gap-1.5 mt-1 px-1 py-1 text-xs font-medium text-[#40493c] dark:text-gray-400 hover:text-[#27731e] transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none"
-        >
-          <ArrowLeft size={14} className="transition-transform duration-150 group-hover:-translate-x-0.5" />
-          Incorrect email? Go back to login
-        </button>
       </div>
     );
   }
@@ -959,31 +949,19 @@ export default function AdminLoginPage() {
           </div>
         )}
 
-        {/* Resend button — muted while counting down, brand green once available */}
+        {/* Resend button — muted+small while counting down, bold/larger vivid green once available */}
         <div className="flex flex-col items-center gap-2">
           <button
             type="button"
             onClick={handleResendOtp}
             disabled={resendCountdown > 0 || isLoading}
-            className={`text-xs font-medium transition-colors duration-150 disabled:pointer-events-none ${
+            className={`transition-colors duration-150 disabled:pointer-events-none ${
               resendCountdown > 0
-                ? "text-[#40493c] disabled:opacity-50"
-                : "text-[#27731e] hover:text-[#1f5c17] hover:underline"
+                ? "text-xs font-medium text-[#40493c] disabled:opacity-50"
+                : "text-sm font-bold text-[#2e9c1f] hover:text-[#25791a] hover:underline"
             }`}
           >
             {resendCountdown > 0 ? `Resend in ${resendCountdown}s` : "Resend code"}
-          </button>
-        </div>
-
-        {/* Back to verification methods — dark cautionary red, bottom-left of the screen */}
-        <div className="flex justify-start">
-          <button
-            type="button"
-            onClick={() => { setStep("method-choice"); setErrors({}); }}
-            className="inline-flex items-center gap-1.5 -ml-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#7a2626] hover:text-[#5c1c1c] hover:bg-[#7a2626]/[0.06] transition-colors duration-150"
-          >
-            <ArrowLeft size={14} />
-            Back to verification methods
           </button>
         </div>
       </div>
@@ -1042,6 +1020,34 @@ export default function AdminLoginPage() {
               Access restricted to authorized staff only.
             </p>
           </div>
+
+          {/* Back-navigation for the OTP / method-choice steps — placed below
+              the access-restricted badge, bottom-left of the card. */}
+          {step === "otp-verify" && (
+            <div className="mt-4 flex justify-start">
+              <button
+                type="button"
+                onClick={() => { setStep("method-choice"); setErrors({}); }}
+                className="inline-flex items-center gap-1.5 -ml-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#7a2626] hover:text-[#5c1c1c] hover:bg-[#7a2626]/[0.06] transition-colors duration-150"
+              >
+                <ArrowLeft size={14} />
+                Back to verification methods
+              </button>
+            </div>
+          )}
+          {step === "method-choice" && (
+            <div className="mt-4 flex justify-start">
+              <button
+                type="button"
+                onClick={handleBackToCredentials}
+                disabled={!!methodChoiceLoading}
+                className="group inline-flex w-fit items-center gap-1.5 px-1 py-1 text-sm font-bold text-[#40493c] dark:text-gray-400 hover:text-[#27731e] transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none"
+              >
+                <ArrowLeft size={14} className="transition-transform duration-150 group-hover:-translate-x-0.5" />
+                Incorrect email? Go back to login
+              </button>
+            </div>
+          )}
         </div>
       </motion.section>
 

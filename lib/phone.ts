@@ -22,3 +22,15 @@ export function combineLegacyPhone(phone: string, phoneCode: string | null): str
   const local = phone.replace(/^0+/, "");
   return normalizePhoneE164(`${cc}${local}`);
 }
+
+/**
+ * Inverse of combineLegacyPhone — splits a full E.164 number (as produced by
+ * the react-phone-number-input-based PhoneInput component) back into the
+ * legacy two-column shape for storage. Returns null if the number isn't a
+ * valid, complete phone number.
+ */
+export function splitPhoneE164(e164: string): { phone: string; phoneCode: string } | null {
+  const parsed = parsePhoneNumberFromString(e164);
+  if (!parsed?.isValid()) return null;
+  return { phone: parsed.nationalNumber, phoneCode: `+${parsed.countryCallingCode}` };
+}
