@@ -254,7 +254,7 @@ export function CartClient() {
           <div className="flex-1 min-w-0">
             <Link
               href="/shop"
-              className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-red-500 px-4 py-2 text-[13px] font-medium text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-950/20"
+              className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-[#FF3B30] px-4 py-2 text-[13px] font-medium text-[#FF3B30] transition-colors hover:bg-[#FF3B30]/10"
             >
               <Icon icon="lucide:arrow-left" width={14} />
               Back to Shop

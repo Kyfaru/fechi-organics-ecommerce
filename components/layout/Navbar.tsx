@@ -382,11 +382,17 @@ export function Navbar({ flat = false, transparent = false }: { flat?: boolean; 
       <nav
         className={[
           "hidden md:flex items-center justify-between h-[84px] px-10",
-          "sticky z-[9999] transition-all duration-300 mt-6 mx-5",
+          "sticky z-[9999] transition-all duration-300",
+          // While transparent-over-hero, sit flush against the very top edge
+          // with no outer margin/rounding — the floating-pill treatment only
+          // kicks in once scrolled past the hero (isTransparent becomes false).
+          isTransparent ? "mt-0 mx-0" : "mt-6 mx-5",
           isTransparent
             ? "bg-transparent shadow-none"
             : "bg-white/80 dark:bg-[#111]/80 shadow-sm backdrop-blur-sm",
-          flat
+          isTransparent
+            ? "top-0 left-0 right-0 rounded-none"
+            : flat
             ? "top-3 left-0 right-0 rounded-none shadow-sm"
             : scrolled
             ? "top-3 left-3 right-3 rounded-[24px] shadow-md"

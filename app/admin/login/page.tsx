@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Smartphone, Mail, MessageSquare } from "lucide-react";
+import { Smartphone, Mail, MessageSquare, ArrowLeft, Lock } from "lucide-react";
 import FormInput from "@/components/auth/FormInput";
 import PasswordInput from "@/components/auth/PasswordInput";
 import OtpPinInput from "@/components/auth/OtpPinInput";
@@ -453,7 +453,11 @@ export default function AdminLoginPage() {
         return;
       }
       setOtpResetSignal((n) => n + 1);
-      setResendCountdown(60);
+      // First countdown shown when the OTP screen appears is shorter than a
+      // subsequent manual resend (see handleResendOtp, which keeps 60s) —
+      // the admin just picked this channel, so a short initial wait reads
+      // better than a full 60s before the "Resend code" link goes live.
+      setResendCountdown(15);
       setStep("otp-verify");
     } catch (e) {
       reportError(e, { route: "admin-login", tags: { step: "method-choice" } });
@@ -567,6 +571,31 @@ export default function AdminLoginPage() {
       reportError(e, { route: "admin-login", tags: { step: "otp-resend" } });
       toast.error(e instanceof Error ? e.message : "Failed to resend code");
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Method-choice → credentials — the admin realizes the email/password they
+  // submitted was wrong and needs to re-enter it. Mirrors the reset in
+  // finishLogin (step/email/password/code/errors), plus every other piece of
+  // state that handleCredentialsSubmit/handleMethodChoice populated along the
+  // way — left alone, any of it would leak into a fresh credentials attempt
+  // (e.g. a stale twoFactorMethods list driving the wrong method-choice cards,
+  // or a stale adminMe short-circuiting the new-admin/returning-admin branch).
+  // ---------------------------------------------------------------------------
+  function handleBackToCredentials() {
+    setStep("credentials");
+    setEmail("");
+    setPassword("");
+    setCode("");
+    setErrors({});
+    setTwoFactorMethods([]);
+    setAdminMe(null);
+    setIsNewUser(false);
+    setExistingUserHasPhone(false);
+    setMethodChoiceLoading(null);
+    setOtpMethod(null);
+    setResendCountdown(0);
+    setTotpUri("");
   }
 
   // ---------------------------------------------------------------------------
@@ -786,6 +815,16 @@ export default function AdminLoginPage() {
             {methodChoiceLoading === method && <Spinner size={16} />}
           </button>
         ))}
+
+        <button
+          type="button"
+          onClick={handleBackToCredentials}
+          disabled={!!methodChoiceLoading}
+          className="group inline-flex w-fit items-center gap-1.5 mt-1 px-1 py-1 text-xs font-medium text-[#40493c] dark:text-gray-400 hover:text-[#27731e] transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none"
+        >
+          <ArrowLeft size={14} className="transition-transform duration-150 group-hover:-translate-x-0.5" />
+          Incorrect email? Go back to login
+        </button>
       </div>
     );
   }
@@ -920,22 +959,30 @@ export default function AdminLoginPage() {
           </div>
         )}
 
-        {/* Resend button */}
+        {/* Resend button — muted while counting down, brand green once available */}
         <div className="flex flex-col items-center gap-2">
           <button
             type="button"
             onClick={handleResendOtp}
             disabled={resendCountdown > 0 || isLoading}
-            className="text-xs text-[#40493c] hover:underline disabled:opacity-50 disabled:no-underline"
+            className={`text-xs font-medium transition-colors duration-150 disabled:pointer-events-none ${
+              resendCountdown > 0
+                ? "text-[#40493c] disabled:opacity-50"
+                : "text-[#27731e] hover:text-[#1f5c17] hover:underline"
+            }`}
           >
             {resendCountdown > 0 ? `Resend in ${resendCountdown}s` : "Resend code"}
           </button>
+        </div>
 
+        {/* Back to verification methods — dark cautionary red, bottom-left of the screen */}
+        <div className="flex justify-start">
           <button
             type="button"
             onClick={() => { setStep("method-choice"); setErrors({}); }}
-            className="text-xs text-[#40493c] hover:underline text-center"
+            className="inline-flex items-center gap-1.5 -ml-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#7a2626] hover:text-[#5c1c1c] hover:bg-[#7a2626]/[0.06] transition-colors duration-150"
           >
+            <ArrowLeft size={14} />
             Back to verification methods
           </button>
         </div>
@@ -989,9 +1036,12 @@ export default function AdminLoginPage() {
           {step === "totp-setup" && renderTotpSetup()}
           {step === "otp-verify" && renderOtpVerify()}
 
-          <p className="text-center text-xs text-[#40493c] dark:text-gray-400 mt-8">
-            Access restricted to authorized staff only.
-          </p>
+          <div className="flex justify-center mt-8">
+            <p className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#e2e6dc] dark:border-gray-700 text-[11px] text-[#9aa094] dark:text-gray-500">
+              <Lock size={11} strokeWidth={2} />
+              Access restricted to authorized staff only.
+            </p>
+          </div>
         </div>
       </motion.section>
 

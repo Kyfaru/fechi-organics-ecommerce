@@ -15,6 +15,7 @@ import { StatsCard } from "@/components/ui/stats-card";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import { Spinner } from "@/components/ui/spinner";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
@@ -1412,7 +1413,7 @@ export function AdminOrdersClient() {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   // ── Data query ──
-  const { data, isLoading } = useQuery<{ ok: boolean; data: { orders: AdminOrderRow[]; scope: { isSuperAdmin: boolean; branchId: string | null } } }>({
+  const { data, isLoading, isFetching, refetch } = useQuery<{ ok: boolean; data: { orders: AdminOrderRow[]; scope: { isSuperAdmin: boolean; branchId: string | null } } }>({
     queryKey: ["admin-orders", branchFilter],
     queryFn: () => fetch(`/api/admin/orders${branchFilter ? `?branchId=${encodeURIComponent(branchFilter)}` : ""}`).then((r) => r.json()),
     staleTime: 30_000,
@@ -1779,12 +1780,32 @@ export function AdminOrdersClient() {
           </span>
         )}
 
-        <button
-          onClick={() => setExportOpen(true)}
-          className="ml-auto h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center gap-2 transition-colors"
-        >
-          <Download size={14} /> Export
-        </button>
+        <div className="ml-auto flex gap-1">
+          <Tooltip label="Refresh">
+            <button
+              onClick={async () => {
+                const result = await refetch();
+                if (result.isError) {
+                  toast.error("Couldn't refresh orders — try again");
+                } else {
+                  toast.success("Orders refreshed");
+                }
+              }}
+              disabled={isFetching}
+              className="h-9 w-9 flex items-center justify-center rounded-[8px] border border-(--neutral-200) text-(--neutral-500) hover:bg-(--neutral-100) transition-colors disabled:opacity-60"
+              aria-label="Refresh"
+            >
+              <Icon icon="mdi:refresh" width={15} className={isFetching ? "animate-spin" : ""} />
+            </button>
+          </Tooltip>
+
+          <button
+            onClick={() => setExportOpen(true)}
+            className="h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center gap-2 transition-colors"
+          >
+            <Download size={14} /> Export
+          </button>
+        </div>
       </div>
 
       <ExportModal resource="orders" open={exportOpen} onClose={() => setExportOpen(false)} />
