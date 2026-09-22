@@ -9,6 +9,7 @@ type InvoiceOrder = {
   createdAt: Date;
   subtotalKes: number;
   deliveryKes: number;
+  processingFeeKes?: number;
   discountKes: number;
   totalKes: number;
   deliveryType: string;
@@ -157,6 +158,7 @@ export function renderInvoicePdfBuffer(order: InvoiceOrder): Buffer {
     ["Delivery", order.deliveryKes ? kes(order.deliveryKes) : "Free"],
   ];
   if (order.discountKes) totalsRows.push(["Discount", `-${kes(order.discountKes)}`]);
+  if (order.processingFeeKes) totalsRows.push(["Card processing fee", kes(order.processingFeeKes)]);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.5);

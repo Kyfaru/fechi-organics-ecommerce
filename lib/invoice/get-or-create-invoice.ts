@@ -50,6 +50,7 @@ export async function getOrCreateInvoice(
     createdAt: order.createdAt,
     subtotalKes: order.subtotalKes,
     deliveryKes: order.deliveryKes,
+    processingFeeKes: order.processingFeeKes,
     discountKes: order.discountKes,
     totalKes: order.totalKes,
     deliveryType: order.deliveryType,

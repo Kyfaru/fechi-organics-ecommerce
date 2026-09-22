@@ -22,6 +22,7 @@ import { resolveCheckoutUserId } from "@/lib/customers/find-or-create-guest";
 import { checkGuestCheckoutAbuse } from "@/lib/payments/guest-abuse-guard";
 import { resolveBranchForCounty } from "@/lib/payments/branch-resolver";
 import { isCardEligible } from "@/lib/payments/card-eligibility";
+import { cardFeeCents } from "@/lib/payments/card-fee";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
 import { recordCouponRedemption } from "@/lib/promo";
 import { computeOrderTotals } from "@/lib/checkout/compute-totals";
@@ -134,7 +135,7 @@ export async function POST(req: NextRequest) {
       promoId: resolvedPromoId,
       pointsRedeemed,
       pointsDiscountCents,
-      totalCents,
+      totalCents: totalBeforeFeeCents,
     } = await computeOrderTotals({
       subtotalCents,
       deliveryCents: pricing.feeKes,
@@ -148,6 +149,11 @@ export async function POST(req: NextRequest) {
     // 6. Resolve branch — international orders route to the main branch
     let branch: Awaited<ReturnType<typeof db.branch.findUnique>> | null = null;
     const isInternational = deliveryData.country.toUpperCase() !== "KE";
+
+    // Paystack's cut is passed on as a surcharge, so it's part of the amount
+    // stored on the order, the transaction row and the Paystack charge alike.
+    const processingFeeCents = cardFeeCents(totalBeforeFeeCents, isInternational);
+    const totalCents = totalBeforeFeeCents + processingFeeCents;
 
     if (deliveryData.branchId) {
       branch = await db.branch.findUnique({
@@ -195,6 +201,7 @@ export async function POST(req: NextRequest) {
             discountKes: discountCents,
             pointsRedeemed,
             pointsDiscountKes: pointsDiscountCents,
+            processingFeeKes: processingFeeCents,
             totalKes: totalCents,
             promoCode: promoCode ?? null,
             pendingReferralCode: deliveryData.referralCode?.trim().toUpperCase() || null,

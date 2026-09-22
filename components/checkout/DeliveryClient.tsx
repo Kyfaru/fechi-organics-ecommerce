@@ -14,6 +14,7 @@ import { KENYA_COUNTIES } from "@/lib/kenya-counties";
 import { toast } from "@/lib/toast";
 import { useCurrency } from "@/app/providers";
 import { CHECKOUT_FLOW_FLAG_KEY } from "@/lib/checkout-flow";
+import { cardFeeCents, LOCAL_CARD_FEE_RATE, INTL_CARD_FEE_RATE } from "@/lib/payments/card-fee";
 import { usePaymentStream } from "@/hooks/use-payment-stream";
 import { useDeviceSignal } from "@/hooks/use-device-signal";
 
@@ -408,10 +409,14 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
   // Points always apply last, on top of any coupon — same order the server
   // computes in lib/checkout/compute-totals.ts.
   const grossKes = Math.max(0, subtotalKes + feeKes - discountKes);
-  const totalKes = Math.max(0, grossKes - pointsDiscountKes);
+  const totalBeforeFeeKes = Math.max(0, grossKes - pointsDiscountKes);
+  // Paystack's cut, passed on for card payments only — the server recomputes it
+  // from the same lib/payments/card-fee.ts, so this preview matches the charge.
+  const processingFeeKes = selectedMethod === "card" && isCardEligible ? cardFeeCents(totalBeforeFeeKes, !isKenya) : 0;
+  const totalKes = totalBeforeFeeKes + processingFeeKes;
   // Nothing left to pay in cash. The server re-derives this independently and
   // refuses the points-checkout endpoint if any balance remains.
-  const fullyCoveredByPoints = pointsRequested > 0 && totalKes === 0;
+  const fullyCoveredByPoints = pointsRequested > 0 && totalBeforeFeeKes === 0;
 
   // ---------------------------------------------------------------------------
   // Validation errors (computed, only surfaced when submitted)
@@ -986,6 +991,12 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
                   label={`Fechi points (${pointsRequested.toLocaleString()} pts)`}
                   value={`- ${format(pointsDiscountKes)}`}
                   green
+                />
+              )}
+              {processingFeeKes > 0 && (
+                <SummaryRow
+                  label={`Card processing fee (${Math.round((isKenya ? LOCAL_CARD_FEE_RATE : INTL_CARD_FEE_RATE) * 100)}%)`}
+                  value={format(processingFeeKes)}
                 />
               )}
             </div>

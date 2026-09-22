@@ -32,12 +32,14 @@ export default function PaymentCard({
   subtotalKes,
   deliveryKes,
   discountKes,
+  processingFeeKes = 0,
 }: {
   transactions: Transaction[]
   totalKes: number
   subtotalKes: number
   deliveryKes: number
   discountKes: number
+  processingFeeKes?: number
 }) {
   const paid = transactions.find((t) => t.status === "SUCCESS")
   const latest = transactions[0]
@@ -67,6 +69,12 @@ export default function PaymentCard({
           <div className="flex justify-between text-[#15803D]">
             <span>Discount</span>
             <span>- KES {fmt(discountKes)}</span>
+          </div>
+        )}
+        {processingFeeKes > 0 && (
+          <div className="flex justify-between text-neutral-500">
+            <span>Card processing fee</span>
+            <span>KES {fmt(processingFeeKes)}</span>
           </div>
         )}
         <div className="flex justify-between font-bold text-neutral-900 pt-2 border-t border-neutral-100">
