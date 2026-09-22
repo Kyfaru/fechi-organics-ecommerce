@@ -276,6 +276,10 @@ export function AboutClient() {
           <span className="font-body text-white/40 text-xs tracking-widest uppercase">Scroll</span>
           <motion.div animate={{ y: [0, 8, 0] }} transition={{ duration: 1.5, repeat: Infinity }} className="w-px h-10 bg-gradient-to-b from-white/40 to-transparent" />
         </motion.div>
+
+        {/* Marks the hero's bottom edge — Navbar watches this to know when to
+            switch from transparent-over-hero back to its normal solid look. */}
+        <div id="navbar-hero-sentinel" aria-hidden className="absolute bottom-0 left-0 w-px h-px" />
       </section>
 
       {/* ════════════════════════════════════════════════════════

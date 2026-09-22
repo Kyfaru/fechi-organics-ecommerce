@@ -24,6 +24,7 @@ import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import StrongPasswordInput from "@/components/auth/StrongPasswordInput";
 import { toast } from "@/lib/toast";
 
@@ -270,6 +271,7 @@ function InviteDrawer({
   });
   const [errors, setErrors]     = useState<Record<string, string>>({});
   const [loading, setLoading]   = useState(false);
+  const unsavedGuard = useUnsavedChangesGuard(form, open, onClose);
 
   // Fetch branches for the branch select
   const { data: branchData } = useQuery({
@@ -364,15 +366,16 @@ function InviteDrawer({
     "w-full h-10 pl-3 pr-9 rounded-[8px] border border-(--neutral-300) dark:border-(--dark-border) font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) bg-white dark:bg-(--dark-surface) outline-none appearance-none focus:border-(--green-600) transition-colors";
 
   return (
+    <>
     <Drawer
       open={open}
-      onClose={onClose}
+      onClose={unsavedGuard.requestClose}
       title="Invite Staff Member"
       width={640}
       footer={
         <>
           <button
-            onClick={onClose}
+            onClick={unsavedGuard.requestClose}
             className="h-10 px-5 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
           >
             Cancel
@@ -595,6 +598,16 @@ function InviteDrawer({
         </div>
       </form>
     </Drawer>
+
+    <ConfirmModal
+      open={unsavedGuard.confirmOpen}
+      onClose={() => unsavedGuard.setConfirmOpen(false)}
+      onConfirm={unsavedGuard.confirmDiscard}
+      title="Discard unsaved changes?"
+      description="You have unsaved changes. Are you sure you want to leave without saving?"
+      confirmLabel="Continue"
+    />
+    </>
   );
 }
 

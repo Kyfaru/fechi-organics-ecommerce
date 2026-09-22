@@ -17,6 +17,7 @@ import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { ScreenLoader } from "@/components/admin/ui/ScreenLoader";
 import Switch from "@/components/ui/Switch";
 import CircularProgress from "@/components/ui/CircularProgress";
@@ -1133,6 +1134,7 @@ function ProductDrawer({
   onCategoryAdded: (cat: Category) => void;
 }) {
   const isNew = editing === null;
+  const unsavedGuard = useUnsavedChangesGuard(form, open, onClose);
 
   // Auto-slug from name only when creating new product and user hasn't manually edited slug
   const slugEdited = useRef(false);
@@ -1163,7 +1165,7 @@ function ProductDrawer({
     <>
       <button
         type="button"
-        onClick={onClose}
+        onClick={unsavedGuard.requestClose}
         disabled={isPending}
         className="h-9 px-4 rounded-[8px] border border-[#ff4545] font-dm text-[13px] text-[#ee2400] hover:bg-(--neutral-50) transition-colors disabled:opacity-50 mr-5"
       >
@@ -1191,7 +1193,8 @@ function ProductDrawer({
   );
 
   return (
-    <Drawer open={open} onClose={onClose} title={isNew ? "Add Product" : "Edit Product"} width={640} footer={footer}>
+    <>
+    <Drawer open={open} onClose={unsavedGuard.requestClose} title={isNew ? "Add Product" : "Edit Product"} width={640} footer={footer}>
       <div className="flex flex-col gap-7">
 
         {/* ── 1. Basic Info ── */}
@@ -1461,6 +1464,16 @@ function ProductDrawer({
         </section>
       </div>
     </Drawer>
+
+    <ConfirmModal
+      open={unsavedGuard.confirmOpen}
+      onClose={() => unsavedGuard.setConfirmOpen(false)}
+      onConfirm={unsavedGuard.confirmDiscard}
+      title="Discard unsaved changes?"
+      description="You have unsaved changes. Are you sure you want to leave without saving?"
+      confirmLabel="Continue"
+    />
+    </>
   );
 }
 

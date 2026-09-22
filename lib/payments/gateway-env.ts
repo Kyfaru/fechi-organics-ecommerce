@@ -8,6 +8,12 @@
  * assertGatewayEnv() checks the environment (host URLs, DARAJA_ENV, callback
  * base) and is cheap enough to call on every initiate request. It only
  * enforces in production — dev/staging are expected to run against sandbox.
+ * "Production" here means NODE_ENV=production AND APP_STAGE is unset or
+ * "production" — `next build`/the Docker image sets NODE_ENV=production for
+ * ANY production-mode deploy, including staging, so NODE_ENV alone can't
+ * tell staging apart from the real production deployment. Set
+ * APP_STAGE=staging (or any value other than "production") on the staging
+ * deploy to let it run against KCB/Daraja sandbox hosts and credentials.
  *
  * assertBranchNotSandbox() checks the actual per-branch credentials once
  * they're decrypted, because pointing at the right host is not sufficient:
@@ -23,8 +29,15 @@ const SANDBOX_DARAJA_SHORTCODE = "174379";
 const SANDBOX_DARAJA_PASSKEY =
   "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919";
 
+/** True on a deploy that should enforce production-only gateway rules — see
+ * the module doc comment for why this isn't just NODE_ENV === "production". */
+function isProductionDeploy(): boolean {
+  if (process.env.NODE_ENV !== "production") return false;
+  return !process.env.APP_STAGE || process.env.APP_STAGE === "production";
+}
+
 export function assertGatewayEnv(): void {
-  if (process.env.NODE_ENV !== "production") return;
+  if (!isProductionDeploy()) return;
 
   const kcbBase = process.env.KCB_BASE_URL ?? "";
   if (!kcbBase) {
@@ -74,7 +87,7 @@ export function assertBranchNotSandbox(
   branchId: string,
   creds: { daraja?: { shortcode: string; passkey: string } | null; kcbApiKey?: string | null },
 ): void {
-  if (process.env.NODE_ENV !== "production") return;
+  if (!isProductionDeploy()) return;
 
   if (
     creds.daraja &&

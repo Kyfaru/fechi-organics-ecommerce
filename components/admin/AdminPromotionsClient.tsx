@@ -9,6 +9,7 @@ import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import Link from "next/link";
 import { MAX_COUPON_POINTS } from "@/lib/promotions/schema";
 
@@ -94,6 +95,7 @@ export function AdminPromotionsClient() {
     status: "active",
   };
   const [form, setForm] = useState(EMPTY_FORM);
+  const unsavedGuard = useUnsavedChangesGuard(form, drawerOpen, closeDrawer);
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
   const { data, isLoading } = useQuery({
@@ -406,13 +408,13 @@ export function AdminPromotionsClient() {
       {/* Drawer */}
       <Drawer
         open={drawerOpen}
-        onClose={closeDrawer}
+        onClose={unsavedGuard.requestClose}
         title={editTarget ? "Edit Promotion" : "Create Promotion"}
         width={480}
         footer={
           <>
             <button
-              onClick={closeDrawer}
+              onClick={unsavedGuard.requestClose}
               className="h-10 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
             >
               Cancel
@@ -591,6 +593,15 @@ export function AdminPromotionsClient() {
           </FieldWrap>
         </div>
       </Drawer>
+
+      <ConfirmModal
+        open={unsavedGuard.confirmOpen}
+        onClose={() => unsavedGuard.setConfirmOpen(false)}
+        onConfirm={unsavedGuard.confirmDiscard}
+        title="Discard unsaved changes?"
+        description="You have unsaved changes. Are you sure you want to leave without saving?"
+        confirmLabel="Continue"
+      />
 
       <ConfirmModal
         open={!!deleteTarget}

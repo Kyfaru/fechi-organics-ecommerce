@@ -26,6 +26,7 @@ import RichTextEditor from "@/components/admin/ui/RichTextEditor";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import MultiCustomerSelect, {
   type CustomerOption,
 } from "@/components/ui/MultiCustomerSelect";
@@ -105,6 +106,7 @@ export function AdminCampaignsClient() {
     audienceCustomerIds: [] as string[],
     scheduledAt: "",
   });
+  const unsavedGuard = useUnsavedChangesGuard(form, drawerOpen, closeDrawer);
 
   // ── Fetch campaigns ────────────────────────────────────────────────────────
   const { data, isLoading } = useQuery({
@@ -438,7 +440,7 @@ export function AdminCampaignsClient() {
       {/* Create Campaign Drawer */}
       <Drawer
         open={drawerOpen}
-        onClose={closeDrawer}
+        onClose={unsavedGuard.requestClose}
         title="Create Campaign"
         width={640}
         footer={
@@ -480,7 +482,7 @@ export function AdminCampaignsClient() {
           ) : (
             <>
               <button
-                onClick={closeDrawer}
+                onClick={unsavedGuard.requestClose}
                 className="h-10 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
               >
                 Cancel
@@ -850,6 +852,16 @@ export function AdminCampaignsClient() {
           </>
         )}
       </AnimatePresence>
+
+      {/* Unsaved changes on Create Campaign drawer close */}
+      <ConfirmModal
+        open={unsavedGuard.confirmOpen}
+        onClose={() => unsavedGuard.setConfirmOpen(false)}
+        onConfirm={unsavedGuard.confirmDiscard}
+        title="Discard unsaved changes?"
+        description="You have unsaved changes. Are you sure you want to leave without saving?"
+        confirmLabel="Continue"
+      />
 
       {/* Delete confirm */}
       <ConfirmModal

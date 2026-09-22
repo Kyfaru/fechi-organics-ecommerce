@@ -41,8 +41,10 @@ production URL (contact KCB Buni support for it — see below); a missed env var
 now fails loudly at request time instead of accepting the STK push, returning
 success, and never ringing a real handset (`1037: DS timeout user cannot be
 reached` with no prompt ever received). `lib/payments/gateway-env.ts`'s
-`assertGatewayEnv()` also refuses to start a request if `NODE_ENV=production`
-and this still looks like a sandbox host.
+`assertGatewayEnv()` also refuses to start a request on a production deploy
+(`NODE_ENV=production` and `APP_STAGE` unset/`"production"` — see `.env.example`)
+if this still looks like a sandbox host. Set `APP_STAGE=staging` on the
+staging deploy so it can use the UAT host and sandbox credentials.
 
 ## Branch credentials (stored encrypted in DB)
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle } from "lucide-react";
-import ReactPhoneInput, { type Value } from "react-phone-number-input";
+import ReactPhoneInput, { type Value, type Country } from "react-phone-number-input";
 import "react-phone-number-input/style.css";
 
 interface PhoneInputProps {
@@ -10,6 +10,9 @@ interface PhoneInputProps {
   onChange: (value: Value | undefined) => void;
   error?: string;
   id?: string;
+  required?: boolean;
+  /** Restricts the country picker (e.g. ["KE"] for M-Pesa, which only accepts Safaricom Kenya numbers). */
+  countries?: Country[];
 }
 
 /**
@@ -29,6 +32,8 @@ export default function PhoneInput({
   onChange,
   error,
   id = "phone",
+  required,
+  countries,
 }: PhoneInputProps) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -37,6 +42,7 @@ export default function PhoneInput({
         className="text-xs font-semibold tracking-widest uppercase text-[#40493c] dark:text-gray-300"
       >
         {label}
+        {required && <span className="text-red-500"> *</span>}
       </label>
 
       <div
@@ -56,6 +62,7 @@ export default function PhoneInput({
           value={value}
           onChange={onChange}
           defaultCountry="KE"
+          countries={countries}
           international
           countryCallingCodeEditable={false}
           className="w-full text-sm text-[#1a1c1c] dark:text-[#ffffff] phone-input dark:bg-gray-800"
