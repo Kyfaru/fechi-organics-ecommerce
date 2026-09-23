@@ -25,7 +25,8 @@ export function makeRatelimit(
   if (!url || !token) return null;
 
   return new Ratelimit({
-    redis: new Redis({ url, token }),
+    // enableAutoPipelining:false — see lib/redis.ts for why.
+    redis: new Redis({ url, token, enableAutoPipelining: false }),
     limiter,
     prefix,
   });

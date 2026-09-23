@@ -12,7 +12,7 @@
  * against a live backend yet.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Loader2, Send } from "lucide-react";
 import type { Value as PhoneValue } from "react-phone-number-input";
@@ -21,7 +21,15 @@ import type { PaymentOrderContext } from "@/components/admin/orders/PaymentStep"
 import PaymentWaitingModal from "@/components/admin/orders/PaymentWaitingModal";
 import PaymentSuccessModal from "@/components/admin/orders/PaymentSuccessModal";
 import PaymentErrorModal from "@/components/admin/orders/PaymentErrorModal";
-import { useSubmitCooldown } from "@/hooks/use-submit-cooldown";
+import { toast } from "@/lib/toast";
+
+// A prompt was either confirmed sent, or left in an ambiguous state (the
+// admin cancelled while waiting, or the request errored after it may already
+// have reached the server) — in every one of those cases a second STK push
+// for the same sale is a real risk, not just a UX nicety. 30s comfortably
+// covers the hard requirement (never re-fire within 15s) while giving the
+// first prompt time to actually land on the customer's phone.
+const RESEND_COOLDOWN_MS = 30_000;
 
 interface MpesaPromptPanelProps {
   orderContext: PaymentOrderContext;
@@ -43,14 +51,51 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
   const router = useRouter();
   const [phone, setPhone] = useState<PhoneValue | undefined>(initialPhone);
   const [sending, setSending] = useState(false);
-  const { cooldown, startCooldown } = useSubmitCooldown();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<InitiateResult | null>(null);
   const [phase, setPhase] = useState<Phase>(null);
   const [failReason, setFailReason] = useState<string | undefined>();
 
+  // Ref (not just state) so the guard in submitInitiate reads the real
+  // deadline synchronously, even across two clicks that land before a
+  // re-render — the countdown state below is for display only.
+  const cooldownEndsAtRef = useRef<number | null>(null);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  const cooldownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (cooldownIntervalRef.current) clearInterval(cooldownIntervalRef.current);
+    };
+  }, []);
+
+  function beginResendCooldown() {
+    cooldownEndsAtRef.current = Date.now() + RESEND_COOLDOWN_MS;
+    setCooldownSeconds(Math.ceil(RESEND_COOLDOWN_MS / 1000));
+    if (cooldownIntervalRef.current) clearInterval(cooldownIntervalRef.current);
+    cooldownIntervalRef.current = setInterval(() => {
+      const msLeft = (cooldownEndsAtRef.current ?? 0) - Date.now();
+      if (msLeft <= 0) {
+        cooldownEndsAtRef.current = null;
+        setCooldownSeconds(0);
+        if (cooldownIntervalRef.current) {
+          clearInterval(cooldownIntervalRef.current);
+          cooldownIntervalRef.current = null;
+        }
+        return;
+      }
+      setCooldownSeconds(Math.ceil(msLeft / 1000));
+    }, 1000);
+  }
+
   async function submitInitiate(retryOrderId?: string) {
-    if (!phone || sending || cooldown || !branchReady) return;
+    if (cooldownEndsAtRef.current && Date.now() < cooldownEndsAtRef.current) {
+      toast.warning("Please wait before retrying", {
+        message: `A similar transaction is already in progress — try again in ${cooldownSeconds}s.`,
+      });
+      return;
+    }
+    if (!phone || sending || !branchReady) return;
 
     setSending(true);
     setError(null);
@@ -77,18 +122,23 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
         error?: { message: string };
       };
       if (!json.ok || !json.data) {
+        // A clean rejection (validation, rate limit, STK_FAILED) — no prompt
+        // was ever dispatched, so an immediate retry via "Try Again" is safe
+        // and shouldn't be blocked by the resend cooldown.
         setError(json.error?.message ?? "Could not send the M-Pesa prompt — please try again");
-        startCooldown("error");
         return;
       }
       setPending(json.data);
       setFailReason(undefined);
       setPhase("waiting");
-      startCooldown("success");
+      beginResendCooldown();
     } catch (err) {
+      // Unlike the branch above, we never learned how this request ended —
+      // the server may well have dispatched a prompt before the connection
+      // dropped. Treat it like a successful send for cooldown purposes.
       console.error("[MpesaPromptPanel] initiate failed", err);
       setError("Failed to send the M-Pesa prompt — please try again");
-      startCooldown("error");
+      beginResendCooldown();
     } finally {
       setSending(false);
     }
@@ -110,6 +160,10 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
   function handleWaitingCancelled() {
     setPhase(null);
     setPending(null);
+    // The order's transaction may still resolve server-side (or the customer
+    // may still be looking at the prompt on their phone) — cooldown before
+    // letting the admin fire another one.
+    beginResendCooldown();
   }
 
   function handleSuccessClose() {
@@ -126,7 +180,7 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
   const hasEmail = orderContext.customerEmail.trim().length > 0;
   const hasPhone = orderContext.customerPhone.trim().length > 0;
 
-  const disabled = !branchReady || !phone || sending || cooldown;
+  const disabled = !branchReady || !phone || sending;
 
   return (
     <div className="flex flex-col gap-4">
@@ -148,6 +202,12 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
           {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
           {sending ? "Sending…" : "Send M-Pesa Prompt"}
         </button>
+
+        {cooldownSeconds > 0 && (
+          <p className="mt-1.5 font-dm text-[12px] text-(--neutral-500)">
+            You can send another prompt in {cooldownSeconds}s
+          </p>
+        )}
       </div>
 
       {error && (

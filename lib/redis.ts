@@ -78,7 +78,13 @@ export function getRedis(): RedisLike {
   if (url && token) {
     // Lazy import to avoid loading the SDK when keys are missing
     const { Redis } = require("@upstash/redis");
-    _redis = new Redis({ url, token }) as RedisLike;
+    // ponytail: auto-pipelining is on by default and its Pipeline.exec()
+    // assumes Upstash's REST /pipeline response is always an array — a 200
+    // response in an unexpected shape throws "res.map is not a function"
+    // (confirmed in production Sentry across multiple unrelated routes
+    // sharing this client). Nothing here batches concurrent redis calls, so
+    // there's no upside to the feature — just disable it.
+    _redis = new Redis({ url, token, enableAutoPipelining: false }) as RedisLike;
   } else {
     if (process.env.NODE_ENV !== "test") {
       console.warn(
