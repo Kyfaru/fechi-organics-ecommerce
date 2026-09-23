@@ -3,10 +3,10 @@
 /**
  * AdminSecurityClient — /admin/security page
  *
- * Three 2FA method cards:
+ * Three independent 2FA method cards — any combination can be active:
  *   1. Authenticator App (TOTP) — set up / disable via Better Auth
- *   2. Email OTP              — toggle; saves method to adminProfile
- *   3. SMS OTP                — toggle + phone number input
+ *   2. Email OTP              — toggle; saves to user.twoFaEmail
+ *   3. SMS OTP                — toggle + phone number input; saves to user.twoFaPhone
  */
 
 import { useState } from "react";
@@ -41,7 +41,8 @@ interface AdminMeData {
   email: string;
   phone: string | null;
   twoFactorEnabled: boolean;
-  twoFaMethod: string;
+  twoFaEmail: boolean;
+  twoFaPhone: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -255,14 +256,14 @@ function TotpCard({ profile }: { profile: AdminMeData }) {
 // ---------------------------------------------------------------------------
 function EmailOtpCard({ profile }: { profile: AdminMeData }) {
   const qc = useQueryClient();
-  const isEnabled = profile.twoFaMethod === "email";
+  const isEnabled = profile.twoFaEmail;
 
   const toggleMutation = useMutation({
     mutationFn: async (enable: boolean) => {
       const res = await fetch("/api/admin/2fa/method", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ method: enable ? "email" : "totp" }),
+        body: JSON.stringify({ channel: "email", enable }),
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error?.message ?? "Failed to update method");
@@ -309,7 +310,7 @@ function EmailOtpCard({ profile }: { profile: AdminMeData }) {
 // ---------------------------------------------------------------------------
 function SmsOtpCard({ profile }: { profile: AdminMeData }) {
   const qc = useQueryClient();
-  const isEnabled = profile.twoFaMethod === "sms";
+  const isEnabled = profile.twoFaPhone;
   const [phone, setPhone] = useState(profile.phone ?? "");
 
   const toggleMutation = useMutation({
@@ -317,7 +318,7 @@ function SmsOtpCard({ profile }: { profile: AdminMeData }) {
       const res = await fetch("/api/admin/2fa/method", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ method: enable ? "sms" : "totp", phone: enable ? phone : undefined }),
+        body: JSON.stringify({ channel: "sms", enable, phone: enable ? phone : undefined }),
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error?.message ?? "Failed to update method");
@@ -402,11 +403,11 @@ export function AdminSecurityClient() {
           <Shield size={18} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
           <div>
             <p className="font-dm text-[13px] font-medium text-blue-800 dark:text-blue-300">
-              One method active at a time
+              Enable as many methods as you'd like
             </p>
             <p className="font-dm text-[12px] text-blue-600 dark:text-blue-400 mt-0.5">
-              Enabling Email OTP or SMS OTP overrides the default TOTP method. The authenticator app
-              can be kept active independently as a fallback.
+              Authenticator App, Email OTP and SMS OTP can all be active at once — you'll choose
+              which one to use each time you sign in.
             </p>
           </div>
         </div>

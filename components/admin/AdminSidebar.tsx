@@ -70,6 +70,10 @@ export function AdminSidebar() {
   }, [collapsed]);
 
   async function handleLogout() {
+    // Best-effort timestamp for the next login's "back so soon" greeting —
+    // must run before signOut() destroys the session this needs to identify
+    // whose logout it is.
+    await fetch("/api/admin/logout-ping", { method: "POST" }).catch(() => {});
     await signOut();
     clearPersistedQueryCache();
     router.push("/admin/login");

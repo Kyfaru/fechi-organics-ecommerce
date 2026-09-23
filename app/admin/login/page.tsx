@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Smartphone, Mail, MessageSquare, ArrowLeft, Lock } from "lucide-react";
 import FormInput from "@/components/auth/FormInput";
 import PasswordInput from "@/components/auth/PasswordInput";
@@ -17,6 +17,7 @@ import { toast } from "@/lib/toast";
 import { checkPortalMatch } from "@/lib/portal-check";
 import { reportError } from "@/lib/observability";
 import { useReloadOnBfcacheRestore } from "@/hooks/use-reload-on-bfcache-restore";
+import WelcomeTransition, { type AdminMeResponse } from "@/components/admin/login/WelcomeTransition";
 
 // ---------------------------------------------------------------------------
 // State machine for the admin login flow:
@@ -26,6 +27,9 @@ import { useReloadOnBfcacheRestore } from "@/hooks/use-reload-on-bfcache-restore
 //   totp-verify     → enter 6-digit TOTP code (2FA already set up, method = totp)
 //   totp-setup      → scan QR / copy URI, then enter code to confirm (first login)
 //   otp-verify      → enter 6-digit email/SMS OTP (method = email | sms)
+//   welcome         → post-verify transition (WelcomeTransition) — fetches
+//                     fresh /api/admin/me + prefetches dashboard data behind
+//                     an animated screen, then hands off to /admin
 // ---------------------------------------------------------------------------
 type AdminLoginStep =
   | "credentials"
@@ -33,7 +37,8 @@ type AdminLoginStep =
   | "method-choice"
   | "totp-verify"
   | "totp-setup"
-  | "otp-verify";
+  | "otp-verify"
+  | "welcome";
 
 interface AdminLoginErrors {
   email?: string;
@@ -41,15 +46,9 @@ interface AdminLoginErrors {
   code?: string;
 }
 
-// Shape of GET /api/admin/me during login (called after password success)
-interface AdminMeResponse {
-  twoFactorEnabled: boolean;
-  twoFaMethod: string;  // 'totp' | 'email' | 'sms'
-  userId: string;
-  email: string;
-  phone: string | null;
-  mustChangePassword: boolean;
-}
+// AdminMeResponse (shape of GET /api/admin/me) lives in WelcomeTransition.tsx
+// — imported above, single source of truth since that component depends on
+// the full shape.
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -64,12 +63,9 @@ export default function AdminLoginPage() {
   const [totpUri, setTotpUri] = useState("");
   const [code, setCode] = useState("");
 
-  // Email/SMS OTP state. otpMethod is only known when THIS browser is the one
-  // that just picked/configured it (new-admin setup) — a returning admin's
-  // channel lives server-side (adminProfile.twoFaMethod) and Better Auth's
-  // twoFactorMethods list doesn't distinguish email vs SMS (both are its one
-  // generic "otp" method), so it stays null for that path and the copy falls
-  // back to a channel-agnostic label.
+  // Email/SMS OTP state — set from whichever method-choice card the admin
+  // just clicked (see handleMethodChoice), used only for this render's
+  // "sent to your email/phone" copy.
   const [otpMethod, setOtpMethod] = useState<"email" | "sms" | null>(null);
   // Bumped to force-clear the OtpPinInput boxes after a wrong code or resend.
   const [otpResetSignal, setOtpResetSignal] = useState(0);
@@ -89,9 +85,12 @@ export default function AdminLoginPage() {
   // true when the account has no 2FA configured yet (brand-new admin, must
   // set up a method now) — false means "verify an existing method" instead.
   const [isNewUser, setIsNewUser] = useState(false);
-  // Returning-admin equivalent of adminMe?.phone — see the precheck fetch
-  // in handleCredentialsSubmit (no real session exists yet to read adminMe).
+  // Returning-admin equivalent of adminMe?.phone/twoFaEmail/twoFaPhone — see
+  // the precheck fetch in handleCredentialsSubmit (no real session exists
+  // yet to read adminMe directly).
   const [existingUserHasPhone, setExistingUserHasPhone] = useState(false);
+  const [existingTwoFaEmail, setExistingTwoFaEmail] = useState(false);
+  const [existingTwoFaPhone, setExistingTwoFaPhone] = useState(false);
   // which method-choice card is mid-request, if any
   const [methodChoiceLoading, setMethodChoiceLoading] = useState<"totp" | "email" | "sms" | "otp" | null>(null);
 
@@ -178,31 +177,29 @@ export default function AdminLoginPage() {
   // ---------------------------------------------------------------------------
   // Runs after any 2FA method succeeds (TOTP verify/setup or OTP verify) — a
   // real session exists at this point for the first time in a returning
-  // admin's login (Better Auth mints it inside verifyTotp/verifyOtp). The
-  // forced password-change gate is checked HERE rather than right after
-  // credentials, because for a returning 2FA admin no session exists yet at
-  // that point to check it against — see handleCredentialsSubmit.
+  // admin's login (Better Auth mints it inside verifyTotp/verifyOtp). Hands
+  // off to the WelcomeTransition screen immediately rather than blocking
+  // here on the /api/admin/me round trip — see handleWelcomeDone for what
+  // happens once that screen has the answer (including the forced
+  // password-change gate, which still can't be checked any earlier than
+  // this for a returning 2FA admin — no session exists until now).
   // ---------------------------------------------------------------------------
-  async function finishLogin() {
-    try {
-      const meRes = await fetch("/api/admin/me");
-      if (meRes.ok && !meRes.redirected) {
-        const me: AdminMeResponse = await meRes.json();
-        if (me.mustChangePassword) {
-          setAdminMe(me);
-          setStep("password-change");
-          return;
-        }
-      }
-    } catch (err) {
-      // Best-effort — if this lookup fails, fall through to the redirect;
-      // AdminGuard (app/admin/(protected)/layout.tsx) re-verifies server-side.
-      reportError(err, { route: "admin-login", tags: { step: "finish-login" } });
+  function finishLogin() {
+    setStep("welcome");
+  }
+
+  // Called by WelcomeTransition once it has a fresh /api/admin/me result and
+  // has finished prefetching the dashboard's own queries.
+  function handleWelcomeDone(me: AdminMeResponse) {
+    if (me.mustChangePassword) {
+      setAdminMe(me);
+      setStep("password-change");
+      return;
     }
-    // Reset the page's own state immediately, before navigating away — so if
-    // this exact instance is ever shown again (bfcache/history restore), it
-    // reflects a fresh credentials step instead of a completed 2FA step with
-    // stale typed credentials/codes still sitting in memory.
+    // Reset the page's own state before navigating away — so if this exact
+    // instance is ever shown again (bfcache/history restore), it reflects a
+    // fresh credentials step instead of a completed 2FA step with stale
+    // typed credentials/codes still sitting in memory.
     setStep("credentials");
     setEmail("");
     setPassword("");
@@ -281,8 +278,16 @@ export default function AdminLoginPage() {
           body: JSON.stringify({ email }),
         })
           .then((r) => r.json())
-          .then((j) => setExistingUserHasPhone(!!j?.data?.hasPhone))
-          .catch(() => setExistingUserHasPhone(false));
+          .then((j) => {
+            setExistingUserHasPhone(!!j?.data?.hasPhone);
+            setExistingTwoFaEmail(!!j?.data?.twoFaEmail);
+            setExistingTwoFaPhone(!!j?.data?.twoFaPhone);
+          })
+          .catch(() => {
+            setExistingUserHasPhone(false);
+            setExistingTwoFaEmail(false);
+            setExistingTwoFaPhone(false);
+          });
         return;
       }
 
@@ -442,8 +447,8 @@ export default function AdminLoginPage() {
       // channel choice can't be persisted via /api/admin/2fa/method. Instead
       // it rides along as a per-request header — lib/auth.ts's sendOTP
       // callback reads x-2fa-channel as an override before falling back to
-      // the stored adminProfile.twoFaMethod default. Harmless no-op for the
-      // isNewUser path too (the freshly-persisted method already matches).
+      // the enabled channel(s) on user.twoFaEmail/twoFaPhone. Harmless no-op
+      // for the isNewUser path too (the freshly-persisted channel already matches).
       const sendResult = await authClient.twoFactor.sendOtp(
         {},
         { headers: { "x-2fa-channel": method } },
@@ -490,7 +495,7 @@ export default function AdminLoginPage() {
         return;
       }
 
-      await finishLogin();
+      finishLogin();
     } catch (err) {
       reportError(err, { route: "admin-login", tags: { step: "totp-verify" } });
       setErrors({ code: "Verification failed. Please try again." });
@@ -522,7 +527,7 @@ export default function AdminLoginPage() {
         return;
       }
 
-      await finishLogin();
+      finishLogin();
     } catch (err) {
       reportError(err, { route: "admin-login", tags: { step: "totp-setup" } });
       setErrors({ code: "Verification failed. Please try again." });
@@ -549,7 +554,7 @@ export default function AdminLoginPage() {
         return;
       }
 
-      await finishLogin();
+      finishLogin();
     } catch (err) {
       reportError(err, { route: "admin-login", tags: { step: "otp-verify" } });
       setErrors({ code: "Verification failed. Please try again." });
@@ -592,6 +597,8 @@ export default function AdminLoginPage() {
     setAdminMe(null);
     setIsNewUser(false);
     setExistingUserHasPhone(false);
+    setExistingTwoFaEmail(false);
+    setExistingTwoFaPhone(false);
     setMethodChoiceLoading(null);
     setOtpMethod(null);
     setResendCountdown(0);
@@ -758,25 +765,31 @@ export default function AdminLoginPage() {
     } else {
       // Returning admin — Better Auth only reports "totp" and/or "otp" (its
       // one generic OTP channel; it can't tell us which channel was set up
-      // before). Offer both Email and SMS explicitly rather than one generic
-      // card — the chosen one rides along as a per-request header (see
-      // handleMethodChoice), so this works without needing a real session.
-      // existingUserHasPhone comes from /api/account/2fa/precheck, fetched
-      // right after the twoFactorRedirect response (see handleCredentialsSubmit)
-      // since there's no real session yet to read adminMe.phone from.
+      // before). Offer Email/SMS explicitly, gated on which channel(s) are
+      // actually enabled (existingTwoFaEmail/existingTwoFaPhone, from
+      // /api/account/2fa/precheck — no real session yet to read adminMe
+      // directly). An admin who never visited /admin/security has both
+      // flags false (never migrated off the old single-method switch) —
+      // showEmail/showSms fall back to today's "show both, gate sms on
+      // having a phone" behavior in that case rather than hiding options
+      // they used to have.
+      const showEmail = existingTwoFaEmail || !existingTwoFaPhone;
+      const showSms = existingUserHasPhone && (existingTwoFaPhone || !existingTwoFaEmail);
       cards = [
         ...(twoFactorMethods.includes("totp") ? [totpCard] : []),
         ...(twoFactorMethods.includes("otp")
           ? [
-              {
-                method: "email" as const,
-                icon: Mail,
-                iconBg: "bg-blue-50",
-                iconColor: "text-blue-700",
-                title: "Email OTP",
-                description: "Receive a one-time code at your email address.",
-              },
-              ...(existingUserHasPhone
+              ...(showEmail
+                ? [{
+                    method: "email" as const,
+                    icon: Mail,
+                    iconBg: "bg-blue-50",
+                    iconColor: "text-blue-700",
+                    title: "Email OTP",
+                    description: "Receive a one-time code at your email address.",
+                  }]
+                : []),
+              ...(showSms
                 ? [{
                     method: "sms" as const,
                     icon: MessageSquare,
@@ -978,9 +991,22 @@ export default function AdminLoginPage() {
     "totp-verify":     { title: "Two-Factor Auth", subtitle: "Step 2 of 2 — verify your identity" },
     "totp-setup":      { title: "Set Up 2FA", subtitle: "One-time setup for your account" },
     "otp-verify":      { title: "Verify Code", subtitle: "Step 2 of 2 — enter your one-time code" },
+    "welcome":         { title: "", subtitle: "" }, // WelcomeTransition replaces this layout entirely
   };
 
   const { title, subtitle } = headingByStep[step];
+
+  // ---------------------------------------------------------------------------
+  // Render — the post-verify transition replaces the split-panel layout
+  // entirely rather than nesting inside it.
+  // ---------------------------------------------------------------------------
+  if (step === "welcome") {
+    return (
+      <AnimatePresence>
+        <WelcomeTransition onDone={handleWelcomeDone} />
+      </AnimatePresence>
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Render — split-panel layout
