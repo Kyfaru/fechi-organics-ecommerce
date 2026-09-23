@@ -862,14 +862,6 @@ export default function AdminLoginPage() {
         >
           {isLoading ? <Spinner size={16} invert /> : "Verify Code"}
         </button>
-
-        <button
-          type="button"
-          onClick={() => { setStep("method-choice"); setCode(""); setErrors({}); }}
-          className="text-xs text-[#40493c] hover:underline text-center"
-        >
-          Back to verification methods
-        </button>
       </form>
     );
   }
@@ -1017,7 +1009,7 @@ export default function AdminLoginPage() {
           LEFT PANEL — white form area
       ==================================================================== */}
       <motion.section
-        className="flex-1 flex items-center justify-center px-6 py-12 bg-white dark:bg-gray-950"
+        className="relative flex-1 flex items-center justify-center px-6 py-12 bg-white dark:bg-gray-950"
         initial={{ opacity: 0, x: -30 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.5 }}
@@ -1046,35 +1038,53 @@ export default function AdminLoginPage() {
               Access restricted to authorized staff only.
             </p>
           </div>
-
-          {/* Back-navigation for the OTP / method-choice steps — placed below
-              the access-restricted badge, bottom-left of the card. */}
-          {step === "otp-verify" && (
-            <div className="mt-4 flex justify-start">
-              <button
-                type="button"
-                onClick={() => { setStep("method-choice"); setErrors({}); }}
-                className="inline-flex items-center gap-1.5 -ml-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#7a2626] hover:text-[#5c1c1c] hover:bg-[#7a2626]/[0.06] transition-colors duration-150"
-              >
-                <ArrowLeft size={14} />
-                Back to verification methods
-              </button>
-            </div>
-          )}
-          {step === "method-choice" && (
-            <div className="mt-4 flex justify-start">
-              <button
-                type="button"
-                onClick={handleBackToCredentials}
-                disabled={!!methodChoiceLoading}
-                className="group inline-flex w-fit items-center gap-1.5 px-1 py-1 text-sm font-bold text-[#40493c] dark:text-gray-400 hover:text-[#27731e] transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none"
-              >
-                <ArrowLeft size={14} className="transition-transform duration-150 group-hover:-translate-x-0.5" />
-                Incorrect email? Go back to login
-              </button>
-            </div>
-          )}
         </div>
+
+        {/* Back-navigation for the OTP / TOTP-verify / method-choice steps —
+            pinned to the bottom-left of the whole panel (outside the card's
+            normal document flow) so it stays put regardless of how tall the
+            card's content is for a given step, rather than trailing wherever
+            the card happens to end. */}
+        {step === "otp-verify" && (
+          <div className="absolute bottom-6 left-6">
+            <button
+              type="button"
+              onClick={() => { setStep("method-choice"); setErrors({}); }}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#7a2626] hover:text-[#F97316] hover:bg-[#7a2626]/[0.06] transition-colors duration-150"
+            >
+              <ArrowLeft size={14} />
+              Back to verification methods
+            </button>
+          </div>
+        )}
+        {step === "totp-verify" && (
+          <div className="absolute bottom-6 left-6">
+            <button
+              type="button"
+              onClick={() => { setStep("method-choice"); setCode(""); setErrors({}); }}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#7a2626] hover:text-[#F97316] hover:bg-[#7a2626]/[0.06] transition-colors duration-150"
+            >
+              <ArrowLeft size={14} />
+              Back to verification methods
+            </button>
+          </div>
+        )}
+        {step === "method-choice" && (
+          <div className="absolute bottom-6 left-6 flex items-center gap-1.5">
+            <p className="text-sm font-normal text-[#40493c] dark:text-gray-400">
+              Incorrect email?
+            </p>
+            <button
+              type="button"
+              onClick={handleBackToCredentials}
+              disabled={!!methodChoiceLoading}
+              className="group inline-flex items-center gap-1 text-sm font-bold text-[#40493c] dark:text-gray-400 hover:text-[#F97316] transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              <ArrowLeft size={14} className="transition-transform duration-150 group-hover:-translate-x-0.5" />
+              Go back to login
+            </button>
+          </div>
+        )}
       </motion.section>
 
       {/* ====================================================================
