@@ -426,8 +426,8 @@ export default function AdminLoginPage() {
         // signIn.email() above never got intercepted).
         const body =
           method === "sms"
-            ? { method: "sms", phone: adminMe?.phone ?? undefined }
-            : { method: "email" };
+            ? { channel: "sms", enable: true, phone: adminMe?.phone ?? undefined }
+            : { channel: "email", enable: true };
         const res = await fetch("/api/admin/2fa/method", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

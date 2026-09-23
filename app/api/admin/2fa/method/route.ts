@@ -17,6 +17,7 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requireStaffSession } from "@/lib/require-permission";
 import { reportError } from "@/lib/observability";
 import { logActivity } from "@/lib/admin-activity";
+import { normalizePhoneE164, splitPhoneE164 } from "@/lib/phone";
 
 const BodySchema = z.object({
   channel: z.enum(["email", "sms"]),
@@ -40,8 +41,18 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) return Err.validation(parsed.error.issues[0].message);
 
     const { channel, enable, phone } = parsed.data;
-    if (channel === "sms" && enable && !phone?.trim()) {
-      return Err.validation("Phone number is required to enable SMS OTP");
+
+    // Never store a raw pass-through phone string — accepts any common
+    // Kenyan format (254.../07.../7.../01.../2541...) via the same
+    // normalizePhoneE164 + splitPhoneE164 pair app/api/admin/profile
+    // already uses, and stores the validated two-column form so
+    // combineLegacyPhone (lib/auth.ts's sendOTP) never has to guess.
+    let phoneSplit: { phone: string; phoneCode: string } | null = null;
+    if (channel === "sms" && enable) {
+      if (!phone?.trim()) return Err.validation("Phone number is required to enable SMS OTP");
+      const e164 = normalizePhoneE164(phone.trim());
+      phoneSplit = e164 ? splitPhoneE164(e164) : null;
+      if (!phoneSplit) return Err.validation("Please enter a valid phone number.");
     }
 
     const profile = await db.adminProfile.findUnique({
@@ -51,7 +62,7 @@ export async function POST(req: NextRequest) {
 
     const data =
       channel === "sms"
-        ? { twoFaPhone: enable, ...(enable && phone ? { phone: phone.trim() } : {}) }
+        ? { twoFaPhone: enable, ...(phoneSplit ? { phone: phoneSplit.phone, phoneCode: phoneSplit.phoneCode } : {}) }
         : { twoFaEmail: enable };
 
     await db.user.update({ where: { id: session.user.id }, data });

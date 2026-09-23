@@ -19,7 +19,16 @@ import { reportError } from "@/lib/observability";
 // reading only hasPhone, unaffected.
 const ratelimit = makeRatelimit(Ratelimit.slidingWindow(20, "10 m"), "twofa_precheck");
 
+// Genuinely-checked "nothing on file" — safe to answer strictly for
+// malformed input or a real DB error.
 const EMPTY_RESULT = { hasPhone: false, twoFaEmail: false, twoFaPhone: false };
+// Rate-limited: we didn't actually check. The channel gate this feeds is
+// only a UI hint (which cards to render) — the real enforcement happens at
+// send time (lib/auth.ts's sendOTP reads the DB directly and falls back to
+// email if a channel isn't really available) — so there's no security cost
+// to answering permissively here; only the enumeration-prevention purpose
+// of the rate limit itself needs to hold, which it still does.
+const UNKNOWN_RESULT = { hasPhone: true, twoFaEmail: true, twoFaPhone: true };
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,7 +42,7 @@ export async function POST(req: NextRequest) {
 
     if (ratelimit) {
       const { success } = await ratelimit.limit(normalized);
-      if (!success) return NextResponse.json({ ok: true, data: EMPTY_RESULT });
+      if (!success) return NextResponse.json({ ok: true, data: UNKNOWN_RESULT });
     }
 
     const user = await db.user.findUnique({
