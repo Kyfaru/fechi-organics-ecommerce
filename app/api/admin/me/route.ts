@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
       select: {
         email: true,
         phone: true,
+        phoneCode: true,
         twoFactorEnabled: true,
         twoFaEmail: true,
         twoFaPhone: true,
@@ -63,6 +64,7 @@ export async function GET(req: NextRequest) {
       userId: session.user.id,
       email: user?.email,
       phone: user?.phone,
+      phoneCode: user?.phoneCode,
       twoFactorEnabled: user?.twoFactorEnabled ?? false,
       twoFaEmail: user?.twoFaEmail ?? false,
       twoFaPhone: user?.twoFaPhone ?? false,

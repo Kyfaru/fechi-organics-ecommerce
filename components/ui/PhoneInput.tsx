@@ -11,6 +11,7 @@ interface PhoneInputProps {
   error?: string;
   id?: string;
   required?: boolean;
+  disabled?: boolean;
   /** Restricts the country picker (e.g. ["KE"] for M-Pesa, which only accepts Safaricom Kenya numbers). */
   countries?: Country[];
 }
@@ -33,6 +34,7 @@ export default function PhoneInput({
   error,
   id = "phone",
   required,
+  disabled,
   countries,
 }: PhoneInputProps) {
   return (
@@ -50,6 +52,7 @@ export default function PhoneInput({
           "flex items-center w-full px-4 py-4 bg-white dark:bg-gray-800 text-text-dark dark:text-[#ffffff]",
           "rounded-[10px] border transition-colors duration-150",
           "focus-within:border-[#27731e] focus-within:ring-2 focus-within:ring-[#27731e]/20",
+          disabled ? "opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-900" : "",
           error
             ? "border-red-500 focus-within:border-red-500 focus-within:ring-red-200 text-red-600 dark:text-red-500"
             : "border-mint dark:border-gray-600 text-text-dark dark:text-[#ffffff]",
@@ -65,6 +68,7 @@ export default function PhoneInput({
           countries={countries}
           international
           countryCallingCodeEditable={false}
+          disabled={disabled}
           className="w-full text-sm text-[#1a1c1c] dark:text-[#ffffff] phone-input dark:bg-gray-800"
           aria-invalid={error ? "true" : "false"}
           aria-describedby={error ? `${id}-error` : undefined}

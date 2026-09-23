@@ -13,8 +13,12 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
 import { Smartphone, Mail, MessageSquare, Copy, Eye, EyeOff, Shield } from "lucide-react";
+import type { Value as PhoneValue } from "react-phone-number-input";
+import { isValidPhoneNumber, validatePhoneNumberLength } from "libphonenumber-js";
 import { authClient } from "@/lib/auth-client";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
+import PhoneInput from "@/components/ui/PhoneInput";
+import { combineLegacyPhone } from "@/lib/phone";
 import Switch from "@/components/ui/Switch";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
@@ -40,6 +44,7 @@ interface AdminMeData {
   userId: string;
   email: string;
   phone: string | null;
+  phoneCode: string | null;
   twoFactorEnabled: boolean;
   twoFaEmail: boolean;
   twoFaPhone: boolean;
@@ -311,7 +316,17 @@ function EmailOtpCard({ profile }: { profile: AdminMeData }) {
 function SmsOtpCard({ profile }: { profile: AdminMeData }) {
   const qc = useQueryClient();
   const isEnabled = profile.twoFaPhone;
-  const [phone, setPhone] = useState(profile.phone ?? "");
+  const [phone, setPhone] = useState<PhoneValue | undefined>(
+    (profile.phone ? combineLegacyPhone(profile.phone, profile.phoneCode) ?? undefined : undefined) as PhoneValue | undefined,
+  );
+
+  // Rejects any keystroke that would push the number past the selected
+  // country's max valid length — same behavior as the checkout phone input.
+  function handlePhoneChange(next: PhoneValue | undefined) {
+    if (next && validatePhoneNumberLength(next) === "TOO_LONG") return;
+    setPhone(next);
+  }
+  const phoneFormatError = phone && !isValidPhoneNumber(phone) ? "Enter a complete, valid phone number" : undefined;
 
   const toggleMutation = useMutation({
     mutationFn: async (enable: boolean) => {
@@ -331,8 +346,12 @@ function SmsOtpCard({ profile }: { profile: AdminMeData }) {
   });
 
   function handleToggle(enable: boolean) {
-    if (enable && !phone.trim()) {
+    if (enable && !phone) {
       toast.error("Enter a phone number first");
+      return;
+    }
+    if (enable && phoneFormatError) {
+      toast.error(phoneFormatError);
       return;
     }
     toggleMutation.mutate(enable);
@@ -359,13 +378,11 @@ function SmsOtpCard({ profile }: { profile: AdminMeData }) {
             Receive a one-time code via SMS to your phone number.
           </p>
           <div className="flex flex-col gap-1.5">
-            <label className="font-dm text-[13px] font-medium text-(--neutral-700)">Phone number</label>
-            <input
-              type="tel"
-              className={inputCls}
-              placeholder="+254 700 000 000"
+            <PhoneInput
+              label="Phone number"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={handlePhoneChange}
+              error={phoneFormatError}
               disabled={isEnabled}
             />
             {isEnabled && (
