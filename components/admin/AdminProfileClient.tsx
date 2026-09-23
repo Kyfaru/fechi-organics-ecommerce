@@ -22,7 +22,7 @@ import type { Value as PhoneValue } from "react-phone-number-input";
 import { isValidPhoneNumber, validatePhoneNumberLength } from "libphonenumber-js";
 import PhoneInput from "@/components/ui/PhoneInput";
 import { combineLegacyPhone } from "@/lib/phone";
-import { signOut } from "@/lib/auth-client";
+import { signOut, changeEmail } from "@/lib/auth-client";
 
 const R2_BASE = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "").replace(/\/$/, "");
 
@@ -148,12 +148,14 @@ function StrengthMeter({ password }: { password: string }) {
 function ProfileTab({ user, saving, onSave }: { user: AdminUser; saving: boolean; onSave: (data: Record<string, unknown>) => void }) {
   const [form, setForm] = useState({
     name:       user.name ?? "",
+    email:      user.email ?? "",
     phone:      (user.phone ? combineLegacyPhone(user.phone, user.phoneCode) ?? undefined : undefined) as PhoneValue | undefined,
     fullName:   user.adminProfile?.fullName ?? user.name ?? "",
     department: user.adminProfile?.department ?? "",
   });
   const avatarRef = useRef<HTMLInputElement>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
 
   // Rejects any keystroke that would push the number past the selected
   // country's max valid length — same behavior as the checkout phone input.
@@ -164,10 +166,34 @@ function ProfileTab({ user, saving, onSave }: { user: AdminUser; saving: boolean
   // Optional field — only flag a format error once something's been typed.
   const phoneFormatError = form.phone && !isValidPhoneNumber(form.phone) ? "Enter a complete, valid phone number" : undefined;
 
-  function handleSave() {
+  async function handleSave() {
     if (!form.name.trim()) { toast.error("Name is required."); return; }
     if (phoneFormatError) { toast.error(phoneFormatError); return; }
-    onSave({ ...form, phone: form.phone ?? "" });
+
+    const nextEmail = form.email.trim();
+    const emailChanged = nextEmail.toLowerCase() !== user.email.trim().toLowerCase();
+    if (emailChanged) {
+      if (!/^\S+@\S+\.\S+$/.test(nextEmail)) { toast.error("Enter a valid email address."); return; }
+      setSavingEmail(true);
+      try {
+        // Better Auth owns the actual email change (lib/auth.ts's
+        // changeEmail config) — it applies immediately for an unverified
+        // account, or emails a confirmation to the OLD address first for a
+        // verified one. Either way we disable twoFaEmail below right away
+        // rather than waiting to find out which path this account takes —
+        // safer to stop relying on an email mid-change than to keep OTPs
+        // going to an address that's about to stop being current.
+        const { error } = await changeEmail({ newEmail: nextEmail });
+        if (error) { toast.error(error.message ?? "Failed to update email."); return; }
+      } catch {
+        toast.error("Failed to update email.");
+        return;
+      } finally {
+        setSavingEmail(false);
+      }
+    }
+
+    onSave({ ...form, phone: form.phone ?? "", emailChanged });
   }
 
   async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -231,6 +257,9 @@ function ProfileTab({ user, saving, onSave }: { user: AdminUser; saving: boolean
           <Field label="Display name" description="Shown in the admin panel header and activity logs">
             <input className={inputCls} value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} placeholder="Your full name" />
           </Field>
+          <Field label="Email address" description="Changing this turns off Email OTP until you re-verify the new address">
+            <input type="email" className={inputCls} value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} placeholder="you@fechiorganics.shop" />
+          </Field>
           <PhoneInput label="Phone Number (optional)" value={form.phone} onChange={handlePhoneChange} error={phoneFormatError} />
           <div className="border-t border-(--neutral-100) dark:border-(--dark-border) pt-4">
             <div className="font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-400) mb-3">Admin Profile</div>
@@ -247,7 +276,7 @@ function ProfileTab({ user, saving, onSave }: { user: AdminUser; saving: boolean
       </Card>
 
       <div className="flex justify-end">
-        <SaveBtn onClick={handleSave} saving={saving} />
+        <SaveBtn onClick={handleSave} saving={saving || savingEmail} />
       </div>
     </div>
   );
@@ -547,6 +576,40 @@ function PasswordTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Forced re-verify modal — shown when a profile save leaves both Email OTP
+// and SMS OTP disabled (the phone/email that backed one or both just
+// changed). No close/cancel — the single action is the only way out, since
+// leaving with zero verified 2FA channels risks a login lockout.
+// ---------------------------------------------------------------------------
+function ReVerifyModal({ open, onConfirm }: { open: boolean; onConfirm: () => void }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white dark:bg-(--dark-surface) rounded-[16px] max-w-md w-full p-6 shadow-(--e3)">
+        <div className="w-12 h-12 rounded-full bg-orange-50 dark:bg-orange-950/40 flex items-center justify-center mb-4">
+          <Lock size={20} className="text-orange-600" />
+        </div>
+        <h2 className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-2">
+          Re-verify your 2FA method
+        </h2>
+        <p className="font-dm text-[14px] text-(--neutral-600) dark:text-(--dark-muted) mb-6 leading-relaxed">
+          Changing your phone number or email disabled the two-factor method tied to it, and your account now has
+          no verified way to receive login codes for either Email OTP or SMS OTP. To keep your account protected
+          and avoid getting locked out at your next sign-in, go to Security and verify at least one method again
+          using your updated contact details.
+        </p>
+        <button
+          onClick={onConfirm}
+          className="w-full h-11 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) text-white font-dm text-[14px] font-medium transition-colors"
+        >
+          Re-verify now
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 const TABS = [
@@ -558,7 +621,9 @@ const TABS = [
 
 export function AdminProfileClient() {
   const [activeTab, setActiveTab] = useState("profile");
+  const [showReVerify, setShowReVerify] = useState(false);
   const qc = useQueryClient();
+  const router = useRouter();
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin-profile"],
@@ -577,10 +642,16 @@ export function AdminProfileClient() {
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error?.message ?? "Save failed.");
+      return json.data as { user: AdminUser; bothOff: boolean };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success("Profile updated.");
       qc.invalidateQueries({ queryKey: ["admin-profile"] });
+      // AdminSecurityClient reads a separate ["admin-me"] query — invalidate
+      // it too so the phone number and Enabled/Disabled badges are correct
+      // if the re-verify modal below sends them straight there.
+      qc.invalidateQueries({ queryKey: ["admin-me"] });
+      if (data?.bothOff) setShowReVerify(true);
     },
     onError: (err) => {
       toast.error(err instanceof Error ? err.message : "Failed to save profile.");
@@ -646,6 +717,8 @@ export function AdminProfileClient() {
           {renderTab()}
         </div>
       </div>
+
+      <ReVerifyModal open={showReVerify} onConfirm={() => router.push("/admin/security?verify=email,sms")} />
     </div>
   );
 }

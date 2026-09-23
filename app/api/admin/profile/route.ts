@@ -65,12 +65,18 @@ export async function PATCH(req: NextRequest) {
     return Err.validation("Invalid JSON body.");
   }
 
-  const { name, phone, fullName, department, image } = body as {
+  const { name, phone, fullName, department, image, emailChanged } = body as {
     name?: string;
     phone?: string;
     fullName?: string;
     department?: string;
     image?: string;
+    // Set by the client right after a successful authClient.changeEmail()
+    // call — email itself is changed through Better Auth's own flow (it
+    // handles verification/confirmation), not this route; this just signals
+    // "the email is being changed" so the 2FA channel tied to it gets
+    // disabled below.
+    emailChanged?: boolean;
   };
 
   // Phone is sent as a full E.164 string by the PhoneInput component (or ""
@@ -102,6 +108,17 @@ export async function PATCH(req: NextRequest) {
       userUpdate.phoneCode = phoneSplit?.phoneCode ?? null;
     }
     if (typeof image === "string") userUpdate.image = image.trim() || null;
+
+    // A verified 2FA channel is only trustworthy as long as the contact info
+    // behind it hasn't changed since it was verified — an admin who swaps
+    // their phone number shouldn't keep SMS OTP silently pointed at the old
+    // number. Turn the affected channel off; the admin re-verifies the new
+    // value from /admin/security (see the reVerify modal in
+    // AdminProfileClient.tsx, which fires when this leaves BOTH off).
+    const newPhone = phoneSplit !== undefined ? (phoneSplit?.phone ?? null) : undefined; // undefined = phone not touched this save
+    const phoneActuallyChanged = newPhone !== undefined && newPhone !== user.phone;
+    if (phoneActuallyChanged && user.twoFaPhone) userUpdate.twoFaPhone = false;
+    if (emailChanged === true && user.twoFaEmail) userUpdate.twoFaEmail = false;
 
     if (Object.keys(userUpdate).length > 0) {
       await db.user.update({ where: { id: user.id }, data: userUpdate });
@@ -135,11 +152,19 @@ export async function PATCH(req: NextRequest) {
     const changed: Record<string, { from: unknown; to: unknown }> = {};
     if (userUpdate.name !== undefined && userUpdate.name !== user.name) changed.name = { from: user.name, to: userUpdate.name };
     if (userUpdate.phone !== undefined && userUpdate.phone !== user.phone) changed.phone = { from: user.phone, to: userUpdate.phone };
+    if (phoneActuallyChanged) changed.twoFaPhone = { from: user.twoFaPhone, to: userUpdate.twoFaPhone ?? user.twoFaPhone };
+    if (emailChanged === true) changed.twoFaEmail = { from: user.twoFaEmail, to: userUpdate.twoFaEmail ?? user.twoFaEmail };
     if (Object.keys(changed).length && updated?.adminProfile) {
       logActivity(updated.adminProfile.id, `Updated own profile (${Object.keys(changed).join(", ")})`, "profile", updated.adminProfile.id, req, changed, "INFO");
     }
 
-    return ok({ user: updated });
+    // Tells the client whether to show the "you have no working 2FA channel
+    // left, go re-verify one" modal — only relevant if this save is what
+    // caused it (phone or email change), not if the admin already had both
+    // off beforehand.
+    const bothOff = (phoneActuallyChanged || emailChanged === true) && !updated?.twoFaPhone && !updated?.twoFaEmail;
+
+    return ok({ user: updated, bothOff });
   } catch (err) {
     reportError(err, { route: "PATCH /api/admin/profile", userId: user.id, tags: { domain: "profile" } });
     console.error("[PATCH /api/admin/profile]", err);
