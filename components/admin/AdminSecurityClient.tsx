@@ -30,6 +30,7 @@ import { Smartphone, Mail, MessageSquare, Copy, Eye, EyeOff, Shield } from "luci
 import { authClient } from "@/lib/auth-client";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { combineLegacyPhone } from "@/lib/phone";
+import Switch from "@/components/ui/Switch";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
 
@@ -358,9 +359,15 @@ function EmailOtpCard({ profile, highlight }: { profile: AdminMeData; highlight:
               <h3 className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
                 Email OTP
               </h3>
-              <span className={`px-2.5 py-0.5 rounded-full text-[12px] font-semibold ${isEnabled ? "bg-green-100 text-green-700" : "bg-(--neutral-100) text-(--neutral-500)"}`}>
-                {isEnabled ? "Enabled" : "Disabled"}
-              </span>
+              <Switch
+                checked={isEnabled}
+                onChange={(v) => {
+                  if (v) { if (step === "idle") handleSendCode(); } // same action as the button below
+                  else if (isEnabled) disableMutation.mutate();
+                  else { setStep("idle"); setOtp(""); setError(""); } // mid-verification — cancel instead
+                }}
+                disabled={disableMutation.isPending || sending}
+              />
             </div>
             <p className="font-dm text-[13px] text-(--neutral-500) mb-3">
               Receive a one-time code to your email address when signing in.
@@ -371,16 +378,7 @@ function EmailOtpCard({ profile, highlight }: { profile: AdminMeData; highlight:
               <span className="font-dm text-[13px] text-(--neutral-700)">{profile.email}</span>
             </div>
 
-            {isEnabled ? (
-              <button
-                onClick={() => disableMutation.mutate()}
-                disabled={disableMutation.isPending}
-                className="h-9 px-4 rounded-[8px] border border-(--danger)/30 bg-(--danger-bg) font-dm text-[13px] text-(--danger) hover:bg-(--danger)/10 transition-colors disabled:opacity-60 flex items-center gap-2 w-fit"
-              >
-                {disableMutation.isPending ? <Spinner size={13} /> : null}
-                Disable
-              </button>
-            ) : step === "idle" ? (
+            {isEnabled ? null : step === "idle" ? (
               <button
                 onClick={handleSendCode}
                 disabled={sending}
@@ -509,9 +507,15 @@ function SmsOtpCard({ profile, highlight }: { profile: AdminMeData; highlight: b
               <h3 className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
                 SMS OTP
               </h3>
-              <span className={`px-2.5 py-0.5 rounded-full text-[12px] font-semibold ${isEnabled ? "bg-green-100 text-green-700" : "bg-(--neutral-100) text-(--neutral-500)"}`}>
-                {isEnabled ? "Enabled" : "Disabled"}
-              </span>
+              <Switch
+                checked={isEnabled}
+                onChange={(v) => {
+                  if (v) { if (step === "idle" && displayPhone) handleSendCode(); } // same action as the button below
+                  else if (isEnabled) disableMutation.mutate();
+                  else { setStep("idle"); setOtp(""); setError(""); } // mid-verification — cancel instead
+                }}
+                disabled={disableMutation.isPending || sending || !displayPhone}
+              />
             </div>
             <p className="font-dm text-[13px] text-(--neutral-500) mb-3">
               Receive a one-time code via SMS to your phone number.
@@ -528,16 +532,7 @@ function SmsOtpCard({ profile, highlight }: { profile: AdminMeData; highlight: b
                   <span className="font-dm text-[13px] text-(--neutral-700)">{displayPhone}</span>
                 </div>
 
-                {isEnabled ? (
-                  <button
-                    onClick={() => disableMutation.mutate()}
-                    disabled={disableMutation.isPending}
-                    className="h-9 px-4 rounded-[8px] border border-(--danger)/30 bg-(--danger-bg) font-dm text-[13px] text-(--danger) hover:bg-(--danger)/10 transition-colors disabled:opacity-60 flex items-center gap-2 w-fit"
-                  >
-                    {disableMutation.isPending ? <Spinner size={13} /> : null}
-                    Disable
-                  </button>
-                ) : step === "idle" ? (
+                {isEnabled ? null : step === "idle" ? (
                   <button
                     onClick={handleSendCode}
                     disabled={sending}
