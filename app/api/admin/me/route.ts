@@ -18,7 +18,16 @@ export async function GET(req: NextRequest) {
     // Fetch user-level fields needed by the login 2FA flow
     const user = await db.user.findUnique({
       where: { id: session.user.id },
-      select: { email: true, phone: true, twoFactorEnabled: true, mustChangePassword: true, role: true },
+      select: {
+        email: true,
+        phone: true,
+        phoneCode: true,
+        twoFactorEnabled: true,
+        twoFaEmail: true,
+        twoFaPhone: true,
+        mustChangePassword: true,
+        role: true,
+      },
     })
 
     // A client session must never read admin data from this route — matches
@@ -36,18 +45,31 @@ export async function GET(req: NextRequest) {
         fullName:        true,
         accessExpiresAt: true,
         twoFaMethod:     true,
+        lastLogoutAt:    true,
         branchId:        true,
         branch:          { select: { id: true, name: true } },
       },
     })
+
+    // "Back so soon" — logged out somewhere between 1h and 3h ago. Computed
+    // server-side so the login page doesn't need its own clock/timezone math.
+    let backSoon = false
+    if (profile?.lastLogoutAt) {
+      const hoursSinceLogout = (Date.now() - profile.lastLogoutAt.getTime()) / (60 * 60 * 1000)
+      backSoon = hoursSinceLogout >= 1 && hoursSinceLogout <= 3
+    }
 
     return NextResponse.json({
       ...profile,
       userId: session.user.id,
       email: user?.email,
       phone: user?.phone,
+      phoneCode: user?.phoneCode,
       twoFactorEnabled: user?.twoFactorEnabled ?? false,
+      twoFaEmail: user?.twoFaEmail ?? false,
+      twoFaPhone: user?.twoFaPhone ?? false,
       twoFaMethod: profile?.twoFaMethod ?? 'totp',
+      backSoon,
       branchId: profile?.branchId ?? null,
       branchName: profile?.branch?.name ?? null,
       mustChangePassword: user?.mustChangePassword ?? false,

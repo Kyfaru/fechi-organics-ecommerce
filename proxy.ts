@@ -242,7 +242,8 @@ export function proxy(request: NextRequest): NextResponse {
 
   // 3. Redirect unauthenticated users away from protected routes.
   //    Admin paths go to /admin/login; all other protected paths go to /login
-  //    with a callbackUrl so the user lands back where they intended.
+  //    with a returnTo so the user lands back where they intended (read by
+  //    LoginForm.tsx / signup/page.tsx via lib/return-to.ts's sanitizeReturnTo).
   //    API routes never get the HTML redirect — a fetch() call follows it
   //    transparently and reports the login page's 200 as success, so any
   //    caller that does res.json() without checking res.redirected first
@@ -256,7 +257,10 @@ export function proxy(request: NextRequest): NextResponse {
     const loginDest = isAdminScopedPath ? "/admin/login" : "/login";
     const loginUrl = new URL(loginDest, request.url);
     if (!isAdminScopedPath) {
-      loginUrl.searchParams.set("callbackUrl", encodeURIComponent(pathname));
+      // .set() already URL-encodes the value — don't encodeURIComponent it
+      // first, or it gets double-encoded and sanitizeReturnTo's startsWith("/")
+      // check silently fails, dropping the return path.
+      loginUrl.searchParams.set("returnTo", pathname);
     }
     return NextResponse.redirect(loginUrl);
   }

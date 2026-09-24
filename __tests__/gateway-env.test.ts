@@ -92,6 +92,20 @@ describe("assertGatewayEnv", () => {
     setProdEnv({ KCB_CALLBACK_BASE_URL: undefined });
     expect(() => assertGatewayEnv()).not.toThrow();
   });
+
+  it("does nothing on staging (APP_STAGE=staging) even though NODE_ENV=production", () => {
+    setNodeEnv("production");
+    process.env.APP_STAGE = "staging";
+    process.env.KCB_BASE_URL = "https://uat.buni.kcbgroup.com";
+    delete process.env.DARAJA_ENV;
+    expect(() => assertGatewayEnv()).not.toThrow();
+  });
+
+  it("still enforces when APP_STAGE is explicitly \"production\"", () => {
+    setProdEnv({ KCB_BASE_URL: "https://uat.buni.kcbgroup.com" });
+    process.env.APP_STAGE = "production";
+    expect(() => assertGatewayEnv()).toThrow(/non-production host/);
+  });
 });
 
 describe("assertBranchNotSandbox", () => {
@@ -138,6 +152,16 @@ describe("assertBranchNotSandbox", () => {
     );
     const fakeJwt = `header.${payload}.signature`;
     expect(() => assertBranchNotSandbox("branch-1", { kcbApiKey: fakeJwt })).not.toThrow();
+  });
+
+  it("does nothing on staging (APP_STAGE=staging) even though NODE_ENV=production", () => {
+    setNodeEnv("production");
+    process.env.APP_STAGE = "staging";
+    expect(() =>
+      assertBranchNotSandbox("branch-1", {
+        daraja: { shortcode: "174379", passkey: "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919" },
+      }),
+    ).not.toThrow();
   });
 
   it("does not throw on an unparseable apiKey (fails open rather than crashing dispatch on a decode bug)", () => {

@@ -11,7 +11,8 @@ function makeRatelimit() {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN
   if (!url || !token) return null
   return new Ratelimit({
-    redis: new Redis({ url, token }),
+    // enableAutoPipelining:false — see lib/redis.ts for why.
+    redis: new Redis({ url, token, enableAutoPipelining: false }),
     limiter: Ratelimit.slidingWindow(5, '1 m'),
     prefix: 'sse_ticket',
   })

@@ -24,6 +24,7 @@ import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import StrongPasswordInput from "@/components/auth/StrongPasswordInput";
 import { toast } from "@/lib/toast";
 
@@ -70,8 +71,21 @@ function formatLastActive(dateStr: string | null): string {
   if (diffMin < 60) return `${diffMin}m ago`;
   const diffH = Math.floor(diffMin / 60);
   if (diffH < 24) return `${diffH}h ago`;
+
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const weekday = d.toLocaleDateString("en-US", { weekday: "long" });
+
+  if (diffH < 48) return "Yesterday";
+
   const diffD = Math.floor(diffH / 24);
-  return `${diffD}d ago`;
+  if (diffD < 7) return `${weekday}, ${time}`;
+
+  if (diffD < 30) {
+    const dateOnly = d.toLocaleDateString("en-US", { day: "numeric", month: "short" });
+    return `${weekday}, ${dateOnly}, ${time}`;
+  }
+
+  return d.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 }
 
 // Role pill colors matching the design spec
@@ -270,6 +284,7 @@ function InviteDrawer({
   });
   const [errors, setErrors]     = useState<Record<string, string>>({});
   const [loading, setLoading]   = useState(false);
+  const unsavedGuard = useUnsavedChangesGuard(form, open, onClose);
 
   // Fetch branches for the branch select
   const { data: branchData } = useQuery({
@@ -364,15 +379,16 @@ function InviteDrawer({
     "w-full h-10 pl-3 pr-9 rounded-[8px] border border-(--neutral-300) dark:border-(--dark-border) font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) bg-white dark:bg-(--dark-surface) outline-none appearance-none focus:border-(--green-600) transition-colors";
 
   return (
+    <>
     <Drawer
       open={open}
-      onClose={onClose}
+      onClose={unsavedGuard.requestClose}
       title="Invite Staff Member"
       width={640}
       footer={
         <>
           <button
-            onClick={onClose}
+            onClick={unsavedGuard.requestClose}
             className="h-10 px-5 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
           >
             Cancel
@@ -595,6 +611,16 @@ function InviteDrawer({
         </div>
       </form>
     </Drawer>
+
+    <ConfirmModal
+      open={unsavedGuard.confirmOpen}
+      onClose={() => unsavedGuard.setConfirmOpen(false)}
+      onConfirm={unsavedGuard.confirmDiscard}
+      title="Discard unsaved changes?"
+      description="You have unsaved changes. Are you sure you want to leave without saving?"
+      confirmLabel="Continue"
+    />
+    </>
   );
 }
 
@@ -644,6 +670,7 @@ export function AdminStaffClient() {
   const [permVerified, setPermVerified] = useState(false);
   const [permDeny, setPermDeny] = useState<string[]>([]);
   const [permLoading, setPermLoading] = useState(false);
+  const [activeSessionsOpen, setActiveSessionsOpen] = useState(false);
 
   // Fetch staff list
   const { data, isLoading } = useQuery({
@@ -656,6 +683,13 @@ export function AdminStaffClient() {
 
   const staff: StaffMember[] = data?.staff ?? [];
   const activeSessions = data?.stats?.activeSessions ?? 0;
+  // Everyone currently holding at least one non-expired session — same
+  // definition the "Active Sessions" stat card's count is already built
+  // from (see GET /api/admin/staff), just surfaced as a list of people
+  // instead of a bare number.
+  const activeStaff = staff
+    .filter((s) => s.lastActiveAt !== null)
+    .sort((a, b) => new Date(b.lastActiveAt!).getTime() - new Date(a.lastActiveAt!).getTime());
 
   // The caller's own admin profile — used to gate the "Grant Super Admin
   // access" toggle to callers who are already super admins.
@@ -1012,7 +1046,13 @@ export function AdminStaffClient() {
           <StatsCard title="Total Staff" value={String(totalStaff)} icon={<Users className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
           <StatsCard title="Admins" value={String(adminCount)} icon={<ShieldCheck className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
           <StatsCard title="Active" value={String(activeCount)} icon={<UserCog className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
-          <StatsCard title="Active Sessions" value={String(activeSessions)} icon={<Activity className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+          <button
+            type="button"
+            onClick={() => setActiveSessionsOpen(true)}
+            className="text-left rounded-xl transition-transform hover:scale-[1.01] focus-visible:outline-2 focus-visible:outline-(--green-600)"
+          >
+            <StatsCard title="Active Sessions" value={String(activeSessions)} icon={<Activity className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
+          </button>
         </div>
 
         {/* Staff table */}
@@ -1032,6 +1072,50 @@ export function AdminStaffClient() {
         onClose={() => setInviteOpen(false)}
         onSuccess={() => qc.invalidateQueries({ queryKey: ["admin-staff"] })}
       />
+
+      {/* Active sessions modal — who is currently signed in right now */}
+      {activeSessionsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
+                Active sessions
+              </h3>
+              <button
+                onClick={() => setActiveSessionsOpen(false)}
+                className="font-dm text-[13px] text-(--neutral-500) hover:text-(--neutral-700)"
+              >
+                Close
+              </button>
+            </div>
+            <p className="font-dm text-[13px] text-(--neutral-500)">
+              {activeStaff.length === 0
+                ? "No one is currently signed in."
+                : `${activeStaff.length} ${activeStaff.length === 1 ? "person" : "people"} currently signed in.`}
+            </p>
+
+            <div className="space-y-1">
+              {activeStaff.map((s) => (
+                <div key={s.id} className="flex items-center gap-3 py-2 px-1 rounded-xl hover:bg-(--neutral-50) dark:hover:bg-(--dark-bg)">
+                  <div className="w-9 h-9 rounded-full bg-(--green-100) text-(--green-800) flex items-center justify-center font-dm text-[12px] font-semibold shrink-0">
+                    {getInitials(s.adminProfile?.fullName || s.name)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text) truncate">
+                      {s.adminProfile?.fullName || s.name}
+                    </p>
+                    <p className="font-dm text-[12px] text-(--neutral-500) truncate">{s.email}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <RolePill role={s.adminProfile?.role ?? s.role} />
+                    <span className="font-dm text-[11px] text-(--neutral-400)">{formatLastActive(s.lastActiveAt)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Deactivate confirm modal */}
       {deactivateTarget && (

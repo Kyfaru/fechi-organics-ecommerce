@@ -1,5 +1,6 @@
 import { CartClient } from "@/components/cart/CartClient";
 import { Navbar } from "@/components/layout/Navbar";
+import { Footer } from "@/components/layout/Footer";
 
 export const metadata = {
   title: "Cart | Fechi Organics",
@@ -11,6 +12,7 @@ export default function CartPage() {
     <div className="min-h-screen bg-[#f9f9f9] dark:bg-gray-950 flex flex-col">
       <Navbar />
       <CartClient />
+      <Footer />
     </div>
   );
 }

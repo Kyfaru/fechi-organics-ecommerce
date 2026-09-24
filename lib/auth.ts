@@ -575,8 +575,9 @@ export const auth = betterAuth({
         // RETURNING admin/customer pick a different channel than their
         // stored default without needing a real session to persist it —
         // Better Auth deletes the real session before this fires, see the
-        // method-choice screen's handleMethodChoice) — else the admin's
-        // stored preference (adminProfile.twoFaMethod), else email.
+        // method-choice screen's handleMethodChoice) — else whichever
+        // channel(s) the account has enabled (user.twoFaEmail/twoFaPhone),
+        // else email.
         //
         // Better Auth's /two-factor/send-otp always responds { status: true }
         // regardless of what this callback does (fire-and-forget — see
@@ -592,12 +593,16 @@ export const auth = betterAuth({
           if (requestedChannel) {
             method = requestedChannel;
           } else {
-            // null for customers (no adminProfile row) — falls through to "email".
-            const profile = await db.adminProfile.findUnique({
-              where: { userId: user.id },
-              select: { twoFaMethod: true },
+            // No explicit channel on this request — fall back to whichever
+            // channel(s) the account has actually enabled (independent
+            // user.twoFaEmail/twoFaPhone booleans, shared with the customer
+            // 2FA flow). Prefers sms only when phone is enabled and email
+            // isn't; defaults to email otherwise.
+            const dbUser = await db.user.findUnique({
+              where: { id: user.id },
+              select: { twoFaEmail: true, twoFaPhone: true },
             });
-            method = profile?.twoFaMethod === "sms" ? "sms" : "email";
+            method = dbUser?.twoFaPhone && !dbUser?.twoFaEmail ? "sms" : "email";
           }
 
           async function sendViaEmail() {

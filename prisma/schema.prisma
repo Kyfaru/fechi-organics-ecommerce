@@ -975,6 +975,9 @@ model adminProfile {
   isSuperAdmin           Boolean               @default(false)
   isActive               Boolean               @default(true)
   accessExpiresAt        DateTime?
+  // Set right before signOut() (see /api/admin/logout-ping) — read at the
+  // next login to show a "back so soon" greeting when it was 1-3h ago.
+  lastLogoutAt           DateTime?
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
   // Points a super admin may hand out over their lifetime. Deliberately not

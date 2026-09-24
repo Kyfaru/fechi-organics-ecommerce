@@ -3,18 +3,33 @@
 /**
  * AdminSecurityClient — /admin/security page
  *
- * Three 2FA method cards:
+ * Three independent 2FA method cards — any combination can be active:
  *   1. Authenticator App (TOTP) — set up / disable via Better Auth
- *   2. Email OTP              — toggle; saves method to adminProfile
- *   3. SMS OTP                — toggle + phone number input
+ *   2. Email OTP  — send a code to the account email, verify it, THEN enable
+ *      (user.twoFaEmail). Disabling is instant, no re-verification needed.
+ *   3. SMS OTP    — same send-code-then-verify flow against the phone number
+ *      already saved on /admin/profile (user.twoFaPhone). The phone number
+ *      itself isn't editable here — change it on Profile.
+ *
+ * Both send/verify pairs reuse the existing account-level endpoints
+ * (app/api/account/2fa/{phone,email}/{send,verify}) — they're session-generic
+ * (work for any signed-in user, not customer-specific), so no admin-only
+ * duplicates were needed.
+ *
+ * ?verify=email,sms in the URL (set by AdminProfileClient's re-verify modal,
+ * which fires when a profile save leaves both channels disabled) makes the
+ * matching card(s) pulse an orange glow once on arrival.
  */
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import { QRCodeSVG } from "qrcode.react";
 import { Smartphone, Mail, MessageSquare, Copy, Eye, EyeOff, Shield } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
+import { combineLegacyPhone } from "@/lib/phone";
 import Switch from "@/components/ui/Switch";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/lib/toast";
@@ -33,6 +48,23 @@ function Card({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Wraps a card and plays a single orange glow pulse around it on mount when `active`. */
+function PulseGlow({ active, children }: { active: boolean; children: React.ReactNode }) {
+  return (
+    <motion.div
+      className="rounded-[12px]"
+      animate={
+        active
+          ? { boxShadow: ["0 0 0 0px rgba(249,115,22,0)", "0 0 0 5px rgba(249,115,22,0.45)", "0 0 0 0px rgba(249,115,22,0)"] }
+          : {}
+      }
+      transition={{ duration: 1.8, ease: "easeInOut" }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -40,8 +72,10 @@ interface AdminMeData {
   userId: string;
   email: string;
   phone: string | null;
+  phoneCode: string | null;
   twoFactorEnabled: boolean;
-  twoFaMethod: string;
+  twoFaEmail: boolean;
+  twoFaPhone: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -253,129 +287,299 @@ function TotpCard({ profile }: { profile: AdminMeData }) {
 // ---------------------------------------------------------------------------
 // Card 2 — Email OTP
 // ---------------------------------------------------------------------------
-function EmailOtpCard({ profile }: { profile: AdminMeData }) {
+function EmailOtpCard({ profile, highlight }: { profile: AdminMeData; highlight: boolean }) {
   const qc = useQueryClient();
-  const isEnabled = profile.twoFaMethod === "email";
+  const isEnabled = profile.twoFaEmail;
+  const [step, setStep] = useState<"idle" | "verify">("idle");
+  const [otp, setOtp] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
 
-  const toggleMutation = useMutation({
-    mutationFn: async (enable: boolean) => {
+  async function handleSendCode() {
+    setSending(true);
+    setError("");
+    try {
+      const res = await fetch("/api/account/2fa/email/send", { method: "POST" });
+      const json = await res.json();
+      if (!json.ok) { toast.error(json.error?.message ?? "Failed to send code"); return; }
+      toast.success("Code sent to your email");
+      setStep("verify");
+    } catch {
+      toast.error("Failed to send code");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const verifyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/account/2fa/email/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ otp }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error?.message ?? "Invalid code");
+    },
+    onSuccess: () => {
+      toast.success("Email OTP enabled");
+      qc.invalidateQueries({ queryKey: ["admin-me"] });
+      setStep("idle");
+      setOtp("");
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  const disableMutation = useMutation({
+    mutationFn: async () => {
       const res = await fetch("/api/admin/2fa/method", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ method: enable ? "email" : "totp" }),
+        body: JSON.stringify({ channel: "email", enable: false }),
       });
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error?.message ?? "Failed to update method");
+      if (!json.ok) throw new Error(json.error?.message ?? "Failed to disable");
     },
-    onSuccess: (_, enable) => {
-      toast.success(enable ? "Email OTP enabled" : "Email OTP disabled");
+    onSuccess: () => {
+      toast.success("Email OTP disabled");
       qc.invalidateQueries({ queryKey: ["admin-me"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   return (
-    <Card>
-      <div className="flex items-start gap-4">
-        <div className="w-10 h-10 rounded-[10px] bg-blue-50 flex items-center justify-center shrink-0">
-          <Mail size={20} className="text-blue-700" />
-        </div>
-        <div className="flex-1">
-          <div className="flex items-center justify-between gap-3 mb-1">
-            <h3 className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
-              Email OTP
-            </h3>
-            <Switch
-              checked={isEnabled}
-              onChange={(v) => toggleMutation.mutate(v)}
-              disabled={toggleMutation.isPending}
-            />
+    <PulseGlow active={highlight}>
+      <Card>
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-[10px] bg-blue-50 flex items-center justify-center shrink-0">
+            <Mail size={20} className="text-blue-700" />
           </div>
-          <p className="font-dm text-[13px] text-(--neutral-500) mb-3">
-            Receive a one-time code to your email address when signing in.
-          </p>
-          <div className="flex items-center gap-2 bg-(--neutral-50) px-3 py-2 rounded-[8px] border border-(--neutral-100)">
-            <Mail size={13} className="text-(--neutral-400) shrink-0" />
-            <span className="font-dm text-[13px] text-(--neutral-700)">{profile.email}</span>
+          <div className="flex-1">
+            <div className="flex items-center justify-between gap-3 mb-1">
+              <h3 className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
+                Email OTP
+              </h3>
+              <Switch
+                checked={isEnabled}
+                onChange={(v) => {
+                  if (v) { if (step === "idle") handleSendCode(); } // same action as the button below
+                  else if (isEnabled) disableMutation.mutate();
+                  else { setStep("idle"); setOtp(""); setError(""); } // mid-verification — cancel instead
+                }}
+                disabled={disableMutation.isPending || sending}
+              />
+            </div>
+            <p className="font-dm text-[13px] text-(--neutral-500) mb-3">
+              Receive a one-time code to your email address when signing in.
+            </p>
+
+            <div className="flex items-center gap-2 bg-(--neutral-50) px-3 py-2 rounded-[8px] border border-(--neutral-100) mb-3">
+              <Mail size={13} className="text-(--neutral-400) shrink-0" />
+              <span className="font-dm text-[13px] text-(--neutral-700)">{profile.email}</span>
+            </div>
+
+            {isEnabled ? null : step === "idle" ? (
+              <button
+                onClick={handleSendCode}
+                disabled={sending}
+                className="h-9 px-4 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[13px] font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2 w-fit"
+              >
+                {sending ? <Spinner size={13} /> : null}
+                Send code to verify
+              </button>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <label className="font-dm text-[13px] font-medium text-(--neutral-700)">
+                  Enter the 6-digit code sent to {profile.email}
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  className={inputCls}
+                  placeholder="000000"
+                  value={otp}
+                  onChange={(e) => { setOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }}
+                />
+                {error && <p className="font-dm text-[12px] text-(--danger)">{error}</p>}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setStep("idle"); setOtp(""); setError(""); }}
+                    className="h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => verifyMutation.mutate()}
+                    disabled={verifyMutation.isPending || otp.length !== 6}
+                    className="h-9 px-4 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[13px] font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2"
+                  >
+                    {verifyMutation.isPending ? <Spinner size={13} /> : null}
+                    Verify &amp; Enable
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      </div>
-    </Card>
+      </Card>
+    </PulseGlow>
   );
 }
 
 // ---------------------------------------------------------------------------
 // Card 3 — SMS OTP
 // ---------------------------------------------------------------------------
-function SmsOtpCard({ profile }: { profile: AdminMeData }) {
+function SmsOtpCard({ profile, highlight }: { profile: AdminMeData; highlight: boolean }) {
   const qc = useQueryClient();
-  const isEnabled = profile.twoFaMethod === "sms";
-  const [phone, setPhone] = useState(profile.phone ?? "");
+  const isEnabled = profile.twoFaPhone;
+  const [step, setStep] = useState<"idle" | "verify">("idle");
+  const [otp, setOtp] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
 
-  const toggleMutation = useMutation({
-    mutationFn: async (enable: boolean) => {
+  const displayPhone = profile.phone ? combineLegacyPhone(profile.phone, profile.phoneCode) ?? profile.phone : null;
+
+  async function handleSendCode() {
+    setSending(true);
+    setError("");
+    try {
+      const res = await fetch("/api/account/2fa/phone/send", { method: "POST" });
+      const json = await res.json();
+      // Surfaces the existing hasSmsConfig()/Africa's Talking checks from
+      // /api/account/2fa/phone/send (e.g. "SMS is not available right now")
+      // as a real toast instead of letting a misconfigured provider fail silently.
+      if (!json.ok) { toast.error(json.error?.message ?? "Failed to send code"); return; }
+      toast.success("Code sent to your phone");
+      setStep("verify");
+    } catch {
+      toast.error("Failed to send code");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const verifyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/account/2fa/phone/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ otp }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error?.message ?? "Invalid code");
+    },
+    onSuccess: () => {
+      toast.success("SMS OTP enabled");
+      qc.invalidateQueries({ queryKey: ["admin-me"] });
+      setStep("idle");
+      setOtp("");
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  const disableMutation = useMutation({
+    mutationFn: async () => {
       const res = await fetch("/api/admin/2fa/method", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ method: enable ? "sms" : "totp", phone: enable ? phone : undefined }),
+        body: JSON.stringify({ channel: "sms", enable: false }),
       });
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error?.message ?? "Failed to update method");
+      if (!json.ok) throw new Error(json.error?.message ?? "Failed to disable");
     },
-    onSuccess: (_, enable) => {
-      toast.success(enable ? "SMS OTP enabled" : "SMS OTP disabled");
+    onSuccess: () => {
+      toast.success("SMS OTP disabled");
       qc.invalidateQueries({ queryKey: ["admin-me"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  function handleToggle(enable: boolean) {
-    if (enable && !phone.trim()) {
-      toast.error("Enter a phone number first");
-      return;
-    }
-    toggleMutation.mutate(enable);
-  }
-
   return (
-    <Card>
-      <div className="flex items-start gap-4">
-        <div className="w-10 h-10 rounded-[10px] bg-purple-50 flex items-center justify-center shrink-0">
-          <MessageSquare size={20} className="text-purple-700" />
-        </div>
-        <div className="flex-1">
-          <div className="flex items-center justify-between gap-3 mb-1">
-            <h3 className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
-              SMS OTP
-            </h3>
-            <Switch
-              checked={isEnabled}
-              onChange={handleToggle}
-              disabled={toggleMutation.isPending}
-            />
+    <PulseGlow active={highlight}>
+      <Card>
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-[10px] bg-purple-50 flex items-center justify-center shrink-0">
+            <MessageSquare size={20} className="text-purple-700" />
           </div>
-          <p className="font-dm text-[13px] text-(--neutral-500) mb-3">
-            Receive a one-time code via SMS to your phone number.
-          </p>
-          <div className="flex flex-col gap-1.5">
-            <label className="font-dm text-[13px] font-medium text-(--neutral-700)">Phone number</label>
-            <input
-              type="tel"
-              className={inputCls}
-              placeholder="+254 700 000 000"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              disabled={isEnabled}
-            />
-            {isEnabled && (
-              <p className="font-dm text-[12px] text-(--neutral-400)">
-                Disable SMS OTP to change your phone number.
+          <div className="flex-1">
+            <div className="flex items-center justify-between gap-3 mb-1">
+              <h3 className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
+                SMS OTP
+              </h3>
+              <Switch
+                checked={isEnabled}
+                onChange={(v) => {
+                  if (v) { if (step === "idle" && displayPhone) handleSendCode(); } // same action as the button below
+                  else if (isEnabled) disableMutation.mutate();
+                  else { setStep("idle"); setOtp(""); setError(""); } // mid-verification — cancel instead
+                }}
+                disabled={disableMutation.isPending || sending || !displayPhone}
+              />
+            </div>
+            <p className="font-dm text-[13px] text-(--neutral-500) mb-3">
+              Receive a one-time code via SMS to your phone number.
+            </p>
+
+            {!displayPhone ? (
+              <p className="font-dm text-[13px] text-(--neutral-400)">
+                Add a phone number in your Profile to enable this.
               </p>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 bg-(--neutral-50) px-3 py-2 rounded-[8px] border border-(--neutral-100) mb-3">
+                  <MessageSquare size={13} className="text-(--neutral-400) shrink-0" />
+                  <span className="font-dm text-[13px] text-(--neutral-700)">{displayPhone}</span>
+                </div>
+
+                {isEnabled ? null : step === "idle" ? (
+                  <button
+                    onClick={handleSendCode}
+                    disabled={sending}
+                    className="h-9 px-4 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[13px] font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2 w-fit"
+                  >
+                    {sending ? <Spinner size={13} /> : null}
+                    Send code to verify
+                  </button>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <label className="font-dm text-[13px] font-medium text-(--neutral-700)">
+                      Enter the 6-digit code sent to {displayPhone}
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      className={inputCls}
+                      placeholder="000000"
+                      value={otp}
+                      onChange={(e) => { setOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }}
+                    />
+                    {error && <p className="font-dm text-[12px] text-(--danger)">{error}</p>}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setStep("idle"); setOtp(""); setError(""); }}
+                        className="h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => verifyMutation.mutate()}
+                        disabled={verifyMutation.isPending || otp.length !== 6}
+                        className="h-9 px-4 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[13px] font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2"
+                      >
+                        {verifyMutation.isPending ? <Spinner size={13} /> : null}
+                        Verify &amp; Enable
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
-      </div>
-    </Card>
+      </Card>
+    </PulseGlow>
   );
 }
 
@@ -383,6 +587,11 @@ function SmsOtpCard({ profile }: { profile: AdminMeData }) {
 // Main component
 // ---------------------------------------------------------------------------
 export function AdminSecurityClient() {
+  const searchParams = useSearchParams();
+  const verifyParam = searchParams.get("verify") ?? "";
+  const highlightSms = verifyParam.split(",").includes("sms");
+  const highlightEmail = verifyParam.split(",").includes("email");
+
   const { data, isLoading } = useQuery<AdminMeData>({
     queryKey: ["admin-me"],
     queryFn: () => fetch("/api/admin/me").then((r) => r.json()),
@@ -402,11 +611,11 @@ export function AdminSecurityClient() {
           <Shield size={18} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
           <div>
             <p className="font-dm text-[13px] font-medium text-blue-800 dark:text-blue-300">
-              One method active at a time
+              Enable as many methods as you'd like
             </p>
             <p className="font-dm text-[12px] text-blue-600 dark:text-blue-400 mt-0.5">
-              Enabling Email OTP or SMS OTP overrides the default TOTP method. The authenticator app
-              can be kept active independently as a fallback.
+              Authenticator App, Email OTP and SMS OTP can all be active at once — you'll choose
+              which one to use each time you sign in.
             </p>
           </div>
         </div>
@@ -420,8 +629,8 @@ export function AdminSecurityClient() {
         ) : (
           <>
             <TotpCard profile={data} />
-            <EmailOtpCard profile={data} />
-            <SmsOtpCard profile={data} />
+            <EmailOtpCard profile={data} highlight={highlightEmail} />
+            <SmsOtpCard profile={data} highlight={highlightSms} />
           </>
         )}
       </div>

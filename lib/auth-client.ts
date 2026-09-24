@@ -35,6 +35,7 @@ export const {
   signOut,
   useSession,
   getSession,
+  changeEmail,
 } = authClient;
 
 // ---------------------------------------------------------------------------

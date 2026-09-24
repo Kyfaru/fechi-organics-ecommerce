@@ -252,6 +252,13 @@ export function CartClient() {
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Left column — Review cart */}
           <div className="flex-1 min-w-0">
+            <Link
+              href="/shop"
+              className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-[#FF3B30] px-4 py-2 text-[13px] font-medium text-[#FF3B30] transition-colors hover:bg-[#FF3B30]/10"
+            >
+              <Icon icon="lucide:arrow-left" width={14} />
+              Back to Shop
+            </Link>
             <div className="bg-white dark:bg-gray-900 rounded-[12px] shadow-[0_4px_10px_rgba(0,0,0,0.05)] p-6 md:p-8">
               <h2 className="font-heading font-semibold text-[#1a1c1c] dark:text-white text-[28px] md:text-[32px] mb-6">
                 Review Your Cart

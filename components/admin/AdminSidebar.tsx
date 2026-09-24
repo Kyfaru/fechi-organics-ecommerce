@@ -70,8 +70,18 @@ export function AdminSidebar() {
   }, [collapsed]);
 
   async function handleLogout() {
+    // Best-effort timestamp for the next login's "back so soon" greeting —
+    // must run before signOut() destroys the session this needs to identify
+    // whose logout it is.
+    await fetch("/api/admin/logout-ping", { method: "POST" }).catch(() => {});
     await signOut();
     clearPersistedQueryCache();
+    // Close explicitly rather than relying solely on the navigation below to
+    // unmount it — router.push is a client-side transition, not guaranteed
+    // to be instant, so without this the modal could sit open for a beat
+    // (and would resurface exactly as-is if this page were ever restored
+    // from bfcache, see AdminSessionGuard).
+    setLogoutConfirming(false);
     router.push("/admin/login");
   }
 

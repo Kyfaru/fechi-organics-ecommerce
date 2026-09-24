@@ -47,10 +47,23 @@ export async function sendSmsAT(to: string, body: string): Promise<string> {
         body: JSON.stringify({ username: USERNAME, message: body, senderId: SENDER_ID, phoneNumbers: [to] }),
       })
 
-  const data: AtResponse = await res.json()
+  // Read as text first — an auth failure or rate limit returns a plain-text
+  // body (e.g. "The supplied authentication is invalid"), and blindly calling
+  // res.json() on that throws an opaque "Unexpected token" instead of
+  // surfacing what Africa's Talking actually said.
+  const text = await res.text()
+  if (!res.ok) {
+    throw new Error(`[AfricasTalking] send failed: HTTP ${res.status} — ${text.slice(0, 300)}`)
+  }
+  let data: AtResponse
+  try {
+    data = JSON.parse(text)
+  } catch {
+    throw new Error(`[AfricasTalking] send failed: non-JSON response — ${text.slice(0, 300)}`)
+  }
   const recipient = data.SMSMessageData?.Recipients?.[0]
-  if (!res.ok || recipient?.status !== "Success") {
-    throw new Error(`[AfricasTalking] send failed: ${recipient?.status ?? res.status} (${recipient?.statusCode})`)
+  if (recipient?.status !== "Success") {
+    throw new Error(`[AfricasTalking] send failed: ${recipient?.status ?? "unknown"} (${recipient?.statusCode})`)
   }
   return recipient.messageId
 }

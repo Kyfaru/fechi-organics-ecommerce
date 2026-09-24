@@ -214,6 +214,13 @@ export function Navbar({ flat = false, transparent = false }: { flat?: boolean; 
   // While `transparent`, watch the hero's own sentinel element (rendered by
   // the page) rather than a hardcoded pixel height — works no matter how
   // tall the hero renders at a given breakpoint.
+  //
+  // Listens on `document` with capture: true rather than `window` — some
+  // pages' <main> ends up as its own overflow:auto scroll container (e.g.
+  // /blog, whose min-h-screen <main> scrolls internally instead of the
+  // window), and the native `scroll` event doesn't bubble up to `window`
+  // from a different scrolling element. Capture-phase listening on
+  // `document` catches it regardless of which element actually scrolls.
   useEffect(() => {
     if (!transparent) return;
     function check() {
@@ -221,10 +228,10 @@ export function Navbar({ flat = false, transparent = false }: { flat?: boolean; 
       setPastHero(!sentinel || sentinel.getBoundingClientRect().top <= 80);
     }
     check();
-    window.addEventListener("scroll", check, { passive: true });
+    document.addEventListener("scroll", check, { passive: true, capture: true });
     window.addEventListener("resize", check);
     return () => {
-      window.removeEventListener("scroll", check);
+      document.removeEventListener("scroll", check, true);
       window.removeEventListener("resize", check);
     };
   }, [transparent]);
@@ -292,16 +299,21 @@ export function Navbar({ flat = false, transparent = false }: { flat?: boolean; 
 
   const unreadCount = useUnreadCount();
 
-  // Transition from floating pill → flush bar after scrolling past 120 px
+  // Transition from floating pill → flush bar after scrolling past 120 px.
+  // Same capture-on-document approach as the pastHero effect above — reads
+  // the scroll position off whichever element actually scrolled (the real
+  // window/document, or a page's internally-scrolling <main>) rather than
+  // assuming it's always the window.
   useEffect(() => {
     if (flat) return;
-    function onScroll() {
-      const scrollY = window.scrollY || document.documentElement.scrollTop;
+    function onScroll(e?: Event) {
+      const target = e?.target;
+      const scrollY = target instanceof Element ? target.scrollTop : window.scrollY || document.documentElement.scrollTop;
       setScrolled(scrollY > 120);
     }
     onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    document.addEventListener("scroll", onScroll, { passive: true, capture: true });
+    return () => document.removeEventListener("scroll", onScroll, true);
   }, [flat]);
 
   useEffect(() => {
@@ -362,23 +374,29 @@ export function Navbar({ flat = false, transparent = false }: { flat?: boolean; 
       <div
         aria-hidden
         className={`hidden md:block transition-[height] duration-300 ${
-          flat || scrolled ? "h-[76px]" : "h-[0px]"
+          flat || scrolled ? "h-[84px]" : "h-[0px]"
         }`}
       />
 
       {/* ── Desktop Navbar (always fixed) ── */}
       <nav
         className={[
-          "hidden md:flex items-center justify-between h-[76px] px-8",
-          "sticky z-9999 transition-all duration-300 mt-5 mx-5",
+          "hidden md:flex items-center justify-between h-[84px] px-10",
+          "sticky z-[9999] transition-all duration-300",
+          // While transparent-over-hero, sit flush against the very top edge
+          // with no outer margin/rounding — the floating-pill treatment only
+          // kicks in once scrolled past the hero (isTransparent becomes false).
+          isTransparent ? "mt-0 mx-0" : "mt-6 mx-5",
           isTransparent
             ? "bg-transparent shadow-none"
             : "bg-white/80 dark:bg-[#111]/80 shadow-sm backdrop-blur-sm",
-          flat
-            ? "top-2 left-0 right-0 rounded-none shadow-sm"
+          isTransparent
+            ? "top-0 left-0 right-0 rounded-none"
+            : flat
+            ? "top-3 left-0 right-0 rounded-none shadow-sm"
             : scrolled
-            ? "top-2 left-[5px] right-[5px] rounded-[0px] shadow-md"
-            : "top-4 left-12 right-12 rounded-[40px]",
+            ? "top-3 left-3 right-3 rounded-[24px] shadow-md"
+            : "top-6 left-14 right-14 rounded-[40px]",
         ].join(" ")}
       >
         {/* Logo */}
@@ -577,7 +595,7 @@ export function Navbar({ flat = false, transparent = false }: { flat?: boolean; 
             />
           ) : (
             <Link
-              href="/login"
+              href={`/login?returnTo=${encodeURIComponent(pathname)}`}
               className={
                 isTransparent
                   ? "flex items-center gap-1.5 bg-[#fec700] text-[#1a1c1c] rounded-[40px] px-5 h-[44px] text-[16px] tracking-[-0.16px] font-body hover:bg-[#e6b400] transition-colors"
@@ -778,7 +796,7 @@ export function Navbar({ flat = false, transparent = false }: { flat?: boolean; 
               ) : (
                 <div className="px-4 pb-4 pt-2">
                   <Link
-                    href="/login"
+                    href={`/login?returnTo=${encodeURIComponent(pathname)}`}
                     onClick={() => setMobileOpen(false)}
                     className="flex items-center justify-center gap-2 bg-[#27731e] text-white rounded-[40px] px-6 py-3.5 text-[15px] font-body"
                   >

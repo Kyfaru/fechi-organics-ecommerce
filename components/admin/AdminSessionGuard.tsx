@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { clearPersistedQueryCache } from "@/app/providers";
+import { useReloadOnBfcacheRestore } from "@/hooks/use-reload-on-bfcache-restore";
 
 /**
  * Clears all client-side admin storage the moment the admin panel is
@@ -15,8 +16,18 @@ import { clearPersistedQueryCache } from "@/app/providers";
  * browser drops that on its own when it closes; JS can't touch an httpOnly
  * cookie either way. This component's job is everything JS *can* reach:
  * localStorage and sessionStorage.
+ *
+ * Also forces a hard reload if any admin page is ever restored from the
+ * browser's back-forward cache (see useReloadOnBfcacheRestore's own
+ * comment) — without this, pressing Back after signing out could show a
+ * frozen bfcache snapshot of the dashboard: stale data, and any modal that
+ * was open at the moment of navigation (e.g. the "Sign out?" confirm)
+ * stuck open, since bfcache restores the exact DOM/JS state rather than
+ * re-running AdminGuard's server-side session check.
  */
 export function AdminSessionGuard() {
+  useReloadOnBfcacheRestore();
+
   useEffect(() => {
     function clearAdminStorage() {
       clearPersistedQueryCache();

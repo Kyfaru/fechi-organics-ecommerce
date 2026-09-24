@@ -2,11 +2,14 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Icon } from "@iconify/react";
 import type { Value as PhoneValue } from "react-phone-number-input";
+import { isValidPhoneNumber, validatePhoneNumberLength } from "libphonenumber-js";
 import { Navbar } from "@/components/layout/Navbar";
+import { Footer } from "@/components/layout/Footer";
 import { StepIndicator } from "@/components/checkout/StepIndicator";
 import PointsRedeemInput from "@/components/checkout/PointsRedeemInput";
 import PhoneInput from "@/components/ui/PhoneInput";
@@ -274,6 +277,14 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
   const [phone, setPhone] = useState<PhoneValue | undefined>(
     user.phone && user.phone.startsWith("+") ? (user.phone as PhoneValue) : undefined
   );
+  // Rejects any keystroke that would push the number past the selected
+  // country's max valid length — the input just stops accepting more digits
+  // instead of accumulating an unparseable number.
+  function handlePhoneChange(next: PhoneValue | undefined) {
+    if (next && validatePhoneNumberLength(next) === "TOO_LONG") return;
+    setPhone(next);
+  }
+  const phoneFormatError = phone && !isValidPhoneNumber(phone) ? "Enter a complete, valid phone number" : undefined;
 
   // Always default to Kenya — user's stored country may be a name not a code
   const [country, setCountry] = useState("KE");
@@ -309,10 +320,15 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
   const [pointsDiscountKes, setPointsDiscountKes] = useState(0);
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("mpesa");
-  const [mpesaPhone, setMpesaPhone] = useState("");
+  const [mpesaPhone, setMpesaPhone] = useState<PhoneValue | undefined>(undefined);
   useEffect(() => {
-    if (!mpesaPhone && phone) setMpesaPhone(phone as string);
+    if (!mpesaPhone && phone) setMpesaPhone(phone);
   }, [phone, mpesaPhone]);
+  function handleMpesaPhoneChange(next: PhoneValue | undefined) {
+    if (next && validatePhoneNumberLength(next) === "TOO_LONG") return;
+    setMpesaPhone(next);
+  }
+  const mpesaFormatError = mpesaPhone && !isValidPhoneNumber(mpesaPhone) ? "Enter a complete, valid M-Pesa number" : undefined;
 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -428,6 +444,11 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
     if (!email.trim()) e.email = "Please enter your email address";
     else if (!/^\S+@\S+\.\S+$/.test(email.trim())) e.email = "Please enter a valid email address";
     if (!phone) e.phone = "Please enter your phone number";
+    else if (!isValidPhoneNumber(phone)) e.phone = "Enter a complete, valid phone number";
+    if (!fullyCoveredByPoints && selectedMethod === "mpesa") {
+      if (!mpesaPhone) e.mpesaPhone = "Please enter your M-Pesa phone number";
+      else if (!isValidPhoneNumber(mpesaPhone)) e.mpesaPhone = "Enter a complete, valid M-Pesa number";
+    }
     if (mode === "DELIVERY") {
       if (isKenya) {
         if (!county) e.county = branchLimited ? "Please select a delivery branch" : "Please select your county";
@@ -440,7 +461,7 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
       }
     }
     return e;
-  }, [firstName, lastName, email, phone, mode, isKenya, county, noZones, zoneId, address, state, stateText, postalCode, branchLimited]);
+  }, [firstName, lastName, email, phone, mode, isKenya, county, noZones, zoneId, address, state, stateText, postalCode, branchLimited, fullyCoveredByPoints, selectedMethod, mpesaPhone]);
 
   // ---------------------------------------------------------------------------
   // Promo handlers
@@ -617,7 +638,7 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
       toast.warning("Please wait a moment", { message: "Give it about 30 seconds before trying to pay again." });
       return;
     }
-    if (!fullyCoveredByPoints && selectedMethod === "mpesa" && !mpesaPhone.trim()) {
+    if (!fullyCoveredByPoints && selectedMethod === "mpesa" && !mpesaPhone) {
       toast.error("Please enter the M-Pesa phone number to receive the prompt on.");
       return;
     }
@@ -660,6 +681,13 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
     <div className="min-h-screen bg-[#f8f8f7] dark:bg-gray-950">
 
       <main className="mx-auto w-full max-w-[1180px] px-4 py-10 md:py-14">
+        <Link
+          href="/cart"
+          className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-[#FF3B30] px-4 py-2 text-[13px] font-medium text-[#FF3B30] transition-colors hover:bg-[#FF3B30]/10"
+        >
+          <Icon icon="lucide:arrow-left" width={14} />
+          Back to Cart
+        </Link>
         <div className="mb-8"><StepIndicator step={2} /></div>
         <h1 className="mb-6 font-heading text-[32px] font-bold text-[#1a1c1c] dark:text-white">Checkout</h1>
 
@@ -679,14 +707,14 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
               <div className={tightCard}>
                 <h2 className="mb-5 font-heading text-[18px] font-bold text-[#1a1c1c] dark:text-white">Contact Details</h2>
                 <div className="grid gap-5 sm:grid-cols-2">
-                  <Field label="First Name" error={showErr("firstName")}>
+                  <Field label="First Name" error={showErr("firstName")} required>
                     <input className={inputCls(!!showErr("firstName"))} value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Jane" />
                   </Field>
-                  <Field label="Last Name" error={showErr("lastName")}>
+                  <Field label="Last Name" error={showErr("lastName")} required>
                     <input className={inputCls(!!showErr("lastName"))} value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="e.g. Doe" />
                   </Field>
-                  <PhoneInput label="Phone Number" value={phone} onChange={setPhone} error={showErr("phone")} />
-                  <Field label="Email Address" error={showErr("email")}>
+                  <PhoneInput label="Phone Number" value={phone} onChange={handlePhoneChange} error={phoneFormatError || showErr("phone")} required />
+                  <Field label="Email Address" error={showErr("email")} required>
                     <input type="email" className={inputCls(!!showErr("email"))} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" />
                   </Field>
                 </div>
@@ -732,7 +760,7 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
 
                         {/* Branch (branch-limited Kenya) / County (full Kenya) / State (International) */}
                         {isKenya ? (
-                          <Field label={branchLimited ? "Delivery Branch" : "County"} error={showErr("county")}>
+                          <Field label={branchLimited ? "Delivery Branch" : "County"} error={showErr("county")} required>
                             <SelectDropdown
                               value={county}
                               onChange={(v) => { setCounty(v); setZoneId(""); }}
@@ -743,7 +771,7 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
                             />
                           </Field>
                         ) : (
-                          <Field label="State / Province" error={showErr("state")}>
+                          <Field label="State / Province" error={showErr("state")} required>
                             {statesQuery.isLoading ? (
                               <div className="h-13 rounded-[8px] bg-[#eef4eb] animate-pulse" />
                             ) : stateFallback ? (
@@ -769,7 +797,7 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
 
                       {/* Delivery Zone (Kenya only) */}
                       {isKenya && (
-                        <Field label="Delivery Zone" error={showErr("zone")}>
+                        <Field label="Delivery Zone" error={showErr("zone")} required>
                           <SelectDropdown
                             value={zoneId}
                             onChange={(v) => { setZoneId(v); capture("delivery_zone_selected", { zoneId: v }); }}
@@ -800,7 +828,7 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
                         </Field>
                       ) : (
                         <div className="grid gap-5 sm:grid-cols-2">
-                          <Field label="Address Line" error={showErr("address")}>
+                          <Field label="Address Line" error={showErr("address")} required>
                             <input
                               className={inputCls(!!showErr("address"))}
                               value={address}
@@ -808,7 +836,7 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
                               placeholder="Street, building, apartment"
                             />
                           </Field>
-                          <Field label="Zip / Postal Code" error={showErr("postalCode")}>
+                          <Field label="Zip / Postal Code" error={showErr("postalCode")} required>
                             <input
                               className={inputCls(!!showErr("postalCode"))}
                               value={postalCode}
@@ -869,8 +897,15 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
                     <>
                       <PaymentOption active={selectedMethod === "mpesa"} onClick={() => setSelectedMethod("mpesa")} title="M-Pesa STK Push" badge="M-PESA">
                         <p className="mb-4 text-[13px] text-[#40493c] dark:text-gray-200">You will receive a prompt on your phone to complete the payment.</p>
-                        <label className="mb-2 block text-[12px] font-semibold tracking-[0.08em] text-[#40493c] dark:text-gray-200">Enter Your M-Pesa Phone Number</label>
-                        <input value={mpesaPhone} onChange={(e) => setMpesaPhone(e.target.value)} className="h-12 w-full rounded-[8px] border border-[#c0cab8] dark:border-[#27731e] bg-[#fbfbfb] dark:bg-gray-800 px-4 text-[16px] text-text-dark dark:text-white/90 text-bold outline-none focus:border-yellow-cta" />
+                        <PhoneInput
+                          id="mpesaPhone"
+                          label="Enter Your M-Pesa Phone Number"
+                          value={mpesaPhone}
+                          onChange={handleMpesaPhoneChange}
+                          countries={["KE"]}
+                          error={mpesaFormatError || showErr("mpesaPhone")}
+                          required
+                        />
                       </PaymentOption>
                       {isCardEligible && (
                         <PaymentOption active={selectedMethod === "card"} onClick={() => setSelectedMethod("card")} title="Credit / Debit Card" badge="VISA  MC" />
@@ -1017,7 +1052,7 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
                 submitting ||
                 pricingQuery.isFetching ||
                 paymentLocked ||
-                (!fullyCoveredByPoints && selectedMethod === "mpesa" && !mpesaPhone.trim())
+                (!fullyCoveredByPoints && selectedMethod === "mpesa" && !mpesaPhone)
               }
               className="mt-8 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-[#fec700] text-[15px] font-black uppercase tracking-[0.08em] text-[#1a1c1c] transition-colors hover:bg-[#f0b800] disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -1035,6 +1070,7 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
           </aside>
         </div>
       </main>
+      <Footer />
     </div>
 
     {showModal && activeOrderId ? (
@@ -1168,10 +1204,13 @@ function PaymentOption({ active, onClick, title, badge, icon, children }: {
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
-function Field({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) {
+function Field({ label, children, error, required }: { label: string; children: React.ReactNode; error?: string; required?: boolean }) {
   return (
     <div>
-      <label className={labelClass}>{label}</label>
+      <label className={labelClass}>
+        {label}
+        {required && <span className="text-red-500"> *</span>}
+      </label>
       {children}
       {error && (
         <p className="mt-1.5 flex items-center gap-1.5 text-[12px] text-red-600">
