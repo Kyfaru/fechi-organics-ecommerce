@@ -8,14 +8,27 @@
  * while a short salutation animation plays, so /admin and everything
  * linked from its sidebar opens instantly right after.
  *
+ * Deliberately lives outside app/admin/(protected)/ (see
+ * app/admin/welcome/page.tsx's header comment) — AdminGuard's Suspense-
+ * gated session/role check showed a visible spinner/blank gap before this
+ * page ever rendered, and occasionally lost the race against the session
+ * cookie Better Auth had just minted moments earlier, bouncing back to
+ * /admin/login instead of showing this page.
+ *
  * Not reachable by typing/guessing/reusing the URL: it requires a
  * one-time `?t=` token minted by POST /api/admin/welcome/start (called by
  * app/admin/login/page.tsx's finishLogin right as 2FA succeeds) and
  * consumed exactly once by POST /api/admin/welcome/verify. Any missing,
  * wrong, or already-used token just skips straight to /admin — the
- * visitor already has a real admin session by this point regardless (see
- * start/route.ts's header comment), so there's nothing to error about,
- * only the salutation itself to skip.
+ * visitor already has a real admin session by this point regardless, so
+ * there's nothing to error about, only the salutation itself to skip.
+ *
+ * The salutation renders immediately on mount rather than waiting on that
+ * token check — verification, the /api/admin/me refresh, and every page's
+ * prefetch all run concurrently in the background while the animation
+ * plays, and only bail out early (to /admin) if the token turns out
+ * invalid. This is what makes the transition feel instant instead of
+ * showing a blank gap first.
  *
  * Reuses this codebase's existing animation conventions: the
  * spinner-in-a-circle + CheckCircle2 swap from
@@ -28,13 +41,39 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, CheckCircle2 } from "lucide-react";
+import { humanizeRole } from "@/lib/admin-welcome";
 
 type Router = ReturnType<typeof useRouter>;
 
 interface AdminMeResponse {
   fullName: string;
   backSoon: boolean;
-  mustChangePassword: boolean;
+}
+
+// Written by app/admin/login/page.tsx's finishLogin right before navigating
+// here, from the same /api/admin/welcome/start response that minted the
+// token — so this page's very first frame can already show the right
+// greeting instead of waiting on its own network round trip. sessionStorage
+// (not localStorage): this is fresh, this-login-only data, read and cleared
+// on mount, not a cross-visit cache.
+const HANDOFF_KEY = "admin-welcome-handoff";
+
+interface WelcomeHandoff {
+  fullName?: string;
+  role?: string;
+  backSoon?: boolean;
+  isNewUser?: boolean;
+}
+
+function readHandoff(): WelcomeHandoff | null {
+  try {
+    const raw = sessionStorage.getItem(HANDOFF_KEY);
+    if (!raw) return null;
+    sessionStorage.removeItem(HANDOFF_KEY);
+    return JSON.parse(raw) as WelcomeHandoff;
+  } catch {
+    return null;
+  }
 }
 
 // Randomized per mount — not a systemic color role, so plain Tailwind
@@ -91,8 +130,7 @@ const PREFETCH_ROUTES = [
  * app/admin/login/page.tsx can also fire it early for a brand-new admin
  * (a real session already exists at method-choice time for that path,
  * before 2FA is even verified — see that file's handleMethodChoice) rather
- * than duplicating this list in two places. Fire-and-forget; callers don't
- * need to await it.
+ * than duplicating this list in two places.
  */
 export async function prefetchAdminSurfaces(queryClient: QueryClient, router: Router): Promise<void> {
   for (const path of PREFETCH_ROUTES) router.prefetch(path);
@@ -107,7 +145,8 @@ export async function prefetchAdminSurfaces(queryClient: QueryClient, router: Ro
   ]);
 }
 
-type Phase = "verifying" | "loading" | "slow" | "ready";
+type Phase = "loading" | "slow" | "ready";
+type GreetingMode = "new" | "backSoon" | "returning";
 
 export default function WelcomeTransition() {
   const router = useRouter();
@@ -115,11 +154,24 @@ export default function WelcomeTransition() {
   const queryClient = useQueryClient();
   const nameColor = useMemo(() => NAME_COLORS[Math.floor(Math.random() * NAME_COLORS.length)], []);
 
-  const [phase, setPhase] = useState<Phase>("verifying");
+  // Seeded synchronously from the handoff on first render — may be null if
+  // this is the very first login this browser has ever completed (nothing
+  // to hand off yet), in which case the background /api/admin/me fetch
+  // below fills these in shortly after instead.
+  const initialHandoff = useMemo(() => readHandoff(), []);
+
+  const [phase, setPhase] = useState<Phase>("loading");
   const [messageIndex, setMessageIndex] = useState(0);
-  const [me, setMe] = useState<AdminMeResponse | null>(null);
+  const [me, setMe] = useState<AdminMeResponse | null>(
+    initialHandoff ? { fullName: initialHandoff.fullName ?? "", backSoon: !!initialHandoff.backSoon } : null,
+  );
+  const [greetingMode, setGreetingMode] = useState<GreetingMode>(
+    initialHandoff?.isNewUser ? "new" : initialHandoff?.backSoon ? "backSoon" : "returning",
+  );
+  const [role] = useState(initialHandoff?.role ?? "");
   const [timedOut, setTimedOut] = useState(false);
   const doneRef = useRef(false);
+  const verifyStartedRef = useRef(false);
 
   function goToDashboard() {
     if (doneRef.current) return;
@@ -135,21 +187,26 @@ export default function WelcomeTransition() {
   }, [phase]);
 
   // Slow-network / hard-timeout copy, independent of whether the work
-  // below ever resolves. Only relevant once past the (near-instant) token
-  // verification step.
+  // below ever resolves.
   useEffect(() => {
-    if (phase === "verifying") return;
     const slowId = setTimeout(() => setPhase((p) => (p === "loading" ? "slow" : p)), SLOW_NETWORK_AFTER_MS);
     const hardId = setTimeout(() => setTimedOut(true), HARD_TIMEOUT_MS);
     return () => {
       clearTimeout(slowId);
       clearTimeout(hardId);
     };
-  }, [phase]);
+  }, []);
 
-  // Step 1: consume the one-time token. Anything other than a confirmed
-  // valid token skips straight to /admin — see this file's header comment.
+  // Consume the one-time token in the background. A guard ref keeps this
+  // to exactly one attempt per mount regardless of what triggers a second
+  // effect run (React StrictMode's intentional dev-only double-invoke, or
+  // any other remount) — a single-use Redis token must never be consumed
+  // twice by its own verifier. Runs concurrently with the fetch/prefetch
+  // effect below, not before it — only an explicitly invalid result cuts
+  // the animation short.
   useEffect(() => {
+    if (verifyStartedRef.current) return;
+    verifyStartedRef.current = true;
     let cancelled = false;
     const token = searchParams.get("t");
 
@@ -166,11 +223,7 @@ export default function WelcomeTransition() {
         });
         const json = await res.json();
         if (cancelled) return;
-        if (!json?.data?.valid) {
-          goToDashboard();
-          return;
-        }
-        setPhase("loading");
+        if (!json?.data?.valid) goToDashboard();
       } catch {
         if (!cancelled) goToDashboard();
       }
@@ -182,10 +235,11 @@ export default function WelcomeTransition() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Step 2: fetch fresh admin status, warm every page's queries + route
-  // chunks, hold the "ready" checkmark briefly, then navigate for real.
+  // Fetch fresh admin status (reconciles/fills in the greeting if no
+  // handoff was available, and seeds the ["admin-me"] cache for Security/
+  // Staff/the sidebar), warm every page's queries + route chunks, hold the
+  // "ready" checkmark briefly, then navigate for real.
   useEffect(() => {
-    if (phase !== "loading") return;
     let cancelled = false;
 
     (async () => {
@@ -193,7 +247,8 @@ export default function WelcomeTransition() {
         const res = await fetch("/api/admin/me", { signal: AbortSignal.timeout(HARD_TIMEOUT_MS) });
         const data = await res.json();
         if (cancelled) return;
-        setMe(data);
+        setMe((prev) => ({ fullName: data.fullName || prev?.fullName || "", backSoon: data.backSoon ?? prev?.backSoon ?? false }));
+        if (!initialHandoff) setGreetingMode(data.backSoon ? "backSoon" : "returning");
         queryClient.setQueryData(["admin-me"], data);
 
         await prefetchAdminSurfaces(queryClient, router);
@@ -213,11 +268,10 @@ export default function WelcomeTransition() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+  }, []);
 
-  if (phase === "verifying") return null;
-
-  const greeting = me?.backSoon ? "Back so soon," : "Welcome back,";
+  const greeting =
+    greetingMode === "new" ? `Welcome, ${humanizeRole(role)}` : greetingMode === "backSoon" ? "Back so soon," : "Welcome back,";
   const statusText =
     phase === "ready" ? "It's ready" : phase === "slow" ? SLOW_NETWORK_COPY : LOADING_MESSAGES[messageIndex];
 
@@ -231,7 +285,7 @@ export default function WelcomeTransition() {
     >
       <h1 className="font-syne text-[32px] sm:text-[42px] font-bold text-black text-center">
         {greeting}{" "}
-        {me && (
+        {me?.fullName && (
           <span className={`italic font-bold ${nameColor}`}>{me.fullName}</span>
         )}
       </h1>

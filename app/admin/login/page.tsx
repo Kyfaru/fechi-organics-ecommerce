@@ -19,6 +19,7 @@ import { checkPortalMatch } from "@/lib/portal-check";
 import { reportError } from "@/lib/observability";
 import { useReloadOnBfcacheRestore } from "@/hooks/use-reload-on-bfcache-restore";
 import { prefetchAdminSurfaces } from "@/components/admin/login/WelcomeTransition";
+import { readAdminLoginCache, writeAdminLoginCache } from "@/lib/admin-login-cache";
 
 // Shape of GET /api/admin/me — read directly by this page for the
 // new-admin setup path (a real session already exists then).
@@ -30,6 +31,7 @@ interface AdminMeResponse {
   email: string;
   phone: string | null;
   fullName: string;
+  role: string;
   backSoon: boolean;
   mustChangePassword: boolean;
 }
@@ -209,7 +211,27 @@ export default function AdminLoginPage() {
         return;
       }
 
-      const token = json?.data?.token;
+      const { token, fullName, role, backSoon } = json?.data ?? {};
+
+      // Hand today's fresh name/role/backSoon straight to the welcome page
+      // (sessionStorage — this-login-only data, not a cross-visit cache) so
+      // its very first frame already shows the right greeting instead of
+      // waiting on its own /api/admin/me round trip. Also refresh the
+      // per-email cache that paints the *next* login's method-choice screen
+      // instantly (see the twoFactorRedirect branch in handleCredentialsSubmit).
+      if (token) {
+        try {
+          sessionStorage.setItem(
+            "admin-welcome-handoff",
+            JSON.stringify({ fullName, role, backSoon, isNewUser }),
+          );
+        } catch {
+          // Storage full/blocked — the welcome page just falls back to its
+          // own /api/admin/me fetch for the greeting, same as before.
+        }
+      }
+      if (email) writeAdminLoginCache(email, { fullName, role });
+
       // Reset the page's own state before navigating away — so if this
       // exact instance is ever shown again (bfcache/history restore), it
       // reflects a fresh credentials step instead of a completed 2FA step
@@ -256,6 +278,21 @@ export default function AdminLoginPage() {
         return;
       }
 
+      // Fired *alongside* signIn.email below, not after it resolves — by
+      // the time we know this is a twoFactorRedirect, this response is
+      // usually already in flight or done, instead of only starting then.
+      // No new information exposure from this timing change: this endpoint
+      // is already public, unauthenticated, rate-limited, and always-200
+      // (see its own header comment) — reachable directly by anyone with
+      // just an email, independent of password correctness, by design.
+      const precheckPromise = fetch("/api/account/2fa/precheck", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      })
+        .then((r) => r.json())
+        .catch(() => null);
+
       // rememberMe: false — the admin session cookie gets no Max-Age, so the
       // browser itself drops it the moment the browser (not just this tab)
       // closes. A different browser/device is unaffected — cookies are
@@ -290,25 +327,31 @@ export default function AdminLoginPage() {
         setAdminMe(null);
         setIsNewUser(false);
         setStep("method-choice");
+
+        // Instant paint from last time's cache (if any) — first login from
+        // a given browser has nothing to paint from yet and waits on the
+        // real response below like before; every login after that shows
+        // the correct Email/SMS cards on the very first frame.
+        const cached = readAdminLoginCache(email);
+        if (cached) {
+          setExistingUserHasPhone(!!cached.hasPhone);
+          setExistingTwoFaEmail(!!cached.twoFaEmail);
+          setExistingTwoFaPhone(!!cached.twoFaPhone);
+        }
+
         // No real session yet (Better Auth withheld it pending 2FA) — same
         // precheck the customer login form uses, since /api/admin/me would
-        // 401 here.
-        fetch("/api/account/2fa/precheck", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email }),
-        })
-          .then((r) => r.json())
-          .then((j) => {
-            setExistingUserHasPhone(!!j?.data?.hasPhone);
-            setExistingTwoFaEmail(!!j?.data?.twoFaEmail);
-            setExistingTwoFaPhone(!!j?.data?.twoFaPhone);
-          })
-          .catch(() => {
-            setExistingUserHasPhone(false);
-            setExistingTwoFaEmail(false);
-            setExistingTwoFaPhone(false);
-          });
+        // 401 here. Already in flight (fired alongside signIn.email above),
+        // so this reconciles quickly rather than starting the wait now.
+        precheckPromise.then((j) => {
+          const hasPhone = !!j?.data?.hasPhone;
+          const twoFaEmail = !!j?.data?.twoFaEmail;
+          const twoFaPhone = !!j?.data?.twoFaPhone;
+          setExistingUserHasPhone(hasPhone);
+          setExistingTwoFaEmail(twoFaEmail);
+          setExistingTwoFaPhone(twoFaPhone);
+          if (j?.data) writeAdminLoginCache(email, { hasPhone, twoFaEmail, twoFaPhone });
+        });
         return;
       }
 
@@ -339,6 +382,13 @@ export default function AdminLoginPage() {
       }
       const me: AdminMeResponse = await meRes.json();
       setAdminMe(me);
+      writeAdminLoginCache(email, {
+        fullName: me.fullName,
+        role: me.role,
+        hasPhone: !!me.phone,
+        twoFaEmail: me.twoFaEmail,
+        twoFaPhone: me.twoFaPhone,
+      });
 
       // Forced password change is checked AFTER 2FA now (see finishLogin),
       // not here — a brand-new admin must finish setting up 2FA in this same

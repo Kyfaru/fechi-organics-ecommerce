@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { decrypt, fingerprint } from "@/lib/crypto";
 import { getRedis } from "@/lib/redis";
 import { StkSendError } from "@/lib/payments/stk-errors";
@@ -32,24 +33,29 @@ function requireKcbBase(): string {
   return KCB_BASE;
 }
 
-async function getKcbToken(branch: KcbStkPushOpts["branch"]): Promise<string> {
+// `fresh` skips the cache read (the new token still overwrites the cached one) —
+// used to retry once after KCB rejects a push for auth.
+async function getKcbToken(branch: KcbStkPushOpts["branch"], fresh = false): Promise<string> {
   const kcbBase = requireKcbBase();
   const redis = getRedis();
-  const cacheKey = `kcb_token:${branch.id}`;
+  const consumerKey = decrypt(branch.consumerKeyEnc).trim();
+  const consumerSecret = decrypt(branch.consumerSecretEnc).trim();
+  // Keyed on host + consumer key, not just branch id: branch ids are fixed
+  // seeded values shared by every environment, so a token minted against UAT
+  // (or before a credential rotation) must never be served to a different
+  // host/app — that pairing reads as a 401/90001 "Invalid Credentials" that
+  // survives every credential fix until the TTL expires.
+  const keyHash = createHash("sha256").update(`${kcbBase}|${consumerKey}`).digest("hex").slice(0, 12);
+  const cacheKey = `kcb_token:${branch.id}:${keyHash}`;
 
-  const cached = await redis.get(cacheKey);
-  if (typeof cached === "string" && cached.length > 0) {
-    // A token cached before consumerKey/consumerSecret were last changed in
-    // the DB (e.g. a re-run of prisma/set-daraja-creds.ts) would still be
-    // served here and paired with today's apiKey — that mismatch reads as a
-    // 401 "Invalid Credentials" downstream with no obvious cause, so log the
-    // cache hit itself rather than silently skipping straight to the request.
-    console.info(`[kcb-client] using cached token — branch=${branch.id} token=${fingerprint(cached)}`);
-    return cached;
+  if (!fresh) {
+    const cached = await redis.get(cacheKey);
+    if (typeof cached === "string" && cached.length > 0) {
+      console.info(`[kcb-client] using cached token — branch=${branch.id} token=${fingerprint(cached)}`);
+      return cached;
+    }
   }
 
-  const consumerKey = decrypt(branch.consumerKeyEnc);
-  const consumerSecret = decrypt(branch.consumerSecretEnc);
   const credentials = Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64");
 
   console.info(
@@ -103,7 +109,7 @@ export async function initiateKcbStkPush(
 ): Promise<{ CheckoutRequestID: string; ResponseCode: string }> {
   const token = await getKcbToken(opts.branch);
   const kcbBase = requireKcbBase();
-  const apiKey = opts.branch.apiKeyEnc ? decrypt(opts.branch.apiKeyEnc) : "";
+  const apiKey = opts.branch.apiKeyEnc ? decrypt(opts.branch.apiKeyEnc).trim() : "";
 
   console.info(
     `[kcb-client] stkpush request — branch=${opts.branch.id} base=${kcbBase} invoiceNumber=${opts.branch.invoiceNumber} apiKey=${fingerprint(apiKey)}`,
@@ -123,39 +129,53 @@ export async function initiateKcbStkPush(
   const orgShortCode = opts.branch.shortcode ?? "";
   const sharedShortCode = orgShortCode.length === 0;
 
-  let res: Response;
-  try {
-    res = await fetch(`${kcbBase}/mm/api/request/1.0.0/stkpush`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        apiKey: apiKey,
-        "Content-Type": "application/json",
-      },
-      // Field names per KCB Buni Node.js integration guide
-      body: JSON.stringify({
-        phoneNumber: phone,
-        amount: Math.round(opts.amountKes / 100), // whole KES
-        invoiceNumber: opts.branch.invoiceNumber ?? opts.branch.shortcode ?? null, // KCB invoice/account number
-        sharedShortCode,
-        orgShortCode,
-        orgPassKey: "",                            // KCB Buni doesn't use a Daraja-style passkey — always empty, not a config gap
-        callbackUrl: opts.callbackUrl,
-        transactionDescription: `Fechi Organics Order ${opts.orderId.slice(0, 8).toUpperCase()}`,
-      }),
-      // Matches Daraja's STK-push timeout (lib/payments/mpesa/stk-push.ts) — a
-      // hung KCB Buni STK endpoint must fail fast so the dual-gateway fallback
-      // (or a clear error) kicks in instead of the request stalling indefinitely.
-      signal: AbortSignal.timeout(15_000),
-    });
-  } catch (fetchErr) {
-    // The request never got a response at all (DNS/connect error, or the
-    // AbortSignal fired first) — KCB never received it, safe to fail over.
-    console.error(`[kcb-client] stkpush request errored — branch=${opts.branch.id}`, fetchErr);
-    throw new StkSendError(`KCB STK push request failed: ${(fetchErr as Error).message}`, true);
+  const send = async (bearer: string): Promise<{ res: Response; rawBody: string }> => {
+    let res: Response;
+    try {
+      res = await fetch(`${kcbBase}/mm/api/request/1.0.0/stkpush`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${bearer}`,
+          apiKey: apiKey,
+          "Content-Type": "application/json",
+        },
+        // Field names per KCB Buni Node.js integration guide
+        body: JSON.stringify({
+          phoneNumber: phone,
+          amount: Math.round(opts.amountKes / 100), // whole KES
+          invoiceNumber: opts.branch.invoiceNumber ?? opts.branch.shortcode ?? null, // KCB invoice/account number
+          sharedShortCode,
+          orgShortCode,
+          orgPassKey: "",                            // KCB Buni doesn't use a Daraja-style passkey — always empty, not a config gap
+          callbackUrl: opts.callbackUrl,
+          transactionDescription: `Fechi Organics Order ${opts.orderId.slice(0, 8).toUpperCase()}`,
+        }),
+        // Matches Daraja's STK-push timeout (lib/payments/mpesa/stk-push.ts) — a
+        // hung KCB Buni STK endpoint must fail fast so the dual-gateway fallback
+        // (or a clear error) kicks in instead of the request stalling indefinitely.
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch (fetchErr) {
+      // The request never got a response at all (DNS/connect error, or the
+      // AbortSignal fired first) — KCB never received it, safe to fail over.
+      console.error(`[kcb-client] stkpush request errored — branch=${opts.branch.id}`, fetchErr);
+      throw new StkSendError(`KCB STK push request failed: ${(fetchErr as Error).message}`, true);
+    }
+    return { res, rawBody: await res.text() };
+  };
+
+  let { res, rawBody } = await send(token);
+
+  // An auth rejection (401 / KCB 90001) means no prompt went out, so one retry
+  // with a freshly minted token is safe — it recovers from a stale or
+  // wrong-environment cached token without waiting out its TTL.
+  if (!res.ok && (res.status === 401 || rawBody.includes("90001"))) {
+    console.warn(
+      `[kcb-client] stkpush auth rejected (status=${res.status}) — retrying once with a fresh token — branch=${opts.branch.id} body="${rawBody.slice(0, 200)}"`,
+    );
+    ({ res, rawBody } = await send(await getKcbToken(opts.branch, true)));
   }
 
-  const rawBody = await res.text();
   if (!res.ok) {
     console.error(`[kcb-client] stkpush failed — branch=${opts.branch.id} status=${res.status} apiKey=${fingerprint(apiKey)} body="${rawBody}"`);
     // Only a 5xx means the gateway itself is down/erroring — a 4xx means KCB

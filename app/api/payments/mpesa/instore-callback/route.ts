@@ -95,7 +95,9 @@ function parseKcbCallback(body: unknown): StkCallbackFields | null {
 export async function POST(req: NextRequest) {
   let body: unknown;
   try {
-    body = await req.json();
+    const rawText = await req.text();
+    console.log("[mpesa/instore-callback] raw body:", rawText);
+    body = JSON.parse(rawText);
   } catch (parseErr) {
     reportError(parseErr, { route: "POST /api/payments/mpesa/instore-callback", tags: { stage: "body_parse" } });
     // Malformed JSON — still return 200 so the provider doesn't retry

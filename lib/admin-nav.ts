@@ -100,7 +100,9 @@ const UNLISTED_RESOURCE_PATHS: { href: string; resource: AppResource }[] = [
 // that forgets to register a resource fails closed instead of open.
 export const NO_RESOURCE_REQUIRED_PATHS = [
   "/admin",
-  "/admin/welcome",
+  // /admin/welcome is NOT listed here — it lives outside app/admin/(protected)/
+  // entirely now (see app/admin/welcome/page.tsx), so AdminGuard never runs
+  // against it in the first place.
   "/admin/profile",
   "/admin/security",
   "/admin/notifications",

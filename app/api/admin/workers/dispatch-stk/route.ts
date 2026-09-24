@@ -113,7 +113,11 @@ export async function POST(req: NextRequest) {
     const branch = await db.branch.findUnique({ where: { id: transaction.inStoreOrder.branchId } });
     if (!branch) return NextResponse.json({ ok: true, skipped: "branch not found" });
 
-    const instoreCallbackUrl = `${process.env.MPESA_CALLBACK_BASE_URL}/api/payments/mpesa/instore-callback`;
+    const instoreCallbackPath = "/api/payments/mpesa/instore-callback";
+    const instoreCallbackUrl = `${process.env.MPESA_CALLBACK_BASE_URL}${instoreCallbackPath}`;
+    // Same base the online KCB flow uses (see the online branch above).
+    const instoreKcbCallbackUrl = `${process.env.KCB_CALLBACK_BASE_URL ?? process.env.MPESA_CALLBACK_BASE_URL}${instoreCallbackPath}`;
+    console.info(`[dispatch-stk] instore order=${transaction.inStoreOrderId} kcbCallbackUrl=${instoreKcbCallbackUrl}`);
     const result = await runDispatch(branch, () =>
       dispatchStk({
         branch,
@@ -122,7 +126,7 @@ export async function POST(req: NextRequest) {
         orderId: transaction.inStoreOrderId,
         orderNumber: transaction.inStoreOrder.orderNumber,
         kind: "instore",
-        kcbCallbackUrl: instoreCallbackUrl,
+        kcbCallbackUrl: instoreKcbCallbackUrl,
         darajaCallbackUrl: instoreCallbackUrl,
       }),
     );

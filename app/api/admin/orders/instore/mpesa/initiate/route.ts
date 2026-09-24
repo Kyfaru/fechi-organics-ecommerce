@@ -326,6 +326,7 @@ export async function POST(req: NextRequest) {
     // QStash itself isn't configured (dev/local), dispatch inline instead of
     // silently dropping the payment.
     const instoreCallbackUrl = `${process.env.MPESA_CALLBACK_BASE_URL}/api/payments/mpesa/instore-callback`;
+    const instoreKcbCallbackUrl = `${process.env.KCB_CALLBACK_BASE_URL ?? process.env.MPESA_CALLBACK_BASE_URL}/api/payments/mpesa/instore-callback`;
     const published = await publishQstashJSON(
       "/api/admin/workers/dispatch-stk",
       { kind: "instore", transactionId: transaction.id },
@@ -340,7 +341,7 @@ export async function POST(req: NextRequest) {
         orderId: order.id,
         orderNumber: order.orderNumber,
         kind: "instore",
-        kcbCallbackUrl: instoreCallbackUrl,
+        kcbCallbackUrl: instoreKcbCallbackUrl,
         darajaCallbackUrl: instoreCallbackUrl,
       });
       await finalizeStkDispatch({ kind: "instore", transactionId: transaction.id, orderId: order.id, result });
