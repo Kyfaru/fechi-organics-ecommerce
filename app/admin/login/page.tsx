@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { useQueryClient } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import { Smartphone, Mail, MessageSquare, ArrowLeft, Lock } from "lucide-react";
 import FormInput from "@/components/auth/FormInput";
 import PasswordInput from "@/components/auth/PasswordInput";
@@ -17,7 +18,21 @@ import { toast } from "@/lib/toast";
 import { checkPortalMatch } from "@/lib/portal-check";
 import { reportError } from "@/lib/observability";
 import { useReloadOnBfcacheRestore } from "@/hooks/use-reload-on-bfcache-restore";
-import WelcomeTransition, { type AdminMeResponse } from "@/components/admin/login/WelcomeTransition";
+import { prefetchAdminSurfaces } from "@/components/admin/login/WelcomeTransition";
+
+// Shape of GET /api/admin/me — read directly by this page for the
+// new-admin setup path (a real session already exists then).
+interface AdminMeResponse {
+  twoFactorEnabled: boolean;
+  twoFaEmail: boolean;
+  twoFaPhone: boolean;
+  userId: string;
+  email: string;
+  phone: string | null;
+  fullName: string;
+  backSoon: boolean;
+  mustChangePassword: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // State machine for the admin login flow:
@@ -27,9 +42,12 @@ import WelcomeTransition, { type AdminMeResponse } from "@/components/admin/logi
 //   totp-verify     → enter 6-digit TOTP code (2FA already set up, method = totp)
 //   totp-setup      → scan QR / copy URI, then enter code to confirm (first login)
 //   otp-verify      → enter 6-digit email/SMS OTP (method = email | sms)
-//   welcome         → post-verify transition (WelcomeTransition) — fetches
-//                     fresh /api/admin/me + prefetches dashboard data behind
-//                     an animated screen, then hands off to /admin
+//
+// After any of totp-verify/totp-setup/otp-verify succeeds, finishLogin()
+// hands off to a genuinely separate route, /admin/welcome (see
+// components/admin/login/WelcomeTransition.tsx) — not a step in this page's
+// own state machine — gated by a one-time token so it can't be reached by
+// typing/reusing a URL.
 // ---------------------------------------------------------------------------
 type AdminLoginStep =
   | "credentials"
@@ -37,8 +55,7 @@ type AdminLoginStep =
   | "method-choice"
   | "totp-verify"
   | "totp-setup"
-  | "otp-verify"
-  | "welcome";
+  | "otp-verify";
 
 interface AdminLoginErrors {
   email?: string;
@@ -46,12 +63,9 @@ interface AdminLoginErrors {
   code?: string;
 }
 
-// AdminMeResponse (shape of GET /api/admin/me) lives in WelcomeTransition.tsx
-// — imported above, single source of truth since that component depends on
-// the full shape.
-
 export default function AdminLoginPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   useReloadOnBfcacheRestore();
 
   // Step 1 — credential fields
@@ -177,35 +191,42 @@ export default function AdminLoginPage() {
   // ---------------------------------------------------------------------------
   // Runs after any 2FA method succeeds (TOTP verify/setup or OTP verify) — a
   // real session exists at this point for the first time in a returning
-  // admin's login (Better Auth mints it inside verifyTotp/verifyOtp). Hands
-  // off to the WelcomeTransition screen immediately rather than blocking
-  // here on the /api/admin/me round trip — see handleWelcomeDone for what
-  // happens once that screen has the answer (including the forced
-  // password-change gate, which still can't be checked any earlier than
-  // this for a returning 2FA admin — no session exists until now).
+  // admin's login (Better Auth mints it inside verifyTotp/verifyOtp). One
+  // call does double duty: it's the forced-password-change gate (still
+  // can't be checked any earlier than this for a returning 2FA admin — no
+  // session exists until now) AND, when no password change is required,
+  // mints the one-time token that authorizes exactly one view of
+  // /admin/welcome. Never blocks on prefetching itself — that all happens
+  // on the welcome screen, behind its own animation.
   // ---------------------------------------------------------------------------
-  function finishLogin() {
-    setStep("welcome");
-  }
+  async function finishLogin() {
+    try {
+      const res = await fetch("/api/admin/welcome/start", { method: "POST" });
+      const json = await res.json();
 
-  // Called by WelcomeTransition once it has a fresh /api/admin/me result and
-  // has finished prefetching the dashboard's own queries.
-  function handleWelcomeDone(me: AdminMeResponse) {
-    if (me.mustChangePassword) {
-      setAdminMe(me);
-      setStep("password-change");
-      return;
+      if (json?.data?.mustChangePassword) {
+        setStep("password-change");
+        return;
+      }
+
+      const token = json?.data?.token;
+      // Reset the page's own state before navigating away — so if this
+      // exact instance is ever shown again (bfcache/history restore), it
+      // reflects a fresh credentials step instead of a completed 2FA step
+      // with stale typed credentials/codes still sitting in memory.
+      setStep("credentials");
+      setEmail("");
+      setPassword("");
+      setCode("");
+      setErrors({});
+      router.replace(token ? `/admin/welcome?t=${encodeURIComponent(token)}` : "/admin");
+    } catch (err) {
+      // Best-effort — skip the salutation entirely rather than strand the
+      // admin; AdminGuard (app/admin/(protected)/layout.tsx) re-verifies
+      // server-side regardless.
+      reportError(err, { route: "admin-login", tags: { step: "finish-login" } });
+      router.replace("/admin");
     }
-    // Reset the page's own state before navigating away — so if this exact
-    // instance is ever shown again (bfcache/history restore), it reflects a
-    // fresh credentials step instead of a completed 2FA step with stale
-    // typed credentials/codes still sitting in memory.
-    setStep("credentials");
-    setEmail("");
-    setPassword("");
-    setCode("");
-    setErrors({});
-    router.replace("/admin");
   }
 
   // ---------------------------------------------------------------------------
@@ -393,6 +414,16 @@ export default function AdminLoginPage() {
     if (methodChoiceLoading) return;
     setErrors({});
     setMethodChoiceLoading(method);
+
+    // A brand-new admin already has a real session here (signIn.email()
+    // minted one — 2FA isn't enabled yet, so nothing intercepted it), so
+    // the admin panel's data can start warming right now instead of
+    // waiting for 2FA to actually be verified. Fire-and-forget: whichever
+    // method they finish with, /admin/welcome re-runs this same prefetch
+    // and just finds a mostly-warm cache. Not possible for a returning
+    // admin — no session exists until verification succeeds (see
+    // finishLogin), so nothing to prefetch against yet.
+    if (isNewUser) void prefetchAdminSurfaces(queryClient, router);
 
     try {
       if (method === "totp") {
@@ -983,22 +1014,9 @@ export default function AdminLoginPage() {
     "totp-verify":     { title: "Two-Factor Auth", subtitle: "Step 2 of 2 — verify your identity" },
     "totp-setup":      { title: "Set Up 2FA", subtitle: "One-time setup for your account" },
     "otp-verify":      { title: "Verify Code", subtitle: "Step 2 of 2 — enter your one-time code" },
-    "welcome":         { title: "", subtitle: "" }, // WelcomeTransition replaces this layout entirely
   };
 
   const { title, subtitle } = headingByStep[step];
-
-  // ---------------------------------------------------------------------------
-  // Render — the post-verify transition replaces the split-panel layout
-  // entirely rather than nesting inside it.
-  // ---------------------------------------------------------------------------
-  if (step === "welcome") {
-    return (
-      <AnimatePresence>
-        <WelcomeTransition onDone={handleWelcomeDone} />
-      </AnimatePresence>
-    );
-  }
 
   // ---------------------------------------------------------------------------
   // Render — split-panel layout

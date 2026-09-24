@@ -100,6 +100,7 @@ const UNLISTED_RESOURCE_PATHS: { href: string; resource: AppResource }[] = [
 // that forgets to register a resource fails closed instead of open.
 export const NO_RESOURCE_REQUIRED_PATHS = [
   "/admin",
+  "/admin/welcome",
   "/admin/profile",
   "/admin/security",
   "/admin/notifications",
