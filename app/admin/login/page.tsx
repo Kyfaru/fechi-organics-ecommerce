@@ -20,6 +20,7 @@ import { reportError } from "@/lib/observability";
 import { useReloadOnBfcacheRestore } from "@/hooks/use-reload-on-bfcache-restore";
 import { prefetchAdminSurfaces } from "@/components/admin/login/WelcomeTransition";
 import { readAdminLoginCache, writeAdminLoginCache } from "@/lib/admin-login-cache";
+import { awaitPendingLogout, isLogoutPending, retryPendingLogout } from "@/lib/admin-logout";
 
 // Shape of GET /api/admin/me — read directly by this page for the
 // new-admin setup path (a real session already exists then).
@@ -124,6 +125,27 @@ export default function AdminLoginPage() {
 
   const { data: sessionData, isPending: sessionPending } = useSession();
 
+  // Finish a logout that never completed (network blip / closed tab).
+  useEffect(() => {
+    retryPendingLogout();
+  }, []);
+
+  // cacheComponents keeps this route alive (hidden) across navigations, so a
+  // revived instance would still be on its old step (e.g. otp-verify after
+  // logout). Reset in cleanup — runs while hidden/unmounting, so no flash.
+  useEffect(() => {
+    return () => {
+      navigatingRef.current = false;
+      setStep("credentials");
+      setEmail("");
+      setPassword("");
+      setCode("");
+      setErrors({});
+      setIsLoading(false);
+      setOtpResetSignal((n) => n + 1);
+    };
+  }, []);
+
   // ---------------------------------------------------------------------------
   // Resend countdown timer
   // ---------------------------------------------------------------------------
@@ -151,6 +173,9 @@ export default function AdminLoginPage() {
     // that point (e.g. a brand-new admin's first signIn.email() call, before
     // 2FA has ever been confirmed) and must NOT trigger this redirect.
     if (navigatingRef.current) return;
+    // Optimistic logout still invalidating in the background — useSession()
+    // holds the old session until it lands; don't bounce back to /admin.
+    if (isLogoutPending()) return;
     if (sessionPending || !sessionData?.session || step !== "credentials") return;
     const role = (sessionData.user as { role?: string } | undefined)?.role;
     if (role === "admin") {
@@ -278,6 +303,9 @@ export default function AdminLoginPage() {
     setCaptchaToken(null);
 
     try {
+      // A late background sign-out must not destroy the session we're about
+      // to create.
+      await awaitPendingLogout();
       // Reject a client's email before ever calling signIn — no session is
       // created for a wrong-portal attempt.
       const portalOk = await checkPortalMatch(email, "admin");

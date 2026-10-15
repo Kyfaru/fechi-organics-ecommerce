@@ -22,7 +22,8 @@ import type { Value as PhoneValue } from "react-phone-number-input";
 import { isValidPhoneNumber, validatePhoneNumberLength } from "libphonenumber-js";
 import PhoneInput from "@/components/ui/PhoneInput";
 import { combineLegacyPhone } from "@/lib/phone";
-import { signOut, changeEmail } from "@/lib/auth-client";
+import { changeEmail } from "@/lib/auth-client";
+import { adminLogout } from "@/lib/admin-logout";
 
 const R2_BASE = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "").replace(/\/$/, "");
 
@@ -504,8 +505,7 @@ function PasswordTab() {
       if (!json.ok) throw new Error(json.error?.message ?? "Password update failed.");
       toast.success("Password updated successfully.", { message: "Signing you out for a fresh login…" });
       setForm({ current: "", next: "", confirm: "" });
-      await signOut();
-      router.replace("/admin/login");
+      adminLogout(router);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to update password.";
       if (msg.toLowerCase().includes("current") || msg.toLowerCase().includes("incorrect")) {

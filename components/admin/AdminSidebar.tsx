@@ -9,8 +9,8 @@ import {
   LogOut, History, AlertTriangle, ChevronLeft, ChevronRight, Menu, X,
   LayoutDashboard, ShoppingCart, Package, Users,
 } from "lucide-react";
-import { signOut, authClient } from "@/lib/auth-client";
-import { clearPersistedQueryCache } from "@/app/providers";
+import { authClient } from "@/lib/auth-client";
+import { adminLogout } from "@/lib/admin-logout";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useAdminMe } from "@/hooks/use-can";
 import { NAV_GROUPS, isActive, type NavItem } from "@/lib/admin-nav";
@@ -121,20 +121,12 @@ export function AdminSidebar() {
     document.documentElement.style.setProperty("--sidebar-w", w);
   }, [collapsed]);
 
-  async function handleLogout() {
-    // Best-effort timestamp for the next login's "back so soon" greeting —
-    // must run before signOut() destroys the session this needs to identify
-    // whose logout it is.
-    await fetch("/api/admin/logout-ping", { method: "POST" }).catch(() => {});
-    await signOut();
-    clearPersistedQueryCache();
-    // Close explicitly rather than relying solely on the navigation below to
-    // unmount it — router.push is a client-side transition, not guaranteed
-    // to be instant, so without this the modal could sit open for a beat
-    // (and would resurface exactly as-is if this page were ever restored
-    // from bfcache, see AdminSessionGuard).
+  function handleLogout() {
+    // Close explicitly so the modal can't resurface if this page is ever
+    // restored from bfcache (see AdminSessionGuard).
     setLogoutConfirming(false);
-    router.push("/admin/login");
+    // Instant wipe + route; server invalidation runs in the background.
+    adminLogout(router);
   }
 
   const [logoutConfirming, setLogoutConfirming] = useState(false);
