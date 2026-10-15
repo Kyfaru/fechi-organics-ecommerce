@@ -110,7 +110,9 @@ async function mintKcbToken(
 export async function initiateKcbStkPush(
   opts: KcbStkPushOpts,
 ): Promise<{ CheckoutRequestID: string; ResponseCode: string }> {
+  const startedAt = Date.now();
   const token = await getKcbToken(opts.branch);
+  const tokenMs = Date.now() - startedAt;
   const kcbBase = requireKcbBase();
   const apiKey = opts.branch.apiKeyEnc ? decrypt(opts.branch.apiKeyEnc).trim() : "";
 
@@ -159,15 +161,26 @@ export async function initiateKcbStkPush(
         signal: AbortSignal.timeout(15_000),
       });
     } catch (fetchErr) {
-      // The request never got a response at all (DNS/connect error, or the
-      // AbortSignal fired first) — KCB never received it, safe to fail over.
-      console.error(`[kcb-client] stkpush request errored — branch=${opts.branch.id}`, fetchErr);
-      throw new StkSendError(`KCB STK push request failed: ${(fetchErr as Error).message}`, true);
+      // No response arrived. A DNS/connect error means KCB never received it
+      // (safe to fail over), but a timeout/abort is AMBIGUOUS — the request
+      // may already have reached KCB and the prompt may be on the handset, so
+      // it must NOT trigger failover (would double-prompt).
+      const name = (fetchErr as Error).name;
+      const timedOut = name === "TimeoutError" || name === "AbortError";
+      console.error(
+        `[kcb-client] stkpush request errored — branch=${opts.branch.id} timedOut=${timedOut} elapsedMs=${Date.now() - startedAt}`,
+        fetchErr,
+      );
+      throw new StkSendError(`KCB STK push request failed: ${(fetchErr as Error).message}`, !timedOut);
     }
     return { res, rawBody: await res.text() };
   };
 
+  const pushStartedAt = Date.now();
   let { res, rawBody } = await send(token);
+  console.info(
+    `[kcb-client] timing — branch=${opts.branch.id} tokenMs=${tokenMs} stkpushMs=${Date.now() - pushStartedAt} status=${res.status}`,
+  );
 
   // An auth rejection (401 / KCB 90001) means no prompt went out, so one retry
   // with a freshly minted token is safe — it recovers from a stale or

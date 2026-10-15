@@ -233,16 +233,19 @@ export default function PaymentStep({
           </div>
 
           <div className="p-4">
-            {method === "mpesa-prompt" && (
+            {/* Kept mounted (just hidden): unmounting on tab switch wiped the
+                prompt panel's resend cooldown, pending order and waiting
+                modal, re-enabling Send while a real STK was still live. */}
+            <div hidden={method !== "mpesa-prompt"}>
               <MpesaPromptPanel
                 orderContext={orderContext}
                 branchReady={branchReady}
                 initialPhone={customerPhone}
               />
-            )}
-            {method === "mpesa-live" && (
+            </div>
+            <div hidden={method !== "mpesa-live"}>
               <MpesaLivePanel orderContext={orderContext} branchReady={branchReady} />
-            )}
+            </div>
             {method === "card" && cardEligible && (
               <PaystackPanel orderContext={orderContext} branchReady={branchReady} />
             )}

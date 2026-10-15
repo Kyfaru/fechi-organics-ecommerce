@@ -95,9 +95,7 @@ export async function POST(req: NextRequest) {
 
   let parsed: z.infer<typeof bodySchema>;
   try {
-    const raw = await req.json();
-    console.log("Incoming Body:", raw);
-    parsed = bodySchema.parse(raw);
+    parsed = bodySchema.parse(await req.json());
   } catch (e) {
     reportError(e, {
       route: "POST /api/admin/orders/instore/mpesa/initiate",

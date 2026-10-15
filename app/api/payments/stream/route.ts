@@ -44,11 +44,17 @@ export async function GET(req: NextRequest) {
   if (!order) return new Response('Forbidden', { status: 403 })
 
   // Short-circuit: order already resolved — no stream needed
+  // One-shot SSE frame, not JSON: EventSource aborts on a non-text/event-stream
+  // MIME type, which would leave the waiting modal stuck on "connecting".
+  const oneShot = (data: object) =>
+    new Response(`data: ${JSON.stringify(data)}\n\n`, {
+      headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform' },
+    })
   if (order.paymentStatus === 'PAID' || order.status === 'CONFIRMED') {
-    return Response.json({ type: 'payment_success', orderId, immediate: true })
+    return oneShot({ type: 'payment_success', orderId, immediate: true })
   }
   if (order.paymentStatus === 'FAILED') {
-    return Response.json({
+    return oneShot({
       type: 'payment_failed',
       orderId,
       reason: 'Payment was previously failed',

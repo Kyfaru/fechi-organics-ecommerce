@@ -180,7 +180,7 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
   const hasEmail = orderContext.customerEmail.trim().length > 0;
   const hasPhone = orderContext.customerPhone.trim().length > 0;
 
-  const disabled = !branchReady || !phone || sending;
+  const disabled = !branchReady || !phone || sending || cooldownSeconds > 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -200,7 +200,7 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
           className="h-10 px-5 rounded-[8px] bg-(--green-800) font-dm text-[13px] font-medium text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
         >
           {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-          {sending ? "Sending…" : "Send M-Pesa Prompt"}
+          {sending ? "Sending…" : cooldownSeconds > 0 ? `Resend in ${cooldownSeconds}s` : "Send M-Pesa Prompt"}
         </button>
 
         {cooldownSeconds > 0 && (

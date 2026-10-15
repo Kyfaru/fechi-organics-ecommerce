@@ -87,6 +87,11 @@ describe("initiateSTKPush — sentNothing classification at the push endpoint", 
     await expect(initiateSTKPush(baseParams)).rejects.toMatchObject({ sentNothing: true });
   });
 
+  it("throws StkSendError(sentNothing=false) on a timeout — the request may have reached Daraja", async () => {
+    mockFetch.mockRejectedValue(Object.assign(new Error("timed out"), { name: "TimeoutError" }));
+    await expect(initiateSTKPush(baseParams)).rejects.toMatchObject({ sentNothing: false });
+  });
+
   it("throws StkSendError(sentNothing=false) on a 4xx — Daraja answered with a rejection", async () => {
     mockFetch.mockResolvedValue(fakeResponse(400, "Bad Request"));
     await expect(initiateSTKPush(baseParams)).rejects.toMatchObject({ sentNothing: false });

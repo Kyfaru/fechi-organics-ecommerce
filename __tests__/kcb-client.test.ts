@@ -139,6 +139,15 @@ describe("initiateKcbStkPush — stkpush step classification", () => {
     ).rejects.toMatchObject({ sentNothing: true });
   });
 
+  it("throws StkSendError(sentNothing=false) when the stkpush request times out — it may have reached KCB", async () => {
+    const timeout = Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
+    mockFetch.mockResolvedValueOnce(TOKEN_OK).mockRejectedValueOnce(timeout);
+
+    await expect(
+      initiateKcbStkPush({ branch: testBranch, phone: "0712345678", amountKes: 100000, orderId: "o1", callbackUrl: "https://cb" }),
+    ).rejects.toMatchObject({ sentNothing: false });
+  });
+
   it("throws StkSendError(sentNothing=false) on a 4xx from the stkpush endpoint — KCB answered with a rejection", async () => {
     mockFetch.mockReset();
     mockFetch.mockResolvedValueOnce(TOKEN_OK).mockResolvedValueOnce(fakeResponse(400, "Bad Request"));
