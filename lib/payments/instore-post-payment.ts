@@ -109,19 +109,9 @@ export async function markInStorePaymentSuccess(args: {
     }).catch((e) => console.error("[instore-post-payment] award-points enqueue failed:", e));
   }
 
-  // Pre-warm the invoice PDF synchronously (not queued, unlike the customer
-  // flow's 60s-delayed worker) so it's already cached in R2 by the time the
-  // admin's success modal renders a Send button. A render/upload failure here
-  // must never fail the payment-success path — Send-receipt will just
-  // generate it lazily on demand instead.
-  try {
-    await getOrCreateInStoreInvoice(args.inStoreOrderId);
-  } catch (e) {
-    console.error("[instore-post-payment] Invoice pre-generation failed (success):", e);
-  }
-
-  // Forward-compatible groundwork for a later phase's waiting-modal SSE
-  // stream — must never throw if Redis is unavailable.
+  // Signal the waiting modal FIRST — the paid state is already committed, so
+  // the modal must not wait on (or be lost to) the invoice render below.
+  // Must never throw if Redis is unavailable.
   try {
     await getRedis().set(
       paymentChannel(args.inStoreOrderId),
@@ -135,6 +125,16 @@ export async function markInStorePaymentSuccess(args: {
     );
   } catch (e) {
     console.error("[instore-post-payment] Redis set failed (success):", e);
+  }
+
+  // Pre-warm the invoice PDF synchronously (not queued) so it's cached in R2
+  // by the time the admin's success modal renders a Send button. A failure
+  // here must never fail the payment-success path — Send-receipt just
+  // generates it lazily on demand instead.
+  try {
+    await getOrCreateInStoreInvoice(args.inStoreOrderId);
+  } catch (e) {
+    console.error("[instore-post-payment] Invoice pre-generation failed (success):", e);
   }
 
   // Fire-and-forget: push this sale to Zoho as a Sales Receipt. Must never

@@ -194,6 +194,8 @@ export async function initiateKcbStkPush(
     throw new StkSendError(`KCB STK push response wasn't JSON (check KCB_BASE_URL=${kcbBase}): ${rawBody.slice(0, 200)}`, false);
   }
 
+  console.info(`[kcb-client] stkpush response — branch=${opts.branch.id} status=${res.status} body=${rawBody.slice(0, 500)}`);
+
   // KCB Buni wraps the payload under a "response" envelope
   const inner = (data.response ?? data) as Record<string, unknown>;
   const checkoutRequestId = (inner.CheckoutRequestID as string | undefined) ?? "";

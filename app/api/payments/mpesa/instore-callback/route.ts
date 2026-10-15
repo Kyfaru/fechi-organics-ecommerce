@@ -52,6 +52,7 @@ type StkCallbackFields = {
 };
 
 type RawStkCallback = {
+  MerchantRequestID?: string;
   CheckoutRequestID?: string;
   ResultCode?: number;
   ResultDesc?: string;
@@ -129,7 +130,9 @@ export async function POST(req: NextRequest) {
     });
 
     if (!transaction) {
-      console.warn(`[mpesa/instore-callback] Unknown CheckoutRequestID: ${checkoutRequestId}`);
+      console.warn(
+        `[mpesa/instore-callback] Unknown CheckoutRequestID: ${checkoutRequestId} merchantRequestId=${extractStkCallback(body)?.MerchantRequestID ?? "N/A"} resultCode=${resultCode}`,
+      );
       return safaricomOk();
     }
 
