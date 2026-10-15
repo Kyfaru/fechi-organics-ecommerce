@@ -9,6 +9,8 @@ import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { paymentModeForOnline } from "@/lib/zoho/payment-mode";
 import { releaseRedeemedPoints } from "@/lib/points/redeem";
 import { classifyFailureReason } from "@/lib/payments/classify-failure";
+import { holdRedeemedPoints } from "@/lib/points/redeem";
+import { createNotification } from "@/lib/notify";
 
 export async function markPaymentSuccess(args: {
   transactionId: string;
@@ -18,9 +20,23 @@ export async function markPaymentSuccess(args: {
   const result = await db.$transaction(async (tx: TxClient) => {
     const transaction = await tx.transaction.findUnique({
       where: { id: args.transactionId },
-      select: { status: true, provider: true },
+      select: { status: true, provider: true, failureReason: true },
     });
-    if (!transaction || transaction.status !== "PENDING") return null;
+    if (!transaction) return null;
+    // A payment that lands AFTER our own timeout job gave up is real money —
+    // recover it instead of leaving the order FAILED. Only timeout-failed
+    // transactions qualify; a gateway-declined payment never succeeds later.
+    const lateRecovery =
+      transaction.status === "FAILED" && /timed out/i.test(transaction.failureReason ?? "");
+    if (transaction.status !== "PENDING" && !lateRecovery) return null;
+
+    // Atomic compare-and-set: of two concurrent callbacks, exactly one wins the
+    // claim and runs stock/points/emails; the loser sees count 0 and exits.
+    const claimed = await tx.transaction.updateMany({
+      where: { id: args.transactionId, status: transaction.status },
+      data: { status: "SUCCESS" },
+    });
+    if (claimed.count !== 1) return null;
 
     // Orders created via mpesa/paystack initiate don't have an orderNumber yet
     // (it used to be assigned only on manual admin confirmation) — assign one
@@ -66,25 +82,16 @@ export async function markPaymentSuccess(args: {
 
     return {
       order,
+      lateRecovery,
       provider: transaction.provider,
       mpesaReceiptNumber: updatedTransaction?.mpesaReceiptNumber ?? null,
       paystackReference: updatedTransaction?.paystackReference ?? null,
     };
   });
 
-  await publishQstashJSON("/api/admin/workers/send-order-confirmation", { orderId: args.orderId });
-  await publishQstashJSON("/api/admin/workers/notify-admin-new-order", { orderId: args.orderId });
-  // Loyalty points, badges, referral conversion and the signup-bonus unlock.
-  // Guarded by `result` so a duplicate callback that hit the idempotency check
-  // above doesn't queue a second award pass (the ledger would reject it anyway).
-  if (result) {
-    await publishQstashJSON("/api/admin/workers/award-points", { orderId: args.orderId });
-  }
-  // Invoice PDF + email follow ~1 minute later, as a separate, quieter
-  // background step after the instant confirmation email above.
-  await publishQstashJSON("/api/admin/workers/generate-invoice", { orderId: args.orderId }, { delay: 60 });
-
-  // Notify waiting SSE stream — must not throw if Redis is unavailable
+  // The paid state is committed — tell the waiting browser FIRST, then fan
+  // out side effects, so a slow or failing QStash publish can never delay or
+  // lose the success signal. Must not throw if Redis is unavailable.
   try {
     await getRedis().set(
       paymentChannel(args.orderId),
@@ -93,6 +100,43 @@ export async function markPaymentSuccess(args: {
     );
   } catch (e) {
     console.error("[post-payment] Redis set failed (success):", e);
+  }
+
+  // allSettled: one failed publish must not drop the others.
+  const sideEffects: Promise<unknown>[] = [
+    publishQstashJSON("/api/admin/workers/send-order-confirmation", { orderId: args.orderId }),
+    publishQstashJSON("/api/admin/workers/notify-admin-new-order", { orderId: args.orderId }),
+    // Invoice PDF + email follow ~1 minute later, as a separate, quieter step.
+    publishQstashJSON("/api/admin/workers/generate-invoice", { orderId: args.orderId }, { delay: 60 }),
+  ];
+  // Loyalty points etc. only for the claim winner, so a duplicate callback
+  // doesn't queue a second award pass (the ledger would reject it anyway).
+  if (result) sideEffects.push(publishQstashJSON("/api/admin/workers/award-points", { orderId: args.orderId }));
+  for (const r of await Promise.allSettled(sideEffects)) {
+    if (r.status === "rejected") console.error("[post-payment] side-effect publish failed:", r.reason);
+  }
+
+  // Late-recovered payment: its redeemed points were released when the order
+  // was timed out — take them again, and tell staff it happened.
+  if (result?.lateRecovery) {
+    try {
+      if (result.order.userId && result.order.pointsRedeemed > 0) {
+        await holdRedeemedPoints({
+          userId: result.order.userId,
+          orderId: args.orderId,
+          points: result.order.pointsRedeemed,
+        });
+      }
+    } catch (e) {
+      console.error("[post-payment] could not re-hold points on late recovery", args.orderId, e);
+    }
+    await createNotification({
+      type: "PAYMENT_ERROR",
+      title: "Late payment recovered",
+      body: `Order ${result.order.orderNumber ?? args.orderId} was paid after its timeout fired — it has been marked PAID automatically.`,
+      link: `/admin/orders/${args.orderId}`,
+      branchId: result.order.branchId ?? null,
+    }).catch(() => {});
   }
 
   // Fire-and-forget: push this now-confirmed-paid sale to Zoho as a Sales

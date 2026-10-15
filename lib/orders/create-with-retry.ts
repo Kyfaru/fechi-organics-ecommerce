@@ -11,7 +11,9 @@
 // happy path.
 // ---------------------------------------------------------------------------
 
-const MAX_ATTEMPTS = 3;
+// Each collision waits for the next second, so N attempts survive N-1 orders
+// landing in the same second (was 3: a 4th simultaneous order failed outright).
+const MAX_ATTEMPTS = 6;
 
 function isOrderNumberCollision(e: unknown): boolean {
   if (typeof e !== "object" || e === null || !("code" in e)) return false;

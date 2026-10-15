@@ -35,12 +35,15 @@ import { deliveryDataSchema } from "@/lib/payments/delivery-schema";
 import { buildTimestampOrderNumber } from "@/lib/orders/generate-order-number";
 import { createWithRetryableOrderNumber } from "@/lib/orders/create-with-retry";
 import { readUtmCookie } from "@/lib/attribution";
+import { signedCallbackUrl } from "@/lib/payments/callback-guard";
 
 export const maxDuration = 15;
 
 const bodySchema = z.object({
   phone: z.string().min(9),
   deliveryData: deliveryDataSchema,
+  // Client-generated per Pay attempt — a repeat returns the existing order.
+  idempotencyKey: z.string().min(8).max(64).optional(),
 }).strict();
 
 export async function POST(req: NextRequest) {
@@ -70,9 +73,19 @@ export async function POST(req: NextRequest) {
     return Err.validation("Invalid request body");
   }
 
-  const { phone, deliveryData } = parsed;
+  const { phone, deliveryData, idempotencyKey } = parsed;
 
   try {
+    // Double-click / network-retry guard: same key => same order, no second
+    // order and no second STK prompt.
+    if (idempotencyKey) {
+      const prior = await db.transaction.findUnique({
+        where: { idempotencyKey },
+        select: { orderId: true },
+      });
+      if (prior) return ok({ orderId: prior.orderId });
+    }
+
     // 3. Load cart and validate it is not empty. A guest's cart lives under
     // the fechi_cart cookie token, not a userId — resolveCart() branches on
     // that the same way GET /api/cart already does.
@@ -244,6 +257,10 @@ export async function POST(req: NextRequest) {
         branchId: branch.id,
         amount: totalCents,
         status: "PENDING",
+        // The STK goes to the number typed for M-Pesa, which may differ from
+        // the order's contact phone (deliveryData.phone).
+        payerPhone: phone,
+        idempotencyKey: idempotencyKey ?? null,
       },
     });
     await db.transactionEvent.create({
@@ -257,11 +274,24 @@ export async function POST(req: NextRequest) {
     // (publishQstashJSON returns null — dev/local), dispatch inline instead
     // of silently dropping the payment; that's the one path where the
     // sub-second response isn't guaranteed.
+    // Watchdog first: scheduled at creation, BEFORE dispatch, so an order
+    // whose dispatch job never runs still gets resolved (no orphan PENDING
+    // order holding loyalty points forever). The worker is idempotent.
+    await publishQstashJSON(
+      "/api/admin/workers/check-failed-payment",
+      { orderId: order.id, transactionId: transaction.id },
+      { delay: 5 * 60 },
+    ).catch((e) => console.error("[mpesa/initiate] watchdog schedule failed:", e));
+    // A publish that THROWS (not just "QStash unconfigured") is treated like
+    // unconfigured: dispatch inline rather than orphaning the order.
     const published = await publishQstashJSON(
       "/api/admin/workers/dispatch-stk",
       { kind: "online", transactionId: transaction.id },
       { retries: 2 },
-    );
+    ).catch((e) => {
+      console.error("[mpesa/initiate] dispatch publish failed — falling back to inline:", e);
+      return null;
+    });
     if (!published) {
       console.warn(`[mpesa/initiate] QStash unavailable — dispatching inline for order=${order.orderNumber}`);
       const result = await dispatchStk({
@@ -271,7 +301,10 @@ export async function POST(req: NextRequest) {
         orderId: order.id,
         orderNumber: order.orderNumber,
         kind: "online",
-        kcbCallbackUrl: `${process.env.KCB_CALLBACK_BASE_URL ?? process.env.MPESA_CALLBACK_BASE_URL}/api/payments/kcb/callback`,
+        kcbCallbackUrl: signedCallbackUrl(
+          `${process.env.KCB_CALLBACK_BASE_URL ?? process.env.MPESA_CALLBACK_BASE_URL}/api/payments/kcb/callback`,
+          transaction.id,
+        ),
         darajaCallbackUrl: `${process.env.MPESA_CALLBACK_BASE_URL}/api/payments/mpesa/callback`,
       });
       await finalizeStkDispatch({ kind: "online", transactionId: transaction.id, orderId: order.id, result });

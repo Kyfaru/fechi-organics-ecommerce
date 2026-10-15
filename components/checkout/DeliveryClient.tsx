@@ -551,6 +551,10 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
     };
   }
 
+  // One key per Pay attempt: a double-click or network retry reuses it, so the
+  // server returns the same order instead of creating (and prompting) twice.
+  const payKeyRef = useRef<string>(crypto.randomUUID());
+
   async function handleMpesaPay() {
     setSubmitting(true);
     capture("payment_initiated", { method: "mpesa" });
@@ -558,10 +562,15 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
       const res = await fetch("/api/payments/mpesa/initiate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: mpesaPhone, deliveryData: buildDeliveryData() }),
+        body: JSON.stringify({
+          phone: mpesaPhone,
+          deliveryData: buildDeliveryData(),
+          idempotencyKey: payKeyRef.current,
+        }),
       });
       const json = await res.json() as { ok: boolean; data?: { orderId: string }; error?: { message: string } };
       if (!res.ok || !json.data?.orderId) {
+        payKeyRef.current = crypto.randomUUID(); // rejected cleanly — next attempt is a fresh one
         toast.error(json.error?.message ?? "Could not initiate payment. Please try again.");
         return;
       }

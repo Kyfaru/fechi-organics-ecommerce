@@ -128,7 +128,12 @@ describe("markInStorePaymentSuccess idempotency", () => {
 
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
       const tx = {
-        inStoreTransaction: { findUnique: mockInStoreTransactionFindUnique, update: mockInStoreTransactionUpdate },
+        inStoreTransaction: {
+          findUnique: mockInStoreTransactionFindUnique,
+          update: mockInStoreTransactionUpdate,
+          // atomic claim — the PENDING-status read above decides who wins
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
         inStoreOrder: { update: mockInStoreOrderUpdate },
         inStoreOrderItem: { findMany: mockInStoreOrderItemFindMany },
         branchProductStock: { upsert: mockStockUpsert },

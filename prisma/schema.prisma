@@ -894,6 +894,13 @@ model transaction {
   paystackReference  String?            @unique
   amount             Int
   status             TxStatus           @default(PENDING)
+  // The M-Pesa number the STK prompt is sent to — the checkout form lets the
+  // payer type a number different from the order contact phone, and the
+  // dispatch worker must use THAT one (falls back to order.deliveryPhone).
+  payerPhone         String?
+  // Client-generated per "Pay" attempt; a repeat of the same key returns the
+  // existing order instead of creating (and prompting) a second one.
+  idempotencyKey     String?            @unique
   // Which gateway actually handled this M-Pesa payment — null for non-M-Pesa
   // providers. Recorded from the dispatch result, not inferred from
   // branch.mpesaGateway, since a fallback can route a payment through the
@@ -1893,4 +1900,24 @@ model mpesaC2bTransaction {
 
   @@index([branchId, transAmount, createdAt])
   @@schema("admin")
+}
+
+// Every STK callback is filed here BEFORE any business logic runs, so a crash
+// or bug downstream can never lose proof that a gateway told us about a
+// payment. dedupeKey = source:checkoutRequestId:resultCode — a gateway retry
+// hits the unique constraint and is treated as a duplicate.
+model paymentCallbackInbox {
+  id          String    @id @default(cuid())
+  dedupeKey   String    @unique
+  source      String // "kcb" | "instore-stk"
+  rawPayload  Json
+  // null = no signature present/enforced, true/false = checked against HMAC
+  hmacOk      Boolean?
+  // processed | duplicate | unknown_ref | amount_mismatch | late_recovered | late_unmatched | error
+  outcome     String?
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([receivedAt])
+  @@schema("public")
 }

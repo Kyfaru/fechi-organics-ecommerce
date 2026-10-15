@@ -26,6 +26,7 @@ import { resolveMpesaGateway } from "@/lib/payments/mpesa/gateway";
 import { dispatchStk, type StkDispatchResult } from "@/lib/payments/dispatch-stk";
 import { finalizeStkDispatch } from "@/lib/payments/finalize-stk-dispatch";
 import { reportError } from "@/lib/observability";
+import { signedCallbackUrl } from "@/lib/payments/callback-guard";
 
 // Worst case is a full primary + fallback attempt, each up to 10s token +
 // 15s STK push — matches the in-store route's old 60s cap, now spent here
@@ -68,6 +69,7 @@ export async function POST(req: NextRequest) {
           orderId: true,
           amount: true,
           branchId: true,
+          payerPhone: true,
           order: { select: { deliveryPhone: true, orderNumber: true } },
         },
       });
@@ -80,12 +82,17 @@ export async function POST(req: NextRequest) {
       const result = await runDispatch(branch, () =>
         dispatchStk({
           branch,
-          phone: transaction.order.deliveryPhone ?? "",
+          // The number the payer typed for M-Pesa, NOT the order's contact
+          // phone (older rows have no payerPhone — fall back to it).
+          phone: transaction.payerPhone ?? transaction.order.deliveryPhone ?? "",
           amountCents: transaction.amount,
           orderId: transaction.orderId,
           orderNumber: transaction.order.orderNumber,
           kind: "online",
-          kcbCallbackUrl: `${process.env.KCB_CALLBACK_BASE_URL ?? process.env.MPESA_CALLBACK_BASE_URL}/api/payments/kcb/callback`,
+          kcbCallbackUrl: signedCallbackUrl(
+            `${process.env.KCB_CALLBACK_BASE_URL ?? process.env.MPESA_CALLBACK_BASE_URL}/api/payments/kcb/callback`,
+            transactionId,
+          ),
           darajaCallbackUrl: `${process.env.MPESA_CALLBACK_BASE_URL}/api/payments/mpesa/callback`,
         }),
       );
@@ -116,7 +123,10 @@ export async function POST(req: NextRequest) {
     const instoreCallbackPath = "/api/payments/mpesa/instore-callback";
     const instoreCallbackUrl = `${process.env.MPESA_CALLBACK_BASE_URL}${instoreCallbackPath}`;
     // Same base the online KCB flow uses (see the online branch above).
-    const instoreKcbCallbackUrl = `${process.env.KCB_CALLBACK_BASE_URL ?? process.env.MPESA_CALLBACK_BASE_URL}${instoreCallbackPath}`;
+    const instoreKcbCallbackUrl = signedCallbackUrl(
+      `${process.env.KCB_CALLBACK_BASE_URL ?? process.env.MPESA_CALLBACK_BASE_URL}${instoreCallbackPath}`,
+      transactionId,
+    );
     console.info(`[dispatch-stk] instore order=${transaction.inStoreOrderId} kcbCallbackUrl=${instoreKcbCallbackUrl}`);
     const result = await runDispatch(branch, () =>
       dispatchStk({
