@@ -719,6 +719,7 @@ export function AdminCustomersClient() {
         action={
           <Link
             href="/admin/customers/tickets"
+            aria-label="Support tickets"
             className="inline-flex items-center gap-2 h-10 px-4 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:opacity-90 transition-opacity"
           >
             <Ticket size={16} />

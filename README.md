@@ -37,6 +37,8 @@ A Next.js 16 e-commerce platform for Fechi Organics — pure ingredients, honest
 - `/admin` — Admin dashboard (requires admin auth)
 - `/admin/blog` — Blog CMS (create/edit/publish posts)
 
+The admin panel adapts to phones and tablets (bottom tab bar, card tables, filter sheet). Layout rules, tokens, per-page status and known gaps are in [`docs/admin-mobile-design-system.md`](docs/admin-mobile-design-system.md). Change record: [`docs/changelog/2026-10-16-admin-mobile-responsive.md`](docs/changelog/2026-10-16-admin-mobile-responsive.md).
+
 ---
 
 ## Project structure

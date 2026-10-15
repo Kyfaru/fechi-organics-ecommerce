@@ -1500,7 +1500,7 @@ function BulkBar({
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 80, opacity: 0 }}
           transition={{ type: "spring", stiffness: 320, damping: 30 }}
-          className="fixed bottom-0 left-0 right-0 md:left-[264px] h-[72px] bg-white border-t border-(--neutral-200) shadow-(--e3) z-30 flex items-center px-4 sm:px-6 gap-4"
+          className="fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom))] md:bottom-0 left-0 right-0 md:left-[264px] h-[72px] bg-white border-t border-(--neutral-200) shadow-(--e3) z-30 flex items-center px-4 sm:px-6 gap-4"
         >
           <span className="font-dm text-[14px] font-medium text-(--neutral-700) mr-auto">
             {count} selected
