@@ -16,10 +16,10 @@ function Badged({ base, badge: Badge, size = 20 }: { base: "zoho" | LucideIcon; 
     <span className="relative inline-flex shrink-0" style={{ width: size, height: size }} aria-hidden="true">
       {Base ? <Base size={size} /> : <ZohoIcon size={size} />}
       <span
-        className="absolute -bottom-1 -right-1.5 rounded-full bg-white dark:bg-(--dark-surface) text-current flex items-center justify-center"
-        style={{ width: size * 0.6, height: size * 0.6 }}
+        className="absolute -bottom-1 -right-1.5 rounded-full bg-white dark:bg-(--dark-surface) text-current ring-1 ring-current/30 flex items-center justify-center"
+        style={{ width: size * 0.7, height: size * 0.7 }}
       >
-        <Badge size={size * 0.5} strokeWidth={3} />
+        <Badge size={size * 0.6} strokeWidth={2.75} />
       </span>
     </span>
   );

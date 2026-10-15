@@ -2006,15 +2006,15 @@ export function AdminProductsClient() {
   const router = useRouter();
 
   const addButton = (
-    <div className="flex items-center justify-end gap-2">
+    <div className="flex flex-wrap items-stretch gap-2 w-full lg:w-auto lg:justify-end">
       {/* Global-tier callers pick which branch's Zoho org to sync — each
           branch runs its own independent org, so sync is never "all branches". */}
       {isGlobalTier && (
-        <div className="relative">
+        <div className="relative max-sm:w-full">
           <select
             value={selectedSyncBranchId}
             onChange={(e) => setSyncBranchId(e.target.value)}
-            className="h-10 pl-3 pr-8 max-sm:w-[112px] max-sm:truncate rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-700) focus:outline-none focus:ring-2 focus:ring-(--green-500) appearance-none cursor-pointer"
+            className="h-10 pl-3 pr-8 max-sm:w-full rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-700) focus:outline-none focus:ring-2 focus:ring-(--green-500) appearance-none cursor-pointer"
           >
             {syncBranches.map((b) => (
               <option key={b.id} value={b.id}>{b.name}</option>
@@ -2031,11 +2031,11 @@ export function AdminProductsClient() {
         disabled={syncing}
         aria-label="Sync with Zoho"
         title="Sync with Zoho"
-        className="inline-flex items-center gap-2 px-4 py-2 max-sm:w-10 max-sm:h-10 max-sm:px-0 max-sm:justify-center text-sm font-medium rounded-lg border border-gray-200 dark:border-neutral-700 text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 disabled:opacity-50"
+        className="inline-flex items-center gap-2 px-4 py-2 max-sm:flex-col max-sm:h-auto max-sm:py-2 max-sm:px-2 max-sm:gap-1 max-sm:flex-1 max-sm:min-w-[72px] max-sm:text-[11px] max-sm:justify-center text-sm font-medium rounded-lg border border-gray-200 dark:border-neutral-700 text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 disabled:opacity-50"
       >
         <RefreshCw className={`w-4 h-4 max-sm:hidden ${syncing ? "animate-spin" : ""}`} />
         <span className={`sm:hidden ${syncing ? "animate-spin" : ""}`}><ZohoSyncIcon size={20} /></span>
-        <span className="max-sm:sr-only">{syncing ? "Syncing…" : "Sync with Zoho"}</span>
+        <span className="sm:hidden">{syncing ? "Syncing…" : "Sync"}</span><span className="max-sm:hidden">{syncing ? "Syncing…" : "Sync with Zoho"}</span>
       </button>
       <Can permissions={{ products: ["create"] }}>
         <button
@@ -2052,29 +2052,29 @@ export function AdminProductsClient() {
       
       <button
         onClick={() => router.push('/admin/products/reviews')}
-        className="h-10 px-5 max-sm:w-10 max-sm:px-0 max-sm:justify-center rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+        className="h-10 px-5 max-sm:flex-col max-sm:h-auto max-sm:py-2 max-sm:px-2 max-sm:gap-1 max-sm:flex-1 max-sm:min-w-[72px] max-sm:text-[11px] max-sm:justify-center rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
       >
         <Star size={16} />
-        <span className="max-sm:sr-only">View Reviews</span>
+        <span className="sm:hidden">Reviews</span><span className="max-sm:hidden">View Reviews</span>
       </button>
 
       {/* Zoho staging review queue — new Zoho items land here instead of
           auto-creating live products. See AdminZohoStagedItemsClient. */}
       <button
         onClick={() => router.push('/admin/products/zoho')}
-        className="h-10 px-5 max-sm:w-10 max-sm:px-0 max-sm:justify-center rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+        className="h-10 px-5 max-sm:flex-col max-sm:h-auto max-sm:py-2 max-sm:px-2 max-sm:gap-1 max-sm:flex-1 max-sm:min-w-[72px] max-sm:text-[11px] max-sm:justify-center rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
       >
         <ListChecks size={16} className="max-sm:hidden" />
         <span className="sm:hidden"><ZohoListIcon size={20} /></span>
-        <span className="max-sm:sr-only">Zoho Products</span>
+        <span className="sm:hidden">Zoho items</span><span className="max-sm:hidden">Zoho Products</span>
       </button>
       <button
         onClick={() => router.push('/admin/products/zoho/expelled')}
-        className="h-10 px-5 max-sm:w-10 max-sm:px-0 max-sm:justify-center rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+        className="h-10 px-5 max-sm:flex-col max-sm:h-auto max-sm:py-2 max-sm:px-2 max-sm:gap-1 max-sm:flex-1 max-sm:min-w-[72px] max-sm:text-[11px] max-sm:justify-center rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
       >
         <Archive size={16} className="max-sm:hidden" />
         <span className="sm:hidden"><ZohoArchiveIcon size={20} /></span>
-        <span className="max-sm:sr-only">Expelled Zoho Products</span>
+        <span className="sm:hidden">Expelled</span><span className="max-sm:hidden">Expelled Zoho Products</span>
       </button>
     </div>
   );
