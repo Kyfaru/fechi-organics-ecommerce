@@ -118,6 +118,9 @@ export default function AdminLoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const turnstileRef = useRef<TurnstileHandle>(null);
+  // Set once post-2FA navigation has started — blocks the mount redirect
+  // effect and keeps the loading state on until the route actually changes.
+  const navigatingRef = useRef(false);
 
   const { data: sessionData, isPending: sessionPending } = useSession();
 
@@ -147,6 +150,7 @@ export default function AdminLoginPage() {
     // change, 2FA setup/verify) — a real session can legitimately exist at
     // that point (e.g. a brand-new admin's first signIn.email() call, before
     // 2FA has ever been confirmed) and must NOT trigger this redirect.
+    if (navigatingRef.current) return;
     if (sessionPending || !sessionData?.session || step !== "credentials") return;
     const role = (sessionData.user as { role?: string } | undefined)?.role;
     if (role === "admin") {
@@ -203,7 +207,13 @@ export default function AdminLoginPage() {
   // ---------------------------------------------------------------------------
   async function finishLogin() {
     try {
-      const res = await fetch("/api/admin/welcome/start", { method: "POST" });
+      // Session cookie can lag the verify response by a beat — retry once
+      // before falling through to /admin without the welcome screen.
+      let res = await fetch("/api/admin/welcome/start", { method: "POST" });
+      if (!res.ok) {
+        await new Promise((r) => setTimeout(r, 200));
+        res = await fetch("/api/admin/welcome/start", { method: "POST" });
+      }
       const json = await res.json();
 
       if (json?.data?.mustChangePassword) {
@@ -232,21 +242,19 @@ export default function AdminLoginPage() {
       }
       if (email) writeAdminLoginCache(email, { fullName, role });
 
-      // Reset the page's own state before navigating away — so if this
-      // exact instance is ever shown again (bfcache/history restore), it
-      // reflects a fresh credentials step instead of a completed 2FA step
-      // with stale typed credentials/codes still sitting in memory.
-      setStep("credentials");
-      setEmail("");
-      setPassword("");
-      setCode("");
-      setErrors({});
+      // Do NOT reset step/inputs here: setStep("credentials") re-renders the
+      // login form (the flash) and re-fires the "already signed in" effect,
+      // which overrides this replace with /admin and skips the welcome
+      // screen. A bfcache restore reloads the page (useReloadOnBfcacheRestore),
+      // so stale state can't resurface.
+      navigatingRef.current = true;
       router.replace(token ? `/admin/welcome?t=${encodeURIComponent(token)}` : "/admin");
     } catch (err) {
       // Best-effort — skip the salutation entirely rather than strand the
       // admin; AdminGuard (app/admin/(protected)/layout.tsx) re-verifies
       // server-side regardless.
       reportError(err, { route: "admin-login", tags: { step: "finish-login" } });
+      navigatingRef.current = true;
       router.replace("/admin");
     }
   }
@@ -576,12 +584,12 @@ export default function AdminLoginPage() {
         return;
       }
 
-      finishLogin();
+      await finishLogin();
     } catch (err) {
       reportError(err, { route: "admin-login", tags: { step: "totp-verify" } });
       setErrors({ code: "Verification failed. Please try again." });
     } finally {
-      setIsLoading(false);
+      if (!navigatingRef.current) setIsLoading(false);
     }
   }
 
@@ -608,12 +616,12 @@ export default function AdminLoginPage() {
         return;
       }
 
-      finishLogin();
+      await finishLogin();
     } catch (err) {
       reportError(err, { route: "admin-login", tags: { step: "totp-setup" } });
       setErrors({ code: "Verification failed. Please try again." });
     } finally {
-      setIsLoading(false);
+      if (!navigatingRef.current) setIsLoading(false);
     }
   }
 
@@ -635,13 +643,13 @@ export default function AdminLoginPage() {
         return;
       }
 
-      finishLogin();
+      await finishLogin();
     } catch (err) {
       reportError(err, { route: "admin-login", tags: { step: "otp-verify" } });
       setErrors({ code: "Verification failed. Please try again." });
       setOtpResetSignal((n) => n + 1);
     } finally {
-      setIsLoading(false);
+      if (!navigatingRef.current) setIsLoading(false);
     }
   }
 
