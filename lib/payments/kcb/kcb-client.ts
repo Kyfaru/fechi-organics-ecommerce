@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { decrypt, fingerprint } from "@/lib/crypto";
-import { getRedis } from "@/lib/redis";
+import { getOrMintToken } from "@/lib/payments/token-cache";
 import { StkSendError } from "@/lib/payments/stk-errors";
 
 export interface KcbStkPushOpts {
@@ -37,7 +37,6 @@ function requireKcbBase(): string {
 // used to retry once after KCB rejects a push for auth.
 async function getKcbToken(branch: KcbStkPushOpts["branch"], fresh = false): Promise<string> {
   const kcbBase = requireKcbBase();
-  const redis = getRedis();
   const consumerKey = decrypt(branch.consumerKeyEnc).trim();
   const consumerSecret = decrypt(branch.consumerSecretEnc).trim();
   // Keyed on host + consumer key, not just branch id: branch ids are fixed
@@ -48,14 +47,21 @@ async function getKcbToken(branch: KcbStkPushOpts["branch"], fresh = false): Pro
   const keyHash = createHash("sha256").update(`${kcbBase}|${consumerKey}`).digest("hex").slice(0, 12);
   const cacheKey = `kcb_token:${branch.id}:${keyHash}`;
 
-  if (!fresh) {
-    const cached = await redis.get(cacheKey);
-    if (typeof cached === "string" && cached.length > 0) {
-      console.info(`[kcb-client] using cached token — branch=${branch.id} token=${fingerprint(cached)}`);
-      return cached;
-    }
-  }
+  const { token, cached } = await getOrMintToken(
+    cacheKey,
+    () => mintKcbToken(branch, kcbBase, consumerKey, consumerSecret),
+    { fresh },
+  );
+  if (cached) console.info(`[kcb-client] using cached token — branch=${branch.id} token=${fingerprint(token)}`);
+  return token;
+}
 
+async function mintKcbToken(
+  branch: KcbStkPushOpts["branch"],
+  kcbBase: string,
+  consumerKey: string,
+  consumerSecret: string,
+): Promise<{ token: string; expiresInS: number }> {
   const credentials = Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64");
 
   console.info(
@@ -98,10 +104,7 @@ async function getKcbToken(branch: KcbStkPushOpts["branch"], fresh = false): Pro
     console.error(`[kcb-client] token response wasn't JSON — branch=${branch.id} base=${kcbBase} body="${rawBody.slice(0, 300)}"`);
     throw new StkSendError(`KCB token response wasn't JSON (check KCB_BASE_URL=${kcbBase}): ${rawBody.slice(0, 200)}`, true);
   }
-  const ttl = Math.max(60, (data.expires_in ?? 3600) - 60);
-  await redis.set(cacheKey, data.access_token, { ex: ttl });
-
-  return data.access_token;
+  return { token: data.access_token, expiresInS: data.expires_in ?? 3600 };
 }
 
 export async function initiateKcbStkPush(

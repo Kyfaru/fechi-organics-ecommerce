@@ -10,7 +10,7 @@
  */
 
 import { decrypt, fingerprint } from "@/lib/crypto";
-import { getRedis } from "@/lib/redis";
+import { getOrMintToken } from "@/lib/payments/token-cache";
 import { StkSendError } from "@/lib/payments/stk-errors";
 
 const DARAJA_BASE =
@@ -38,15 +38,15 @@ export async function getDarajaToken(branch: {
   consumerKeyEnc: string;
   consumerSecretEnc: string;
 }): Promise<string> {
-  const redis = getRedis();
-  const cacheKey = `mpesa_token:${branch.id}`;
+  const { token } = await getOrMintToken(`mpesa_token:${branch.id}`, () => mintDarajaToken(branch));
+  return token;
+}
 
-  // Try cache first to avoid unnecessary Daraja calls
-  const cached = await redis.get(cacheKey);
-  if (typeof cached === "string" && cached.length > 0) {
-    return cached;
-  }
-
+async function mintDarajaToken(branch: {
+  id: string;
+  consumerKeyEnc: string;
+  consumerSecretEnc: string;
+}): Promise<{ token: string; expiresInS: number }> {
   // Decrypt credentials — throws if the encrypted payload is malformed
   const key = decrypt(branch.consumerKeyEnc);
   const secret = decrypt(branch.consumerSecretEnc);
@@ -99,10 +99,7 @@ export async function getDarajaToken(branch: {
     throw new StkSendError("[daraja] Token response missing access_token field", true);
   }
 
-  // Cache for (expires_in − 60) seconds so we never serve a stale token.
-  // Daraja returns expires_in as a string number ("3599").
-  const ttlSeconds = Math.max(30, parseInt(data.expires_in, 10) - 60);
-  await redis.set(cacheKey, data.access_token, { ex: ttlSeconds });
-
-  return data.access_token;
+  // Daraja returns expires_in as a string number ("3599"); caching and the
+  // refresh margin live in lib/payments/token-cache.ts.
+  return { token: data.access_token, expiresInS: parseInt(data.expires_in, 10) || 3599 };
 }

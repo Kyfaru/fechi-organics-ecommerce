@@ -101,12 +101,12 @@ describe("initiateKcbStkPush — token step classification", () => {
     await initiateKcbStkPush({ branch: testBranch, phone: "0712345678", amountKes: 100000, orderId: "o1", callbackUrl: "https://cb" });
     expect(mockRedisSet).toHaveBeenCalledWith(
       expect.stringMatching(/^kcb_token:branch-1:[0-9a-f]{12}$/),
-      "tok-123",
+      expect.stringContaining('"token":"tok-123"'),
       expect.objectContaining({ ex: expect.any(Number) }),
     );
 
     // Second call: cached token present — only the stkpush fetch should fire.
-    mockRedisGet.mockResolvedValue("tok-123");
+    mockRedisGet.mockResolvedValue({ token: "tok-123", expiresAt: Date.now() + 3_000_000 });
     mockFetch.mockClear();
     mockFetch.mockResolvedValueOnce(fakeResponse(200, JSON.stringify({ CheckoutRequestID: "ws_CO_2", ResponseCode: "0" })));
     await initiateKcbStkPush({ branch: testBranch, phone: "0712345678", amountKes: 100000, orderId: "o1", callbackUrl: "https://cb" });
