@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@iconify/react";
 import { Bell } from "lucide-react"; // EmptyState's prop is typed LucideIcon — the one deliberate exception on this page
+import { MobileFilterSheet } from "@/components/admin/ui/MobileFilterSheet";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { EmptyState } from "@/components/admin/ui/EmptyState";
 import { SkeletonTableRow } from "@/components/admin/ui/Skeleton";
@@ -246,15 +247,27 @@ export function NotificationsClient() {
         title="Notifications"
         description="Stay on top of orders, payments, and store activity"
         action={
-          unreadCount > 0 ? (
-            <button
-              onClick={() => markAllRead.mutate()}
-              className="flex items-center gap-1.5 h-9 px-4 rounded-[8px] bg-(--green-800) text-white font-dm text-[13px] font-medium hover:bg-(--green-900) transition-colors"
-            >
-              <Icon icon="material-symbols:done-all-rounded" width={15} height={15} />
-              Mark all read
-            </button>
-          ) : undefined
+          <>
+            <MobileFilterSheet
+              groups={[
+                { type: "single", key: "range", label: "Date range", value: dateRange === "custom" ? "" : dateRange, onChange: setDateRange, allLabel: "Any time", options: DATE_RANGE_OPTIONS.filter((o) => o.value !== "custom") },
+                { type: "date", key: "custom", label: "Custom dates", from: customFrom, to: customTo, onChange: (f, t) => { setCustomFrom(f); setCustomTo(t); if (f || t) setDateRange("custom"); else if (dateRange === "custom") setDateRange(""); } },
+                { type: "single", key: "category", label: "Category", value: category, onChange: setCategory, allLabel: "All categories", options: categoryOptions },
+                ...(isGlobal && branches.length > 0 ? [{ type: "single" as const, key: "branch", label: "Branch", value: branchId, onChange: setBranchId, allLabel: "All branches", options: branches.map((b: { id: string; name: string }) => ({ value: b.id, label: b.name })) }] : []),
+                { type: "multi", key: "sev", label: "Severity", value: severities.size === SEVERITIES.length ? [] : [...severities], onChange: (v) => setSeverities(new Set(v.length ? (v as Severity[]) : SEVERITIES)), options: SEVERITIES.map((x) => ({ value: x, label: SEVERITY_MAP[x].label })) },
+              ]}
+            />
+            {unreadCount > 0 && (
+              <button
+                onClick={() => markAllRead.mutate()}
+                aria-label="Mark all read"
+                className="flex items-center justify-center gap-1.5 h-9 px-4 max-sm:w-10 max-sm:h-10 max-sm:px-0 rounded-[8px] bg-(--green-800) text-white font-dm text-[13px] font-medium hover:bg-(--green-900) transition-colors"
+              >
+                <Icon icon="material-symbols:done-all-rounded" width={15} height={15} />
+                <span className="max-sm:sr-only">Mark all read</span>
+              </button>
+            )}
+          </>
         }
       />
 
@@ -325,7 +338,7 @@ export function NotificationsClient() {
         </div>
 
         {/* Filters sidebar */}
-        <div className="w-full lg:w-72 shrink-0">
+        <div className="w-full lg:w-72 shrink-0 max-sm:hidden">
           <div className="bg-white dark:bg-(--dark-surface) rounded-xl border border-(--neutral-200) dark:border-(--dark-border) p-5 lg:sticky lg:top-6 flex flex-col gap-4">
             <h3 className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">Filters</h3>
 

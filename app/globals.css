@@ -417,3 +417,13 @@ body {
   .admin-overlay > * { width: 100% !important; max-width: none !important; margin: 0 !important; border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important; max-height: 92dvh; overflow-y: auto; }
 }
 @media (prefers-reduced-motion: reduce) { .admin-overlay, .admin-overlay > * { animation: none; } }
+
+/* Raw admin tables -> stacked cards on phones (no horizontal scroll). */
+@media (max-width: 639px) {
+  table.admin-stack-table, table.admin-stack-table tbody { display: block; min-width: 0 !important; width: 100%; }
+  table.admin-stack-table thead { display: none; }
+  table.admin-stack-table tr { display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; border-bottom: 1px solid var(--neutral-200); position: relative; }
+  table.admin-stack-table td { display: block; padding: 0 !important; text-align: left !important; }
+  table.admin-stack-table td:last-child { position: absolute; top: 8px; right: 8px; }
+  table.admin-stack-table td:first-child { padding-right: 40px !important; }
+}

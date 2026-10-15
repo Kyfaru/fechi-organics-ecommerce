@@ -13,6 +13,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { Icon } from "@iconify/react";
 import { Search, RefreshCw, ChevronDown, Activity } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { MobileFilterSheet } from "@/components/admin/ui/MobileFilterSheet";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { EmptyState } from "@/components/admin/ui/EmptyState";
 import { PrelineSelect } from "@/components/admin/ui/PrelineSelect";
@@ -263,7 +264,7 @@ export function AdminActivityClient() {
       <div className="px-4 sm:px-6 pb-6 space-y-4">
         {/* Filter toolbar */}
         <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 flex flex-wrap items-center gap-3">
-          <div className="relative w-full sm:w-[240px]">
+          <div className="relative max-sm:flex-1 sm:w-[240px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
             <input
               value={search}
@@ -273,6 +274,15 @@ export function AdminActivityClient() {
             />
           </div>
 
+          <MobileFilterSheet
+            groups={[
+              { type: "single", key: "severity", label: "Severity", value: severity, onChange: setSeverity, allLabel: "All severities", options: [{ value: "INFO", label: "Info" }, { value: "WARNING", label: "Warning" }, { value: "CRITICAL", label: "Critical" }] },
+              { type: "multi", key: "areas", label: "Areas", value: resources, onChange: setResources, options: RESOURCE_OPTIONS.map((r) => ({ value: r, label: r.charAt(0).toUpperCase() + r.slice(1) })) },
+              { type: "date", key: "date", label: "Date range", from: dateRange?.start ?? "", to: dateRange?.end ?? "", onChange: (f, t) => setDateRange(!f && !t ? null : { start: f || t, end: t || f }) },
+            ]}
+          />
+
+          <div className="contents max-sm:hidden">
           <ChartFilter value={dateRange} onChange={setDateRange} />
 
           <div className="w-full sm:w-[150px]">
@@ -289,6 +299,7 @@ export function AdminActivityClient() {
           </div>
 
           <ResourceMultiSelect selected={resources} onChange={setResources} />
+          </div>
 
           {hasFilters && (
             <button

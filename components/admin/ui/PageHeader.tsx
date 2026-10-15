@@ -27,14 +27,19 @@ export function PageHeader({ breadcrumbs, title, description, action, goldWash }
           ))}
         </nav>
       )}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+      <div className="flex flex-row items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="font-syne text-[22px] sm:text-[28px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">{title}</h1>
           {description && (
             <p className="font-dm text-[13px] sm:text-[15px] text-(--neutral-500) dark:text-(--dark-muted) mt-1">{description}</p>
           )}
         </div>
-        {action && <div className="shrink-0 flex flex-wrap gap-2 max-sm:[&>*]:flex-1">{action}</div>}
+        {action && (
+          // Phones: header actions that carry an icon collapse to icon-only (text stays in the DOM for screen readers).
+          <div className="shrink-0 flex flex-wrap items-center gap-2 max-sm:[&_:is(button,a):has(svg)]:text-[0px] max-sm:[&_:is(button,a):has(svg)]:gap-0 max-sm:[&_:is(button,a):has(svg)]:min-w-10 max-sm:[&_:is(button,a):has(svg)]:min-h-10 max-sm:[&_:is(button,a):has(svg)]:px-0 max-sm:[&_:is(button,a):has(svg)]:justify-center">
+            {action}
+          </div>
+        )}
       </div>
       <div className="border-t border-(--neutral-200) dark:border-(--dark-border) mt-4 mb-4 sm:mb-6" />
     </div>

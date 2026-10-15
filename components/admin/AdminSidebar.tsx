@@ -16,6 +16,16 @@ import { useAdminMe } from "@/hooks/use-can";
 import { NAV_GROUPS, isActive, type NavItem } from "@/lib/admin-nav";
 import type { PermissionCheck } from "@/lib/require-permission";
 
+const ADVANCED_LINKS = [
+  { href: "/admin/orders/shipping", label: "Shipping" },
+  { href: "/admin/orders/tracking", label: "Order tracking" },
+  { href: "/admin/products/categories", label: "Product categories" },
+  { href: "/admin/products/qna", label: "Product Q&A" },
+  { href: "/admin/products/zoho", label: "Zoho products" },
+  { href: "/admin/settings/delivery-zones", label: "Delivery zones" },
+  { href: "/admin/staff/roles", label: "Roles & permissions" },
+];
+
 const BOTTOM_TABS = [
   { href: "/admin", label: "Home", icon: LayoutDashboard, exact: true },
   { href: "/admin/orders", label: "Orders", icon: ShoppingCart, exact: false },
@@ -308,6 +318,28 @@ function SidebarContent({
             </div>
           </div>
         ))}
+
+        {/* Phones only: deep / rarely-used pages that have no sidebar entry. */}
+        {mobile && (
+          <details className="group">
+            <summary className="font-dm text-[11px] font-semibold uppercase tracking-wider text-(--green-200) dark:text-(--dark-muted) px-2 mb-2 cursor-pointer list-none flex items-center justify-between">
+              Advanced
+              <ChevronRight size={14} className="transition-transform group-open:rotate-90" />
+            </summary>
+            <div className="space-y-0.5">
+              {ADVANCED_LINKS.map((l) => (
+                <Link
+                  key={l.href}
+                  href={l.href}
+                  onClick={() => onNavClick?.()}
+                  className="flex items-center h-11 rounded-[8px] px-3 font-dm text-[14px] font-medium text-white/80 dark:text-(--dark-text) hover:bg-(--green-800) dark:hover:bg-(--dark-border)"
+                >
+                  {l.label}
+                </Link>
+              ))}
+            </div>
+          </details>
+        )}
       </nav>
 
       {/* Bottom section */}

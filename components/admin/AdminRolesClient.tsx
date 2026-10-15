@@ -108,7 +108,38 @@ export function AdminRolesClient() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Phones: one card per resource listing what each role can do (matrix is desktop-only). */}
+          <div className="md:hidden divide-y divide-(--neutral-200) dark:divide-(--dark-border)">
+            {visibleResources.map((resource) => (
+              <div key={resource} className="p-4 space-y-2">
+                <div className="font-dm text-[14px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">{formatLabel(resource)}</div>
+                {visibleRoles.map((role) => {
+                  const granted = grantsFor(role, resource);
+                  return (
+                    <div key={role} className="flex items-start gap-3">
+                      <span className="w-24 shrink-0 font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted)">{formatLabel(role)}</span>
+                      <div className="flex flex-wrap gap-1">
+                        {granted.length === 0 ? (
+                          <span className="font-dm text-[12px] text-(--neutral-300)">—</span>
+                        ) : (
+                          granted.map((action) => (
+                            <span key={action} className="px-1.5 py-0.5 rounded-[4px] bg-(--green-50) dark:bg-(--green-900)/40 font-dm text-[11px] font-medium text-(--green-700) dark:text-(--green-200)">
+                              {formatLabel(action)}
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+            {visibleResources.length === 0 && (
+              <p className="p-6 text-center font-dm text-[13px] text-(--neutral-400)">No resources match &ldquo;{search}&rdquo;.</p>
+            )}
+          </div>
+
+          <div className="overflow-x-auto max-md:hidden">
             <table className="w-full border-collapse">
               <thead>
                 <tr className="border-b border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg)">

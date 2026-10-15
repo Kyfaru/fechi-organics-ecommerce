@@ -481,7 +481,7 @@ export function AdminBranchesClient() {
             ) : organizations.length === 0 ? (
               <div className="p-8 text-center font-dm text-[14px] text-(--neutral-400)">No Zoho organizations yet.</div>
             ) : (
-              <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
+              <div className="overflow-x-auto"><table className="admin-stack-table w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg)">
                     <th className="px-4 sm:px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Organization</th>
@@ -539,7 +539,7 @@ export function AdminBranchesClient() {
               Couldn&apos;t load branches — see the toast for details.
             </div>
           ) : (
-            <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
+            <div className="overflow-x-auto"><table className="admin-stack-table w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg)">
                   <th className="px-4 sm:px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Branch</th>

@@ -908,7 +908,7 @@ export function AdminCampaignsClient() {
               <p className="font-dm text-[13px] text-(--neutral-500)">No recipients recorded yet.</p>
             ) : (
               <div className="border border-(--neutral-200) rounded-[8px] overflow-hidden">
-                <div className="overflow-x-auto"><table className="w-full text-left min-w-[480px]">
+                <div className="overflow-x-auto"><table className="admin-stack-table w-full text-left min-w-[480px]">
                   <thead className="bg-(--neutral-50)">
                     <tr>
                       <th className="font-dm text-[12px] font-medium text-(--neutral-500) px-3 py-2">Recipient</th>
