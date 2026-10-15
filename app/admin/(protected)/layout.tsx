@@ -19,7 +19,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="admin-shell min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
       <AdminSessionGuard />
       <AdminSidebar />
-      <main className="md:ml-[var(--sidebar-w,264px)] min-h-screen flex flex-col transition-all duration-200">
+      <main className="md:ml-[72px] lg:ml-[var(--sidebar-w,264px)] min-h-screen flex flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0 overflow-x-clip">
         <AdminHeader />
         <div className="flex-1">
           <Suspense

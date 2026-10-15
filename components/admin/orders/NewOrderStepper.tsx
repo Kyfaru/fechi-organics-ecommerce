@@ -63,7 +63,7 @@ export function NewOrderStepper({
                 disabled={disabled}
                 aria-current={active ? "step" : undefined}
                 aria-label={`${step.label}${disabled ? " (locked)" : done ? " (complete)" : ""}`}
-                className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${circleClasses} ${
+                className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${circleClasses}  ${
                   active && !disabled ? "ring-4 ring-(--green-100)" : ""
                 }`}
               >

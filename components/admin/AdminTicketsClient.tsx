@@ -260,6 +260,8 @@ function MessageBubble({
 export function AdminTicketsClient() {
   const qc = useQueryClient();
   const [activeTicketId, setActiveTicketId] = useState<string | null>(null);
+  // Phones show one pane at a time: list -> thread (push), back returns to list.
+  const [mobileChat, setMobileChat] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "resolved" | "expired">("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
@@ -470,12 +472,12 @@ export function AdminTicketsClient() {
   // Render — 3-column layout
   // -------------------------------------------------------------------------
   return (
-    <div className="flex h-[calc(100vh-72px-57px)] overflow-hidden">
+    <div className="flex h-[calc(100dvh-12rem)] md:h-[calc(100vh-72px-57px)] overflow-hidden">
 
       {/* ------------------------------------------------------------------ */}
       {/* Column 1 — Ticket list (240px)                                      */}
       {/* ------------------------------------------------------------------ */}
-      <div className="w-[240px] shrink-0 border-r border-(--neutral-200) dark:border-(--dark-border) flex flex-col bg-white dark:bg-(--dark-surface)">
+      <div className={`${mobileChat ? "max-md:hidden" : ""} w-full md:w-[240px] shrink-0 border-r border-(--neutral-200) dark:border-(--dark-border) flex flex-col bg-white dark:bg-(--dark-surface)`}>
         {/* Search */}
         <div className="p-3 border-b border-(--neutral-100) dark:border-(--dark-border)">
           <div className="relative">
@@ -547,7 +549,7 @@ export function AdminTicketsClient() {
                 key={ticket.id}
                 ticket={ticket}
                 active={ticket.id === activeTicketId}
-                onClick={() => setActiveTicketId(ticket.id)}
+                onClick={() => { setActiveTicketId(ticket.id); setMobileChat(true); }}
               />
             ))
           )}
@@ -557,7 +559,7 @@ export function AdminTicketsClient() {
       {/* ------------------------------------------------------------------ */}
       {/* Column 2 — Thread view (flex-1)                                     */}
       {/* ------------------------------------------------------------------ */}
-      <div className="flex-1 flex flex-col min-w-0 bg-(--neutral-50) dark:bg-(--dark-bg)">
+      <div className={`${mobileChat ? "" : "max-md:hidden"} flex-1 flex flex-col min-w-0 bg-(--neutral-50) dark:bg-(--dark-bg)`}>
         {!activeTicket && !detailLoading ? (
           <div className="flex-1 flex items-center justify-center">
             <EmptyState
@@ -575,6 +577,13 @@ export function AdminTicketsClient() {
               ) : activeTicket ? (
                 <>
                   <div className="flex items-center gap-3 min-w-0">
+                    <button
+                      onClick={() => setMobileChat(false)}
+                      aria-label="Back to tickets"
+                      className="md:hidden -ml-2 w-9 h-9 shrink-0 flex items-center justify-center rounded-[8px] text-(--neutral-600) active:bg-(--neutral-100)"
+                    >
+                      ‹
+                    </button>
                     <span className="font-dm text-[13px] font-semibold text-(--neutral-400) shrink-0">
                       {activeTicket.ticketNumber}
                     </span>
@@ -730,7 +739,7 @@ export function AdminTicketsClient() {
       {/* ------------------------------------------------------------------ */}
       {/* Column 3 — Customer + ticket info (280px)                           */}
       {/* ------------------------------------------------------------------ */}
-      <div className="w-[280px] shrink-0 border-l border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg) flex flex-col overflow-y-auto">
+      <div className="hidden xl:flex w-[280px] shrink-0 border-l border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg) flex flex-col overflow-y-auto">
         {activeTicket ? (
           <>
             {/* Customer info */}

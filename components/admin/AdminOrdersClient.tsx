@@ -285,8 +285,8 @@ function ConfirmOrderModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
-      <div className="bg-white dark:bg-(--dark-surface) rounded-[16px] w-full max-w-[420px] mx-4 shadow-xl p-6">
+    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/40 admin-overlay">
+      <div className="bg-white dark:bg-(--dark-surface) rounded-[16px] w-full max-w-[420px] mx-4 shadow-xl p-4 sm:p-6">
         <h3 className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-2">
           Confirm Order
         </h3>
@@ -384,7 +384,7 @@ function InStoreOrderDrawerContent({
 
   return (
     <Drawer open={open} onClose={onClose} title={`Order ${order.orderNumber ?? shortId(order.id)}`} width={640} footer={null}>
-      <div className="flex gap-6">
+      <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
         {/* ── Left ── */}
         <div className="flex-1 min-w-0 flex flex-col gap-6">
           <div className="flex items-center gap-2 flex-wrap">
@@ -507,7 +507,7 @@ function InStoreOrderDrawerContent({
         </div>
 
         {/* ── Right ── */}
-        <div className="w-[180px] shrink-0 flex flex-col gap-4">
+        <div className="w-full sm:w-[180px] shrink-0 flex flex-col gap-4">
           {/* Customer card — not clickable, no account page exists for a walk-in */}
           <div className="bg-(--neutral-50) rounded-[10px] p-3 border border-(--neutral-200)">
             <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Customer</p>
@@ -898,7 +898,7 @@ function OrderDetailDrawer({
   return (
     <>
       <Drawer open={open} onClose={onClose} title={`Order ${order.orderNumber ?? shortOrderNumber(now) ?? shortId(order.id)}`} width={640} footer={null}>
-        <div className="flex gap-6">
+        <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
           {/* ── Left ── */}
           <div className="flex-1 min-w-0 flex flex-col gap-6">
 
@@ -1200,7 +1200,7 @@ function OrderDetailDrawer({
           </div>
 
           {/* ── Right 40% ── */}
-          <div className="w-[180px] shrink-0 flex flex-col gap-4">
+          <div className="w-full sm:w-[180px] shrink-0 flex flex-col gap-4">
 
             {/* Customer card */}
             <div className="bg-(--neutral-50) rounded-[10px] p-3 border border-(--neutral-200)">
@@ -1679,7 +1679,7 @@ export function AdminOrdersClient() {
       />
 
       {/* ── Stat cards ── */}
-      <div className="px-6 mb-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="px-4 sm:px-6 mb-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard title="Today's Orders" value={String(todayOrders)} icon={<ShoppingBag className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
         <StatsCard title="Processing" value={String(processingOrders)} icon={<Clock className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
         <StatsCard title="Shipped" value={String(shippedOrders)} icon={<Truck className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
@@ -1687,8 +1687,8 @@ export function AdminOrdersClient() {
       </div>
 
       {/* ── Filter toolbar ── */}
-      <div className="px-6 mb-5 flex flex-wrap items-center gap-3">
-        <div className="relative w-[280px]">
+      <div className="px-4 sm:px-6 mb-5 flex flex-wrap items-center gap-3">
+        <div className="relative w-full sm:w-[280px]">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
           <input
             value={search}
@@ -1703,7 +1703,7 @@ export function AdminOrdersClient() {
           )}
         </div>
 
-        <div className="w-[180px]">
+        <div className="w-full sm:w-[180px]">
           <PrelineSelect
             value={filterStatus}
             onChange={(v) => setFilterStatus(v as "" | OrderStatus)}
@@ -1712,7 +1712,7 @@ export function AdminOrdersClient() {
           />
         </div>
 
-        <div className="w-[180px]">
+        <div className="w-full sm:w-[180px]">
           <PrelineSelect
             value={filterPayment}
             onChange={(v) => setFilterPayment(v as "" | PaymentStatus)}
@@ -1725,7 +1725,7 @@ export function AdminOrdersClient() {
           />
         </div>
 
-        <div className="w-[180px]">
+        <div className="w-full sm:w-[180px]">
           <PrelineSelect
             value={channelFilter}
             onChange={(v) => setChannelFilter(v as "" | "pickup" | "delivery" | "instore")}
@@ -1738,7 +1738,7 @@ export function AdminOrdersClient() {
           />
         </div>
 
-        <div className="w-[180px]">
+        <div className="w-full sm:w-[180px]">
           <PrelineSelect
             value={dateFilter}
             onChange={(v) => setDateFilter(v as "" | "today" | "week" | "month" | "custom")}
@@ -1754,17 +1754,17 @@ export function AdminOrdersClient() {
 
         {dateFilter === "custom" && (
           <>
-            <div className="w-[180px]">
+            <div className="w-full sm:w-[180px]">
               <PrelineDatePicker value={customFrom} onChange={setCustomFrom} placeholder="From" />
             </div>
-            <div className="w-[180px]">
+            <div className="w-full sm:w-[180px]">
               <PrelineDatePicker value={customTo} onChange={setCustomTo} placeholder="To" />
             </div>
           </>
         )}
 
         {scope?.isSuperAdmin && (
-          <div className="w-[200px]">
+          <div className="w-full sm:w-[200px]">
             <PrelineSelect
               value={branchFilter}
               onChange={setBranchFilter}
@@ -1815,7 +1815,7 @@ export function AdminOrdersClient() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25 }}
-        className="px-6"
+        className="px-4 sm:px-6"
       >
         <DataTable
           columns={columns}

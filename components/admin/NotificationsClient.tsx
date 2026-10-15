@@ -258,7 +258,7 @@ export function NotificationsClient() {
         }
       />
 
-      <div className="px-6 pb-8 flex flex-col lg:flex-row gap-6 lg:gap-8">
+      <div className="px-4 sm:px-6 pb-8 flex flex-col lg:flex-row gap-6 lg:gap-8">
         {/* Main feed */}
         <div className="flex-1 min-w-0 flex flex-col gap-4">
           <div className="flex items-center gap-1 border-b border-(--neutral-200) dark:border-(--dark-border) overflow-x-auto">
@@ -316,7 +316,7 @@ export function NotificationsClient() {
               <button
                 onClick={() => fetchNextPage()}
                 disabled={isFetchingNextPage}
-                className="font-dm text-[13px] font-medium text-(--green-700) hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) py-2 px-6 rounded-full transition-colors border border-(--neutral-200) dark:border-(--dark-border) bg-white dark:bg-(--dark-surface) disabled:opacity-60"
+                className="font-dm text-[13px] font-medium text-(--green-700) hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) py-2 px-4 sm:px-6 rounded-full transition-colors border border-(--neutral-200) dark:border-(--dark-border) bg-white dark:bg-(--dark-surface) disabled:opacity-60"
               >
                 {isFetchingNextPage ? "Loading…" : "Load more notifications"}
               </button>
@@ -457,7 +457,7 @@ function NotificationRowItem({
     <div className="relative overflow-hidden rounded-xl border border-(--neutral-200) dark:border-(--dark-border) bg-white dark:bg-(--dark-surface) p-5 flex gap-4 items-start hover:border-(--neutral-300) dark:hover:border-(--dark-muted) transition-colors group">
       <div className={`absolute left-0 top-0 bottom-0 w-1 ${barColor}`} />
 
-      <div className={`w-10 h-10 rounded-full ${sev.bg} ${sev.text} flex items-center justify-center shrink-0 mt-0.5`}>
+      <div className={`w-10 h-10 rounded-full ${sev.bg}  ${sev.text} flex items-center justify-center shrink-0 mt-0.5`}>
         <Icon icon={icon} width={20} height={20} />
       </div>
 

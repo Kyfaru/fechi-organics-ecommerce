@@ -137,7 +137,7 @@ export default function ScheduleModal({ open, onClose, onConfirm, loading = fals
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.96 }}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[420px] bg-white dark:bg-(--dark-surface) rounded-[12px] shadow-(--e3) z-50 p-6"
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[420px] bg-white dark:bg-(--dark-surface) rounded-[12px] shadow-(--e3) z-50 p-4 sm:p-6"
           >
             <div className="flex items-center gap-3 mb-5">
               <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-(--gold-50)">
@@ -153,7 +153,7 @@ export default function ScheduleModal({ open, onClose, onConfirm, loading = fals
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block font-dm text-[13px] font-medium text-(--neutral-700) mb-1.5">Date</label>
                 {/* Uncontrolled on purpose — HSDatepicker writes this input's

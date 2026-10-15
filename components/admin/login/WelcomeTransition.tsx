@@ -277,7 +277,7 @@ export default function WelcomeTransition() {
 
   return (
     <motion.div
-      className="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center px-6"
+      className="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center px-4 sm:px-6"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}

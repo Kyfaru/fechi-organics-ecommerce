@@ -72,7 +72,7 @@ function Field({ label, description, children }: { label: string; description?: 
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6 ${className}`}>
+    <div className={`bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 sm:p-6 ${className}`}>
       {children}
     </div>
   );
@@ -83,7 +83,7 @@ function SaveBtn({ onClick, saving, label = "Save Changes" }: { onClick: () => v
     <button
       onClick={onClick}
       disabled={saving}
-      className="h-10 px-6 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60"
+      className="h-10 px-4 sm:px-6 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60"
     >
       {saving ? "Saving…" : label}
     </button>
@@ -221,7 +221,7 @@ function ProfileTab({ user, saving, onSave }: { user: AdminUser; saving: boolean
       {/* Avatar */}
       <Card>
         <div className="flex items-center gap-5">
-          <div className="w-24 h-24 rounded-full bg-(--green-200) text-(--green-800) flex items-center justify-center font-syne text-[28px] font-bold shrink-0 overflow-hidden">
+          <div className="w-24 h-24 rounded-full bg-(--green-200) text-(--green-800) flex items-center justify-center font-syne text-[22px] sm:text-[28px] font-bold shrink-0 overflow-hidden">
             {user.image ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={avatarUrl(user.image)} alt={user.name} className="w-full h-full object-cover" />
@@ -356,7 +356,7 @@ function PreferencesTab() {
 
       <Card>
         <div className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-5">Table Density</div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {densityOptions.map((opt) => (
             <button
               key={opt.value}
@@ -564,7 +564,7 @@ function PasswordTab() {
             <button
               type="submit"
               disabled={saving}
-              className="h-10 px-6 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60"
+              className="h-10 px-4 sm:px-6 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60"
             >
               {saving ? "Updating…" : "Update Password"}
             </button>
@@ -584,8 +584,8 @@ function PasswordTab() {
 function ReVerifyModal({ open, onConfirm }: { open: boolean; onConfirm: () => void }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white dark:bg-(--dark-surface) rounded-[16px] max-w-md w-full p-6 shadow-(--e3)">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/50 p-4 admin-overlay">
+      <div className="bg-white dark:bg-(--dark-surface) rounded-[16px] max-w-md w-full p-4 sm:p-6 shadow-(--e3)">
         <div className="w-12 h-12 rounded-full bg-orange-50 dark:bg-orange-950/40 flex items-center justify-center mb-4">
           <Lock size={20} className="text-orange-600" />
         </div>
@@ -693,9 +693,9 @@ export function AdminProfileClient() {
     <div className="min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
       <PageHeader title="My Profile" description="Manage your personal admin account settings" />
 
-      <div className="flex gap-6 px-6 pb-6">
+      <div className="flex flex-col md:flex-row gap-4 md:gap-6 px-4 sm:px-6 pb-6">
         {/* Left sidebar */}
-        <nav className="w-[200px] shrink-0 space-y-0.5">
+        <nav className="md:w-[200px] shrink-0 flex md:block gap-1 md:space-y-0.5 overflow-x-auto md:overflow-visible -mx-4 px-4 sm:mx-0 sm:px-0 pb-1 md:pb-0 [&>*]:shrink-0 [&>*]:whitespace-nowrap">
           {TABS.map((tab) => (
             <button
               key={tab.id}

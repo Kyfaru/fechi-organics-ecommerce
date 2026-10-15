@@ -82,7 +82,7 @@ export function AdminErrorLogsClient() {
         }
       />
 
-      <div className="px-6 pb-6">
+      <div className="px-4 sm:px-6 pb-6">
         {!isLoading && logs.length === 0 ? (
           <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1)">
             <EmptyState icon={AlertTriangle} title="No errors logged" description="Nothing unexpected has happened yet — this page will fill in as errors occur." />

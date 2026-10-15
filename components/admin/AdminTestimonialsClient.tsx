@@ -797,7 +797,7 @@ function ViewTestimonialDrawer({
 
   return (
     <Drawer open={!!testimonial} onClose={onClose} title={testimonial.authorName}>
-      <div className="p-6 flex flex-col gap-6">
+      <div className="p-4 sm:p-6 flex flex-col gap-6">
         {/* Contact info */}
         <section>
           <h3 className={labelCls}>Contact</h3>
@@ -1034,9 +1034,9 @@ export function AdminTestimonialsClient() {
   return (
     <div className="min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
       {/* ── Page header ── */}
-      <div className="px-6 py-5 bg-white dark:bg-(--dark-surface) border-b border-(--neutral-200) dark:border-(--dark-border) flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div className="px-4 sm:px-6 py-5 bg-white dark:bg-(--dark-surface) border-b border-(--neutral-200) dark:border-(--dark-border) flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex items-center gap-3">
-          <h1 className="font-syne font-semibold text-(--neutral-900) dark:text-(--dark-text) text-[22px] leading-tight">
+          <h1 className="font-syne font-semibold text-(--neutral-900) dark:text-(--dark-text) text-[18px] sm:text-[22px] leading-tight">
             Testimonials
           </h1>
           {!isLoading && (
@@ -1065,7 +1065,7 @@ export function AdminTestimonialsClient() {
       </div>
 
       {/* ── Body ── */}
-      <div className="p-6 max-w-[1400px] mx-auto">
+      <div className="p-4 sm:p-6 max-w-[1400px] mx-auto">
         {/* Error */}
         {isError && (
           <div className="flex flex-col items-center justify-center py-20 text-center bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border)">

@@ -365,7 +365,7 @@ export function AdminProductCategoriesClient() {
         action={addButton}
       />
 
-      <div className="px-6">
+      <div className="px-4 sm:px-6">
         <DataTable
           columns={columns}
           data={categories as unknown as Record<string, unknown>[]}

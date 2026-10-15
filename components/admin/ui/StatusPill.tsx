@@ -27,7 +27,7 @@ export function StatusPill({ status }: { status: string }) {
   const key = status.toLowerCase();
   const s = STATUS_MAP[key] ?? { text: "text-(--green-700) dark:text-(--dark-muted)", bg: "bg-(--neutral-100) dark:bg-(--dark-border)", dot: "bg-(--neutral-400)" };
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-[10px] h-6 font-dm text-[12px] font-medium ${s.text} ${s.bg}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-[10px] h-6 font-dm text-[12px] font-medium ${s.text}  ${s.bg}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
       {status.charAt(0).toUpperCase() + status.slice(1).toLowerCase().replace(/_/g, " ")}
     </span>

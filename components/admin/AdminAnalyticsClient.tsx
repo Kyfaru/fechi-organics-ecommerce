@@ -248,7 +248,7 @@ export function AdminAnalyticsClient() {
         description="Track your store performance"
       />
 
-      <div className="px-6 pb-8 space-y-6">
+      <div className="px-4 sm:px-6 pb-8 space-y-6">
         {/* ── Date range picker + Export buttons ── */}
         <div className="flex flex-wrap items-center gap-3">
           {/* Range pills */}
@@ -370,7 +370,7 @@ function OrderTrendsChart({ ordersChart }: { ordersChart: OrderChartRow[] }) {
   const hasData = ordersChart.length > 0 && ordersChart.some((r) => r[filter] > 0);
 
   return (
-    <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+    <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 sm:p-6">
       {/* Card header with inline toggle buttons */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
@@ -497,7 +497,7 @@ function ChannelRevenueSection() {
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-      <div className="xl:col-span-2 bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+      <div className="xl:col-span-2 bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">Channel Revenue</h3>
           <TimeRangeTabs value={range} onChange={setRange} options={TIME_RANGE_PRESETS.reports} />
@@ -528,7 +528,7 @@ function ChannelRevenueSection() {
         )}
       </div>
 
-      <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+      <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 sm:p-6">
         <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">Revenue by Channel</h3>
         {isLoading || pieSegments.length === 0 ? (
           <div className="h-[220px] flex items-center justify-center">
@@ -561,7 +561,7 @@ function SocialConversionSection() {
   const sources = data?.data?.sources ?? [];
 
   return (
-    <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+    <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
           <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">Conversion by Social Channel</h3>
@@ -734,7 +734,7 @@ function OverviewTab({ payload, isLoading }: { payload: Record<string, unknown>;
         {isLoading ? (
           <SkeletonChart />
         ) : (
-          <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 sm:p-6">
             <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">Traffic Sources</h3>
             {traffic.length === 0 ? (
               <FunnelChart
@@ -830,7 +830,7 @@ function SalesTab({ payload, isLoading }: { payload: Record<string, unknown>; is
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* Daily Revenue bar chart */}
-          <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 sm:p-6">
             <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">Daily Revenue</h3>
             {revenueChart.length === 0 ? (
               <div className="h-[200px] flex items-center justify-center"><p className="font-dm text-[13px] text-(--neutral-400)">No sales data for this period</p></div>
@@ -933,7 +933,7 @@ function InventoryTab({ payload, isLoading }: { payload: Record<string, unknown>
       {isLoading ? (
         <SkeletonChart />
       ) : (
-        <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+        <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 sm:p-6">
           <h3 className="font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-4">Stock by Category</h3>
           {stockByCategory.length === 0 ? (
             <div className="h-[200px] flex items-center justify-center"><p className="font-dm text-[13px] text-(--neutral-400)">No stock data available</p></div>

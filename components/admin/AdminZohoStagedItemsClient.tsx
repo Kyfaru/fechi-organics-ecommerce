@@ -345,7 +345,7 @@ export function AdminZohoStagedItemsClient({ status }: { status: StagedStatus })
         }
       />
 
-      <div className="px-6 pb-6 space-y-4">
+      <div className="px-4 sm:px-6 pb-6 space-y-4">
         {/* Filter toolbar */}
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
           {/* Search */}

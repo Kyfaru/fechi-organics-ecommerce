@@ -245,7 +245,7 @@ export function AdminLoyaltyGrantsClient() {
         }
       />
 
-      <div className="px-6 pb-8 space-y-6">
+      <div className="px-4 sm:px-6 pb-8 space-y-6">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <StatsCard
             title="Approvals required"

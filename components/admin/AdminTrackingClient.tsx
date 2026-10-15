@@ -207,8 +207,8 @@ export function AdminTrackingClient() {
       />
 
       {/* Search bar */}
-      <div className="px-6 mb-5">
-        <div className="relative w-[280px]">
+      <div className="px-4 sm:px-6 mb-5">
+        <div className="relative w-full sm:w-[280px]">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
           <input
             value={search}
@@ -224,7 +224,7 @@ export function AdminTrackingClient() {
         </div>
       </div>
 
-      <div className="px-6">
+      <div className="px-4 sm:px-6">
         <DataTable
           columns={columns}
           data={filtered as unknown as Record<string, unknown>[]}

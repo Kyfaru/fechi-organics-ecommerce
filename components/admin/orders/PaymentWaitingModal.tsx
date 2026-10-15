@@ -122,7 +122,7 @@ export default function PaymentWaitingModal({
             exit={{ opacity: 0, scale: 0.96 }}
             role="alertdialog"
             aria-modal="true"
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[420px] bg-white dark:bg-(--dark-surface) rounded-[12px] shadow-(--e3) z-50 p-6"
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[420px] bg-white dark:bg-(--dark-surface) rounded-[12px] shadow-(--e3) z-50 p-4 sm:p-6"
           >
             <div className="flex flex-col items-center text-center gap-4">
               <div className="w-14 h-14 rounded-full flex items-center justify-center bg-(--green-50) dark:bg-green-900/20">

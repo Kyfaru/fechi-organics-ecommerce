@@ -276,7 +276,7 @@ export function BlogEditorClient() {
 
   if (isEdit && isLoading) {
     return (
-      <div className="min-h-screen bg-(--neutral-50) p-6">
+      <div className="min-h-screen bg-(--neutral-50) p-4 sm:p-6">
         <div className="h-8 w-48 bg-(--neutral-100) rounded animate-pulse mb-6" />
         <div className="h-[500px] w-full bg-(--neutral-100) rounded-[12px] animate-pulse" />
       </div>
@@ -286,7 +286,7 @@ export function BlogEditorClient() {
   return (
     <div className="min-h-screen bg-(--neutral-50)">
       {/* Top bar — back link on the left; Cancel / Schedule / Publish on the right. */}
-      <div className="sticky top-0 z-10 bg-white dark:bg-(--dark-surface) border-b border-(--neutral-200) dark:border-(--dark-border) px-6 py-4 flex items-center justify-between">
+      <div className="sticky top-0 z-10 bg-white dark:bg-(--dark-surface) border-b border-(--neutral-200) dark:border-(--dark-border) px-4 sm:px-6 py-4 flex items-center justify-between">
         <a
           href="/admin/content/blog"
           className="flex items-center gap-2 font-dm text-[14px] text-(--neutral-700) hover:text-(--neutral-900) transition-colors"
@@ -336,7 +336,7 @@ export function BlogEditorClient() {
         loading={scheduleMutation.isPending}
       />
 
-      <div className="px-6 py-6 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 max-w-[1280px]">
+      <div className="px-4 sm:px-6 py-4 sm:py-6 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 max-w-[1280px]">
         {/* Left column — Title + rich content */}
         <div className="space-y-4 min-w-0">
           <FormField label="Title" required>
@@ -399,7 +399,7 @@ export function BlogEditorClient() {
             />
           </FormField>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormField label="Status">
               <div className="relative">
                 <select

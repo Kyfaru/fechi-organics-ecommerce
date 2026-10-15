@@ -260,10 +260,10 @@ export function AdminActivityClient() {
         }
       />
 
-      <div className="px-6 pb-6 space-y-4">
+      <div className="px-4 sm:px-6 pb-6 space-y-4">
         {/* Filter toolbar */}
         <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 flex flex-wrap items-center gap-3">
-          <div className="relative w-[240px]">
+          <div className="relative w-full sm:w-[240px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
             <input
               value={search}
@@ -275,7 +275,7 @@ export function AdminActivityClient() {
 
           <ChartFilter value={dateRange} onChange={setDateRange} />
 
-          <div className="w-[150px]">
+          <div className="w-full sm:w-[150px]">
             <PrelineSelect
               value={severity}
               onChange={setSeverity}
@@ -310,7 +310,7 @@ export function AdminActivityClient() {
             />
           </div>
         ) : (
-          <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 sm:p-6">
             {grouped.map((group) => (
               <div key={group.key} className="mb-6 last:mb-0">
                 <div className="flex items-center gap-3 mb-4">

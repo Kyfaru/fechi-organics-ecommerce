@@ -1,6 +1,6 @@
 export function SkeletonStatCard() {
   return (
-    <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6 animate-pulse">
+    <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 sm:p-6 animate-pulse">
       <div className="h-3 w-24 bg-(--neutral-100) dark:bg-(--dark-border) rounded mb-4" />
       <div className="h-8 w-32 bg-(--neutral-100) dark:bg-(--dark-border) rounded mb-3" />
       <div className="h-4 w-16 bg-(--neutral-100) dark:bg-(--dark-border) rounded" />
@@ -23,7 +23,7 @@ export function SkeletonTableRow() {
 
 export function SkeletonChart() {
   return (
-    <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6 animate-pulse">
+    <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 sm:p-6 animate-pulse">
       <div className="h-4 w-32 bg-(--neutral-100) dark:bg-(--dark-border) rounded mb-6" />
       <div className="h-[200px] bg-(--neutral-100) dark:bg-(--dark-border) rounded" />
     </div>

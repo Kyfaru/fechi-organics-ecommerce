@@ -218,7 +218,7 @@ export function AdminProductReviewsClient() {
       />
 
       {/* Stats */}
-      <div className="px-6 mb-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="px-4 sm:px-6 mb-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard
   title="Total Reviews"
   value={String(stats.total)}
@@ -252,7 +252,7 @@ export function AdminProductReviewsClient() {
 />
       </div>
 
-      <div className="px-6">
+      <div className="px-4 sm:px-6">
         <DataTable
           columns={columns}
           data={reviews as unknown as Record<string, unknown>[]}

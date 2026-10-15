@@ -186,7 +186,7 @@ export function AdminLoyaltyFlagsClient() {
         }
       />
 
-      <div className="px-6 pb-8">
+      <div className="px-4 sm:px-6 pb-8">
         <DataTable
           columns={columns}
           data={(data?.flags ?? []) as unknown as Record<string, unknown>[]}

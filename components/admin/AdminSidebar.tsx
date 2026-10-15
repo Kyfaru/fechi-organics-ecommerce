@@ -7,6 +7,7 @@ import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LogOut, History, AlertTriangle, ChevronLeft, ChevronRight, Menu, X,
+  LayoutDashboard, ShoppingCart, Package, Users,
 } from "lucide-react";
 import { signOut, authClient } from "@/lib/auth-client";
 import { clearPersistedQueryCache } from "@/app/providers";
@@ -14,6 +15,13 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useAdminMe } from "@/hooks/use-can";
 import { NAV_GROUPS, isActive, type NavItem } from "@/lib/admin-nav";
 import type { PermissionCheck } from "@/lib/require-permission";
+
+const BOTTOM_TABS = [
+  { href: "/admin", label: "Home", icon: LayoutDashboard, exact: true },
+  { href: "/admin/orders", label: "Orders", icon: ShoppingCart, exact: false },
+  { href: "/admin/products", label: "Products", icon: Package, exact: false },
+  { href: "/admin/customers", label: "Customers", icon: Users, exact: false },
+];
 
 interface VisibleGroup {
   label: string;
@@ -25,6 +33,9 @@ export function AdminSidebar() {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Tablet (md..lg) always shows the icon rail; full sidebar from lg.
+  const [tablet, setTablet] = useState(false);
+  const railed = collapsed || tablet;
 
   // Fetch current admin profile to drive permission-based nav filtering.
   // Cached for 5 minutes — sidebar doesn't need real-time permission updates.
@@ -65,6 +76,37 @@ export function AdminSidebar() {
   }
 
   useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const update = () => setTablet(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  // Header hamburger / bottom-bar "More" open the drawer via this event.
+  useEffect(() => {
+    const open = () => setMobileOpen(true);
+    window.addEventListener("admin:open-nav", open);
+    return () => window.removeEventListener("admin:open-nav", open);
+  }, []);
+  const [lastPath, setLastPath] = useState(pathname);
+  if (lastPath !== pathname) {
+    setLastPath(pathname);
+    setMobileOpen(false);
+  }
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMobileOpen(false);
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [mobileOpen]);
+
+  useEffect(() => {
     const w = collapsed ? "72px" : "264px";
     document.documentElement.style.setProperty("--sidebar-w", w);
   }, [collapsed]);
@@ -86,15 +128,20 @@ export function AdminSidebar() {
   }
 
   const [logoutConfirming, setLogoutConfirming] = useState(false);
+  const allowedHrefs = useMemo(
+    () => new Set(visibleGroups.flatMap((g) => g.items.map((i) => i.href))),
+    [visibleGroups],
+  );
 
   return (
     <>
       {/* Desktop sidebar */}
       <aside
-        className={["hidden md:flex flex-col fixed left-0 top-0 h-full border-r border-(--green-800) dark:border-(--dark-border) z-30 transition-all duration-200 overflow-hidden", collapsed ? "w-[72px]" : "w-[264px]"].join(" ")}
+        className={["hidden md:flex flex-col fixed left-0 top-0 h-full border-r border-(--green-800) dark:border-(--dark-border) z-30 transition-all duration-200 overflow-hidden", railed ? "w-[72px]" : "w-[264px]"].join(" ")}
       >
         <SidebarContent
-          collapsed={collapsed}
+          collapsed={railed}
+          hideToggle={tablet}
           pathname={pathname}
           visibleGroups={visibleGroups}
           showActivityLink={showActivityLink}
@@ -103,13 +150,35 @@ export function AdminSidebar() {
         />
       </aside>
 
-      {/* Mobile hamburger */}
-      <button
-        className="md:hidden fixed top-4 left-4 z-40 p-2 bg-white dark:bg-(--dark-surface) rounded-[8px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1)"
-        onClick={() => setMobileOpen(true)}
+      {/* Mobile bottom tab bar */}
+      <nav
+        aria-label="Primary"
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 flex bg-white dark:bg-(--dark-surface) border-t border-(--neutral-200) dark:border-(--dark-border) pb-[env(safe-area-inset-bottom)]"
       >
-        <Menu size={20} className="text-(--neutral-700) dark:text-(--dark-text)" />
-      </button>
+        {BOTTOM_TABS.filter((t) => allowedHrefs.has(t.href)).map(({ href, label, icon: Icon, exact }) => {
+          const active = isActive(pathname, href, exact);
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={[
+                "flex-1 flex flex-col items-center justify-center gap-0.5 h-14 font-dm text-[11px] font-medium active:scale-95 transition",
+                active ? "text-(--green-800) dark:text-(--dark-accent)" : "text-(--neutral-500) dark:text-(--dark-muted)",
+              ].join(" ")}
+            >
+              <Icon size={20} />
+              {label}
+            </Link>
+          );
+        })}
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="flex-1 flex flex-col items-center justify-center gap-0.5 h-14 font-dm text-[11px] font-medium text-(--neutral-500) dark:text-(--dark-muted) active:scale-95 transition"
+        >
+          <Menu size={20} />
+          More
+        </button>
+      </nav>
 
       {/* Mobile drawer */}
       <AnimatePresence>
@@ -123,7 +192,8 @@ export function AdminSidebar() {
             <motion.div
               initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }}
               transition={{ type: "tween", duration: 0.2 }}
-              className="md:hidden fixed left-0 top-0 h-full w-[280px] z-50"
+              role="dialog" aria-modal="true" aria-label="Navigation"
+              className="md:hidden fixed left-0 top-0 h-dvh w-[min(300px,85vw)] z-50"
             >
               <button
                 onClick={() => setMobileOpen(false)}
@@ -133,7 +203,7 @@ export function AdminSidebar() {
               </button>
               <SidebarContent
                 mobile
-                collapsed={collapsed}
+                collapsed={false}
                 pathname={pathname}
                 visibleGroups={visibleGroups}
                 showActivityLink={showActivityLink}
@@ -166,6 +236,7 @@ export function AdminSidebar() {
 // navigation. Kept as a stable top-level component instead.
 interface SidebarContentProps {
   mobile?: boolean;
+  hideToggle?: boolean;
   collapsed: boolean;
   pathname: string;
   visibleGroups: VisibleGroup[];
@@ -176,7 +247,7 @@ interface SidebarContentProps {
 }
 
 function SidebarContent({
-  mobile = false, collapsed, pathname, visibleGroups, showActivityLink, onNavClick, onToggleCollapsed, onLogoutClick,
+  mobile = false, hideToggle = false, collapsed, pathname, visibleGroups, showActivityLink, onNavClick, onToggleCollapsed, onLogoutClick,
 }: SidebarContentProps) {
   return (
     <div className="flex flex-col h-full bg-(--green-900) dark:bg-(--dark-surface)">
@@ -272,7 +343,7 @@ function SidebarContent({
       </div>
 
       {/* Collapse toggle — desktop only */}
-      {!mobile && (
+      {!mobile && !hideToggle && (
         <div className="border-t border-(--green-800) dark:border-(--dark-border) p-2 shrink-0">
           <button
             onClick={onToggleCollapsed}

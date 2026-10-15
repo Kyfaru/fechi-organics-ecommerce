@@ -1497,7 +1497,7 @@ function BulkBar({
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 80, opacity: 0 }}
           transition={{ type: "spring", stiffness: 320, damping: 30 }}
-          className="fixed bottom-0 left-0 right-0 md:left-[264px] h-[72px] bg-white border-t border-(--neutral-200) shadow-(--e3) z-30 flex items-center px-6 gap-4"
+          className="fixed bottom-0 left-0 right-0 md:left-[264px] h-[72px] bg-white border-t border-(--neutral-200) shadow-(--e3) z-30 flex items-center px-4 sm:px-6 gap-4"
         >
           <span className="font-dm text-[14px] font-medium text-(--neutral-700) mr-auto">
             {count} selected
@@ -2079,9 +2079,9 @@ export function AdminProductsClient() {
       <PageHeader title="Products" description="Manage your product catalog" action={addButton} />
 
       {/* ── Filter toolbar ── */}
-      <div className="px-6 pb-5 flex flex-wrap items-center gap-3">
+      <div className="px-4 sm:px-6 pb-5 flex flex-wrap items-center gap-3">
         {/* Search */}
-        <div className="relative w-[280px]">
+        <div className="relative w-full sm:w-[280px]">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
           <input
             value={search}
@@ -2162,7 +2162,7 @@ export function AdminProductsClient() {
       </div>
 
       {/* ── Content area ── */}
-      <div className="px-6">
+      <div className="px-4 sm:px-6">
         {view === "grid" ? (
           // ── Grid view ──
           productsLoading ? (
@@ -2284,8 +2284,8 @@ export function AdminProductsClient() {
 
       {/* ── Permanently delete: blocked (has order history) ── */}
       {permanentBlockedTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4 admin-overlay">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-md p-4 sm:p-6 space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-(--danger-bg)">
                 <AlertTriangle size={18} className="text-(--danger)" />
@@ -2312,8 +2312,8 @@ export function AdminProductsClient() {
 
       {/* ── Permanently delete: type-slug-to-confirm ── */}
       {permanentSlugTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4 admin-overlay">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-md p-4 sm:p-6 space-y-4">
             <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
               Confirm permanent delete
             </h3>

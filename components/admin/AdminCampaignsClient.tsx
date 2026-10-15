@@ -310,7 +310,7 @@ export function AdminCampaignsClient() {
         const t = TYPE_STYLES[v as CampaignType];
         return (
           <span
-            className={`inline-flex items-center px-2 py-0.5 rounded-full font-dm text-[12px] font-medium ${t?.bg} ${t?.text}`}
+            className={`inline-flex items-center px-2 py-0.5 rounded-full font-dm text-[12px] font-medium ${t?.bg}  ${t?.text}`}
           >
             {String(v)}
           </span>
@@ -415,7 +415,7 @@ export function AdminCampaignsClient() {
         }
       />
 
-      <div className="px-6 pb-6 space-y-6">
+      <div className="px-4 sm:px-6 pb-6 space-y-6">
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4">
           <StatsCard title="Total Campaigns" value={String(stats.total)} icon={<Megaphone className="h-4 w-4 text-muted-foreground" />} change="Healthy" changeType="positive" />
@@ -767,7 +767,7 @@ export function AdminCampaignsClient() {
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[440px] bg-white dark:bg-(--dark-surface) rounded-[12px] shadow-(--e3) z-50 p-6"
+              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[440px] bg-white dark:bg-(--dark-surface) rounded-[12px] shadow-(--e3) z-50 p-4 sm:p-6"
             >
               <h3 className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-1">
                 Send &quot;{sendTarget.name}&quot;
@@ -908,7 +908,7 @@ export function AdminCampaignsClient() {
               <p className="font-dm text-[13px] text-(--neutral-500)">No recipients recorded yet.</p>
             ) : (
               <div className="border border-(--neutral-200) rounded-[8px] overflow-hidden">
-                <table className="w-full text-left">
+                <div className="overflow-x-auto"><table className="w-full text-left min-w-[480px]">
                   <thead className="bg-(--neutral-50)">
                     <tr>
                       <th className="font-dm text-[12px] font-medium text-(--neutral-500) px-3 py-2">Recipient</th>
@@ -933,7 +933,7 @@ export function AdminCampaignsClient() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
               </div>
             )}
           </div>

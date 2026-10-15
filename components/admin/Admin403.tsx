@@ -16,7 +16,7 @@ export function Admin403() {
   }, []);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
+    <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 sm:px-6 text-center">
       <div className="w-14 h-14 rounded-full bg-(--danger-bg) flex items-center justify-center mb-4">
         <ShieldAlert size={26} className="text-(--danger)" />
       </div>

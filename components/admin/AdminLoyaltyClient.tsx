@@ -224,7 +224,7 @@ export function AdminLoyaltyClient() {
         }
       />
 
-      <div className="px-6 pb-8 space-y-6">
+      <div className="px-4 sm:px-6 pb-8 space-y-6">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatsCard
             title="Outstanding points"
@@ -313,7 +313,7 @@ function LedgerDrawer({ userId, onClose }: { userId: string | null; onClose: () 
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
               { label: "Balance", value: data.customer.points.toLocaleString() },
               { label: "Cash value", value: kes(data.customer.cashValueCents) },

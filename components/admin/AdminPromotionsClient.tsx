@@ -370,7 +370,7 @@ export function AdminPromotionsClient() {
         }
       />
 
-      <div className="px-6 pb-6 space-y-4">
+      <div className="px-4 sm:px-6 pb-6 space-y-4">
         {/* Tabs */}
         <div className="flex gap-1 bg-(--neutral-100) p-1 rounded-[10px] w-fit">
           {TABS.map(({ key: tab, label }) => (
@@ -527,7 +527,7 @@ export function AdminPromotionsClient() {
             </FieldWrap>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FieldWrap label="Max Discount (KES)">
               <input
                 type="number"
@@ -558,7 +558,7 @@ export function AdminPromotionsClient() {
             </p>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FieldWrap label="Start Date">
               <input
                 type="date"
@@ -673,7 +673,7 @@ function CouponViewDrawer({
             and can&apos;t be edited here — disable it if there&apos;s a problem.
           </p>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {facts.map(({ label, value }) => (
               <div key={label} className="rounded-lg border border-(--neutral-200) p-3">
                 <p className="font-dm text-[11px] uppercase tracking-wider text-(--neutral-500)">

@@ -296,7 +296,7 @@ export function AdminInventoryClient() {
         description="Track and manage product stock levels"
       />
 
-      <div className="px-6 pb-6 space-y-6">
+      <div className="px-4 sm:px-6 pb-6 space-y-6">
         {/* Stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatsCard title="Total SKUs" value={String(stats.totalSKUs)} icon={<Warehouse className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />

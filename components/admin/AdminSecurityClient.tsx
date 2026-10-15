@@ -42,7 +42,7 @@ const inputCls =
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
-    <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+    <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 sm:p-6">
       {children}
     </div>
   );
@@ -188,7 +188,7 @@ function TotpCard({ profile }: { profile: AdminMeData }) {
                   <button
                     onClick={handleEnable}
                     disabled={loading}
-                    className="h-10 px-6 w-fit rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2"
+                    className="h-10 px-4 sm:px-6 w-fit rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2"
                   >
                     {loading ? <Spinner size={14} /> : null}
                     Set Up Authenticator App
@@ -213,7 +213,7 @@ function TotpCard({ profile }: { profile: AdminMeData }) {
                   <button
                     onClick={handleDisable}
                     disabled={loading}
-                    className="h-10 px-6 w-fit rounded-[8px] border border-(--danger)/30 bg-(--danger-bg) font-dm text-[13px] text-(--danger) hover:bg-(--danger)/10 transition-colors disabled:opacity-60 flex items-center gap-2"
+                    className="h-10 px-4 sm:px-6 w-fit rounded-[8px] border border-(--danger)/30 bg-(--danger-bg) font-dm text-[13px] text-(--danger) hover:bg-(--danger)/10 transition-colors disabled:opacity-60 flex items-center gap-2"
                   >
                     {loading ? <Spinner size={14} /> : null}
                     Disable Authenticator App
@@ -270,7 +270,7 @@ function TotpCard({ profile }: { profile: AdminMeData }) {
                 <button
                   onClick={handleVerifySetup}
                   disabled={loading || code.length !== 6}
-                  className="h-10 px-6 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2"
+                  className="h-10 px-4 sm:px-6 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2"
                 >
                   {loading ? <Spinner size={14} /> : null}
                   Confirm &amp; Activate
@@ -605,7 +605,7 @@ export function AdminSecurityClient() {
         description="Manage two-factor authentication methods for your admin account"
       />
 
-      <div className="px-6 pb-8 max-w-[640px] space-y-4">
+      <div className="px-4 sm:px-6 pb-8 max-w-[640px] space-y-4">
         {/* Info banner */}
         <div className="flex items-start gap-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-[10px] p-4">
           <Shield size={18} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />

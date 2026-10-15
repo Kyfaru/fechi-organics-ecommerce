@@ -125,9 +125,9 @@ export function AdminContactsClient() {
   return (
     <div className="min-h-screen dark:bg-[#1a1f18]">
       {/* Page header */}
-      <div className="px-6 py-6 border-b border-[#e2e2e2] dark:border-[#2d3a2b] bg-white dark:bg-[#1a1f18] flex items-center justify-between">
+      <div className="px-4 sm:px-6 py-4 sm:py-6 border-b border-[#e2e2e2] dark:border-[#2d3a2b] bg-white dark:bg-[#1a1f18] flex items-center justify-between">
         <div>
-          <h1 className="font-heading font-semibold text-[#1a1c1c] dark:text-[#edf2ec] text-[24px]">
+          <h1 className="font-heading font-semibold text-[#1a1c1c] dark:text-[#edf2ec] text-[20px] sm:text-[24px]">
             Inbox{unreadCount > 0 ? ` (${unreadCount} new)` : ""}
           </h1>
           <p className="font-body text-[#40493c] dark:text-[#a8bca4] text-[13px] mt-0.5">
@@ -216,7 +216,7 @@ export function AdminContactsClient() {
                   className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-[#f9f9f9] dark:hover:bg-[#1e2620] transition-colors"
                 >
                   {/* Sender name (bold) */}
-                  <span className="font-body font-semibold text-[#1a1c1c] dark:text-[#edf2ec] text-[14px] w-[140px] truncate flex-shrink-0">
+                  <span className="font-body font-semibold text-[#1a1c1c] dark:text-[#edf2ec] text-[14px] w-full sm:w-[140px] truncate flex-shrink-0">
                     {msg.name}
                   </span>
 
@@ -236,7 +236,7 @@ export function AdminContactsClient() {
                   </span>
 
                   {/* Date (right-aligned, gray) */}
-                  <span className="font-body text-[#a1a1a1] text-[12px] w-[130px] flex-shrink-0 text-right hidden sm:block">
+                  <span className="font-body text-[#a1a1a1] text-[12px] w-full sm:w-[130px] flex-shrink-0 text-right hidden sm:block">
                     {formatDate(msg.createdAt)}
                   </span>
 
@@ -261,7 +261,7 @@ export function AdminContactsClient() {
                       transition={{ duration: 0.22, ease: "easeInOut" }}
                       className="overflow-hidden border-t border-[#e2e2e2] dark:border-[#2d3a2b]"
                     >
-                      <div className="px-6 py-5 bg-[#fafafa] dark:bg-[#1a1f18]">
+                      <div className="px-4 sm:px-6 py-5 bg-[#fafafa] dark:bg-[#1a1f18]">
 
                         {/* Contact details grid */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
