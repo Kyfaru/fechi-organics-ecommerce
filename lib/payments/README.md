@@ -29,7 +29,11 @@ International customers (`country !== "KE"`) are routed to the Nairobi main bran
 | `mpesa/stk-push.ts` | Daraja STK push request builder |
 | `kcb/kcb-client.ts` | KCB Buni token cache + STK push |
 | `branch-resolver.ts` | 4-tier branch resolution (zone → county → nearest → any) |
-| `post-payment.ts` | `markPaymentSuccess` / `markPaymentFailed` — shared outcome handlers |
+| `post-payment.ts` | `markPaymentSuccess` / `markPaymentFailed` — shared outcome handlers (atomic claim, late-payment recovery) |
+| `instore-post-payment.ts` | Same, for in-store orders |
+| `token-cache.ts` | Shared Redis token cache for KCB/Daraja (refresh-ahead, mint lock, fail-open) |
+| `callback-guard.ts` | Callback inbox, signed callback URLs, paid-amount check |
+| `run-dispatch-job.ts` | The STK dispatch job body, shared by the QStash worker and the initiate routes' `after()` fast path |
 | `haversine.ts` | Great-circle distance for nearest-branch fallback |
 
 ## API routes
@@ -43,7 +47,9 @@ International customers (`country !== "KE"`) are routed to the Nairobi main bran
 | `/api/payments/paystack/initialize` | POST | Initialize Paystack transaction, returns `authorization_url` |
 | `/api/payments/paystack/verify` | GET | Paystack return URL handler — verifies and redirects |
 | `/api/payments/paystack/webhook` | POST | Paystack background safety-net webhook |
-| `/api/payments/status/[orderId]` | GET | Polling endpoint for M-Pesa status (3s intervals, 90s timeout) |
+| `/api/payments/status/[orderId]` | GET | Coarse `paymentStatus` — the browser's fallback when the SSE stream drops |
+| `/api/payments/mpesa/instore-callback` | POST | In-store STK webhook (Daraja or KCB; always returns 200) |
+| `/api/hooks/c2b/{confirmation,validation}` | POST | Neutral-path aliases for the C2B URLs registered with Safaricom |
 | `/api/payments/mock/checkout` | POST | Demo checkout — for local testing without real payment credentials |
 
 ## Local development callbacks (ngrok)
@@ -72,7 +78,9 @@ All M-Pesa credentials (consumer key, consumer secret, passkey, KCB API key) are
 
 ## Idempotency
 
-All webhook handlers check `transaction.status !== "PENDING"` before processing. If already processed, they return 200 immediately without re-running `markPaymentSuccess`.
+Webhook handlers return 200 for everything. Duplicate protection is a database-level **atomic claim** inside `markPaymentSuccess` / `markInStorePaymentSuccess` (`updateMany where status = current`; only `count === 1` proceeds), not just a status pre-check — two simultaneous callbacks cannot both run stock, points and emails. Initiate accepts an `idempotencyKey` so a repeated Pay returns the same order. STK dispatch is single-send via a Redis NX claim (`stk_dispatch:<txId>`).
+
+Every STK callback is first filed in `paymentCallbackInbox`; a payment that lands after our own timeout job failed the order is recovered to PAID. Full detail, env vars and runbook: `docs/payments-reliability.md`.
 
 ## Discount / promo codes
 

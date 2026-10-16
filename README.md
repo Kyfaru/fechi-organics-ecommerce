@@ -260,3 +260,8 @@ See the per-integration docs for setup and architecture details:
 - `lib/payments/README.md` — payments overview, API routes, branch dispatch, ngrok setup
 - `lib/paystack/README.md` — Paystack card payments, subaccounts, webhook security
 - `lib/payments/kcb/README.md` — KCB Buni M-Pesa STK push
+- `docs/payments-reliability.md` — the reliability layer: callback inbox, atomic claim, late-payment recovery, dispatch fast path, token cache, runbook and test matrix
+- `docs/payments-go-live.md` — production launch checklist (config, schema, callback hardening, money tests)
+- `docs/changelog/2026-10-16-payments-reliability.md` — dated record of the overhaul
+
+Two things to know when deploying payment changes: run `pnpm prisma db push` **before** deploying (the code needs `transaction.payerPhone`, `idempotencyKey` and `paymentCallbackInbox`), and keep `PAYMENT_CALLBACK_ENFORCE_SIG` unset until a stage callback is seen carrying the signed query string.
