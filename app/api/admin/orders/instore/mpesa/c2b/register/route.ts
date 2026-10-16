@@ -76,8 +76,9 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         ShortCode: branch.shortcode ?? null,
         ResponseType: "Completed",
-        ConfirmationURL: `${appUrl}/api/payments/mpesa/c2b/confirmation`,
-        ValidationURL: `${appUrl}/api/payments/mpesa/c2b/validation`,
+        // Neutral paths: Safaricom forbids "mpesa" etc. in registered URLs.
+        ConfirmationURL: `${appUrl}/api/hooks/c2b/confirmation`,
+        ValidationURL: `${appUrl}/api/hooks/c2b/validation`,
       }),
       signal: AbortSignal.timeout(15_000),
     });

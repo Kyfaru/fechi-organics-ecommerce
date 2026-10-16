@@ -27,7 +27,7 @@ import { finalizeStkDispatch } from "@/lib/payments/finalize-stk-dispatch";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
 import { recordCouponRedemption } from "@/lib/promo";
 import { computeOrderTotals } from "@/lib/checkout/compute-totals";
-import { holdRedeemedPoints } from "@/lib/points/redeem";
+import { holdRedeemedPoints, releaseRedeemedPoints } from "@/lib/points/redeem";
 import { getRedis } from "@/lib/redis";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { publishQstashJSON } from "@/lib/qstash";
@@ -260,7 +260,9 @@ export async function POST(req: NextRequest) {
     await holdRedeemedPoints({ userId, orderId: order.id, points: pointsRedeemed });
 
     // 8. Create transaction record (PENDING until callback arrives)
-    const transaction = await db.transaction.create({
+    let transaction: Awaited<ReturnType<typeof db.transaction.create>>;
+    try {
+      transaction = await db.transaction.create({
       data: {
         orderId: order.id,
         provider: "MPESA",
@@ -272,7 +274,19 @@ export async function POST(req: NextRequest) {
         payerPhone: phone,
         idempotencyKey: idempotencyKey ?? null,
       },
-    });
+      });
+    } catch (e) {
+      // Lost a same-key race (two requests passed the lookup above together):
+      // the other request owns this attempt. Fail OUR just-created order so it
+      // doesn't linger holding points, and hand back the winner's order.
+      if (idempotencyKey && (e as { code?: string }).code === "P2002") {
+        await db.order.update({ where: { id: order.id }, data: { status: "FAILED", paymentStatus: "FAILED" } });
+        await releaseRedeemedPoints({ orderId: order.id }).catch(() => {});
+        const winner = await db.transaction.findUnique({ where: { idempotencyKey }, select: { orderId: true } });
+        if (winner) return ok({ orderId: winner.orderId });
+      }
+      throw e;
+    }
     await db.transactionEvent.create({
       data: { transactionId: transaction.id, type: "INITIATED" },
     });

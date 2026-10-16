@@ -120,6 +120,8 @@ const PUBLIC_PATHS = [
   "/api/products/options",
   "/api/track",
   "/api/webhooks",
+  // Safaricom C2B confirmation/validation (neutral path — no "mpesa" keyword)
+  "/api/hooks",
   // Server-to-server workers (QStash signature / Vercel Cron secret verified
   // inside each handler) — never carry a session cookie, so they'd otherwise
   // 307-redirect before the handler's own auth check ever runs.

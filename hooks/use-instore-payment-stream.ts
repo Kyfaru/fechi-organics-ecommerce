@@ -22,6 +22,7 @@ export function useInStorePaymentStream(inStoreOrderId: string | null): {
   const [reason, setReason] = useState<string | undefined>()
   const esRef = useRef<EventSource | null>(null)
   const errorCountRef = useRef(0)
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!inStoreOrderId) return
@@ -32,8 +33,11 @@ export function useInStorePaymentStream(inStoreOrderId: string | null): {
     setStatus('connecting')
     esRef.current?.close()
     errorCountRef.current = 0
+    let cancelled = false
+    let reconnects = 0
 
-    const es = new EventSource(`/api/admin/orders/instore/stream?inStoreOrderId=${encodeURIComponent(inStoreOrderId)}`)
+    function connect() {
+    const es = new EventSource(`/api/admin/orders/instore/stream?inStoreOrderId=${encodeURIComponent(inStoreOrderId!)}`)
     esRef.current = es
 
     es.onmessage = (event) => {
@@ -70,18 +74,31 @@ export function useInStorePaymentStream(inStoreOrderId: string | null): {
 
     es.onerror = () => {
       errorCountRef.current += 1
-      // After 3 consecutive errors (e.g. order deleted, auth lost), give up
-      if (errorCountRef.current > 3) {
-        setStatus('failed')
-        setReason('Connection lost. Please check your order status.')
-        es.close()
-        return
-      }
       setStatus('connecting')
+      // A dropped connection says nothing about the payment — it may be live
+      // or already paid, so never report "failed" (which invites a retry and a
+      // second charge). Re-open the stream (its first frame is the order's
+      // real PAID/FAILED state) with a pause, and give up as 'timeout' — not
+      // 'failed' — after ~2 minutes of continuous errors.
+      if (errorCountRef.current > 3) {
+        es.close()
+        if (cancelled) return
+        if (++reconnects > 20) {
+          setStatus('timeout')
+          setReason('Connection lost. Please check the order status before retrying.')
+          return
+        }
+        retryRef.current = setTimeout(connect, 6000)
+      }
+    }
     }
 
+    connect()
+
     return () => {
-      es.close()
+      cancelled = true
+      if (retryRef.current) clearTimeout(retryRef.current)
+      esRef.current?.close()
       esRef.current = null
     }
   }, [inStoreOrderId])

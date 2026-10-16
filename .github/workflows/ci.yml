@@ -24,6 +24,7 @@ jobs:
           pnpm vitest run
           __tests__/token-cache.test.ts
           __tests__/callback-guard.test.ts
+          __tests__/payment-claim.test.ts
           __tests__/kcb-client.test.ts
           __tests__/daraja-client.test.ts
           __tests__/dispatch-stk.test.ts
