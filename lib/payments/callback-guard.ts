@@ -86,12 +86,15 @@ export async function settleCallback(id: string | null, outcome: string): Promis
 }
 
 /**
- * The gateway reports whole KES; transaction.amount is cents. A callback with
- * no Amount item is not rejected (we can't prove a mismatch).
+ * The gateway reports whole KES; transaction.amount is cents. STK pushes are
+ * sent in whole KES (kcb-client rounds cents/100), so a KES 0.85 or KES 1250.50
+ * order legitimately settles as KES 1 / KES 1251 — compare within 1 KES, not
+ * for equality, or real payments get rejected. A callback with no Amount item
+ * is not rejected (we can't prove a mismatch).
  */
 export function amountMatches(callbackAmountKes: unknown, expectedCents: number): boolean {
   if (callbackAmountKes === undefined || callbackAmountKes === null || callbackAmountKes === "") return true;
   const kes = Number(callbackAmountKes);
   if (!Number.isFinite(kes)) return true;
-  return Math.round(kes * 100) === expectedCents;
+  return Math.abs(kes * 100 - expectedCents) < 100;
 }

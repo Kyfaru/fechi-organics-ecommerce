@@ -38,6 +38,12 @@ describe("amountMatches", () => {
     expect(amountMatches(1499, 150000)).toBe(false);
   });
 
+  it("accepts the whole-KES rounding the push itself applies", () => {
+    expect(amountMatches(1, 85)).toBe(true); // KES 0.85 order, pushed as KES 1
+    expect(amountMatches(1251, 125050)).toBe(true); // KES 1250.50 pushed as 1251
+    expect(amountMatches(1, 150000)).toBe(false); // a real mismatch is still caught
+  });
+
   it("does not reject when the callback carries no Amount", () => {
     expect(amountMatches(undefined, 150000)).toBe(true);
   });
