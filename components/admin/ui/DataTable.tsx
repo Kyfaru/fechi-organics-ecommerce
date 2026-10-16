@@ -30,6 +30,8 @@ interface DataTableProps {
   onToggleRow?: (id: string) => void;
   onToggleAllOnPage?: (ids: string[], checked: boolean) => void;
   selectionActions?: ReactNode;
+  // Below md rows render as stacked cards; "scroll" keeps the wide table.
+  mobile?: "cards" | "scroll";
 }
 
 export function DataTable({
@@ -43,6 +45,7 @@ export function DataTable({
   onToggleRow,
   onToggleAllOnPage,
   selectionActions,
+  mobile = "cards",
 }: DataTableProps) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -100,7 +103,67 @@ export function DataTable({
 
   return (
     <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1)">
-      <div className="overflow-x-auto overflow-y-visible">
+      {mobile === "cards" && (
+        <div className="md:hidden divide-y divide-(--neutral-200) dark:divide-(--dark-border)">
+          {selectable && someSelected && (
+            <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-(--green-50) dark:bg-(--dark-bg)">
+              <span className="font-dm text-[13px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">{selectedIds?.size} selected</span>
+              <div className="flex flex-wrap items-center gap-2">{selectionActions}</div>
+            </div>
+          )}
+          {loading ? (
+            Array.from({ length: 4 }).map((_, i) => <div key={i} className="p-4"><SkeletonTableRow /></div>)
+          ) : paged.length === 0 ? (
+            <EmptyState icon={Package} title={emptyTitle} description={emptyDescription} />
+          ) : (
+            paged.map((row, i) => {
+              const rowId = selectable ? getRowId(row) : "";
+              const isSelected = selectable && !!selectedIds?.has(rowId);
+              const isAction = (c: Column) => !c.label.trim() || c.key === "actions";
+              const body = columns.filter((c) => !isAction(c));
+              const [titleCol, ...rest] = body;
+              const actionCols = columns.filter(isAction);
+              const cell = (c: Column) => (c.render ? c.render(row[c.key], row) : String(row[c.key] ?? ""));
+              return (
+                <div
+                  key={i}
+                  onClick={() => onRowClick?.(row)}
+                  className={`p-4 space-y-2 transition-colors ${isSelected ? "bg-(--green-100) dark:bg-(--dark-border)" : ""} ${onRowClick ? "cursor-pointer active:bg-(--green-50) dark:active:bg-(--dark-border)" : ""}`}
+                >
+                  <div className="flex items-start gap-3">
+                    {selectable && (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() => onToggleRow?.(rowId)}
+                        className="mt-1 h-4 w-4 rounded border-(--neutral-300) accent-(--green-800)"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0 font-dm text-[14px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
+                      {titleCol && cell(titleCol)}
+                    </div>
+                    {actionCols.length > 0 && (
+                      <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                        {actionCols.map((c) => <div key={c.key}>{cell(c)}</div>)}
+                      </div>
+                    )}
+                  </div>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+                    {rest.map((c) => (
+                      <div key={c.key} className="min-w-0">
+                        <dt className="font-dm text-[11px] uppercase tracking-wider text-(--neutral-500) dark:text-(--dark-muted)">{c.label}</dt>
+                        <dd className="font-dm text-[13px] text-(--neutral-900) dark:text-(--dark-text) break-words">{cell(c)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+      <div className={`overflow-x-auto overflow-y-visible ${mobile === "cards" ? "max-md:hidden" : ""}`}>
         <table className="w-full">
           <thead>
             <tr className="bg-(--green-50) dark:bg-(--dark-bg) border-b border-(--neutral-200) dark:border-(--dark-border)">
@@ -196,7 +259,7 @@ export function DataTable({
       </div>
 
       {!loading && sorted.length > pageSize && (
-        <div className="flex items-center justify-between px-4 py-3 border-t border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg)">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-4 py-3 border-t border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg)">
           <span className="font-dm text-[13px] text-(--green-800) dark:text-(--dark-muted)">
             Showing {from}–{to} of {sorted.length}
           </span>
@@ -204,7 +267,7 @@ export function DataTable({
             <button
               disabled={page === 0}
               onClick={() => setPage(p => p - 1)}
-              className="h-8 w-8 flex items-center justify-center rounded-[6px] font-dm text-[13px] text-(--green-800) dark:text-(--dark-text) hover:bg-(--green-100) dark:hover:bg-(--dark-border) disabled:opacity-40 disabled:cursor-not-allowed"
+              className="h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-[6px] font-dm text-[13px] text-(--green-800) dark:text-(--dark-text) hover:bg-(--green-100) dark:hover:bg-(--dark-border) disabled:opacity-40 disabled:cursor-not-allowed"
             >
               ‹
             </button>
@@ -212,7 +275,7 @@ export function DataTable({
               <button
                 key={p}
                 onClick={() => setPage(p)}
-                className={`h-8 w-8 flex items-center justify-center rounded-[6px] font-dm text-[13px] transition-colors ${
+                className={`h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-[6px] font-dm text-[13px] transition-colors ${
                   p === page ? "bg-(--green-800) text-white dark:bg-(--dark-accent) dark:text-(--dark-bg)" : "text-(--green-800) dark:text-(--dark-text) hover:bg-(--green-100) dark:hover:bg-(--dark-border)"
                 }`}
               >
@@ -222,7 +285,7 @@ export function DataTable({
             <button
               disabled={page === totalPages - 1}
               onClick={() => setPage(p => p + 1)}
-              className="h-8 w-8 flex items-center justify-center rounded-[6px] font-dm text-[13px] text-(--green-800) dark:text-(--dark-text) hover:bg-(--green-100) dark:hover:bg-(--dark-border) disabled:opacity-40 disabled:cursor-not-allowed"
+              className="h-9 w-9 sm:h-8 sm:w-8 flex items-center justify-center rounded-[6px] font-dm text-[13px] text-(--green-800) dark:text-(--dark-text) hover:bg-(--green-100) dark:hover:bg-(--dark-border) disabled:opacity-40 disabled:cursor-not-allowed"
             >
               ›
             </button>

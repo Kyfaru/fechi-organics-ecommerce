@@ -460,7 +460,7 @@ function CustomerDrawer({
                   <div className="font-dm text-[12px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-3">
                     Engagement
                   </div>
-                  <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                     <div className="rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) p-3">
                       <div className="font-dm text-[11px] text-(--neutral-500) dark:text-(--dark-muted)">Testimonials given</div>
                       <div className="font-syne text-[20px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">{stats.testimonialsCount}</div>
@@ -719,6 +719,7 @@ export function AdminCustomersClient() {
         action={
           <Link
             href="/admin/customers/tickets"
+            aria-label="Support tickets"
             className="inline-flex items-center gap-2 h-10 px-4 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:opacity-90 transition-opacity"
           >
             <Ticket size={16} />
@@ -727,7 +728,7 @@ export function AdminCustomersClient() {
         }
       />
 
-      <div className="px-6 pb-8 space-y-6">
+      <div className="px-4 sm:px-6 pb-8 space-y-6">
         {/* Stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatsCard title="Total Customers" value={isLoading ? "—" : String(stats?.total ?? 0)} icon={<Users className="h-4 w-4 text-muted-foreground" />} change={statsChange?.total.change ?? "—"} changeType={statsChange?.total.changeType === "decrease" ? "negative" : "positive"} />

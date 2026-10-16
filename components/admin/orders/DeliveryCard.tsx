@@ -145,7 +145,7 @@ export default function DeliveryCard({ enabled, onEnabledChange, selectedZone, o
 
       {enabled && (
         <div className="flex flex-col gap-3 pt-1">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-1">
                 Country

@@ -198,7 +198,7 @@ export function AdminApprovalsClient() {
     <div className="min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
       <PageHeader title="Approvals" description="Sensitive actions requested by staff, awaiting admin sign-off" />
 
-      <div className="px-6 pb-6">
+      <div className="px-4 sm:px-6 pb-6">
         {!isLoading && requests.length === 0 ? (
           <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1)">
             <EmptyState icon={ClipboardCheck} title="Nothing pending" description="Requests will appear here when a staff member attempts a sensitive action." />
@@ -226,8 +226,8 @@ export function AdminApprovalsClient() {
       />
 
       {rejectTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4 admin-overlay">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-md p-4 sm:p-6 space-y-4">
             <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">Reject request</h3>
             <p className="font-dm text-[13px] text-(--neutral-500)">
               {rejectTarget.resource}:{rejectTarget.action} — requested by {rejectTarget.requestedByName}

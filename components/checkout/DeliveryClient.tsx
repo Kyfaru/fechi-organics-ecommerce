@@ -236,6 +236,13 @@ function SelectDropdown({
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
+// crypto.randomUUID is secure-context only (https/localhost) — fall back so a
+// plain-http dev/LAN origin can't crash the render.
+function newPayKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
   const router = useRouter();
   const { format } = useCurrency();
@@ -551,6 +558,10 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
     };
   }
 
+  // One key per Pay attempt: a double-click or network retry reuses it, so the
+  // server returns the same order instead of creating (and prompting) twice.
+  const payKeyRef = useRef<string>(newPayKey());
+
   async function handleMpesaPay() {
     setSubmitting(true);
     capture("payment_initiated", { method: "mpesa" });
@@ -558,10 +569,15 @@ export function DeliveryClient({ user, isLoggedIn, branchLimited }: Props) {
       const res = await fetch("/api/payments/mpesa/initiate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: mpesaPhone, deliveryData: buildDeliveryData() }),
+        body: JSON.stringify({
+          phone: mpesaPhone,
+          deliveryData: buildDeliveryData(),
+          idempotencyKey: payKeyRef.current,
+        }),
       });
       const json = await res.json() as { ok: boolean; data?: { orderId: string }; error?: { message: string } };
       if (!res.ok || !json.data?.orderId) {
+        payKeyRef.current = newPayKey(); // rejected cleanly — next attempt is a fresh one
         toast.error(json.error?.message ?? "Could not initiate payment. Please try again.");
         return;
       }
@@ -1124,7 +1140,7 @@ function PaymentStatusModal({ orderId, onClose }: { orderId: string; onClose: (w
 
   useEffect(() => {
     if (status === "success") {
-      window.setTimeout(() => router.push(`/order-success/${orderId}`), 1500);
+      window.setTimeout(() => router.push(`/order-success/${orderId}`), 500);
     }
   }, [status, orderId, router]);
 

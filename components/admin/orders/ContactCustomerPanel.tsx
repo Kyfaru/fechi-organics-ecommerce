@@ -132,10 +132,10 @@ export function ContactCustomerPanel({
 
   return (
     <div className="bg-white rounded-xl border border-(--neutral-200) shadow-[0_4px_20px_rgba(0,0,0,0.04)] overflow-hidden">
-      <div className="px-6 py-4 border-b border-(--neutral-100) bg-(--neutral-50)/50">
+      <div className="px-4 sm:px-6 py-4 border-b border-(--neutral-100) bg-(--neutral-50)/50">
         <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px]">Contact Customer</p>
       </div>
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <div className="flex flex-wrap gap-2 mb-4">
           {ALL_CHANNELS.map((c) => (
             <button

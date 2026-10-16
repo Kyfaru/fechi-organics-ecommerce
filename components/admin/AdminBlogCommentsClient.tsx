@@ -153,7 +153,7 @@ export function AdminBlogCommentsClient() {
         description="Moderate comments left across every blog post"
       />
 
-      <div className="px-6 pb-6 max-w-[820px]">
+      <div className="px-4 sm:px-6 pb-6 max-w-[820px]">
         {postIdFilter && postTitle && (
           <div className="mb-4 flex items-center gap-2 font-dm text-[13px] text-(--neutral-600)">
             Filtering by post: <span className="font-medium text-(--neutral-900) dark:text-(--dark-text)">{postTitle}</span>

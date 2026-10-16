@@ -49,23 +49,27 @@ beforeEach(() => {
 
 describe("getDarajaToken — cache", () => {
   it("returns the cached token without making a network call", async () => {
-    mockRedisGet.mockResolvedValue("cached-token");
+    mockRedisGet.mockResolvedValue({ token: "cached-token", expiresAt: Date.now() + 3_000_000 });
     const token = await getDarajaToken(testBranch);
     expect(token).toBe("cached-token");
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("caches a freshly fetched token for (expires_in - 60) seconds", async () => {
+  it("caches a freshly fetched token for (expires_in - 300) seconds", async () => {
     mockFetch.mockResolvedValue(fakeResponse(200, JSON.stringify({ access_token: "fresh-token", expires_in: "3599" })));
     const token = await getDarajaToken(testBranch);
     expect(token).toBe("fresh-token");
-    expect(mockRedisSet).toHaveBeenCalledWith("mpesa_token:branch-1", "fresh-token", { ex: 3539 });
+    expect(mockRedisSet).toHaveBeenCalledWith(
+      "mpesa_token:branch-1",
+      expect.stringContaining('"token":"fresh-token"'),
+      { ex: 3299 },
+    );
   });
 
-  it("floors the cache TTL at 30 seconds even for a short expires_in", async () => {
+  it("floors the cache TTL at 60 seconds even for a short expires_in", async () => {
     mockFetch.mockResolvedValue(fakeResponse(200, JSON.stringify({ access_token: "fresh-token", expires_in: "45" })));
     await getDarajaToken(testBranch);
-    expect(mockRedisSet).toHaveBeenCalledWith("mpesa_token:branch-1", "fresh-token", { ex: 30 });
+    expect(mockRedisSet).toHaveBeenCalledWith("mpesa_token:branch-1", expect.any(String), { ex: 60 });
   });
 });
 

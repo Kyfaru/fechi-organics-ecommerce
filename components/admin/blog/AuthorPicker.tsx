@@ -149,6 +149,7 @@ export default function AuthorPicker({
           focus:outline-none focus:border-green-600
           transition-colors
           ${open ? "border-green-600" : ""}
+        
         `}
       >
         {/* Selected pills */}
@@ -245,6 +246,7 @@ export default function AuthorPicker({
                         ? "bg-green-50 dark:bg-green-900/20"
                         : "hover:bg-[var(--neutral-50,#f9fafb)] dark:hover:bg-[var(--dark-bg,#111827)]"
                       }
+                    
                     `}
                   >
                     {/* Animated checkbox */}

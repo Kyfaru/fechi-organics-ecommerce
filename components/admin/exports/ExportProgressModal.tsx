@@ -26,7 +26,7 @@ export function ExportProgressModal({ open, exportRequestId, onClose }: ExportPr
           />
           <motion.div
             initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[380px] bg-white dark:bg-(--dark-surface) rounded-[16px] shadow-(--e3) z-[70] p-6"
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[380px] bg-white dark:bg-(--dark-surface) rounded-[16px] shadow-(--e3) z-[70] p-4 sm:p-6"
           >
             <button
               onClick={onClose}

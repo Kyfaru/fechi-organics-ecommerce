@@ -243,7 +243,7 @@ export function NewOrderClient() {
         description="Create an order on behalf of a walk-in customer"
       />
 
-      <div className="px-6 flex flex-col md:flex-row gap-6 items-start">
+      <div className="px-4 sm:px-6 flex flex-col md:flex-row gap-6 items-start">
         {/* ── Sidebar step tracker ── */}
         <aside className="w-full md:w-[260px] shrink-0 bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-5 md:sticky md:top-6">
           <NewOrderStepper
@@ -256,7 +256,7 @@ export function NewOrderClient() {
         </aside>
 
         {/* ── Main content ── */}
-        <div className="flex-1 min-w-0 w-full bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+        <div className="flex-1 min-w-0 w-full bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 sm:p-6">
           {activeStep === "customer" && (
             <StepSection title="Customer Details" description="Find or add the walk-in customer">
               <div className="mt-4 max-w-xl">

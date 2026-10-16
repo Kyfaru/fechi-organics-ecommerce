@@ -21,7 +21,12 @@ function isConfigured(provider: Provider): boolean {
  * else through Twilio. Falls back to the other provider if the primary send
  * fails and the fallback is configured.
  */
-export async function sendSms(to: string, body: string, statusCallback?: string): Promise<string> {
+export async function sendSms(
+  to: string,
+  body: string,
+  statusCallback?: string,
+  opts?: { noFallback?: boolean }
+): Promise<string> {
   const e164 = normalizePhoneE164(to) ?? to // let the provider reject if truly unparseable
   const primary: Provider = getPhoneCountry(e164) === "KE" && hasAfricasTalkingConfig() ? "at" : "twilio"
 
@@ -29,7 +34,7 @@ export async function sendSms(to: string, body: string, statusCallback?: string)
     return await dispatch(primary, e164, body, statusCallback)
   } catch (err) {
     const fallback: Provider = primary === "at" ? "twilio" : "at"
-    if (!isConfigured(fallback)) throw err
+    if (opts?.noFallback || !isConfigured(fallback)) throw err
     console.warn(`[sms] ${primary} failed, retrying via ${fallback}:`, err)
     return await dispatch(fallback, e164, body, statusCallback)
   }

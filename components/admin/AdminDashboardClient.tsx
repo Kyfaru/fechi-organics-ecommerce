@@ -383,7 +383,7 @@ export function AdminDashboardClient() {
       />
 
       {/* Quick Actions */}
-      <div className="flex flex-wrap gap-2 px-6 pb-4 pt-2">
+      <div className="flex flex-wrap gap-2 px-4 sm:px-6 pb-4 pt-2">
         {QUICK_ACTIONS.map(({ href, label }) => (
           <Link
             key={href}
@@ -395,7 +395,7 @@ export function AdminDashboardClient() {
         ))}
       </div>
 
-      <div className="px-6 pb-8 space-y-6">
+      <div className="px-4 sm:px-6 pb-8 space-y-6">
         {/* Stat Cards — two transitioning sets */}
         {isLoading ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

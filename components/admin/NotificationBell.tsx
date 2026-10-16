@@ -117,12 +117,12 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute top-full right-0 mt-2 w-[360px] z-50 rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) bg-white dark:bg-(--dark-surface) shadow-lg overflow-hidden">
+        <div className="max-sm:fixed max-sm:inset-x-3 max-sm:top-[3.75rem] sm:absolute sm:top-full sm:right-0 sm:mt-2 sm:w-[360px] z-50 rounded-[10px] border border-(--neutral-200) dark:border-(--dark-border) bg-white dark:bg-(--dark-surface) shadow-lg overflow-hidden">
           <div className="px-4 py-3 border-b border-(--neutral-200) dark:border-(--dark-border) font-dm text-[13px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
             Notifications
           </div>
           {preview.length === 0 ? (
-            <div className="px-4 py-6 text-center text-[13px] text-(--neutral-400)">No notifications yet</div>
+            <div className="px-4 py-4 sm:py-6 text-center text-[13px] text-(--neutral-400)">No notifications yet</div>
           ) : (
             <div className="max-h-[360px] overflow-y-auto divide-y divide-(--neutral-100) dark:divide-(--dark-border)">
               {preview.map((n) => (

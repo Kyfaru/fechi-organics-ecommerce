@@ -67,11 +67,17 @@ export async function GET(req: NextRequest) {
   });
   if (!order) return new Response("Not Found", { status: 404 });
 
+  // One-shot SSE frame, not JSON: EventSource aborts on a non-text/event-stream
+  // MIME type, which would leave the waiting modal stuck on "connecting".
+  const oneShot = (data: object) =>
+    new Response(`data: ${JSON.stringify(data)}\n\n`, {
+      headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform" },
+    });
   if (order.paymentStatus === "PAID") {
-    return Response.json({ type: "payment_success", inStoreOrderId, immediate: true });
+    return oneShot({ type: "payment_success", inStoreOrderId, immediate: true });
   }
   if (order.paymentStatus === "FAILED") {
-    return Response.json({ type: "payment_failed", inStoreOrderId, immediate: true });
+    return oneShot({ type: "payment_failed", inStoreOrderId, immediate: true });
   }
 
   const channel = paymentChannel(inStoreOrderId);

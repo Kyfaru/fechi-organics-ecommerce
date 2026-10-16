@@ -30,7 +30,14 @@ function createPrismaClient(): PrismaClient {
     );
   }
 
-  const adapter = new PrismaPg({ connectionString });
+  // Explicit pool so burst behaviour is a decision, not a default: max defaults
+  // to pg's 10; the connect timeout makes a saturated/cold pool fail fast
+  // instead of hanging a payment request. Tune via DB_POOL_MAX.
+  const adapter = new PrismaPg({
+    connectionString,
+    max: Number(process.env.DB_POOL_MAX ?? 10),
+    connectionTimeoutMillis: 10_000,
+  });
   // Prisma 7 passes adapter via constructor options
   return new PrismaClient({ adapter });
 }

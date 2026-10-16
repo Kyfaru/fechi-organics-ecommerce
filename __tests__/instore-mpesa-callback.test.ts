@@ -27,6 +27,13 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+// The inbox/guard writes are not under test here — keep them inert.
+vi.mock("@/lib/payments/callback-guard", async (orig) => ({
+  ...(await orig<typeof import("@/lib/payments/callback-guard")>()),
+  fileCallback: async () => ({ id: null, duplicate: false }),
+  settleCallback: async () => {},
+}));
+
 import { POST } from "@/app/api/payments/mpesa/instore-callback/route";
 
 function makeRequest(body: unknown): NextRequest {
@@ -41,6 +48,7 @@ const PENDING_TX = (gateway: "DARAJA" | "KCB_BUNI") => ({
   id: "instore-tx-1",
   inStoreOrderId: "instore-order-1",
   status: "PENDING",
+  amount: 150000, // KES 1500 in cents — matches the fixtures' Amount item
   inStoreOrder: { branch: { mpesaGateway: gateway } },
 });
 

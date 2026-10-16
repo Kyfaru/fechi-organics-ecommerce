@@ -83,7 +83,7 @@ export function AdminHomepageClient() {
         description="Configure the sections shown on your storefront homepage"
       />
 
-      <div className="px-6 pb-6 space-y-3 max-w-[760px]">
+      <div className="px-4 sm:px-6 pb-6 space-y-3 max-w-[760px]">
         {isLoading ? (
           Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="h-[72px] w-full rounded-[12px] bg-(--neutral-100) dark:bg-(--dark-border) animate-pulse" />

@@ -40,11 +40,13 @@ export async function sendSmsAT(to: string, body: string): Promise<string> {
           bulkSMSMode: "1",
           ...(SENDER_ID ? { from: SENDER_ID } : {}),
         }),
+        signal: AbortSignal.timeout(20_000),
       })
     : await fetch(BULK_URL, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ username: USERNAME, message: body, senderId: SENDER_ID, phoneNumbers: [to] }),
+        signal: AbortSignal.timeout(20_000),
       })
 
   // Read as text first — an auth failure or rate limit returns a plain-text

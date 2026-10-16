@@ -299,7 +299,7 @@ export function AdminDeliveryZonesClient() {
     <div className="min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
       <PageHeader title="Delivery Zones" description="Manage delivery zones, branch routing, and checkout fees" />
 
-      <div className="px-6 mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="px-4 sm:px-6 mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatsCard
   title="Zones"
   value={String(zones.length)}
@@ -325,7 +325,7 @@ export function AdminDeliveryZonesClient() {
 />
       </div>
 
-      <div className="px-6 mb-5 flex flex-wrap items-center gap-3">
+      <div className="px-4 sm:px-6 mb-5 flex flex-wrap items-center gap-3">
         <select value={countyFilter} onChange={(e) => setCountyFilter(e.target.value)} className="h-9 px-3 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] bg-white">
           <option value="">All counties</option>
           {KENYA_COUNTIES.map((county) => <option key={county} value={county}>{county}</option>)}
@@ -335,7 +335,7 @@ export function AdminDeliveryZonesClient() {
         </button>
       </div>
 
-      <div className="px-6 mb-3">
+      <div className="px-4 sm:px-6 mb-3">
         <div className="relative max-w-xs">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400)" />
           <input
@@ -348,7 +348,7 @@ export function AdminDeliveryZonesClient() {
         </div>
       </div>
 
-      <div className="px-6">
+      <div className="px-4 sm:px-6">
         <DataTable
           columns={columns}
           data={filteredZones as unknown as Record<string, unknown>[]}
@@ -403,11 +403,11 @@ export function AdminDeliveryZonesClient() {
       />
 
       {/* ── Branches section ── */}
-      <div className="px-6 pt-8 pb-2">
+      <div className="px-4 sm:px-6 pt-8 pb-2">
         <h2 className="font-dm font-semibold text-[16px] text-(--neutral-900)">Branches</h2>
         <p className="font-dm text-[13px] text-(--neutral-500) mt-0.5">Click a branch to update its name, county, phone, or active status</p>
       </div>
-      <div className="px-6 mb-3">
+      <div className="px-4 sm:px-6 mb-3">
         <div className="relative max-w-xs">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400)" />
           <input
@@ -420,7 +420,7 @@ export function AdminDeliveryZonesClient() {
         </div>
       </div>
 
-      <div className="px-6 pb-8">
+      <div className="px-4 sm:px-6 pb-8">
         <DataTable
           columns={branchColumns}
           data={filteredBranches as unknown as Record<string, unknown>[]}

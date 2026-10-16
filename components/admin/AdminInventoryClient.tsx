@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { Warehouse, Package, AlertTriangle, XCircle, Search, ChevronDown, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { StatsCard } from "@/components/ui/stats-card";
+import { MobileFilterSheet } from "@/components/admin/ui/MobileFilterSheet";
+import { ZohoSyncIcon } from "@/components/admin/ui/icons";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
@@ -296,7 +298,7 @@ export function AdminInventoryClient() {
         description="Track and manage product stock levels"
       />
 
-      <div className="px-6 pb-6 space-y-6">
+      <div className="px-4 sm:px-6 pb-6 space-y-6">
         {/* Stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatsCard title="Total SKUs" value={String(stats.totalSKUs)} icon={<Warehouse className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
@@ -306,7 +308,7 @@ export function AdminInventoryClient() {
         </div>
 
         {/* Filter toolbar */}
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+        <div className="flex flex-row flex-wrap gap-3 items-center">
           {/* Search */}
           <div className="relative flex-1 max-w-sm">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400)" />
@@ -319,8 +321,15 @@ export function AdminInventoryClient() {
             />
           </div>
 
+          <MobileFilterSheet
+            groups={[
+              { type: "single", key: "category", label: "Category", value: categoryFilter === "all" ? "" : categoryFilter, onChange: (v) => setCategoryFilter(v || "all"), allLabel: "All categories", options: categories.map((c) => ({ value: c, label: c })) },
+              { type: "single", key: "status", label: "Stock status", value: statusFilter === "all" ? "" : statusFilter, onChange: (v) => setStatusFilter(v || "all"), allLabel: "All statuses", options: [{ value: "in_stock", label: "In stock" }, { value: "low_stock", label: "Low stock" }, { value: "out_of_stock", label: "Out of stock" }] },
+            ]}
+          />
+
           {/* Category */}
-          <div className="relative">
+          <div className="relative max-sm:hidden">
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
@@ -335,7 +344,7 @@ export function AdminInventoryClient() {
           </div>
 
           {/* Status */}
-          <div className="relative">
+          <div className="relative max-sm:hidden">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -352,7 +361,7 @@ export function AdminInventoryClient() {
           {/* Global-tier callers pick which branch's Zoho org to sync — each
               branch runs its own independent org, so sync is never "all branches". */}
           {isGlobalTier && (
-            <div className="relative ml-auto">
+            <div className="relative ml-auto max-sm:w-full max-sm:order-last">
               <select
                 value={selectedSyncBranchId}
                 onChange={(e) => setSyncBranchId(e.target.value)}
@@ -371,10 +380,13 @@ export function AdminInventoryClient() {
             type="button"
             onClick={handleZohoSync}
             disabled={syncing}
-            className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 dark:border-neutral-700 text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 disabled:opacity-50 ${isGlobalTier ? "" : "ml-auto"}`}
+            aria-label="Sync with Zoho"
+            title="Sync with Zoho"
+            className={`inline-flex items-center gap-2 px-4 py-2 max-sm:w-10 max-sm:h-10 max-sm:px-0 max-sm:justify-center text-sm font-medium rounded-lg border border-gray-200 dark:border-neutral-700 text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 disabled:opacity-50 ${isGlobalTier ? "" : "ml-auto"}`}
           >
-            <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Syncing…" : "Sync with Zoho"}
+            <RefreshCw className={`w-4 h-4 max-sm:hidden ${syncing ? "animate-spin" : ""}`} />
+            <span className={`sm:hidden ${syncing ? "animate-spin" : ""}`}><ZohoSyncIcon size={20} /></span>
+            <span className="max-sm:sr-only">{syncing ? "Syncing…" : "Sync with Zoho"}</span>
           </button>
         </div>
 

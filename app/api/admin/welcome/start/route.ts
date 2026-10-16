@@ -25,6 +25,7 @@ import { getRedis } from "@/lib/redis";
 import { ok, Err } from "@/lib/api";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { reportError } from "@/lib/observability";
+import { computeBackSoon } from "@/lib/admin-welcome";
 
 const WELCOME_TOKEN_TTL_SECONDS = 120;
 
@@ -45,10 +46,25 @@ export async function POST(req: NextRequest) {
     });
     if (user?.mustChangePassword) return ok({ mustChangePassword: true });
 
+    // fullName/role/backSoon ride along here too so the login page can hand
+    // them straight to the welcome page (sessionStorage) for an instant
+    // greeting — no need for that page to wait on its own /api/admin/me
+    // round trip just to know who it's greeting.
+    const profile = await db.adminProfile.findUnique({
+      where: { userId: session.user.id },
+      select: { fullName: true, role: true, lastLogoutAt: true },
+    });
+
     const token = randomBytes(32).toString("base64url");
     await getRedis().set(`admin_welcome:${token}`, session.user.id, { ex: WELCOME_TOKEN_TTL_SECONDS });
 
-    return ok({ mustChangePassword: false, token });
+    return ok({
+      mustChangePassword: false,
+      token,
+      fullName: profile?.fullName ?? "",
+      role: profile?.role ?? "",
+      backSoon: computeBackSoon(profile?.lastLogoutAt ?? null),
+    });
   } catch (e) {
     console.error("[admin/welcome/start] POST error", e);
     reportError(e, { route: "POST /api/admin/welcome/start" });

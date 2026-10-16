@@ -458,9 +458,9 @@ export function AdminBranchesClient() {
       />
 
       {isGlobalScope && (
-        <div className="px-6 pb-6">
+        <div className="px-4 sm:px-6 pb-6">
           <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) overflow-hidden">
-            <div className="px-6 py-4 flex items-center justify-between border-b border-(--neutral-200) dark:border-(--dark-border)">
+            <div className="px-4 sm:px-6 py-4 flex items-center justify-between border-b border-(--neutral-200) dark:border-(--dark-border)">
               <div>
                 <h2 className="font-syne text-[16px] font-bold text-(--neutral-900) dark:text-(--dark-text)">Zoho Organizations</h2>
                 <p className="font-dm text-[12px] text-(--neutral-500)">Shared credentials — several branches can link to the same organization.</p>
@@ -481,22 +481,22 @@ export function AdminBranchesClient() {
             ) : organizations.length === 0 ? (
               <div className="p-8 text-center font-dm text-[14px] text-(--neutral-400)">No Zoho organizations yet.</div>
             ) : (
-              <table className="w-full">
+              <div className="overflow-x-auto"><table className="admin-stack-table w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg)">
-                    <th className="px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Organization</th>
-                    <th className="px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Zoho Org ID</th>
-                    <th className="px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Status</th>
-                    <th className="px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Linked Branches</th>
-                    <th className="px-6 py-3 text-right font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Actions</th>
+                    <th className="px-4 sm:px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Organization</th>
+                    <th className="px-4 sm:px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Zoho Org ID</th>
+                    <th className="px-4 sm:px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Status</th>
+                    <th className="px-4 sm:px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Linked Branches</th>
+                    <th className="px-4 sm:px-6 py-3 text-right font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {organizations.map((org, idx) => (
                     <tr key={org.id} className={`border-b border-(--neutral-200) dark:border-(--dark-border) ${idx % 2 === 0 ? "" : "bg-(--neutral-50)/50 dark:bg-(--dark-bg)/30"}`}>
-                      <td className="px-6 py-4 font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">{org.name}</td>
-                      <td className="px-6 py-4 font-dm text-[13px] text-(--neutral-600)">{org.zohoOrgId}</td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 sm:px-6 py-4 font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">{org.name}</td>
+                      <td className="px-4 sm:px-6 py-4 font-dm text-[13px] text-(--neutral-600)">{org.zohoOrgId}</td>
+                      <td className="px-4 sm:px-6 py-4">
                         {org.isActive ? (
                           <span className="inline-flex items-center gap-1.5 font-dm text-[13px] text-(--success)">
                             <CheckCircle2 size={14} /> Active
@@ -507,10 +507,10 @@ export function AdminBranchesClient() {
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4 font-dm text-[13px] text-(--neutral-600)">
+                      <td className="px-4 sm:px-6 py-4 font-dm text-[13px] text-(--neutral-600)">
                         {org.branches.length > 0 ? org.branches.map((b) => b.name).join(", ") : "None linked"}
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-4 sm:px-6 py-4 text-right">
                         <RowActionMenu
                           ariaLabel={`${org.name} actions`}
                           actions={[
@@ -524,13 +524,13 @@ export function AdminBranchesClient() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </div>
         </div>
       )}
 
-      <div className="px-6 pb-6">
+      <div className="px-4 sm:px-6 pb-6">
         <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) overflow-hidden">
           {branchesLoading ? (
             <div className="p-8 text-center font-dm text-[14px] text-(--neutral-400)">Loading…</div>
@@ -539,13 +539,13 @@ export function AdminBranchesClient() {
               Couldn&apos;t load branches — see the toast for details.
             </div>
           ) : (
-            <table className="w-full">
+            <div className="overflow-x-auto"><table className="admin-stack-table w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg)">
-                  <th className="px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Branch</th>
-                  <th className="px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">County</th>
-                  <th className="px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Zoho Organization</th>
-                  <th className="px-6 py-3 text-right font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Actions</th>
+                  <th className="px-4 sm:px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Branch</th>
+                  <th className="px-4 sm:px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">County</th>
+                  <th className="px-4 sm:px-6 py-3 text-left font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Zoho Organization</th>
+                  <th className="px-4 sm:px-6 py-3 text-right font-dm text-[12px] font-medium uppercase tracking-wider text-(--neutral-500)">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -554,14 +554,14 @@ export function AdminBranchesClient() {
                     key={branch.id}
                     className={`border-b border-(--neutral-200) dark:border-(--dark-border) ${idx % 2 === 0 ? "" : "bg-(--neutral-50)/50 dark:bg-(--dark-bg)/30"}`}
                   >
-                    <td className="px-6 py-4">
+                    <td className="px-4 sm:px-6 py-4">
                       <div className="flex items-center gap-2 font-dm text-[14px] font-medium text-(--neutral-900) dark:text-(--dark-text)">
                         <Building2 size={15} className="text-(--neutral-400)" />
                         {branch.name}
                       </div>
                     </td>
-                    <td className="px-6 py-4 font-dm text-[13px] text-(--neutral-600)">{branch.county}</td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 sm:px-6 py-4 font-dm text-[13px] text-(--neutral-600)">{branch.county}</td>
+                    <td className="px-4 sm:px-6 py-4">
                       {branch.zohoConnected ? (
                         <span className="inline-flex items-center gap-1.5 font-dm text-[13px] text-(--success)">
                           <CheckCircle2 size={14} /> {branch.zohoOrganizationName ?? "Connected"}
@@ -572,7 +572,7 @@ export function AdminBranchesClient() {
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-4 sm:px-6 py-4 text-right">
                       {canEdit(branch) && (
                         <RowActionMenu
                           ariaLabel={`${branch.name} actions`}
@@ -583,15 +583,15 @@ export function AdminBranchesClient() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
       </div>
 
       {/* Branch → organization link modal */}
       {linkTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4 admin-overlay">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-4 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
               Zoho link — {linkTarget.name}
             </h3>
@@ -664,8 +664,8 @@ export function AdminBranchesClient() {
 
       {/* Zoho organization credentials modal */}
       {orgTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4 admin-overlay">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-4 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
               {orgTarget === "new" ? "New Zoho organization" : `Zoho credentials — ${orgTarget.name}`}
             </h3>
@@ -751,8 +751,8 @@ export function AdminBranchesClient() {
 
       {/* One-time webhook secret reveal */}
       {webhookReveal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4 admin-overlay">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-4 sm:p-6 space-y-4">
             <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
               Webhook secret — copy it now
             </h3>
@@ -802,8 +802,8 @@ export function AdminBranchesClient() {
 
       {/* Permanent delete confirmation */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4 admin-overlay">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-4 sm:p-6 space-y-4">
             <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
               Delete {deleteTarget.name}
             </h3>

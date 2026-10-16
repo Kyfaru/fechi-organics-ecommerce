@@ -136,7 +136,7 @@ export function ExportModal({ resource, open, onClose }: ExportModalProps) {
               initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }}
               className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[560px] max-h-[85vh] overflow-y-auto bg-white dark:bg-(--dark-surface) rounded-[16px] shadow-(--e3) z-[60]"
             >
-              <div className="flex items-center justify-between px-6 py-4 border-b border-(--neutral-100) dark:border-(--dark-border) sticky top-0 bg-white dark:bg-(--dark-surface) z-10">
+              <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-(--neutral-100) dark:border-(--dark-border) sticky top-0 bg-white dark:bg-(--dark-surface) z-10">
                 <h2 className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">
                   Export {resource === "orders" ? "Orders" : "Finance"} Report
                 </h2>
@@ -146,7 +146,7 @@ export function ExportModal({ resource, open, onClose }: ExportModalProps) {
               </div>
 
               {queued ? (
-                <div className="px-6 py-10 flex flex-col items-center text-center gap-3">
+                <div className="px-4 sm:px-6 py-10 flex flex-col items-center text-center gap-3">
                   <div className="w-14 h-14 rounded-full bg-(--gold-50) dark:bg-(--dark-bg) flex items-center justify-center">
                     <FileText size={24} className="text-(--gold-700)" />
                   </div>
@@ -162,7 +162,7 @@ export function ExportModal({ resource, open, onClose }: ExportModalProps) {
                   </button>
                 </div>
               ) : (
-                <div className="p-6 space-y-5">
+                <div className="p-4 sm:p-6 space-y-5">
                   <div>
                     <label className="block font-dm text-[13px] font-medium text-(--neutral-700) dark:text-(--dark-text) mb-1.5">Date range</label>
                     <DateTimeRangePicker value={filters.dateRange} onChange={(v) => setFilters((f) => ({ ...f, dateRange: v }))} withTime />

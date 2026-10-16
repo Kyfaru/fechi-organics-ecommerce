@@ -52,10 +52,10 @@ export function AdminRolesClient() {
         description="What each role can access across the admin panel"
       />
 
-      <div className="px-6 pb-6">
+      <div className="px-4 sm:px-6 pb-6">
         <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) overflow-hidden">
           {/* Note banner — tone matches the disclaimer in AdminStaffClient's role picker */}
-          <div className="px-6 py-3 bg-(--gold-50) border-b border-(--gold-200) flex items-center gap-2">
+          <div className="px-4 sm:px-6 py-3 bg-(--gold-50) border-b border-(--gold-200) flex items-center gap-2">
             <Info size={14} className="text-(--gold-700) shrink-0" />
             <span className="font-dm text-[13px] text-(--gold-700)">
               Permissions for each role are fixed and defined in code (lib/permissions.ts) — this page is
@@ -64,7 +64,7 @@ export function AdminRolesClient() {
           </div>
 
           {/* Controls: resource search + role focus filter (display only, no data mutation) */}
-          <div className="px-6 py-4 border-b border-(--neutral-200) dark:border-(--dark-border) flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+          <div className="px-4 sm:px-6 py-4 border-b border-(--neutral-200) dark:border-(--dark-border) flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
             <div className="relative w-full sm:w-64">
               <Search
                 size={14}
@@ -108,11 +108,42 @@ export function AdminRolesClient() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Phones: one card per resource listing what each role can do (matrix is desktop-only). */}
+          <div className="md:hidden divide-y divide-(--neutral-200) dark:divide-(--dark-border)">
+            {visibleResources.map((resource) => (
+              <div key={resource} className="p-4 space-y-2">
+                <div className="font-dm text-[14px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">{formatLabel(resource)}</div>
+                {visibleRoles.map((role) => {
+                  const granted = grantsFor(role, resource);
+                  return (
+                    <div key={role} className="flex items-start gap-3">
+                      <span className="w-24 shrink-0 font-dm text-[12px] text-(--neutral-500) dark:text-(--dark-muted)">{formatLabel(role)}</span>
+                      <div className="flex flex-wrap gap-1">
+                        {granted.length === 0 ? (
+                          <span className="font-dm text-[12px] text-(--neutral-300)">—</span>
+                        ) : (
+                          granted.map((action) => (
+                            <span key={action} className="px-1.5 py-0.5 rounded-[4px] bg-(--green-50) dark:bg-(--green-900)/40 font-dm text-[11px] font-medium text-(--green-700) dark:text-(--green-200)">
+                              {formatLabel(action)}
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+            {visibleResources.length === 0 && (
+              <p className="p-6 text-center font-dm text-[13px] text-(--neutral-400)">No resources match &ldquo;{search}&rdquo;.</p>
+            )}
+          </div>
+
+          <div className="overflow-x-auto max-md:hidden">
             <table className="w-full border-collapse">
               <thead>
                 <tr className="border-b border-(--neutral-200) dark:border-(--dark-border) bg-(--neutral-50) dark:bg-(--dark-bg)">
-                  <th className="sticky left-0 z-10 bg-(--neutral-50) dark:bg-(--dark-bg) px-6 py-3 text-left font-dm text-[11px] font-medium uppercase tracking-wider text-(--neutral-500) dark:text-(--dark-muted) w-56 min-w-56">
+                  <th className="sticky left-0 z-10 bg-(--neutral-50) dark:bg-(--dark-bg) px-4 sm:px-6 py-3 text-left font-dm text-[11px] font-medium uppercase tracking-wider text-(--neutral-500) dark:text-(--dark-muted) w-56 min-w-56">
                     Resource
                   </th>
                   {visibleRoles.map((role) => (
@@ -133,7 +164,7 @@ export function AdminRolesClient() {
                       : "bg-(--neutral-50) dark:bg-(--dark-bg)/60";
                   return (
                     <tr key={resource} className={`border-b border-(--neutral-200) dark:border-(--dark-border) ${rowBg}`}>
-                      <td className={`sticky left-0 z-10 px-6 py-3 font-dm text-[13px] font-medium text-(--neutral-900) dark:text-(--dark-text) ${rowBg}`}>
+                      <td className={`sticky left-0 z-10 px-4 sm:px-6 py-3 font-dm text-[13px] font-medium text-(--neutral-900) dark:text-(--dark-text) ${rowBg}`}>
                         {formatLabel(resource)}
                         <div className="font-dm text-[11px] font-normal text-(--neutral-400) dark:text-(--dark-muted) mt-0.5">
                           all actions: {statements[resource].join(", ")}
@@ -167,7 +198,7 @@ export function AdminRolesClient() {
                   <tr>
                     <td
                       colSpan={visibleRoles.length + 1}
-                      className="px-6 py-10 text-center font-dm text-[13px] text-(--neutral-400) dark:text-(--dark-muted)"
+                      className="px-4 sm:px-6 py-10 text-center font-dm text-[13px] text-(--neutral-400) dark:text-(--dark-muted)"
                     >
                       No resources match &ldquo;{search}&rdquo;.
                     </td>

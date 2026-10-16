@@ -99,14 +99,34 @@ describe("initiateKcbStkPush — token step classification", () => {
       .mockResolvedValueOnce(fakeResponse(200, JSON.stringify({ CheckoutRequestID: "ws_CO_1", ResponseCode: "0" })));
 
     await initiateKcbStkPush({ branch: testBranch, phone: "0712345678", amountKes: 100000, orderId: "o1", callbackUrl: "https://cb" });
-    expect(mockRedisSet).toHaveBeenCalledWith("kcb_token:branch-1", "tok-123", expect.objectContaining({ ex: expect.any(Number) }));
+    expect(mockRedisSet).toHaveBeenCalledWith(
+      expect.stringMatching(/^kcb_token:branch-1:[0-9a-f]{12}$/),
+      expect.stringContaining('"token":"tok-123"'),
+      expect.objectContaining({ ex: expect.any(Number) }),
+    );
 
     // Second call: cached token present — only the stkpush fetch should fire.
-    mockRedisGet.mockResolvedValue("tok-123");
+    mockRedisGet.mockResolvedValue({ token: "tok-123", expiresAt: Date.now() + 3_000_000 });
     mockFetch.mockClear();
     mockFetch.mockResolvedValueOnce(fakeResponse(200, JSON.stringify({ CheckoutRequestID: "ws_CO_2", ResponseCode: "0" })));
     await initiateKcbStkPush({ branch: testBranch, phone: "0712345678", amountKes: 100000, orderId: "o1", callbackUrl: "https://cb" });
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("scopes the token cache key to the consumer key, so rotated credentials never reuse the old token", async () => {
+    const ok = fakeResponse(200, JSON.stringify({ CheckoutRequestID: "x", ResponseCode: "0" }));
+    mockFetch.mockResolvedValueOnce(TOKEN_OK).mockResolvedValueOnce(ok);
+    await initiateKcbStkPush({ branch: testBranch, phone: "0712345678", amountKes: 100000, orderId: "o1", callbackUrl: "https://cb" });
+    mockFetch.mockResolvedValueOnce(TOKEN_OK).mockResolvedValueOnce(ok);
+    await initiateKcbStkPush({
+      branch: { ...testBranch, consumerKeyEnc: "rotated-key" },
+      phone: "0712345678",
+      amountKes: 100000,
+      orderId: "o1",
+      callbackUrl: "https://cb",
+    });
+    const [firstKey, secondKey] = mockRedisSet.mock.calls.map((c) => c[0]);
+    expect(firstKey).not.toBe(secondKey);
   });
 });
 
@@ -119,12 +139,65 @@ describe("initiateKcbStkPush — stkpush step classification", () => {
     ).rejects.toMatchObject({ sentNothing: true });
   });
 
-  it("throws StkSendError(sentNothing=false) on a 4xx from the stkpush endpoint — KCB answered with a rejection", async () => {
-    mockFetch.mockResolvedValueOnce(TOKEN_OK).mockResolvedValueOnce(fakeResponse(401, "Invalid Credentials"));
+  it("throws StkSendError(sentNothing=false) when the stkpush request times out — it may have reached KCB", async () => {
+    const timeout = Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
+    mockFetch.mockResolvedValueOnce(TOKEN_OK).mockRejectedValueOnce(timeout);
 
     await expect(
       initiateKcbStkPush({ branch: testBranch, phone: "0712345678", amountKes: 100000, orderId: "o1", callbackUrl: "https://cb" }),
     ).rejects.toMatchObject({ sentNothing: false });
+  });
+
+  it("throws StkSendError(sentNothing=false) on a 4xx from the stkpush endpoint — KCB answered with a rejection", async () => {
+    mockFetch.mockReset();
+    mockFetch.mockResolvedValueOnce(TOKEN_OK).mockResolvedValueOnce(fakeResponse(400, "Bad Request"));
+
+    await expect(
+      initiateKcbStkPush({ branch: testBranch, phone: "0712345678", amountKes: 100000, orderId: "o1", callbackUrl: "https://cb" }),
+    ).rejects.toMatchObject({ sentNothing: false });
+    expect(mockFetch).toHaveBeenCalledTimes(2); // non-auth 4xx is never retried
+  });
+
+  it("retries once with a freshly minted token after a 401 from stkpush, then succeeds", async () => {
+    mockFetch.mockReset();
+    mockFetch
+      .mockResolvedValueOnce(TOKEN_OK)
+      .mockResolvedValueOnce(fakeResponse(401, "Invalid Credentials"))
+      .mockResolvedValueOnce(fakeResponse(200, JSON.stringify({ access_token: "tok-456", expires_in: 3600 })))
+      .mockResolvedValueOnce(fakeResponse(200, JSON.stringify({ CheckoutRequestID: "ws_CO_retry", ResponseCode: "0" })));
+
+    const result = await initiateKcbStkPush({ branch: testBranch, phone: "0712345678", amountKes: 100000, orderId: "o1", callbackUrl: "https://cb" });
+
+    expect(result.CheckoutRequestID).toBe("ws_CO_retry");
+    expect(mockFetch).toHaveBeenCalledTimes(4);
+    expect((mockFetch.mock.calls[3][1] as { headers: Record<string, string> }).headers.Authorization).toBe("Bearer tok-456");
+    expect(mockRedisGet).toHaveBeenCalledTimes(1); // the retry's token fetch skipped the cache read
+  });
+
+  it("also retries when KCB signals 90001 on a non-401 status", async () => {
+    mockFetch.mockReset();
+    mockFetch
+      .mockResolvedValueOnce(TOKEN_OK)
+      .mockResolvedValueOnce(fakeResponse(400, JSON.stringify({ errorCode: "90001", errorMessage: "Invalid credentials" })))
+      .mockResolvedValueOnce(TOKEN_OK)
+      .mockResolvedValueOnce(fakeResponse(200, JSON.stringify({ CheckoutRequestID: "ws_CO_90001", ResponseCode: "0" })));
+
+    const result = await initiateKcbStkPush({ branch: testBranch, phone: "0712345678", amountKes: 100000, orderId: "o1", callbackUrl: "https://cb" });
+    expect(result.CheckoutRequestID).toBe("ws_CO_90001");
+  });
+
+  it("surfaces the auth rejection (sentNothing=false) when the fresh-token retry is rejected too", async () => {
+    mockFetch.mockReset();
+    mockFetch
+      .mockResolvedValueOnce(TOKEN_OK)
+      .mockResolvedValueOnce(fakeResponse(401, "Invalid Credentials"))
+      .mockResolvedValueOnce(TOKEN_OK)
+      .mockResolvedValueOnce(fakeResponse(401, "Invalid Credentials"));
+
+    await expect(
+      initiateKcbStkPush({ branch: testBranch, phone: "0712345678", amountKes: 100000, orderId: "o1", callbackUrl: "https://cb" }),
+    ).rejects.toMatchObject({ sentNothing: false });
+    expect(mockFetch).toHaveBeenCalledTimes(4); // exactly one retry, no loop
   });
 
   it("throws StkSendError(sentNothing=true) on a 5xx from the stkpush endpoint", async () => {

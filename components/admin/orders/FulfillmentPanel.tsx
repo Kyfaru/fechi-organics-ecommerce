@@ -49,8 +49,8 @@ function OrderNumberGateModal({
   const isMatch = typedNumber.trim() === orderNum;
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
-      <div className="bg-white dark:bg-(--dark-surface) rounded-[16px] w-full max-w-[420px] mx-4 shadow-xl p-6">
+    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/40 admin-overlay">
+      <div className="bg-white dark:bg-(--dark-surface) rounded-[16px] w-full max-w-[420px] mx-4 shadow-xl p-4 sm:p-6">
         <h3 className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-2">
           Confirm Order
         </h3>

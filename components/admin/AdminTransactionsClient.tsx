@@ -321,7 +321,7 @@ export function AdminTransactionsClient() {
 
       <ExportModal resource="finance" open={exportOpen} onClose={() => setExportOpen(false)} />
 
-      <div className="px-6 pb-8 space-y-6">
+      <div className="px-4 sm:px-6 pb-8 space-y-6">
         {/* ── Stat cards — two transitioning sets ── */}
         {isLoading ? (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -337,7 +337,7 @@ export function AdminTransactionsClient() {
           {isLoading ? (
             <SkeletonChart />
           ) : (
-            <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+            <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 sm:p-6">
               <h2 className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-1">
                 Monthly Revenue
               </h2>
@@ -357,7 +357,7 @@ export function AdminTransactionsClient() {
           {isLoading ? (
             <SkeletonChart />
           ) : (
-            <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6">
+            <div className="bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 sm:p-6">
               {/* Card header with filter toggles */}
               <h2 className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-1">
                 Payment Methods

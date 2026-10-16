@@ -94,7 +94,7 @@ const textareaCls = "w-full px-3 py-2.5 rounded-[8px] border border-(--neutral-3
 /** Section card wrapper */
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-6 ${className}`}>
+    <div className={`bg-white dark:bg-(--dark-surface) rounded-[12px] border border-(--neutral-200) dark:border-(--dark-border) shadow-(--e1) p-4 sm:p-6 ${className}`}>
       {children}
     </div>
   );
@@ -118,7 +118,7 @@ function SaveBtn({ onClick, saving }: { onClick: () => void; saving: boolean }) 
     <button
       onClick={onClick}
       disabled={saving}
-      className="h-10 px-6 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60"
+      className="h-10 px-4 sm:px-6 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60"
     >
       {saving ? "Saving…" : "Save Changes"}
     </button>
@@ -199,7 +199,7 @@ function GeneralTab({ settings, onSave, saving }: { settings: Settings; onSave: 
             </div>
             <p className="font-dm text-[11px] text-(--neutral-400)">Contact support to change this.</p>
           </Field>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Timezone">
               <div className="relative">
                 <Clock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400) z-10" />
@@ -777,9 +777,9 @@ export function AdminSettingsClient() {
     <div className="min-h-screen bg-(--neutral-50) dark:bg-(--dark-bg)">
       <PageHeader title="Settings" description="Configure your store and admin preferences" />
 
-      <div className="flex gap-6 px-6 pb-6">
+      <div className="flex flex-col md:flex-row gap-4 md:gap-6 px-4 sm:px-6 pb-6">
         {/* Left sidebar tab list */}
-        <nav className="w-[220px] shrink-0 space-y-0.5">
+        <nav className="md:w-[220px] shrink-0 flex md:block gap-1 md:space-y-0.5 overflow-x-auto md:overflow-visible -mx-4 px-4 sm:mx-0 sm:px-0 pb-1 md:pb-0 [&>*]:shrink-0 [&>*]:whitespace-nowrap">
           {visibleTabs.map((tab) => {
             const isDanger = tab.id === "danger";
             const isActive = activeTab === tab.id;

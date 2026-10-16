@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Icon } from "@iconify/react";
-import { Search, Settings, Sun, Moon } from "lucide-react";
+import { Search, Settings, Sun, Moon, Menu, X } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/app/providers";
@@ -35,6 +35,7 @@ export function AdminHeader() {
   const router = useRouter();
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [mobileSearch, setMobileSearch] = useState(false);
   const debouncedSearch = useDebouncedValue(searchQuery, 300);
 
   const { data: searchData, isFetching: searchLoading } = useQuery<{ ok: boolean; data: { results: SearchResult[] } }>({
@@ -47,6 +48,7 @@ export function AdminHeader() {
   function handleSelectResult(result: SearchResult) {
     setSearchQuery("");
     setSearchFocused(false);
+    setMobileSearch(false);
     router.push(result.url);
   }
 
@@ -57,7 +59,17 @@ export function AdminHeader() {
   const imgUrl = url + "/" + userImage;
 
   return (
-    <header className="h-[72px] bg-white dark:bg-(--dark-surface) border-b border-(--green-200) dark:border-(--dark-border) shadow-(--e1) flex items-center px-6 gap-6 sticky top-0 z-20">
+    <header className="h-14 sm:h-[72px] bg-white dark:bg-(--dark-surface) border-b border-(--green-200) dark:border-(--dark-border) shadow-(--e1) flex items-center px-3 sm:px-6 gap-2 sm:gap-6 sticky top-0 z-20">
+      {/* Mobile nav trigger */}
+      <button
+        onClick={() => window.dispatchEvent(new Event("admin:open-nav"))}
+        aria-label="Open menu"
+        className="md:hidden w-10 h-10 -ml-1 flex items-center justify-center rounded-full text-(--neutral-700) dark:text-(--dark-text) active:bg-(--neutral-100) dark:active:bg-(--dark-border)"
+      >
+        <Menu size={22} />
+      </button>
+      <span className="sm:hidden font-syne text-[15px] font-semibold text-(--neutral-900) dark:text-(--dark-text) truncate">Fechi Admin</span>
+
       {/* Greeting */}
       <div className="hidden lg:block min-w-[220px]">
         <div className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text) leading-tight" suppressHydrationWarning>
@@ -69,8 +81,14 @@ export function AdminHeader() {
       </div>
 
       {/* Search */}
-      <div className="relative flex-1 max-w-[480px] mx-auto">
-        <div className={`flex items-center gap-2 h-10 px-4 rounded-full transition-all ${
+      <div
+        className={`relative flex-1 max-w-[480px] mx-auto ${
+          mobileSearch
+            ? "max-sm:absolute max-sm:inset-0 max-sm:z-10 max-sm:flex max-sm:items-center max-sm:gap-1 max-sm:px-3 max-sm:max-w-none max-sm:bg-white dark:max-sm:bg-(--dark-surface)"
+            : "max-sm:hidden"
+        }`}
+      >
+        <div className={`flex-1 flex items-center gap-2 h-10 px-4 rounded-full transition-all ${
           searchFocused
             ? "bg-white dark:bg-(--dark-bg) border border-(--green-500) shadow-(--e2)"
             : "bg-(--neutral-50) dark:bg-(--dark-bg) border border-transparent"
@@ -83,9 +101,19 @@ export function AdminHeader() {
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => setSearchFocused(true)}
             onBlur={() => window.setTimeout(() => setSearchFocused(false), 150)}
-            className="flex-1 bg-transparent font-dm text-[14px] text-(--neutral-900) dark:text-(--dark-text) placeholder:text-(--neutral-400) outline-none"
+            autoFocus={mobileSearch}
+            className="flex-1 min-w-0 bg-transparent font-dm text-[16px] sm:text-[14px] text-(--neutral-900) dark:text-(--dark-text) placeholder:text-(--neutral-400) outline-none"
           />
         </div>
+        {mobileSearch && (
+          <button
+            onClick={() => { setMobileSearch(false); setSearchQuery(""); }}
+            aria-label="Close search"
+            className="sm:hidden w-10 h-10 flex items-center justify-center rounded-full text-(--neutral-500)"
+          >
+            <X size={20} />
+          </button>
+        )}
         {searchFocused && (
           <GlobalSearchModal
             query={searchQuery}
@@ -97,15 +125,23 @@ export function AdminHeader() {
       </div>
 
       {/* Right controls */}
-      <div className="flex items-center gap-2 ml-auto">
-        <ExportHeaderIcon />
+      <div className="flex items-center gap-1 sm:gap-2 ml-auto">
+        <button
+          onClick={() => setMobileSearch(true)}
+          aria-label="Search"
+          className="sm:hidden w-10 h-10 flex items-center justify-center rounded-full text-(--neutral-500) active:bg-(--neutral-100) dark:active:bg-(--dark-border)"
+        >
+          <Search size={20} />
+        </button>
+
+        <div className="max-sm:hidden"><ExportHeaderIcon /></div>
 
         <a
           href={WHATSAPP_URL}
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Chat with us on WhatsApp"
-          className="w-9 h-9 flex items-center justify-center rounded-full text-[#25d366] hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) transition-colors"
+          className="max-sm:hidden w-9 h-9 flex items-center justify-center rounded-full text-[#25d366] hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) transition-colors"
         >
           <Icon icon="mdi:whatsapp" width={20} />
         </a>
@@ -121,7 +157,7 @@ export function AdminHeader() {
 
         <Link
           href="/admin/settings"
-          className="w-9 h-9 flex items-center justify-center rounded-full text-(--neutral-500) hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) transition-colors"
+          className="max-sm:hidden w-9 h-9 flex items-center justify-center rounded-full text-(--neutral-500) hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) transition-colors"
         >
           <Settings size={18} />
         </Link>

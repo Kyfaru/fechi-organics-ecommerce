@@ -26,7 +26,7 @@ export function SeverityBadge({ severity, dotOnly }: SeverityBadgeProps) {
   }
 
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-[10px] h-6 font-dm text-[12px] font-medium shrink-0 ${s.text} ${s.bg}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-[10px] h-6 font-dm text-[12px] font-medium shrink-0 ${s.text}  ${s.bg}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
       {s.label}
     </span>

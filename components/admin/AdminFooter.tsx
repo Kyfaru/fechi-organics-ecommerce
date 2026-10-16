@@ -6,9 +6,9 @@ import { motion } from "framer-motion";
 
 export function AdminFooter() {
   return (
-    <footer className="border-t border-(--green-800) dark:border-(--dark-border) bg-(--green-900) dark:bg-(--dark-surface) px-8 py-4 font-dm text-[12px] text-white/70 dark:text-(--dark-muted) flex items-center justify-between">
+    <footer className="border-t border-(--green-800) dark:border-(--dark-border) bg-(--green-900) dark:bg-(--dark-surface) px-4 sm:px-8 py-4 font-dm text-[12px] text-white/70 dark:text-(--dark-muted) flex flex-col sm:flex-row items-center justify-between gap-2 text-center">
       <span>© {new Date().getFullYear()} Fechi Organics. All rights reserved.</span>
-      <span className="text-white/50 text-xs flex items-center gaspan-1">
+      <span className="text-white/50 text-xs flex items-center gap-1">
   Powered by
 
   <Link

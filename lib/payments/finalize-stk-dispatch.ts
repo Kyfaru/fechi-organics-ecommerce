@@ -55,6 +55,9 @@ async function persistCheckoutRequestId(
           data: { inStoreTransactionId: transactionId, type: "STK_SENT", detail: result.gatewayUsed },
         });
       }
+      console.info(
+        `[finalize-stk-dispatch] persisted checkoutRequestId=${result.checkoutRequestId} ${kind} tx=${transactionId}`,
+      );
       return;
     } catch (e) {
       if (attempt === PERSIST_ATTEMPTS) {

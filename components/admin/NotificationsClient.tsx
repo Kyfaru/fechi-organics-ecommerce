@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@iconify/react";
 import { Bell } from "lucide-react"; // EmptyState's prop is typed LucideIcon — the one deliberate exception on this page
+import { MobileFilterSheet } from "@/components/admin/ui/MobileFilterSheet";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { EmptyState } from "@/components/admin/ui/EmptyState";
 import { SkeletonTableRow } from "@/components/admin/ui/Skeleton";
@@ -246,19 +247,31 @@ export function NotificationsClient() {
         title="Notifications"
         description="Stay on top of orders, payments, and store activity"
         action={
-          unreadCount > 0 ? (
-            <button
-              onClick={() => markAllRead.mutate()}
-              className="flex items-center gap-1.5 h-9 px-4 rounded-[8px] bg-(--green-800) text-white font-dm text-[13px] font-medium hover:bg-(--green-900) transition-colors"
-            >
-              <Icon icon="material-symbols:done-all-rounded" width={15} height={15} />
-              Mark all read
-            </button>
-          ) : undefined
+          <>
+            <MobileFilterSheet
+              groups={[
+                { type: "single", key: "range", label: "Date range", value: dateRange === "custom" ? "" : dateRange, onChange: setDateRange, allLabel: "Any time", options: DATE_RANGE_OPTIONS.filter((o) => o.value !== "custom") },
+                { type: "date", key: "custom", label: "Custom dates", from: customFrom, to: customTo, onChange: (f, t) => { setCustomFrom(f); setCustomTo(t); if (f || t) setDateRange("custom"); else if (dateRange === "custom") setDateRange(""); } },
+                { type: "single", key: "category", label: "Category", value: category, onChange: setCategory, allLabel: "All categories", options: categoryOptions },
+                ...(isGlobal && branches.length > 0 ? [{ type: "single" as const, key: "branch", label: "Branch", value: branchId, onChange: setBranchId, allLabel: "All branches", options: branches.map((b: { id: string; name: string }) => ({ value: b.id, label: b.name })) }] : []),
+                { type: "multi", key: "sev", label: "Severity", value: severities.size === SEVERITIES.length ? [] : [...severities], onChange: (v) => setSeverities(new Set(v.length ? (v as Severity[]) : SEVERITIES)), options: SEVERITIES.map((x) => ({ value: x, label: SEVERITY_MAP[x].label })) },
+              ]}
+            />
+            {unreadCount > 0 && (
+              <button
+                onClick={() => markAllRead.mutate()}
+                aria-label="Mark all read"
+                className="flex items-center justify-center gap-1.5 h-9 px-4 max-sm:w-10 max-sm:h-10 max-sm:px-0 rounded-[8px] bg-(--green-800) text-white font-dm text-[13px] font-medium hover:bg-(--green-900) transition-colors"
+              >
+                <Icon icon="material-symbols:done-all-rounded" width={15} height={15} />
+                <span className="max-sm:sr-only">Mark all read</span>
+              </button>
+            )}
+          </>
         }
       />
 
-      <div className="px-6 pb-8 flex flex-col lg:flex-row gap-6 lg:gap-8">
+      <div className="px-4 sm:px-6 pb-8 flex flex-col lg:flex-row gap-6 lg:gap-8">
         {/* Main feed */}
         <div className="flex-1 min-w-0 flex flex-col gap-4">
           <div className="flex items-center gap-1 border-b border-(--neutral-200) dark:border-(--dark-border) overflow-x-auto">
@@ -316,7 +329,7 @@ export function NotificationsClient() {
               <button
                 onClick={() => fetchNextPage()}
                 disabled={isFetchingNextPage}
-                className="font-dm text-[13px] font-medium text-(--green-700) hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) py-2 px-6 rounded-full transition-colors border border-(--neutral-200) dark:border-(--dark-border) bg-white dark:bg-(--dark-surface) disabled:opacity-60"
+                className="font-dm text-[13px] font-medium text-(--green-700) hover:bg-(--neutral-100) dark:hover:bg-(--dark-border) py-2 px-4 sm:px-6 rounded-full transition-colors border border-(--neutral-200) dark:border-(--dark-border) bg-white dark:bg-(--dark-surface) disabled:opacity-60"
               >
                 {isFetchingNextPage ? "Loading…" : "Load more notifications"}
               </button>
@@ -325,7 +338,7 @@ export function NotificationsClient() {
         </div>
 
         {/* Filters sidebar */}
-        <div className="w-full lg:w-72 shrink-0">
+        <div className="w-full lg:w-72 shrink-0 max-sm:hidden">
           <div className="bg-white dark:bg-(--dark-surface) rounded-xl border border-(--neutral-200) dark:border-(--dark-border) p-5 lg:sticky lg:top-6 flex flex-col gap-4">
             <h3 className="font-syne text-[16px] font-semibold text-(--neutral-900) dark:text-(--dark-text)">Filters</h3>
 
@@ -457,7 +470,7 @@ function NotificationRowItem({
     <div className="relative overflow-hidden rounded-xl border border-(--neutral-200) dark:border-(--dark-border) bg-white dark:bg-(--dark-surface) p-5 flex gap-4 items-start hover:border-(--neutral-300) dark:hover:border-(--dark-muted) transition-colors group">
       <div className={`absolute left-0 top-0 bottom-0 w-1 ${barColor}`} />
 
-      <div className={`w-10 h-10 rounded-full ${sev.bg} ${sev.text} flex items-center justify-center shrink-0 mt-0.5`}>
+      <div className={`w-10 h-10 rounded-full ${sev.bg}  ${sev.text} flex items-center justify-center shrink-0 mt-0.5`}>
         <Icon icon={icon} width={20} height={20} />
       </div>
 

@@ -151,10 +151,13 @@ export async function initiateSTKPush(params: {
       signal: AbortSignal.timeout(15_000),
     });
   } catch (fetchErr) {
-    // No HTTP response ever arrived (DNS/connect error, or the AbortSignal
-    // fired first) — Daraja never received this, safe to fail over.
-    console.error(`[stk-push] request errored — branch=${branch.id}`, fetchErr);
-    throw new StkSendError(`Daraja STK push request failed: ${(fetchErr as Error).message}`, true);
+    // No HTTP response arrived. DNS/connect errors mean Daraja never received
+    // it (safe to fail over); a timeout/abort is ambiguous — the request may
+    // have reached Daraja — so it must not trigger failover (double prompt).
+    const name = (fetchErr as Error).name;
+    const timedOut = name === "TimeoutError" || name === "AbortError";
+    console.error(`[stk-push] request errored — branch=${branch.id} timedOut=${timedOut}`, fetchErr);
+    throw new StkSendError(`Daraja STK push request failed: ${(fetchErr as Error).message}`, !timedOut);
   }
 
   if (!res.ok) {

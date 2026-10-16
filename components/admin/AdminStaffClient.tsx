@@ -397,7 +397,7 @@ function InviteDrawer({
             form="invite-form"
             type="submit"
             disabled={loading}
-            className="h-10 px-6 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2"
+            className="h-10 px-4 sm:px-6 rounded-[8px] bg-(--green-800) hover:bg-(--green-900) font-dm text-[14px] font-medium text-white transition-colors disabled:opacity-60 flex items-center gap-2"
           >
             <Mail size={15} />
             {loading ? "Sending…" : "Send Invitation"}
@@ -1040,7 +1040,7 @@ export function AdminStaffClient() {
         }
       />
 
-      <div className="px-6 pb-6 space-y-6">
+      <div className="px-4 sm:px-6 pb-6 space-y-6">
         {/* Stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatsCard title="Total Staff" value={String(totalStaff)} icon={<Users className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
@@ -1075,8 +1075,8 @@ export function AdminStaffClient() {
 
       {/* Active sessions modal — who is currently signed in right now */}
       {activeSessionsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4 admin-overlay">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-4 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
                 Active sessions
@@ -1158,8 +1158,8 @@ export function AdminStaffClient() {
 
       {/* Reset password modal */}
       {resetTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4 admin-overlay">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-md p-4 sm:p-6 space-y-4">
             <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
               Reset password — {resetTarget.name}
             </h3>
@@ -1239,8 +1239,8 @@ export function AdminStaffClient() {
 
       {/* Change role modal */}
       {roleTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4 admin-overlay">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-4 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
               Change role — {roleTarget.name}
             </h3>
@@ -1302,8 +1302,8 @@ export function AdminStaffClient() {
 
       {/* Edit details modal */}
       {detailsTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4 admin-overlay">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-4 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
               Edit details — {detailsTarget.name}
             </h3>
@@ -1389,8 +1389,8 @@ export function AdminStaffClient() {
 
       {/* Edit permissions modal */}
       {permTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4 admin-overlay">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-lg p-4 sm:p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
               Edit permissions — {permTarget.name}
             </h3>

@@ -9,26 +9,18 @@
  * process whichever provider actually sent the transaction. This is NOT
  * authenticated — both providers call it directly.
  *
- * Payload parsing is split into two named branches (parseDarajaCallback /
- * parseKcbCallback) mirroring the two customer-facing reference routes
- * (app/api/payments/mpesa/callback/route.ts and
- * app/api/payments/kcb/callback/route.ts respectively — neither is imported
- * from or modified here, they power the customer checkout flow). As of this
- * writing both providers' STK callbacks use the identical Safaricom-style
+ * Both providers' STK callbacks use the identical Safaricom-style
  * Body.stkCallback.{CheckoutRequestID,ResultCode,ResultDesc,
- * CallbackMetadata.Item[].{Name,Value}} envelope (KCB Buni's callback is
- * itself Safaricom-compatible per the KCB reference route), so both parsers
- * currently produce the same result — kept as two explicit branches rather
- * than one shared parse specifically so the code visibly mirrors the
- * outbound dispatch's gateway split and so either provider's shape can
- * diverge independently in the future without restructuring this route.
- * The transaction's own branch.mpesaGateway is looked up and logged
- * alongside every processed callback for diagnostic clarity, independent of
- * which parser happened to match.
+ * CallbackMetadata.Item[].{Name,Value}} envelope, so one parser serves both
+ * (the branch's mpesaGateway is still logged per processed callback).
+ *
+ * Ack-first: the raw payload is filed in paymentCallbackInbox before any
+ * business logic; the transaction is matched by CheckoutRequestID, falling
+ * back to the signed ?tx= id; the paid amount is verified; and
+ * markInStorePaymentSuccess is an atomic compare-and-set.
  *
  * We ALWAYS return HTTP 200 with { ResultCode: 0 }. If we return anything
- * else, both providers retry indefinitely. Idempotency is enforced by
- * checking the transaction status before updating.
+ * else, both providers retry indefinitely.
  */
 
 import { NextRequest } from "next/server";
@@ -39,19 +31,20 @@ import {
 } from "@/lib/payments/instore-post-payment";
 import { reportError } from "@/lib/observability";
 import { trackServerEvent } from "@/lib/observability-server";
+import {
+  amountMatches,
+  fileCallback,
+  settleCallback,
+  signatureEnforced,
+  verifySignature,
+} from "@/lib/payments/callback-guard";
 
 function safaricomOk() {
   return Response.json({ ResultCode: 0, ResultDesc: "Accepted" }, { status: 200 });
 }
 
-type StkCallbackFields = {
-  checkoutRequestId: string;
-  resultCode: number;
-  resultDesc: string;
-  receiptNumber?: string;
-};
-
 type RawStkCallback = {
+  MerchantRequestID?: string;
   CheckoutRequestID?: string;
   ResultCode?: number;
   ResultDesc?: string;
@@ -63,83 +56,89 @@ function extractStkCallback(body: unknown): RawStkCallback | undefined {
   return callback?.stkCallback as RawStkCallback | undefined;
 }
 
-// Mirrors app/api/payments/mpesa/callback/route.ts's field access exactly.
-function parseDarajaCallback(body: unknown): StkCallbackFields | null {
-  const stkCallback = extractStkCallback(body);
-  if (!stkCallback?.CheckoutRequestID) return null;
-  const receiptItem = stkCallback.CallbackMetadata?.Item?.find((i) => i.Name === "MpesaReceiptNumber");
-  return {
-    checkoutRequestId: stkCallback.CheckoutRequestID,
-    resultCode: stkCallback.ResultCode ?? 1,
-    resultDesc: stkCallback.ResultDesc ?? "Payment failed",
-    receiptNumber: receiptItem?.Value as string | undefined,
-  };
-}
-
-// Mirrors app/api/payments/kcb/callback/route.ts's field access exactly —
-// KCB Buni's STK callback is Safaricom-compatible, same envelope, same
-// "MpesaReceiptNumber" metadata key (KCB Buni brokers actual M-Pesa
-// payments under the hood).
-function parseKcbCallback(body: unknown): StkCallbackFields | null {
-  const stkCallback = extractStkCallback(body);
-  if (!stkCallback?.CheckoutRequestID) return null;
-  const receiptItem = stkCallback.CallbackMetadata?.Item?.find((i) => i.Name === "MpesaReceiptNumber");
-  return {
-    checkoutRequestId: stkCallback.CheckoutRequestID,
-    resultCode: stkCallback.ResultCode ?? 1,
-    resultDesc: stkCallback.ResultDesc ?? "Payment failed",
-    receiptNumber: receiptItem?.Value as string | undefined,
-  };
-}
-
 export async function POST(req: NextRequest) {
   let body: unknown;
   try {
-    body = await req.json();
+    const rawText = await req.text();
+    console.log("[mpesa/instore-callback] raw body:", rawText);
+    body = JSON.parse(rawText);
   } catch (parseErr) {
     reportError(parseErr, { route: "POST /api/payments/mpesa/instore-callback", tags: { stage: "body_parse" } });
     // Malformed JSON — still return 200 so the provider doesn't retry
     return safaricomOk();
   }
 
+  const stk = extractStkCallback(body);
+  if (!stk?.CheckoutRequestID) {
+    console.warn("[mpesa/instore-callback] Unexpected payload shape", body);
+    return safaricomOk();
+  }
+
+  const checkoutRequestId = stk.CheckoutRequestID;
+  const resultCode = stk.ResultCode ?? 1;
+  const resultDesc = stk.ResultDesc ?? "Payment failed";
+  const items = stk.CallbackMetadata?.Item ?? [];
+  const receiptNumber = items.find((i) => i.Name === "MpesaReceiptNumber")?.Value as string | undefined;
+  const paidAmount = items.find((i) => i.Name === "Amount")?.Value;
+
+  const txHint = req.nextUrl.searchParams.get("tx");
+  const hmacOk = verifySignature(txHint, req.nextUrl.searchParams.get("sig"));
+  const inbox = await fileCallback({ source: "instore-stk", checkoutRequestId, resultCode, raw: body, hmacOk });
+  let outcome = "processed";
+
   try {
-    const parsed = parseDarajaCallback(body) ?? parseKcbCallback(body);
-    if (!parsed) {
-      // Unexpected shape from either provider — log and accept
-      console.warn("[mpesa/instore-callback] Unexpected payload shape", body);
+    if (hmacOk === false && signatureEnforced()) {
+      console.warn(`[mpesa/instore-callback] bad signature — rejected checkoutRequestId=${checkoutRequestId}`);
+      outcome = "rejected_signature";
       return safaricomOk();
     }
+    if (hmacOk === false) {
+      console.warn(`[mpesa/instore-callback] bad signature (not enforced) checkoutRequestId=${checkoutRequestId}`);
+    }
 
-    const { checkoutRequestId, resultCode, resultDesc, receiptNumber } = parsed;
-
-    // Look up the in-store transaction by CheckoutRequestID, including the
-    // branch's gateway purely for diagnostic logging below.
-    const transaction = await db.inStoreTransaction.findUnique({
-      where: { checkoutRequestId },
-      select: {
-        id: true,
-        inStoreOrderId: true,
-        status: true,
-        inStoreOrder: {
-          select: { branch: { select: { mpesaGateway: true } }, branchId: true, customerUserId: true, customerName: true },
-        },
+    const select = {
+      id: true,
+      inStoreOrderId: true,
+      status: true,
+      amount: true,
+      inStoreOrder: {
+        select: { branch: { select: { mpesaGateway: true } }, branchId: true, customerUserId: true, customerName: true },
       },
-    });
+    } as const;
+    let transaction = await db.inStoreTransaction.findUnique({ where: { checkoutRequestId }, select });
+    // Callback beat the checkoutRequestId write — match by the signed tx id,
+    // and only when the signature actually verified.
+    if (!transaction && txHint && hmacOk === true) {
+      transaction = await db.inStoreTransaction.findUnique({ where: { id: txHint }, select });
+    }
 
     if (!transaction) {
-      console.warn(`[mpesa/instore-callback] Unknown CheckoutRequestID: ${checkoutRequestId}`);
+      console.warn(
+        `[mpesa/instore-callback] Unknown CheckoutRequestID: ${checkoutRequestId} merchantRequestId=${stk.MerchantRequestID ?? "N/A"} resultCode=${resultCode}`,
+      );
+      outcome = "unknown_ref";
       return safaricomOk();
     }
 
-    // Idempotency — only process PENDING transactions
-    if (transaction.status !== "PENDING") {
+    // Idempotency — only PENDING is processed. (A success for a FAILED tx is
+    // let through: markInStorePaymentSuccess recovers timeout-failed ones.)
+    if (transaction.status !== "PENDING" && !(transaction.status === "FAILED" && resultCode === 0)) {
       console.info(
         `[mpesa/instore-callback] Already processed — tx=${transaction.id} status=${transaction.status}`,
       );
+      outcome = "duplicate";
       return safaricomOk();
     }
 
     const isSuccess = resultCode === 0;
+
+    if (isSuccess && !amountMatches(paidAmount, transaction.amount)) {
+      outcome = "amount_mismatch";
+      console.error(
+        `[mpesa/instore-callback] AMOUNT MISMATCH tx=${transaction.id} expectedCents=${transaction.amount} paidKes=${String(paidAmount)} receipt=${receiptNumber ?? "N/A"}`,
+      );
+      return safaricomOk();
+    }
 
     const transactionData = {
       status: isSuccess ? "SUCCESS" : "FAILED",
@@ -183,9 +182,12 @@ export async function POST(req: NextRequest) {
       `[mpesa/instore-callback] Processed — tx=${transaction.id} gateway=${transaction.inStoreOrder.branch.mpesaGateway} success=${isSuccess} receipt=${receiptNumber ?? "N/A"}`,
     );
   } catch (e) {
+    outcome = "error";
     reportError(e, { route: "POST /api/payments/mpesa/instore-callback", tags: { stage: "handler" } });
     // Log but do NOT return a non-200 — neither provider should retry
     console.error("[mpesa/instore-callback] Processing error", e);
+  } finally {
+    await settleCallback(inbox.id, outcome);
   }
 
   return safaricomOk();

@@ -22,6 +22,8 @@ import { StatusPill } from "@/components/admin/ui/StatusPill";
 import { Drawer } from "@/components/admin/ui/Drawer";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import CheckboxGreen from "@/components/ui/CheckboxGreen";
+import { MobileFilterSheet, FULL_RANGE, type FilterGroup } from "@/components/admin/ui/MobileFilterSheet";
+import { PRICE_MIN, PRICE_MAX } from "@/lib/price-range-steps";
 import { PrelineSelect } from "@/components/admin/ui/PrelineSelect";
 import { PrelineDatePicker } from "@/components/admin/ui/PrelineDatePicker";
 import { usePersistedFilter } from "@/hooks/use-persisted-filters";
@@ -285,8 +287,8 @@ function ConfirmOrderModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
-      <div className="bg-white dark:bg-(--dark-surface) rounded-[16px] w-full max-w-[420px] mx-4 shadow-xl p-6">
+    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/40 admin-overlay">
+      <div className="bg-white dark:bg-(--dark-surface) rounded-[16px] w-full max-w-[420px] mx-4 shadow-xl p-4 sm:p-6">
         <h3 className="font-syne text-[18px] font-semibold text-(--neutral-900) dark:text-(--dark-text) mb-2">
           Confirm Order
         </h3>
@@ -384,7 +386,7 @@ function InStoreOrderDrawerContent({
 
   return (
     <Drawer open={open} onClose={onClose} title={`Order ${order.orderNumber ?? shortId(order.id)}`} width={640} footer={null}>
-      <div className="flex gap-6">
+      <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
         {/* ── Left ── */}
         <div className="flex-1 min-w-0 flex flex-col gap-6">
           <div className="flex items-center gap-2 flex-wrap">
@@ -507,7 +509,7 @@ function InStoreOrderDrawerContent({
         </div>
 
         {/* ── Right ── */}
-        <div className="w-[180px] shrink-0 flex flex-col gap-4">
+        <div className="w-full sm:w-[180px] shrink-0 flex flex-col gap-4">
           {/* Customer card — not clickable, no account page exists for a walk-in */}
           <div className="bg-(--neutral-50) rounded-[10px] p-3 border border-(--neutral-200)">
             <p className="font-dm text-[11px] font-semibold text-(--neutral-500) uppercase tracking-[0.6px] mb-2">Customer</p>
@@ -898,7 +900,7 @@ function OrderDetailDrawer({
   return (
     <>
       <Drawer open={open} onClose={onClose} title={`Order ${order.orderNumber ?? shortOrderNumber(now) ?? shortId(order.id)}`} width={640} footer={null}>
-        <div className="flex gap-6">
+        <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
           {/* ── Left ── */}
           <div className="flex-1 min-w-0 flex flex-col gap-6">
 
@@ -1200,7 +1202,7 @@ function OrderDetailDrawer({
           </div>
 
           {/* ── Right 40% ── */}
-          <div className="w-[180px] shrink-0 flex flex-col gap-4">
+          <div className="w-full sm:w-[180px] shrink-0 flex flex-col gap-4">
 
             {/* Customer card */}
             <div className="bg-(--neutral-50) rounded-[10px] p-3 border border-(--neutral-200)">
@@ -1406,6 +1408,7 @@ export function AdminOrdersClient() {
   const [customTo, setCustomTo] = usePersistedFilter("orders:date-to", "");
   const [branchFilter, setBranchFilter] = usePersistedFilter("orders:branch", "");
   const [channelFilter, setChannelFilter] = usePersistedFilter<"" | "pickup" | "delivery" | "instore">("orders:channel", "");
+  const [totalRange, setTotalRange] = useState(FULL_RANGE);
   const [exportOpen, setExportOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<AdminOrderRow | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -1454,6 +1457,8 @@ export function AdminOrdersClient() {
       if (o.kind === "instore" && o.fulfillmentStatus !== filterStatus) return false;
     }
     if (filterPayment && o.paymentStatus !== filterPayment) return false;
+    if (totalRange.min > PRICE_MIN && o.totalKes < totalRange.min) return false;
+    if (totalRange.max < PRICE_MAX && o.totalKes > totalRange.max) return false;
     if (channelFilter === "pickup" && !(o.kind === "order" && o.deliveryType === "PICKUP")) return false;
     if (channelFilter === "delivery" && !(o.kind === "order" && o.deliveryType === "DELIVERY")) return false;
     if (channelFilter === "instore" && o.kind !== "instore") return false;
@@ -1662,6 +1667,17 @@ export function AdminOrdersClient() {
 
   const ALL_STATUSES: OrderStatus[] = ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "WAITING_TO_PACKAGE", "READY_FOR_PICKUP", "PICKED_UP", "FAILED"];
 
+  const orderFilterGroups: FilterGroup[] = [
+    { type: "single", key: "status", label: "Status", value: filterStatus, onChange: (v) => setFilterStatus(v as "" | OrderStatus), allLabel: "All statuses", options: ALL_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] })) },
+    { type: "single", key: "payment", label: "Payment", value: filterPayment, onChange: (v) => setFilterPayment(v as "" | PaymentStatus), allLabel: "All payments", options: [{ value: "PAID", label: "Paid" }, { value: "PENDING", label: "Pending" }, { value: "FAILED", label: "Failed" }] },
+    { type: "single", key: "channel", label: "Channel", value: channelFilter, onChange: (v) => setChannelFilter(v as "" | "pickup" | "delivery" | "instore"), allLabel: "All channels", options: [{ value: "pickup", label: "Store pickup" }, { value: "delivery", label: "Home delivery" }, { value: "instore", label: "In-store" }] },
+    { type: "single", key: "date", label: "Date", value: dateFilter === "custom" ? "" : dateFilter, onChange: (v) => { setDateFilter(v as "" | "today" | "week" | "month"); if (v) { setCustomFrom(""); setCustomTo(""); } }, allLabel: "All dates", options: [{ value: "today", label: "Today" }, { value: "week", label: "This week" }, { value: "month", label: "This month" }] },
+    { type: "date", key: "custom", label: "Custom date range", from: customFrom, to: customTo, onChange: (f, t) => { setCustomFrom(f); setCustomTo(t); if (f || t) setDateFilter("custom"); else if (dateFilter === "custom") setDateFilter(""); } },
+    { type: "range", key: "total", label: "Order total", value: totalRange, onChange: setTotalRange },
+    ...(scope?.isSuperAdmin ? [{ type: "single" as const, key: "branch", label: "Branch", value: branchFilter, onChange: setBranchFilter, allLabel: "All branches", options: branches.map((b) => ({ value: b.id, label: `${b.name} - ${b.county}` })) }] : []),
+  ];
+
+
   return (
     <div className="min-h-screen">
       <PageHeader
@@ -1670,16 +1686,18 @@ export function AdminOrdersClient() {
         action={
           <button
             onClick={() => router.push("/admin/orders/new")}
-            className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+            aria-label="Create order"
+            title="Create order"
+            className="h-10 px-5 max-sm:fixed max-sm:bottom-[4.75rem] max-sm:right-4 max-sm:z-30 max-sm:w-14 max-sm:h-14 max-sm:rounded-full max-sm:shadow-lg max-sm:px-0 max-sm:justify-center rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
           >
             <Plus size={16} />
-            Create Order
+            <span className="max-sm:sr-only">Create Order</span>
           </button>
         }
       />
 
       {/* ── Stat cards ── */}
-      <div className="px-6 mb-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="px-4 sm:px-6 mb-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard title="Today's Orders" value={String(todayOrders)} icon={<ShoppingBag className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
         <StatsCard title="Processing" value={String(processingOrders)} icon={<Clock className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
         <StatsCard title="Shipped" value={String(shippedOrders)} icon={<Truck className="h-4 w-4 text-muted-foreground" />} change="—" changeType="positive" />
@@ -1687,8 +1705,8 @@ export function AdminOrdersClient() {
       </div>
 
       {/* ── Filter toolbar ── */}
-      <div className="px-6 mb-5 flex flex-wrap items-center gap-3">
-        <div className="relative w-[280px]">
+      <div className="px-4 sm:px-6 mb-5 flex flex-wrap items-center gap-3">
+        <div className="relative max-sm:flex-1 sm:w-[280px]">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
           <input
             value={search}
@@ -1703,7 +1721,10 @@ export function AdminOrdersClient() {
           )}
         </div>
 
-        <div className="w-[180px]">
+        <MobileFilterSheet groups={orderFilterGroups} />
+
+        <div className="contents max-sm:hidden">
+        <div className="w-full sm:w-[180px]">
           <PrelineSelect
             value={filterStatus}
             onChange={(v) => setFilterStatus(v as "" | OrderStatus)}
@@ -1712,7 +1733,7 @@ export function AdminOrdersClient() {
           />
         </div>
 
-        <div className="w-[180px]">
+        <div className="w-full sm:w-[180px]">
           <PrelineSelect
             value={filterPayment}
             onChange={(v) => setFilterPayment(v as "" | PaymentStatus)}
@@ -1725,7 +1746,7 @@ export function AdminOrdersClient() {
           />
         </div>
 
-        <div className="w-[180px]">
+        <div className="w-full sm:w-[180px]">
           <PrelineSelect
             value={channelFilter}
             onChange={(v) => setChannelFilter(v as "" | "pickup" | "delivery" | "instore")}
@@ -1738,7 +1759,7 @@ export function AdminOrdersClient() {
           />
         </div>
 
-        <div className="w-[180px]">
+        <div className="w-full sm:w-[180px]">
           <PrelineSelect
             value={dateFilter}
             onChange={(v) => setDateFilter(v as "" | "today" | "week" | "month" | "custom")}
@@ -1754,17 +1775,17 @@ export function AdminOrdersClient() {
 
         {dateFilter === "custom" && (
           <>
-            <div className="w-[180px]">
+            <div className="w-full sm:w-[180px]">
               <PrelineDatePicker value={customFrom} onChange={setCustomFrom} placeholder="From" />
             </div>
-            <div className="w-[180px]">
+            <div className="w-full sm:w-[180px]">
               <PrelineDatePicker value={customTo} onChange={setCustomTo} placeholder="To" />
             </div>
           </>
         )}
 
         {scope?.isSuperAdmin && (
-          <div className="w-[200px]">
+          <div className="w-full sm:w-[200px]">
             <PrelineSelect
               value={branchFilter}
               onChange={setBranchFilter}
@@ -1773,9 +1794,10 @@ export function AdminOrdersClient() {
             />
           </div>
         )}
+        </div>
 
         {!isLoading && (
-          <span className="font-dm text-[13px] text-(--neutral-400)">
+          <span className="font-dm text-[13px] text-(--neutral-400) max-sm:order-last max-sm:w-full">
             {filtered.length} order{filtered.length !== 1 ? "s" : ""}
           </span>
         )}
@@ -1801,9 +1823,9 @@ export function AdminOrdersClient() {
 
           <button
             onClick={() => setExportOpen(true)}
-            className="h-9 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center gap-2 transition-colors"
+            aria-label="Export" className="h-9 px-4 max-sm:w-10 max-sm:h-10 max-sm:px-0 max-sm:justify-center rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) flex items-center gap-2 transition-colors"
           >
-            <Download size={14} /> Export
+            <Download size={14} /> <span className="max-sm:sr-only">Export</span>
           </button>
         </div>
       </div>
@@ -1815,7 +1837,7 @@ export function AdminOrdersClient() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25 }}
-        className="px-6"
+        className="px-4 sm:px-6"
       >
         <DataTable
           columns={columns}

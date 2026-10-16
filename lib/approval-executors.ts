@@ -357,6 +357,12 @@ export const approvalExecutors: Record<string, Executor> = {
     const published = await publishQstashJSON(
       "/api/admin/workers/send-campaign", { campaignId: resourceId }, notBefore ? { notBefore } : undefined
     );
+    // In production a null publish means QStash isn't configured/reachable; running the
+    // whole send inside the web process is fragile (restart = lost send), so fail loudly
+    // before touching campaign status.
+    if (!published && process.env.NODE_ENV === "production") {
+      throw new Error("Campaign queue unavailable: check QSTASH_TOKEN and NEXT_PUBLIC_APP_URL");
+    }
     const updated = await db.campaign.update({ where: { id: resourceId }, data });
 
     if (!published && (mode ?? "now") === "now") {

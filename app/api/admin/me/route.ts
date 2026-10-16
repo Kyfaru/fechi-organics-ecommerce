@@ -4,6 +4,7 @@ import { connection } from 'next/server'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { reportError } from '@/lib/observability'
+import { computeBackSoon } from '@/lib/admin-welcome'
 
 /** GET /api/admin/me — returns the current admin's profile and permissions. */
 export async function GET(req: NextRequest) {
@@ -51,13 +52,10 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    // "Back so soon" — logged out somewhere between 1h and 3h ago. Computed
-    // server-side so the login page doesn't need its own clock/timezone math.
-    let backSoon = false
-    if (profile?.lastLogoutAt) {
-      const hoursSinceLogout = (Date.now() - profile.lastLogoutAt.getTime()) / (60 * 60 * 1000)
-      backSoon = hoursSinceLogout >= 1 && hoursSinceLogout <= 3
-    }
+    // "Back so soon" — logged out within the last 3h. Computed server-side
+    // (lib/admin-welcome.ts, shared with /api/admin/welcome/start) so the
+    // login page doesn't need its own clock/timezone math.
+    const backSoon = computeBackSoon(profile?.lastLogoutAt ?? null)
 
     return NextResponse.json({
       ...profile,

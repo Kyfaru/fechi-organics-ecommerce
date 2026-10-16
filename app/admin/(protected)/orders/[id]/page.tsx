@@ -79,7 +79,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
   const customerEmail = order.user?.email ?? order.guestEmail;
 
   return (
-    <div className="px-6 py-6 max-w-[1440px] mx-auto w-full">
+    <div className="px-4 sm:px-6 py-4 sm:py-6 max-w-[1440px] mx-auto w-full">
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3 mb-6">
         <div>
@@ -91,7 +91,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
             <span className="text-(--neutral-700)">{orderRef}</span>
           </nav>
           <div className="flex items-center gap-3">
-            <h1 className="font-syne text-[22px] font-semibold text-(--neutral-900)">Order {orderRef}</h1>
+            <h1 className="font-syne text-[18px] sm:text-[22px] font-semibold text-(--neutral-900)">Order {orderRef}</h1>
             <span className="font-dm text-[12px] font-medium px-2.5 py-1 rounded-full bg-(--neutral-100) text-(--neutral-700)">
               {order.status.replace(/_/g, " ")}
             </span>
@@ -298,7 +298,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
             <div className={CARD_HEADER}>
               <p className={CARD_LABEL}>Admin Metadata</p>
             </div>
-            <div className={`${CARD_BODY} grid grid-cols-2 gap-x-6 gap-y-2 font-dm text-[13px] text-(--neutral-700)`}>
+            <div className={`${CARD_BODY} grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 font-dm text-[13px] text-(--neutral-700)`}>
               {order.processedAt && <p>Processed: {formatDateTime(order.processedAt)}</p>}
               {order.confirmedAt && <p>Confirmed: {formatDateTime(order.confirmedAt)}</p>}
               {order.shippedAt && <p>Shipped: {formatDateTime(order.shippedAt)}</p>}

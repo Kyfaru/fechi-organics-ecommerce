@@ -10,7 +10,7 @@
  * name/email/phone is resolved to the `userId` the order is created under.
  */
 
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { headers } from "next/headers";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
@@ -27,7 +27,7 @@ import { finalizeStkDispatch } from "@/lib/payments/finalize-stk-dispatch";
 import { calculateDeliveryPricing } from "@/lib/delivery-pricing";
 import { recordCouponRedemption } from "@/lib/promo";
 import { computeOrderTotals } from "@/lib/checkout/compute-totals";
-import { holdRedeemedPoints } from "@/lib/points/redeem";
+import { holdRedeemedPoints, releaseRedeemedPoints } from "@/lib/points/redeem";
 import { getRedis } from "@/lib/redis";
 import { assertTrustedOrigin } from "@/lib/origin-check";
 import { publishQstashJSON } from "@/lib/qstash";
@@ -35,12 +35,16 @@ import { deliveryDataSchema } from "@/lib/payments/delivery-schema";
 import { buildTimestampOrderNumber } from "@/lib/orders/generate-order-number";
 import { createWithRetryableOrderNumber } from "@/lib/orders/create-with-retry";
 import { readUtmCookie } from "@/lib/attribution";
+import { signedCallbackUrl } from "@/lib/payments/callback-guard";
+import { runDispatchJob } from "@/lib/payments/run-dispatch-job";
 
 export const maxDuration = 15;
 
 const bodySchema = z.object({
   phone: z.string().min(9),
   deliveryData: deliveryDataSchema,
+  // Client-generated per Pay attempt — a repeat returns the existing order.
+  idempotencyKey: z.string().min(8).max(64).optional(),
 }).strict();
 
 export async function POST(req: NextRequest) {
@@ -70,9 +74,48 @@ export async function POST(req: NextRequest) {
     return Err.validation("Invalid request body");
   }
 
-  const { phone, deliveryData } = parsed;
+  const { phone, deliveryData, idempotencyKey } = parsed;
+
+  // These depend only on the request body, so start them now and let them
+  // overlap the cart/identity round trips below instead of running after.
+  // (.catch no-op marks them handled if an early return skips the await.)
+  const pricingPromise = calculateDeliveryPricing({
+    country: deliveryData.country,
+    county: deliveryData.county,
+    zoneId: deliveryData.zoneId,
+    deliveryType: deliveryData.deliveryType,
+  });
+  pricingPromise.catch(() => {});
+  const branchPromise = (async () => {
+    if (deliveryData.branchId) {
+      const b = await db.branch.findUnique({ where: { id: deliveryData.branchId, isActive: true } });
+      if (b) return b;
+    }
+    const resolved = await resolveBranchForCounty(deliveryData.county || "Nairobi", {
+      zoneId: deliveryData.zoneId,
+    });
+    return resolved ? db.branch.findUnique({ where: { id: resolved.id } }) : null;
+  })();
+  branchPromise.catch(() => {});
 
   try {
+    // Double-click / network-retry guard: same key => same order, no second
+    // order and no second STK prompt.
+    if (idempotencyKey) {
+      const prior = await db.transaction.findUnique({
+        where: { idempotencyKey },
+        select: { id: true, orderId: true, status: true },
+      });
+      if (prior && prior.status !== "FAILED" && prior.status !== "TIMEOUT") {
+        return ok({ orderId: prior.orderId });
+      }
+      // A finished-and-failed attempt must not trap a retry on the dead
+      // order: free the key so this is processed as a brand-new attempt.
+      if (prior) {
+        await db.transaction.update({ where: { id: prior.id }, data: { idempotencyKey: null } });
+      }
+    }
+
     // 3. Load cart and validate it is not empty. A guest's cart lives under
     // the fechi_cart cookie token, not a userId — resolveCart() branches on
     // that the same way GET /api/cart already does.
@@ -131,12 +174,7 @@ export async function POST(req: NextRequest) {
       (sum, item) => sum + item.product.priceKes * item.quantity,
       0,
     );
-    const pricing = await calculateDeliveryPricing({
-      country: deliveryData.country,
-      county: deliveryData.county,
-      zoneId: deliveryData.zoneId,
-      deliveryType: deliveryData.deliveryType,
-    });
+    const pricing = await pricingPromise;
     const totals = await computeOrderTotals({
       subtotalCents,
       deliveryCents: pricing.feeKes,
@@ -156,23 +194,8 @@ export async function POST(req: NextRequest) {
       totalCents,
     } = totals;
 
-    // 6. Resolve branch — use provided branchId or look up by county
-    let branch: Awaited<ReturnType<typeof db.branch.findUnique>> | null = null;
-
-    if (deliveryData.branchId) {
-      branch = await db.branch.findUnique({
-        where: { id: deliveryData.branchId, isActive: true },
-      });
-    }
-
-    if (!branch) {
-      const resolved = await resolveBranchForCounty(deliveryData.county || "Nairobi", {
-        zoneId: deliveryData.zoneId,
-      });
-      if (resolved) {
-        branch = await db.branch.findUnique({ where: { id: resolved.id } });
-      }
-    }
+    // 6. Branch — resolved concurrently at the top of the handler.
+    const branch = await branchPromise;
 
     if (!branch) {
       return err("NO_BRANCH", "No active M-Pesa branch available", 503);
@@ -237,15 +260,33 @@ export async function POST(req: NextRequest) {
     await holdRedeemedPoints({ userId, orderId: order.id, points: pointsRedeemed });
 
     // 8. Create transaction record (PENDING until callback arrives)
-    const transaction = await db.transaction.create({
+    let transaction: Awaited<ReturnType<typeof db.transaction.create>>;
+    try {
+      transaction = await db.transaction.create({
       data: {
         orderId: order.id,
         provider: "MPESA",
         branchId: branch.id,
         amount: totalCents,
         status: "PENDING",
+        // The STK goes to the number typed for M-Pesa, which may differ from
+        // the order's contact phone (deliveryData.phone).
+        payerPhone: phone,
+        idempotencyKey: idempotencyKey ?? null,
       },
-    });
+      });
+    } catch (e) {
+      // Lost a same-key race (two requests passed the lookup above together):
+      // the other request owns this attempt. Fail OUR just-created order so it
+      // doesn't linger holding points, and hand back the winner's order.
+      if (idempotencyKey && (e as { code?: string }).code === "P2002") {
+        await db.order.update({ where: { id: order.id }, data: { status: "FAILED", paymentStatus: "FAILED" } });
+        await releaseRedeemedPoints({ orderId: order.id }).catch(() => {});
+        const winner = await db.transaction.findUnique({ where: { idempotencyKey }, select: { orderId: true } });
+        if (winner) return ok({ orderId: winner.orderId });
+      }
+      throw e;
+    }
     await db.transactionEvent.create({
       data: { transactionId: transaction.id, type: "INITIATED" },
     });
@@ -257,11 +298,30 @@ export async function POST(req: NextRequest) {
     // (publishQstashJSON returns null — dev/local), dispatch inline instead
     // of silently dropping the payment; that's the one path where the
     // sub-second response isn't guaranteed.
+    // Watchdog first: scheduled at creation, BEFORE dispatch, so an order
+    // whose dispatch job never runs still gets resolved (no orphan PENDING
+    // order holding loyalty points forever). The worker is idempotent.
+    await publishQstashJSON(
+      "/api/admin/workers/check-failed-payment",
+      { orderId: order.id, transactionId: transaction.id },
+      { delay: 5 * 60 },
+    ).catch((e) => console.error("[mpesa/initiate] watchdog schedule failed:", e));
+    // A publish that THROWS (not just "QStash unconfigured") is treated like
+    // unconfigured: dispatch inline rather than orphaning the order.
     const published = await publishQstashJSON(
       "/api/admin/workers/dispatch-stk",
       { kind: "online", transactionId: transaction.id },
       { retries: 2 },
-    );
+    ).catch((e) => {
+      console.error("[mpesa/initiate] dispatch publish failed — falling back to inline:", e);
+      return null;
+    });
+    if (published) {
+      // Fast path: start the STK push the moment the response is sent instead of
+      // waiting out the QStash hop. The queued job stays as the durable copy;
+      // both take the same Redis NX claim, so only one ever sends a prompt.
+      after(() => runDispatchJob("online", transaction.id).catch((e) => console.error("[mpesa/initiate] after() dispatch failed:", e)));
+    }
     if (!published) {
       console.warn(`[mpesa/initiate] QStash unavailable — dispatching inline for order=${order.orderNumber}`);
       const result = await dispatchStk({
@@ -271,7 +331,10 @@ export async function POST(req: NextRequest) {
         orderId: order.id,
         orderNumber: order.orderNumber,
         kind: "online",
-        kcbCallbackUrl: `${process.env.KCB_CALLBACK_BASE_URL ?? process.env.MPESA_CALLBACK_BASE_URL}/api/payments/kcb/callback`,
+        kcbCallbackUrl: signedCallbackUrl(
+          `${process.env.KCB_CALLBACK_BASE_URL ?? process.env.MPESA_CALLBACK_BASE_URL}/api/payments/kcb/callback`,
+          transaction.id,
+        ),
         darajaCallbackUrl: `${process.env.MPESA_CALLBACK_BASE_URL}/api/payments/mpesa/callback`,
       });
       await finalizeStkDispatch({ kind: "online", transactionId: transaction.id, orderId: order.id, result });

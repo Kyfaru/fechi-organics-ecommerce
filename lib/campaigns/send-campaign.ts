@@ -82,6 +82,8 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
   const channels = channelsForType[campaign.type] ?? [];
   const countedUserIds = new Set(alreadySent.map((r) => r.userId));
   let sentCount = countedUserIds.size;
+  let skippedNoPhone = 0;
+  let failedCount = 0;
 
   async function recordResult(
     userId: string,
@@ -108,6 +110,7 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
         failedAt: result.ok ? undefined : new Date(),
       },
     });
+    if (!result.ok) failedCount++;
     if (result.ok && !countedUserIds.has(userId)) {
       countedUserIds.add(userId);
       sentCount++;
@@ -119,8 +122,13 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
 
     for (const user of batch) {
       for (const channel of channels) {
-        if (channel === "SMS" && !user.phone) continue;
         if (alreadySentSet.has(sentKey(user.id, channel))) continue;
+        if (channel === "SMS" && !user.phone) {
+          // Never skip silently — leave a row so the delivery drawer shows why.
+          skippedNoPhone++;
+          await recordResult(user.id, "SMS", { ok: false, error: "No phone number on file" });
+          continue;
+        }
 
         try {
           if (channel === "EMAIL") {
@@ -135,7 +143,8 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
           } else if (channel === "SMS") {
             const phone = combineLegacyPhone(user.phone!, user.phoneCode);
             if (!phone) throw new Error("Invalid phone number");
-            const sid = await sendSms(phone, plainContent, TWILIO_STATUS_CALLBACK);
+            // noFallback: a timeout can mean AT already sent; a Twilio retry would double-send.
+            const sid = await sendSms(phone, plainContent, TWILIO_STATUS_CALLBACK, { noFallback: true });
             await recordResult(user.id, "SMS", { ok: true, providerMessageId: sid });
           } else if (channel === "PUSH") {
             // Write an in-app inbox message, so the campaign actually shows up
@@ -171,10 +180,25 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
     }
   }
 
+  // ponytail: no PARTIAL enum value (needs a schema push) — FAILED when nothing
+  // went out, SENT otherwise, with the failed/skipped breakdown in lastError.
+  const nothingSent = sentCount === 0 && failedCount > 0;
+  const summary =
+    failedCount > 0
+      ? `${failedCount} failed (${skippedNoPhone} had no phone number); ${sentCount} sent`
+      : null;
   await db.campaign.update({
     where: { id: campaignId },
-    data: { status: "SENT", sentAt: new Date(), sentCount },
+    data: {
+      status: nothingSent ? "FAILED" : "SENT",
+      sentAt: new Date(),
+      sentCount,
+      lastError: summary,
+    },
   });
+  console.info(
+    `[send-campaign] ${campaignId} done: sent=${sentCount} failed=${failedCount} skippedNoPhone=${skippedNoPhone} audience=${users.length}`
+  );
 
   return { ok: true, sentCount };
 }

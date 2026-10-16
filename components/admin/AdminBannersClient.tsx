@@ -284,7 +284,7 @@ export function AdminBannersClient() {
         }
       />
 
-      <div className="px-6 pb-6">
+      <div className="px-4 sm:px-6 pb-6">
         <DataTable
           columns={columns}
           data={banners as unknown as Record<string, unknown>[]}
@@ -376,7 +376,7 @@ export function AdminBannersClient() {
             </div>
           </FormField>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormField label="CTA Text">
               <input
                 value={form.ctaText}
@@ -395,7 +395,7 @@ export function AdminBannersClient() {
             </FormField>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormField label="Starts">
               <input
                 type="date"

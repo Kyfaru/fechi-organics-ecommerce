@@ -7,9 +7,8 @@ Fechi Organics uses [KCB Buni](https://buni.kcbgroup.com/) for M-Pesa STK push o
 KCB Buni uses a similar OAuth + STK push flow to Safaricom Daraja:
 
 1. Fetch an OAuth token using `Basic` auth (consumer key : consumer secret, base64-encoded)
-2. Token is cached in Redis with TTL = `expires_in - 60` seconds
-3. Build a password: `base64(shortcode + passkey + timestamp)`
-4. POST the STK push request with `apiKey` in the header
+2. Token is cached in Redis as `{token, expiresAt}` (`lib/payments/token-cache.ts`) with TTL = `expires_in - 300` seconds; a token with under 5 minutes left is re-minted, a short NX lock stops concurrent mints, and a Redis outage just means each push mints its own token
+3. POST the STK push request (`/mm/api/request/1.0.0/stkpush`) with `apiKey` in the header and a signed `callbackUrl` (`?tx=&sig=`, see `lib/payments/callback-guard.ts`). KCB does not use a Daraja-style passkey
 5. Safaricom delivers an STK prompt to the customer's phone
 6. KCB posts the callback to `/api/payments/kcb/callback` with a Safaricom-compatible structure
 
@@ -61,7 +60,7 @@ These are updated via the admin panel or direct DB update. The seed populates th
 
 | Environment | Base URL |
 |-------------|---------|
-| Sandbox | `https://api.buni.kcbgroup.com` |
+| UAT / sandbox | `https://uat.buni.kcbgroup.com` — accepts pushes but has been observed NOT to call back |
 | Production | Contact KCB Buni support for the production base URL |
 
 ## Dispatch

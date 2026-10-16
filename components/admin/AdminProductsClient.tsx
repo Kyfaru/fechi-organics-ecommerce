@@ -12,6 +12,9 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import { Spinner } from "@/components/ui/spinner";
+import { MobileFilterSheet, FULL_RANGE, type FilterGroup } from "@/components/admin/ui/MobileFilterSheet";
+import { ProductPlusIcon, ZohoSyncIcon, ZohoListIcon, ZohoArchiveIcon } from "@/components/admin/ui/icons";
+import { PRICE_MIN, PRICE_MAX } from "@/lib/price-range-steps";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { DataTable } from "@/components/admin/ui/DataTable";
 import { StatusPill } from "@/components/admin/ui/StatusPill";
@@ -1497,7 +1500,7 @@ function BulkBar({
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 80, opacity: 0 }}
           transition={{ type: "spring", stiffness: 320, damping: 30 }}
-          className="fixed bottom-0 left-0 right-0 md:left-[264px] h-[72px] bg-white border-t border-(--neutral-200) shadow-(--e3) z-30 flex items-center px-6 gap-4"
+          className="fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom))] md:bottom-0 left-0 right-0 md:left-[264px] h-[72px] bg-white border-t border-(--neutral-200) shadow-(--e3) z-30 flex items-center px-4 sm:px-6 gap-4"
         >
           <span className="font-dm text-[14px] font-medium text-(--neutral-700) mr-auto">
             {count} selected
@@ -1546,6 +1549,7 @@ export function AdminProductsClient() {
   const [filterCategory, setFilterCategory] = usePersistedFilter("products:category", "");
   const [filterStatus, setFilterStatus] = usePersistedFilter<"" | "active" | "inactive">("products:status", "");
   const [sort, setSort] = usePersistedFilter<SortOption>("products:sort", "newest");
+  const [priceRange, setPriceRange] = useState(FULL_RANGE);
 
   // Drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -1673,6 +1677,8 @@ export function AdminProductsClient() {
       if (filterCategory && p.categoryId !== filterCategory) return false;
       if (filterStatus === "active" && !p.isActive) return false;
       if (filterStatus === "inactive" && p.isActive) return false;
+      if (priceRange.min > PRICE_MIN && p.priceKes < priceRange.min) return false;
+      if (priceRange.max < PRICE_MAX && p.priceKes > priceRange.max) return false;
       return true;
     })
     .sort((a, b) => {
@@ -2000,15 +2006,15 @@ export function AdminProductsClient() {
   const router = useRouter();
 
   const addButton = (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-stretch gap-2 w-full lg:w-auto lg:justify-end">
       {/* Global-tier callers pick which branch's Zoho org to sync — each
           branch runs its own independent org, so sync is never "all branches". */}
       {isGlobalTier && (
-        <div className="relative">
+        <div className="relative max-sm:w-full">
           <select
             value={selectedSyncBranchId}
             onChange={(e) => setSyncBranchId(e.target.value)}
-            className="h-10 pl-3 pr-8 rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-700) focus:outline-none focus:ring-2 focus:ring-(--green-500) appearance-none cursor-pointer"
+            className="h-10 pl-3 pr-8 max-sm:w-full rounded-[8px] border border-(--neutral-200) bg-white font-dm text-[14px] text-(--neutral-700) focus:outline-none focus:ring-2 focus:ring-(--green-500) appearance-none cursor-pointer"
           >
             {syncBranches.map((b) => (
               <option key={b.id} value={b.id}>{b.name}</option>
@@ -2023,44 +2029,52 @@ export function AdminProductsClient() {
         type="button"
         onClick={handleZohoSync}
         disabled={syncing}
-        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 dark:border-neutral-700 text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 disabled:opacity-50"
+        aria-label="Sync with Zoho"
+        title="Sync with Zoho"
+        className="inline-flex items-center gap-2 px-4 py-2 max-sm:flex-col max-sm:h-auto max-sm:py-2 max-sm:px-2 max-sm:gap-1 max-sm:flex-1 max-sm:min-w-[72px] max-sm:text-[11px] max-sm:justify-center text-sm font-medium rounded-lg border border-gray-200 dark:border-neutral-700 text-gray-700 dark:text-neutral-300 hover:bg-gray-50 dark:hover:bg-neutral-800 disabled:opacity-50"
       >
-        <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
-        {syncing ? "Syncing…" : "Sync with Zoho"}
+        <RefreshCw className={`w-4 h-4 max-sm:hidden ${syncing ? "animate-spin" : ""}`} />
+        <span className={`sm:hidden ${syncing ? "animate-spin" : ""}`}><ZohoSyncIcon size={20} /></span>
+        <span className="sm:hidden">{syncing ? "Syncing…" : "Sync"}</span><span className="max-sm:hidden">{syncing ? "Syncing…" : "Sync with Zoho"}</span>
       </button>
       <Can permissions={{ products: ["create"] }}>
         <button
           onClick={openCreate}
-          className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+          aria-label="Add product"
+          title="Add product"
+          className="h-10 px-5 max-sm:fixed max-sm:bottom-[4.75rem] max-sm:right-4 max-sm:z-30 max-sm:w-14 max-sm:h-14 max-sm:rounded-full max-sm:shadow-lg max-sm:px-0 max-sm:justify-center rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
         >
-          <Plus size={16} />
-          Add Product
+          <Plus size={16} className="max-sm:hidden" />
+          <span className="sm:hidden"><ProductPlusIcon size={24} /></span>
+          <span className="max-sm:sr-only">Add Product</span>
         </button>
       </Can>
       
       <button
         onClick={() => router.push('/admin/products/reviews')}
-        className="h-10 px-5 rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+        className="h-10 px-5 max-sm:flex-col max-sm:h-auto max-sm:py-2 max-sm:px-2 max-sm:gap-1 max-sm:flex-1 max-sm:min-w-[72px] max-sm:text-[11px] max-sm:justify-center rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
       >
         <Star size={16} />
-        View Reviews
+        <span className="sm:hidden">Reviews</span><span className="max-sm:hidden">View Reviews</span>
       </button>
 
       {/* Zoho staging review queue — new Zoho items land here instead of
           auto-creating live products. See AdminZohoStagedItemsClient. */}
       <button
         onClick={() => router.push('/admin/products/zoho')}
-        className="h-10 px-5 rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+        className="h-10 px-5 max-sm:flex-col max-sm:h-auto max-sm:py-2 max-sm:px-2 max-sm:gap-1 max-sm:flex-1 max-sm:min-w-[72px] max-sm:text-[11px] max-sm:justify-center rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
       >
-        <ListChecks size={16} />
-        Zoho Products
+        <ListChecks size={16} className="max-sm:hidden" />
+        <span className="sm:hidden"><ZohoListIcon size={20} /></span>
+        <span className="sm:hidden">Zoho items</span><span className="max-sm:hidden">Zoho Products</span>
       </button>
       <button
         onClick={() => router.push('/admin/products/zoho/expelled')}
-        className="h-10 px-5 rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+        className="h-10 px-5 max-sm:flex-col max-sm:h-auto max-sm:py-2 max-sm:px-2 max-sm:gap-1 max-sm:flex-1 max-sm:min-w-[72px] max-sm:text-[11px] max-sm:justify-center rounded-[0.5rem] border-2 border-(--green-800) text-(--green-800) hover:bg-(--green-800) hover:text-white font-dm text-[14px] font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
       >
-        <Archive size={16} />
-        Expelled Zoho Products
+        <Archive size={16} className="max-sm:hidden" />
+        <span className="sm:hidden"><ZohoArchiveIcon size={20} /></span>
+        <span className="sm:hidden">Expelled</span><span className="max-sm:hidden">Expelled Zoho Products</span>
       </button>
     </div>
   );
@@ -2079,9 +2093,9 @@ export function AdminProductsClient() {
       <PageHeader title="Products" description="Manage your product catalog" action={addButton} />
 
       {/* ── Filter toolbar ── */}
-      <div className="px-6 pb-5 flex flex-wrap items-center gap-3">
+      <div className="px-4 sm:px-6 pb-5 flex flex-wrap items-center gap-3">
         {/* Search */}
-        <div className="relative w-[280px]">
+        <div className="relative max-sm:flex-1 sm:w-[280px]">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
           <input
             value={search}
@@ -2096,6 +2110,16 @@ export function AdminProductsClient() {
           )}
         </div>
 
+        <MobileFilterSheet
+          groups={[
+            { type: "single", key: "category", label: "Category", value: filterCategory, onChange: setFilterCategory, allLabel: "All categories", options: categories.map((c) => ({ value: c.id, label: c.name })) },
+            { type: "single", key: "status", label: "Status", value: filterStatus, onChange: (v) => setFilterStatus(v as "" | "active" | "inactive"), allLabel: "All statuses", options: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] },
+            { type: "single", key: "sort", label: "Sort by", value: sort === "newest" ? "" : sort, onChange: (v) => setSort((v || "newest") as SortOption), allLabel: "Newest first", options: sortOptions.filter((o) => o.value !== "newest") },
+            { type: "range", key: "price", label: "Price", value: priceRange, onChange: setPriceRange },
+          ]}
+        />
+
+        <div className="contents max-sm:hidden">
         {/* Category filter */}
         <div className="relative">
           <select
@@ -2135,6 +2159,8 @@ export function AdminProductsClient() {
           <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-(--neutral-400) pointer-events-none" />
         </div>
 
+        </div>
+
         {/* Count label */}
         {!productsLoading && (
           <span className="font-dm text-[13px] text-(--neutral-400) ml-1">
@@ -2162,7 +2188,7 @@ export function AdminProductsClient() {
       </div>
 
       {/* ── Content area ── */}
-      <div className="px-6">
+      <div className="px-4 sm:px-6">
         {view === "grid" ? (
           // ── Grid view ──
           productsLoading ? (
@@ -2284,8 +2310,8 @@ export function AdminProductsClient() {
 
       {/* ── Permanently delete: blocked (has order history) ── */}
       {permanentBlockedTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4 admin-overlay">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-md p-4 sm:p-6 space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-(--danger-bg)">
                 <AlertTriangle size={18} className="text-(--danger)" />
@@ -2312,8 +2338,8 @@ export function AdminProductsClient() {
 
       {/* ── Permanently delete: type-slug-to-confirm ── */}
       {permanentSlugTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4 admin-overlay">
+          <div className="bg-white dark:bg-(--dark-surface) rounded-2xl shadow-xl w-full max-w-md p-4 sm:p-6 space-y-4">
             <h3 className="font-syne text-[18px] font-bold text-(--neutral-900) dark:text-(--dark-text)">
               Confirm permanent delete
             </h3>

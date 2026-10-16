@@ -22,7 +22,7 @@ import { pushSaleReceiptToZoho } from "@/lib/zoho/push-sale-receipt";
 import { resolveZohoOrganizationId } from "@/lib/zoho/resolve-org";
 import { paymentModeForInStore } from "@/lib/zoho/payment-mode";
 import { publishQstashJSON } from "@/lib/qstash";
-import { releaseRedeemedPoints } from "@/lib/points/redeem";
+import { holdRedeemedPoints, releaseRedeemedPoints } from "@/lib/points/redeem";
 import { classifyFailureReason } from "@/lib/payments/classify-failure";
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
@@ -46,14 +46,28 @@ export async function markInStorePaymentSuccess(args: {
 }): Promise<void> {
   let branchId: string | null = null;
   let provider: InStoreProvider | null = null;
+  let recoveredPoints: { userId: string; points: number } | null = null;
   let paidItems: Array<{ productId: string; name: string; priceKes: number; quantity: number }> = [];
 
   await db.$transaction(async (tx: TxClient) => {
     const transaction = await tx.inStoreTransaction.findUnique({
       where: { id: args.transactionId },
-      select: { status: true, provider: true },
+      select: { status: true, provider: true, failureReason: true },
     });
-    if (!transaction || transaction.status !== "PENDING") return;
+    if (!transaction) return;
+    // A payment landing AFTER our own timeout job gave up is real money —
+    // recover it. Only timeout-failed transactions qualify.
+    const lateRecovery =
+      transaction.status === "FAILED" && /timed out/i.test(transaction.failureReason ?? "");
+    if (transaction.status !== "PENDING" && !lateRecovery) return;
+
+    // Atomic compare-and-set so two concurrent callbacks can't both run
+    // the stock decrement below.
+    const claimed = await tx.inStoreTransaction.updateMany({
+      where: { id: args.transactionId, status: transaction.status },
+      data: { status: "SUCCESS" },
+    });
+    if (claimed.count !== 1) return;
     provider = transaction.provider;
 
     await tx.inStoreTransaction.update({
@@ -78,9 +92,12 @@ export async function markInStorePaymentSuccess(args: {
     const order = await tx.inStoreOrder.update({
       where: { id: args.inStoreOrderId },
       data: { paymentStatus: "PAID" },
-      select: { branchId: true },
+      select: { branchId: true, customerUserId: true, pointsRedeemed: true },
     });
     branchId = order.branchId;
+    if (lateRecovery && order.customerUserId && order.pointsRedeemed > 0) {
+      recoveredPoints = { userId: order.customerUserId, points: order.pointsRedeemed };
+    }
 
     const items = await tx.inStoreOrderItem.findMany({
       where: { inStoreOrderId: args.inStoreOrderId },
@@ -99,6 +116,23 @@ export async function markInStorePaymentSuccess(args: {
     }
   });
 
+  // Late-recovered payment: its redeemed points were released when the order
+  // timed out — take them again.
+  // (cast: TS can't see the assignment made inside the $transaction callback)
+  const rp = recoveredPoints as { userId: string; points: number } | null;
+  if (rp) {
+    try {
+      await holdRedeemedPoints({
+        userId: rp.userId,
+        orderId: args.inStoreOrderId,
+        points: rp.points,
+        refType: "inStoreOrder",
+      });
+    } catch (e) {
+      console.error("[instore-post-payment] could not re-hold points on late recovery:", e);
+    }
+  }
+
   // Loyalty points, badges and referral conversion. `provider` is still null
   // when the idempotency guard above short-circuited, so a replayed callback
   // does not queue a second award pass.
@@ -109,19 +143,9 @@ export async function markInStorePaymentSuccess(args: {
     }).catch((e) => console.error("[instore-post-payment] award-points enqueue failed:", e));
   }
 
-  // Pre-warm the invoice PDF synchronously (not queued, unlike the customer
-  // flow's 60s-delayed worker) so it's already cached in R2 by the time the
-  // admin's success modal renders a Send button. A render/upload failure here
-  // must never fail the payment-success path — Send-receipt will just
-  // generate it lazily on demand instead.
-  try {
-    await getOrCreateInStoreInvoice(args.inStoreOrderId);
-  } catch (e) {
-    console.error("[instore-post-payment] Invoice pre-generation failed (success):", e);
-  }
-
-  // Forward-compatible groundwork for a later phase's waiting-modal SSE
-  // stream — must never throw if Redis is unavailable.
+  // Signal the waiting modal FIRST — the paid state is already committed, so
+  // the modal must not wait on (or be lost to) the invoice render below.
+  // Must never throw if Redis is unavailable.
   try {
     await getRedis().set(
       paymentChannel(args.inStoreOrderId),
@@ -136,6 +160,14 @@ export async function markInStorePaymentSuccess(args: {
   } catch (e) {
     console.error("[instore-post-payment] Redis set failed (success):", e);
   }
+
+  // Pre-warm the invoice PDF in the background so it's usually cached in R2 by
+  // the time the success modal's Send button is used — NOT awaited: the
+  // callback must ack quickly, and Send-receipt generates it lazily on demand
+  // anyway. A failure must never fail the payment-success path.
+  void getOrCreateInStoreInvoice(args.inStoreOrderId).catch((e) => {
+    console.error("[instore-post-payment] Invoice pre-generation failed (success):", e);
+  });
 
   // Fire-and-forget: push this sale to Zoho as a Sales Receipt. Must never
   // throw or block the payment-success path — same convention as the two

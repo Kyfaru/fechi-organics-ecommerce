@@ -8,7 +8,7 @@
  * Requires an authenticated admin session.
  */
 
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { z } from "zod";
 import { Ratelimit } from "@upstash/ratelimit";
 import { auth } from "@/lib/auth";
@@ -32,6 +32,8 @@ import { logActivity } from "@/lib/admin-activity";
 import { reportError } from "@/lib/observability";
 import { logServerError } from "@/lib/observability-server";
 import { publishQstashJSON } from "@/lib/qstash";
+import { signedCallbackUrl } from "@/lib/payments/callback-guard";
+import { runDispatchJob } from "@/lib/payments/run-dispatch-job";
 
 // Dispatch now happens off this request (see /api/admin/workers/dispatch-stk)
 // — this used to be 60 to give a synchronous primary+fallback gateway
@@ -95,9 +97,7 @@ export async function POST(req: NextRequest) {
 
   let parsed: z.infer<typeof bodySchema>;
   try {
-    const raw = await req.json();
-    console.log("Incoming Body:", raw);
-    parsed = bodySchema.parse(raw);
+    parsed = bodySchema.parse(await req.json());
   } catch (e) {
     reportError(e, {
       route: "POST /api/admin/orders/instore/mpesa/initiate",
@@ -326,11 +326,32 @@ export async function POST(req: NextRequest) {
     // QStash itself isn't configured (dev/local), dispatch inline instead of
     // silently dropping the payment.
     const instoreCallbackUrl = `${process.env.MPESA_CALLBACK_BASE_URL}/api/payments/mpesa/instore-callback`;
+    const instoreKcbCallbackUrl = signedCallbackUrl(
+      `${process.env.KCB_CALLBACK_BASE_URL ?? process.env.MPESA_CALLBACK_BASE_URL}/api/payments/mpesa/instore-callback`,
+      transaction.id,
+    );
+    // Watchdog first: scheduled at creation, BEFORE dispatch, so an order
+    // whose dispatch job never runs still gets resolved (no orphan PENDING
+    // order holding loyalty points forever). The worker is idempotent.
+    await publishQstashJSON(
+      "/api/admin/workers/check-failed-instore-payment",
+      { inStoreOrderId: order.id, transactionId: transaction.id },
+      { delay: 15 * 60 },
+    ).catch((e) => console.error("[instore/mpesa/initiate] watchdog schedule failed:", e));
+    // A publish that THROWS (not just "QStash unconfigured") is treated like
+    // unconfigured: dispatch inline rather than orphaning the order.
     const published = await publishQstashJSON(
       "/api/admin/workers/dispatch-stk",
       { kind: "instore", transactionId: transaction.id },
       { retries: 2 },
-    );
+    ).catch((e) => {
+      console.error("[instore/mpesa/initiate] dispatch publish failed — falling back to inline:", e);
+      return null;
+    });
+    if (published) {
+      // Fast path (see online initiate): the NX claim keeps it single-send.
+      after(() => runDispatchJob("instore", transaction.id).catch((e) => console.error("[instore/mpesa/initiate] after() dispatch failed:", e)));
+    }
     if (!published) {
       console.warn(`[instore/mpesa/initiate] QStash unavailable — dispatching inline for order=${order.orderNumber}`);
       const result = await dispatchStk({
@@ -340,7 +361,7 @@ export async function POST(req: NextRequest) {
         orderId: order.id,
         orderNumber: order.orderNumber,
         kind: "instore",
-        kcbCallbackUrl: instoreCallbackUrl,
+        kcbCallbackUrl: instoreKcbCallbackUrl,
         darajaCallbackUrl: instoreCallbackUrl,
       });
       await finalizeStkDispatch({ kind: "instore", transactionId: transaction.id, orderId: order.id, result });

@@ -243,7 +243,7 @@ export function AdminShippingClient() {
         action={addButton}
       />
 
-      <div className="px-6">
+      <div className="px-4 sm:px-6">
         <DataTable
           columns={columns}
           data={zones as unknown as Record<string, unknown>[]}
@@ -284,7 +284,7 @@ export function AdminShippingClient() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Fee (KES) *</label>
               <input

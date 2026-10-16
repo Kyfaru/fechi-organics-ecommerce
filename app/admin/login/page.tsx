@@ -19,6 +19,8 @@ import { checkPortalMatch } from "@/lib/portal-check";
 import { reportError } from "@/lib/observability";
 import { useReloadOnBfcacheRestore } from "@/hooks/use-reload-on-bfcache-restore";
 import { prefetchAdminSurfaces } from "@/components/admin/login/WelcomeTransition";
+import { readAdminLoginCache, writeAdminLoginCache } from "@/lib/admin-login-cache";
+import { awaitPendingLogout, isLogoutPending, retryPendingLogout } from "@/lib/admin-logout";
 
 // Shape of GET /api/admin/me — read directly by this page for the
 // new-admin setup path (a real session already exists then).
@@ -30,6 +32,7 @@ interface AdminMeResponse {
   email: string;
   phone: string | null;
   fullName: string;
+  role: string;
   backSoon: boolean;
   mustChangePassword: boolean;
 }
@@ -116,8 +119,32 @@ export default function AdminLoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const turnstileRef = useRef<TurnstileHandle>(null);
+  // Set once post-2FA navigation has started — blocks the mount redirect
+  // effect and keeps the loading state on until the route actually changes.
+  const navigatingRef = useRef(false);
 
   const { data: sessionData, isPending: sessionPending } = useSession();
+
+  // Finish a logout that never completed (network blip / closed tab).
+  useEffect(() => {
+    retryPendingLogout();
+  }, []);
+
+  // cacheComponents keeps this route alive (hidden) across navigations, so a
+  // revived instance would still be on its old step (e.g. otp-verify after
+  // logout). Reset in cleanup — runs while hidden/unmounting, so no flash.
+  useEffect(() => {
+    return () => {
+      navigatingRef.current = false;
+      setStep("credentials");
+      setEmail("");
+      setPassword("");
+      setCode("");
+      setErrors({});
+      setIsLoading(false);
+      setOtpResetSignal((n) => n + 1);
+    };
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Resend countdown timer
@@ -145,6 +172,10 @@ export default function AdminLoginPage() {
     // change, 2FA setup/verify) — a real session can legitimately exist at
     // that point (e.g. a brand-new admin's first signIn.email() call, before
     // 2FA has ever been confirmed) and must NOT trigger this redirect.
+    if (navigatingRef.current) return;
+    // Optimistic logout still invalidating in the background — useSession()
+    // holds the old session until it lands; don't bounce back to /admin.
+    if (isLogoutPending()) return;
     if (sessionPending || !sessionData?.session || step !== "credentials") return;
     const role = (sessionData.user as { role?: string } | undefined)?.role;
     if (role === "admin") {
@@ -201,7 +232,13 @@ export default function AdminLoginPage() {
   // ---------------------------------------------------------------------------
   async function finishLogin() {
     try {
-      const res = await fetch("/api/admin/welcome/start", { method: "POST" });
+      // Session cookie can lag the verify response by a beat — retry once
+      // before falling through to /admin without the welcome screen.
+      let res = await fetch("/api/admin/welcome/start", { method: "POST" });
+      if (!res.ok) {
+        await new Promise((r) => setTimeout(r, 200));
+        res = await fetch("/api/admin/welcome/start", { method: "POST" });
+      }
       const json = await res.json();
 
       if (json?.data?.mustChangePassword) {
@@ -209,22 +246,40 @@ export default function AdminLoginPage() {
         return;
       }
 
-      const token = json?.data?.token;
-      // Reset the page's own state before navigating away — so if this
-      // exact instance is ever shown again (bfcache/history restore), it
-      // reflects a fresh credentials step instead of a completed 2FA step
-      // with stale typed credentials/codes still sitting in memory.
-      setStep("credentials");
-      setEmail("");
-      setPassword("");
-      setCode("");
-      setErrors({});
+      const { token, fullName, role, backSoon } = json?.data ?? {};
+
+      // Hand today's fresh name/role/backSoon straight to the welcome page
+      // (sessionStorage — this-login-only data, not a cross-visit cache) so
+      // its very first frame already shows the right greeting instead of
+      // waiting on its own /api/admin/me round trip. Also refresh the
+      // per-email cache that paints the *next* login's method-choice screen
+      // instantly (see the twoFactorRedirect branch in handleCredentialsSubmit).
+      if (token) {
+        try {
+          sessionStorage.setItem(
+            "admin-welcome-handoff",
+            JSON.stringify({ fullName, role, backSoon, isNewUser }),
+          );
+        } catch {
+          // Storage full/blocked — the welcome page just falls back to its
+          // own /api/admin/me fetch for the greeting, same as before.
+        }
+      }
+      if (email) writeAdminLoginCache(email, { fullName, role });
+
+      // Do NOT reset step/inputs here: setStep("credentials") re-renders the
+      // login form (the flash) and re-fires the "already signed in" effect,
+      // which overrides this replace with /admin and skips the welcome
+      // screen. A bfcache restore reloads the page (useReloadOnBfcacheRestore),
+      // so stale state can't resurface.
+      navigatingRef.current = true;
       router.replace(token ? `/admin/welcome?t=${encodeURIComponent(token)}` : "/admin");
     } catch (err) {
       // Best-effort — skip the salutation entirely rather than strand the
       // admin; AdminGuard (app/admin/(protected)/layout.tsx) re-verifies
       // server-side regardless.
       reportError(err, { route: "admin-login", tags: { step: "finish-login" } });
+      navigatingRef.current = true;
       router.replace("/admin");
     }
   }
@@ -248,6 +303,9 @@ export default function AdminLoginPage() {
     setCaptchaToken(null);
 
     try {
+      // A late background sign-out must not destroy the session we're about
+      // to create.
+      await awaitPendingLogout();
       // Reject a client's email before ever calling signIn — no session is
       // created for a wrong-portal attempt.
       const portalOk = await checkPortalMatch(email, "admin");
@@ -255,6 +313,21 @@ export default function AdminLoginPage() {
         toast.error("Sign in failed.");
         return;
       }
+
+      // Fired *alongside* signIn.email below, not after it resolves — by
+      // the time we know this is a twoFactorRedirect, this response is
+      // usually already in flight or done, instead of only starting then.
+      // No new information exposure from this timing change: this endpoint
+      // is already public, unauthenticated, rate-limited, and always-200
+      // (see its own header comment) — reachable directly by anyone with
+      // just an email, independent of password correctness, by design.
+      const precheckPromise = fetch("/api/account/2fa/precheck", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      })
+        .then((r) => r.json())
+        .catch(() => null);
 
       // rememberMe: false — the admin session cookie gets no Max-Age, so the
       // browser itself drops it the moment the browser (not just this tab)
@@ -290,25 +363,31 @@ export default function AdminLoginPage() {
         setAdminMe(null);
         setIsNewUser(false);
         setStep("method-choice");
+
+        // Instant paint from last time's cache (if any) — first login from
+        // a given browser has nothing to paint from yet and waits on the
+        // real response below like before; every login after that shows
+        // the correct Email/SMS cards on the very first frame.
+        const cached = readAdminLoginCache(email);
+        if (cached) {
+          setExistingUserHasPhone(!!cached.hasPhone);
+          setExistingTwoFaEmail(!!cached.twoFaEmail);
+          setExistingTwoFaPhone(!!cached.twoFaPhone);
+        }
+
         // No real session yet (Better Auth withheld it pending 2FA) — same
         // precheck the customer login form uses, since /api/admin/me would
-        // 401 here.
-        fetch("/api/account/2fa/precheck", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email }),
-        })
-          .then((r) => r.json())
-          .then((j) => {
-            setExistingUserHasPhone(!!j?.data?.hasPhone);
-            setExistingTwoFaEmail(!!j?.data?.twoFaEmail);
-            setExistingTwoFaPhone(!!j?.data?.twoFaPhone);
-          })
-          .catch(() => {
-            setExistingUserHasPhone(false);
-            setExistingTwoFaEmail(false);
-            setExistingTwoFaPhone(false);
-          });
+        // 401 here. Already in flight (fired alongside signIn.email above),
+        // so this reconciles quickly rather than starting the wait now.
+        precheckPromise.then((j) => {
+          const hasPhone = !!j?.data?.hasPhone;
+          const twoFaEmail = !!j?.data?.twoFaEmail;
+          const twoFaPhone = !!j?.data?.twoFaPhone;
+          setExistingUserHasPhone(hasPhone);
+          setExistingTwoFaEmail(twoFaEmail);
+          setExistingTwoFaPhone(twoFaPhone);
+          if (j?.data) writeAdminLoginCache(email, { hasPhone, twoFaEmail, twoFaPhone });
+        });
         return;
       }
 
@@ -339,6 +418,13 @@ export default function AdminLoginPage() {
       }
       const me: AdminMeResponse = await meRes.json();
       setAdminMe(me);
+      writeAdminLoginCache(email, {
+        fullName: me.fullName,
+        role: me.role,
+        hasPhone: !!me.phone,
+        twoFaEmail: me.twoFaEmail,
+        twoFaPhone: me.twoFaPhone,
+      });
 
       // Forced password change is checked AFTER 2FA now (see finishLogin),
       // not here — a brand-new admin must finish setting up 2FA in this same
@@ -526,12 +612,12 @@ export default function AdminLoginPage() {
         return;
       }
 
-      finishLogin();
+      await finishLogin();
     } catch (err) {
       reportError(err, { route: "admin-login", tags: { step: "totp-verify" } });
       setErrors({ code: "Verification failed. Please try again." });
     } finally {
-      setIsLoading(false);
+      if (!navigatingRef.current) setIsLoading(false);
     }
   }
 
@@ -558,12 +644,12 @@ export default function AdminLoginPage() {
         return;
       }
 
-      finishLogin();
+      await finishLogin();
     } catch (err) {
       reportError(err, { route: "admin-login", tags: { step: "totp-setup" } });
       setErrors({ code: "Verification failed. Please try again." });
     } finally {
-      setIsLoading(false);
+      if (!navigatingRef.current) setIsLoading(false);
     }
   }
 
@@ -585,13 +671,13 @@ export default function AdminLoginPage() {
         return;
       }
 
-      finishLogin();
+      await finishLogin();
     } catch (err) {
       reportError(err, { route: "admin-login", tags: { step: "otp-verify" } });
       setErrors({ code: "Verification failed. Please try again." });
       setOtpResetSignal((n) => n + 1);
     } finally {
-      setIsLoading(false);
+      if (!navigatingRef.current) setIsLoading(false);
     }
   }
 
