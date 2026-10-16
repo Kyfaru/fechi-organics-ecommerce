@@ -25,11 +25,17 @@ export function useInStorePaymentStream(inStoreOrderId: string | null): {
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    if (!inStoreOrderId) return
+    if (!inStoreOrderId) {
+      // Modal closed: drop the previous attempt's terminal status, so reopening
+      // for the same order (Try Again) can't replay the old failure.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setStatus('idle')
+      setReason(undefined)
+      return
+    }
 
     // Synchronizing React state with the EventSource's connection lifecycle
     // — this mirrors hooks/use-payment-stream.ts's identical pattern.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStatus('connecting')
     esRef.current?.close()
     errorCountRef.current = 0

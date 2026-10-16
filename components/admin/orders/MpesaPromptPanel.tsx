@@ -69,6 +69,15 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
     };
   }, []);
 
+  function clearResendCooldown() {
+    cooldownEndsAtRef.current = null;
+    setCooldownSeconds(0);
+    if (cooldownIntervalRef.current) {
+      clearInterval(cooldownIntervalRef.current);
+      cooldownIntervalRef.current = null;
+    }
+  }
+
   function beginResendCooldown() {
     cooldownEndsAtRef.current = Date.now() + RESEND_COOLDOWN_MS;
     setCooldownSeconds(Math.ceil(RESEND_COOLDOWN_MS / 1000));
@@ -89,6 +98,9 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
   }
 
   async function submitInitiate(retryOrderId?: string) {
+    // Try Again (retryOrderId) is an explicit action on an attempt that already
+    // ended, so it clears the cooldown instead of being blocked by it.
+    if (retryOrderId) clearResendCooldown();
     if (cooldownEndsAtRef.current && Date.now() < cooldownEndsAtRef.current) {
       toast.warning("Please wait before retrying", {
         message: `A similar transaction is already in progress — try again in ${cooldownSeconds}s.`,
@@ -131,7 +143,9 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
       setPending(json.data);
       setFailReason(undefined);
       setPhase("waiting");
-      beginResendCooldown();
+      // No cooldown while the customer is entering their PIN (the button is
+      // simply inactive); it starts when the attempt is cancelled or fails.
+      clearResendCooldown();
     } catch (err) {
       // Unlike the branch above, we never learned how this request ended —
       // the server may well have dispatched a prompt before the connection
@@ -155,6 +169,7 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
   function handleWaitingFailure(reason: string | undefined) {
     setFailReason(reason);
     setPhase("failed");
+    beginResendCooldown();
   }
 
   function handleWaitingCancelled() {
@@ -180,7 +195,7 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
   const hasEmail = orderContext.customerEmail.trim().length > 0;
   const hasPhone = orderContext.customerPhone.trim().length > 0;
 
-  const disabled = !branchReady || !phone || sending || cooldownSeconds > 0;
+  const disabled = !branchReady || !phone || sending || phase === "waiting" || cooldownSeconds > 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -203,7 +218,7 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
           {sending ? "Sending…" : cooldownSeconds > 0 ? `Resend in ${cooldownSeconds}s` : "Send M-Pesa Prompt"}
         </button>
 
-        {cooldownSeconds > 0 && (
+        {cooldownSeconds > 0 && phase !== "waiting" && (
           <p className="mt-1.5 font-dm text-[12px] text-(--neutral-500)">
             You can send another prompt in {cooldownSeconds}s
           </p>
@@ -241,7 +256,14 @@ export default function MpesaPromptPanel({ orderContext, branchReady, initialPho
         open={phase === "failed"}
         reason={failReason}
         onTryAgain={handleTryAgain}
-        onClose={() => setPhase(null)}
+        onClose={() => {
+          // Drop the finished attempt entirely so the next click is a brand-new
+          // order with a fresh result, never a replay of this one.
+          setPhase(null);
+          setPending(null);
+          setFailReason(undefined);
+          setError(null);
+        }}
       />
     </div>
   );
