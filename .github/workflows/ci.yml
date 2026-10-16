@@ -29,5 +29,8 @@ jobs:
           __tests__/dispatch-stk.test.ts
           __tests__/finalize-stk-dispatch.test.ts
           __tests__/instore-mpesa-callback.test.ts
+          __tests__/dispatch-stk-worker.test.ts
+          __tests__/mark-payment-failed.test.ts
+          __tests__/zoho-post-payment-branch.test.ts
         env:
           DATABASE_URL: postgresql://ci:ci@localhost:5432/ci

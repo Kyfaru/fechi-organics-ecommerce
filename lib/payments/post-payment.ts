@@ -103,15 +103,18 @@ export async function markPaymentSuccess(args: {
   }
 
   // allSettled: one failed publish must not drop the others.
-  const sideEffects: Promise<unknown>[] = [
-    publishQstashJSON("/api/admin/workers/send-order-confirmation", { orderId: args.orderId }),
-    publishQstashJSON("/api/admin/workers/notify-admin-new-order", { orderId: args.orderId }),
-    // Invoice PDF + email follow ~1 minute later, as a separate, quieter step.
-    publishQstashJSON("/api/admin/workers/generate-invoice", { orderId: args.orderId }, { delay: 60 }),
-  ];
-  // Loyalty points etc. only for the claim winner, so a duplicate callback
-  // doesn't queue a second award pass (the ledger would reject it anyway).
-  if (result) sideEffects.push(publishQstashJSON("/api/admin/workers/award-points", { orderId: args.orderId }));
+  // Only the claim winner fans out: a duplicate callback must not resend the
+  // confirmation email / admin alert or queue a second award pass.
+  const sideEffects: Promise<unknown>[] = [];
+  if (result) {
+    sideEffects.push(
+      publishQstashJSON("/api/admin/workers/send-order-confirmation", { orderId: args.orderId }),
+      publishQstashJSON("/api/admin/workers/notify-admin-new-order", { orderId: args.orderId }),
+      // Invoice PDF + email follow ~1 minute later, as a separate, quieter step.
+      publishQstashJSON("/api/admin/workers/generate-invoice", { orderId: args.orderId }, { delay: 60 }),
+      publishQstashJSON("/api/admin/workers/award-points", { orderId: args.orderId }),
+    );
+  }
   for (const r of await Promise.allSettled(sideEffects)) {
     if (r.status === "rejected") console.error("[post-payment] side-effect publish failed:", r.reason);
   }

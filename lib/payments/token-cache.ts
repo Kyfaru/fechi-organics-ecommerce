@@ -27,12 +27,14 @@ function readToken(raw: unknown): string | null {
   return e.expiresAt - Date.now() > REFRESH_MARGIN_S * 1000 ? e.token : null;
 }
 
-async function safely<T>(stage: string, fn: () => Promise<T>): Promise<T | null> {
+const REDIS_ERR = Symbol("redis-error");
+
+async function safely<T>(stage: string, fn: () => Promise<T>): Promise<T | typeof REDIS_ERR> {
   try {
     return await fn();
   } catch (e) {
     reportError(e, { route: "token-cache", tags: { stage } });
-    return null;
+    return REDIS_ERR;
   }
 }
 
@@ -44,16 +46,19 @@ export async function getOrMintToken(
   const redis = getRedis();
 
   if (!opts.fresh) {
-    const hit = readToken(await safely("get", () => redis.get(key)));
+    const got = await safely("get", () => redis.get(key));
+    const hit = got === REDIS_ERR ? null : readToken(got);
     if (hit) return { token: hit, cached: true };
   }
 
   // Another caller is already minting — wait briefly for its result.
   const gotLock = await safely("lock", () => redis.set(`${key}:lock`, "1", { nx: true, ex: 10 }));
-  if (!gotLock && !opts.fresh) {
+  // (A Redis error is not contention — don't wait for a winner that can't exist.)
+  if (gotLock === null && !opts.fresh) {
     for (let i = 0; i < 5; i++) {
       await sleep(300);
-      const hit = readToken(await safely("get", () => redis.get(key)));
+      const got = await safely("get", () => redis.get(key));
+      const hit = got === REDIS_ERR ? null : readToken(got);
       if (hit) return { token: hit, cached: true };
     }
   }

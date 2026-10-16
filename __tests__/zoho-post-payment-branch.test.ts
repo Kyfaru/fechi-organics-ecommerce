@@ -47,6 +47,8 @@ const mockDb = vi.hoisted(() => {
     transaction: {
       findUnique: vi.fn().mockResolvedValue({ status: "PENDING", provider: "KCB" }),
       update: vi.fn(),
+      // atomic PENDING->SUCCESS claim in markPaymentSuccess
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     order: {
       findUnique: vi.fn().mockResolvedValue({ orderNumber: "FO-0001" }),

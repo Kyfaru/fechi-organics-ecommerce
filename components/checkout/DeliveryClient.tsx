@@ -1133,7 +1133,7 @@ function PaymentStatusModal({ orderId, onClose }: { orderId: string; onClose: (w
 
   useEffect(() => {
     if (status === "success") {
-      window.setTimeout(() => router.push(`/order-success/${orderId}`), 1500);
+      window.setTimeout(() => router.push(`/order-success/${orderId}`), 500);
     }
   }, [status, orderId, router]);
 

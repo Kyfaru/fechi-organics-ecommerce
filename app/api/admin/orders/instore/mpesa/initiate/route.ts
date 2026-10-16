@@ -8,7 +8,7 @@
  * Requires an authenticated admin session.
  */
 
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { z } from "zod";
 import { Ratelimit } from "@upstash/ratelimit";
 import { auth } from "@/lib/auth";
@@ -33,6 +33,7 @@ import { reportError } from "@/lib/observability";
 import { logServerError } from "@/lib/observability-server";
 import { publishQstashJSON } from "@/lib/qstash";
 import { signedCallbackUrl } from "@/lib/payments/callback-guard";
+import { runDispatchJob } from "@/lib/payments/run-dispatch-job";
 
 // Dispatch now happens off this request (see /api/admin/workers/dispatch-stk)
 // — this used to be 60 to give a synchronous primary+fallback gateway
@@ -347,6 +348,10 @@ export async function POST(req: NextRequest) {
       console.error("[instore/mpesa/initiate] dispatch publish failed — falling back to inline:", e);
       return null;
     });
+    if (published) {
+      // Fast path (see online initiate): the NX claim keeps it single-send.
+      after(() => runDispatchJob("instore", transaction.id).catch((e) => console.error("[instore/mpesa/initiate] after() dispatch failed:", e)));
+    }
     if (!published) {
       console.warn(`[instore/mpesa/initiate] QStash unavailable — dispatching inline for order=${order.orderNumber}`);
       const result = await dispatchStk({

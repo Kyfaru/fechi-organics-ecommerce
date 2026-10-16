@@ -10,7 +10,7 @@
  * name/email/phone is resolved to the `userId` the order is created under.
  */
 
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { headers } from "next/headers";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
@@ -36,6 +36,7 @@ import { buildTimestampOrderNumber } from "@/lib/orders/generate-order-number";
 import { createWithRetryableOrderNumber } from "@/lib/orders/create-with-retry";
 import { readUtmCookie } from "@/lib/attribution";
 import { signedCallbackUrl } from "@/lib/payments/callback-guard";
+import { runDispatchJob } from "@/lib/payments/run-dispatch-job";
 
 export const maxDuration = 15;
 
@@ -75,15 +76,44 @@ export async function POST(req: NextRequest) {
 
   const { phone, deliveryData, idempotencyKey } = parsed;
 
+  // These depend only on the request body, so start them now and let them
+  // overlap the cart/identity round trips below instead of running after.
+  // (.catch no-op marks them handled if an early return skips the await.)
+  const pricingPromise = calculateDeliveryPricing({
+    country: deliveryData.country,
+    county: deliveryData.county,
+    zoneId: deliveryData.zoneId,
+    deliveryType: deliveryData.deliveryType,
+  });
+  pricingPromise.catch(() => {});
+  const branchPromise = (async () => {
+    if (deliveryData.branchId) {
+      const b = await db.branch.findUnique({ where: { id: deliveryData.branchId, isActive: true } });
+      if (b) return b;
+    }
+    const resolved = await resolveBranchForCounty(deliveryData.county || "Nairobi", {
+      zoneId: deliveryData.zoneId,
+    });
+    return resolved ? db.branch.findUnique({ where: { id: resolved.id } }) : null;
+  })();
+  branchPromise.catch(() => {});
+
   try {
     // Double-click / network-retry guard: same key => same order, no second
     // order and no second STK prompt.
     if (idempotencyKey) {
       const prior = await db.transaction.findUnique({
         where: { idempotencyKey },
-        select: { orderId: true },
+        select: { id: true, orderId: true, status: true },
       });
-      if (prior) return ok({ orderId: prior.orderId });
+      if (prior && prior.status !== "FAILED" && prior.status !== "TIMEOUT") {
+        return ok({ orderId: prior.orderId });
+      }
+      // A finished-and-failed attempt must not trap a retry on the dead
+      // order: free the key so this is processed as a brand-new attempt.
+      if (prior) {
+        await db.transaction.update({ where: { id: prior.id }, data: { idempotencyKey: null } });
+      }
     }
 
     // 3. Load cart and validate it is not empty. A guest's cart lives under
@@ -144,12 +174,7 @@ export async function POST(req: NextRequest) {
       (sum, item) => sum + item.product.priceKes * item.quantity,
       0,
     );
-    const pricing = await calculateDeliveryPricing({
-      country: deliveryData.country,
-      county: deliveryData.county,
-      zoneId: deliveryData.zoneId,
-      deliveryType: deliveryData.deliveryType,
-    });
+    const pricing = await pricingPromise;
     const totals = await computeOrderTotals({
       subtotalCents,
       deliveryCents: pricing.feeKes,
@@ -169,23 +194,8 @@ export async function POST(req: NextRequest) {
       totalCents,
     } = totals;
 
-    // 6. Resolve branch — use provided branchId or look up by county
-    let branch: Awaited<ReturnType<typeof db.branch.findUnique>> | null = null;
-
-    if (deliveryData.branchId) {
-      branch = await db.branch.findUnique({
-        where: { id: deliveryData.branchId, isActive: true },
-      });
-    }
-
-    if (!branch) {
-      const resolved = await resolveBranchForCounty(deliveryData.county || "Nairobi", {
-        zoneId: deliveryData.zoneId,
-      });
-      if (resolved) {
-        branch = await db.branch.findUnique({ where: { id: resolved.id } });
-      }
-    }
+    // 6. Branch — resolved concurrently at the top of the handler.
+    const branch = await branchPromise;
 
     if (!branch) {
       return err("NO_BRANCH", "No active M-Pesa branch available", 503);
@@ -292,6 +302,12 @@ export async function POST(req: NextRequest) {
       console.error("[mpesa/initiate] dispatch publish failed — falling back to inline:", e);
       return null;
     });
+    if (published) {
+      // Fast path: start the STK push the moment the response is sent instead of
+      // waiting out the QStash hop. The queued job stays as the durable copy;
+      // both take the same Redis NX claim, so only one ever sends a prompt.
+      after(() => runDispatchJob("online", transaction.id).catch((e) => console.error("[mpesa/initiate] after() dispatch failed:", e)));
+    }
     if (!published) {
       console.warn(`[mpesa/initiate] QStash unavailable — dispatching inline for order=${order.orderNumber}`);
       const result = await dispatchStk({
