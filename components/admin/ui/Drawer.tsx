@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useId, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { X, ChevronLeft } from "lucide-react";
@@ -28,6 +28,24 @@ export function Drawer({ open, onClose, title, children, footer, width = 480 }: 
   const mobile = useSyncExternalStore(subscribeMobile, () => window.matchMedia("(max-width: 639px)").matches, () => false);
   const reduce = useReducedMotion();
   const mounted = useSyncExternalStore(noop, () => true, () => false);
+
+  const id = useId();
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; });
+
+  // Phone Back button closes the drawer: each open drawer owns one history entry.
+  useEffect(() => {
+    if (!open || !mobile) return;
+    history.pushState({ ...history.state, __drawer: id }, "");
+    let popped = false;
+    const onPop = () => { popped = true; onCloseRef.current(); };
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      // closed via UI (X/save/backdrop): drop our now-dead entry
+      if (!popped && history.state?.__drawer === id) history.back();
+    };
+  }, [open, mobile, id]);
 
   useEffect(() => {
     if (!open) return;
@@ -60,7 +78,7 @@ export function Drawer({ open, onClose, title, children, footer, width = 480 }: 
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: reduce ? 0 : 0.2 }}
-            className="fixed inset-0 bg-black/45 z-40 max-sm:hidden"
+            className="fixed inset-0 bg-black/45 z-[35] max-sm:hidden"
             onClick={onClose}
           />
           <motion.div
@@ -68,7 +86,7 @@ export function Drawer({ open, onClose, title, children, footer, width = 480 }: 
             initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
             transition={transition}
             style={{ ["--drawer-w" as string]: `${width}px` }}
-            className="fixed right-0 top-0 h-dvh w-full sm:w-(--drawer-w) bg-white dark:bg-(--dark-surface) z-50 flex flex-col shadow-(--e3) sm:border-l border-(--neutral-200) dark:border-(--dark-border)"
+            className="fixed right-0 top-0 h-dvh w-full sm:w-(--drawer-w) bg-white dark:bg-(--dark-surface) z-[36] flex flex-col shadow-(--e3) sm:border-l border-(--neutral-200) dark:border-(--dark-border)"
           >
             <div className="h-14 sm:h-16 flex items-center gap-1 sm:justify-between px-2 sm:px-6 border-b border-(--neutral-200) dark:border-(--dark-border) bg-(--green-50) dark:bg-(--dark-bg) shrink-0">
               <button

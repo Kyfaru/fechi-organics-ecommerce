@@ -313,6 +313,7 @@ export const approvalExecutors: Record<string, Executor> = {
     const body = payload as {
       name: string; type: string; audienceType?: string; subject?: string; heading?: string;
       previewText?: string; content?: string; audienceCustomerIds?: string[];
+      audienceExcludeIds?: string[]; sourceCampaignId?: string; excludeSourceRecipients?: boolean;
       status?: string; scheduledAt?: string;
     };
     return db.campaign.create({
@@ -325,6 +326,9 @@ export const approvalExecutors: Record<string, Executor> = {
         previewText: body.previewText ?? null,
         content: body.content ?? null,
         audienceCustomerIds: body.audienceCustomerIds ?? [],
+        audienceExcludeIds: body.audienceExcludeIds ?? [],
+        sourceCampaignId: body.sourceCampaignId ?? null,
+        excludeSourceRecipients: body.excludeSourceRecipients ?? false,
         status: (body.status ?? "DRAFT") as Prisma.campaignCreateInput["status"],
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
       },
