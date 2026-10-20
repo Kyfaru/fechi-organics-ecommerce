@@ -9,6 +9,7 @@ import { assertTrustedOrigin } from "@/lib/origin-check";
 import { requirePermission, loadCallerContext } from "@/lib/require-permission";
 import { logActivity } from "@/lib/admin-activity";
 import { reportError } from "@/lib/observability";
+import { DELETED_EMAIL_DOMAIN } from "@/lib/customers/deleted";
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/customers/[id]
@@ -146,6 +147,68 @@ export async function PATCH(
   } catch (e) {
     reportError(e, { route: "PATCH /api/admin/customers/[id]", tags: { domain: "customers" } });
     console.error("[admin/customers/[id]] PATCH error", e);
+    return Err.internal();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /api/admin/customers/[id]
+// Only for banned customers. "Delete" = anonymize + remove login: orders, the
+// hash-chained points ledger and tickets reference the user row, so the row
+// stays (PII wiped, email on DELETED_EMAIL_DOMAIN, banned) and the list hides it.
+// ---------------------------------------------------------------------------
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const originCheck = assertTrustedOrigin(req);
+  if (originCheck) return originCheck;
+  await connection();
+  try {
+    const denied = await requirePermission(req, { customers: ["update"] });
+    if (denied) return denied;
+
+    const { id } = await params;
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (id === session?.user.id) return Err.validation("You cannot delete your own account");
+
+    const target = await db.user.findUnique({ where: { id }, select: { name: true, role: true, banned: true } });
+    if (!target || target.role !== "client") return Err.notFound("Customer");
+    if (!target.banned) return Err.validation("Ban the customer before deleting");
+
+    await db.$transaction([
+      db.session.deleteMany({ where: { userId: id } }),
+      db.account.deleteMany({ where: { userId: id } }),
+      db.twoFactor.deleteMany({ where: { userId: id } }),
+      db.cart.deleteMany({ where: { userId: id } }),
+      db.favorite.deleteMany({ where: { userId: id } }),
+      db.wishlistItem.deleteMany({ where: { userId: id } }),
+      db.blogComment.deleteMany({ where: { userId: id } }),
+      db.blogReaction.deleteMany({ where: { userId: id } }),
+      db.inboxMessage.deleteMany({ where: { userId: id } }),
+      db.clientProfile.deleteMany({ where: { userId: id } }),
+      db.user.update({
+        where: { id },
+        data: {
+          name: "Deleted customer",
+          firstName: null, lastName: null, username: null, phone: null, phoneCode: null,
+          country: null, city: null, image: null,
+          email: `${id}${DELETED_EMAIL_DOMAIN}`,
+          emailVerified: false,
+          banned: true,
+          banReason: "Account deleted by admin",
+        },
+      }),
+    ]);
+
+    const caller = await loadCallerContext();
+    if (!caller.denied) {
+      logActivity(caller.id, `Deleted customer ${target.name}`, "customer", id, req, {}, "WARNING");
+    }
+    return ok({ id });
+  } catch (e) {
+    reportError(e, { route: "DELETE /api/admin/customers/[id]", tags: { domain: "customers" } });
+    console.error("[admin/customers/[id]] DELETE error", e);
     return Err.internal();
   }
 }

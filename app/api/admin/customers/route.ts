@@ -1,3 +1,4 @@
+import { DELETED_EMAIL_DOMAIN } from "@/lib/customers/deleted";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { headers } from "next/headers";
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get("status") ?? "all";
     const sort = searchParams.get("sort") ?? "newest";
 
-    const where: Record<string, unknown> = { role: "client" };
+    const where: Record<string, unknown> = { role: "client", NOT: { email: { endsWith: DELETED_EMAIL_DOMAIN } } };
 
     if (search) {
       where.OR = [
@@ -93,6 +94,7 @@ export async function GET(req: NextRequest) {
 
     // Derive stats on the fetched set (always unfiltered for stat cards)
     const allUsers = await db.user.findMany({
+      where: { NOT: { email: { endsWith: DELETED_EMAIL_DOMAIN } } },
       select: { banned: true, createdAt: true },
       take: 50_000,
     });

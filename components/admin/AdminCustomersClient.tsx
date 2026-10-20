@@ -7,8 +7,9 @@ import { toast } from "sonner";
 import {
   Users, UserCheck, UserPlus, Ban, Search, MoreHorizontal,
   Eye, Edit2, ShieldOff, Shield, MessageSquare, Ticket,
-  ChevronDown,
+  ChevronDown, Trash2,
 } from "lucide-react";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import Link from "next/link";
 import { PageHeader } from "@/components/admin/ui/PageHeader";
 import { StatsCard } from "@/components/ui/stats-card";
@@ -811,6 +812,17 @@ export function AdminCustomersClient() {
       <CustomerDrawer
         customerId={activeCustomerId}
         onClose={() => setActiveCustomerId(null)}
+      />
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+        title="Delete customer?"
+        description={`${deleteTarget?.name ?? "This customer"} will be removed from the list and can no longer sign in. Their personal details are erased; past orders and points history are kept. This cannot be undone.`}
+        confirmLabel="Delete customer"
+        danger
+        loading={deleteMutation.isPending}
       />
     </div>
   );
