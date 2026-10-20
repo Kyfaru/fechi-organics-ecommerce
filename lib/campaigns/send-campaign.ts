@@ -52,6 +52,12 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
   const sentKey = (userId: string, channel: string) => `${userId}:${channel}`;
   const alreadySentSet = new Set(alreadySent.map((r) => sentKey(r.userId, r.channel)));
 
+  // Phones (normalised to E.164, so "0712 345 678" == "+254712345678") that have
+  // already had this SMS, or will in this run. Keyed by number, not by user, so a
+  // different customer name on the same number never gets a second text.
+  const seenPhones = new Set<string>();
+  const smsReachedUserIds = new Set(alreadySent.filter((r) => r.channel === "SMS").map((r) => r.userId));
+
   // Edited-as-new campaign: skip anyone the original already reached, per channel.
   if (campaign.excludeSourceRecipients && campaign.sourceCampaignId) {
     const reached = await db.campaignRecipient.findMany({
@@ -61,8 +67,22 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
       },
       select: { userId: true, channel: true },
     });
-    for (const r of reached) alreadySentSet.add(sentKey(r.userId, r.channel));
+    for (const r of reached) {
+      alreadySentSet.add(sentKey(r.userId, r.channel));
+      if (r.channel === "SMS") smsReachedUserIds.add(r.userId);
+    }
     console.info(`[send-campaign] ${campaignId} excluding ${reached.length} recipients already reached by ${campaign.sourceCampaignId}`);
+  }
+
+  if (smsReachedUserIds.size > 0) {
+    const reachedUsers = await db.user.findMany({
+      where: { id: { in: [...smsReachedUserIds] } },
+      select: { phone: true, phoneCode: true },
+    });
+    for (const u of reachedUsers) {
+      const e164 = u.phone ? combineLegacyPhone(u.phone, u.phoneCode) : null;
+      if (e164) seenPhones.add(e164);
+    }
   }
 
   await db.campaign.update({
@@ -102,7 +122,6 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
   const countedUserIds = new Set(alreadySent.map((r) => r.userId));
   let sentCount = countedUserIds.size;
   let skippedNoPhone = 0;
-  const seenPhones = new Set<string>();
   let failedCount = 0;
 
   async function recordResult(
@@ -166,7 +185,7 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
             const phone = combineLegacyPhone(user.phone!, user.phoneCode);
             if (!phone) throw new Error("Invalid phone number");
             // Guest checkouts can create several user rows for one phone; text each number once.
-            if (seenPhones.has(phone)) throw new Error("Duplicate number in this campaign");
+            if (seenPhones.has(phone)) throw new Error("Duplicate number: this phone already received (or is receiving) this SMS");
             seenPhones.add(phone);
             // noFallback: a timeout can mean AT already sent; a Twilio retry would double-send.
             const sid = await sendSms(phone, plainContent, TWILIO_STATUS_CALLBACK, { noFallback: true });

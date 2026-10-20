@@ -1197,7 +1197,7 @@ function ProductDrawer({
 
   return (
     <>
-    <Drawer open={open} onClose={unsavedGuard.requestClose} title={isNew ? "Add Product" : "Edit Product"} width={640} footer={footer}>
+    <Drawer open={open} onClose={unsavedGuard.requestClose} confirmClose={false} title={isNew ? "Add Product" : "Edit Product"} width={640} footer={footer}>
       <div className="flex flex-col gap-7">
 
         {/* ── 1. Basic Info ── */}

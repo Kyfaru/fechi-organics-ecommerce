@@ -396,7 +396,7 @@ body {
     to   { opacity: 1; transform: none; }
   }
 }
-.admin-page-enter { animation: admin-page-in 0.28s cubic-bezier(0.32, 0.72, 0, 1) both; }
+.admin-page-enter { animation: admin-page-in 0.28s cubic-bezier(0.32, 0.72, 0, 1) backwards; } /* backwards, not both: a filled transform/opacity animation keeps a stacking context that traps fixed modals under the drawer/header */
 @media (prefers-reduced-motion: reduce) { .admin-page-enter { animation: none; } }
 
 /* Inline admin modals: sheet-up on phones, fade on desktop */
@@ -405,9 +405,11 @@ body {
 @keyframes admin-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes admin-sheet { from { opacity: 0; transform: translateY(32px); } to { opacity: 1; transform: none; } }
 @media (max-width: 639px) {
-  .admin-overlay { padding: 0 !important; }
-  .admin-overlay > * { width: 100% !important; max-width: none !important; margin: 0 !important; border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important; max-height: 92dvh; overflow-y: auto; }
+  .admin-overlay { align-items: center !important; justify-content: center !important; padding: 16px !important; }
+  .admin-overlay > * { width: 100% !important; max-width: 440px !important; margin: 0 !important; max-height: 90dvh; overflow-y: auto; }
 }
+/* page behind an open modal cannot scroll */
+body:has(.admin-overlay) { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .admin-overlay, .admin-overlay > * { animation: none; } }
 
 /* Raw admin tables -> stacked cards on phones (no horizontal scroll). */
