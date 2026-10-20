@@ -385,7 +385,7 @@ function InStoreOrderDrawerContent({
   const canDownload = isPaid;
 
   return (
-    <Drawer open={open} onClose={onClose} title={`Order ${order.orderNumber ?? shortId(order.id)}`} width={640} footer={null}>
+    <Drawer confirmClose={false} open={open} onClose={onClose} title={`Order ${order.orderNumber ?? shortId(order.id)}`} width={640} footer={null}>
       <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
         {/* ── Left ── */}
         <div className="flex-1 min-w-0 flex flex-col gap-6">

@@ -273,7 +273,7 @@ function CustomerDrawer({
   ];
 
   return (
-    <Drawer
+    <Drawer confirmClose={false}
       open={!!customerId}
       onClose={onClose}
       title={customer?.name ?? "Customer Profile"}

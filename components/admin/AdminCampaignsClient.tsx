@@ -495,7 +495,7 @@ export function AdminCampaignsClient() {
       {/* Create Campaign Drawer */}
       <Drawer
         open={drawerOpen}
-        onClose={unsavedGuard.requestClose}
+        onClose={unsavedGuard.requestClose} confirmClose={false}
         title={editSource ? "Edit campaign (saves as a new campaign)" : "Create Campaign"}
         width={640}
         footer={

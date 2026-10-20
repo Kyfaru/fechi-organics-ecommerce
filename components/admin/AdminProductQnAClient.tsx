@@ -167,7 +167,7 @@ export function AdminProductQnAClient() {
       </div>
 
       {/* Answer Drawer */}
-      <Drawer
+      <Drawer confirmClose={false}
         open={answerDrawerOpen}
         onClose={() => setAnswerDrawerOpen(false)}
         title="Answer Question"

@@ -26,13 +26,13 @@ export function ConfirmModal({
         <>
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/45 z-50"
+            className="fixed inset-0 bg-black/45 z-[100]"
             onClick={onClose}
           />
           <motion.div
             initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 24 }}
             transition={{ duration: 0.2 }}
-            className="fixed z-50 bg-white dark:bg-(--dark-surface) shadow-(--e3) p-5 sm:p-6 max-sm:inset-x-0 max-sm:bottom-0 max-sm:rounded-t-[16px] max-sm:pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-full sm:max-w-[480px] sm:rounded-[12px]"
+            className="fixed z-[100] bg-white dark:bg-(--dark-surface) shadow-(--e3) p-5 sm:p-6 max-sm:inset-x-4 max-sm:top-1/2 max-sm:-translate-y-1/2 max-sm:rounded-[12px] sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-full sm:max-w-[480px] sm:rounded-[12px]"
           >
             <div className="flex items-start gap-4">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${danger ? "bg-(--danger-bg)" : "bg-(--gold-50)"}`}>

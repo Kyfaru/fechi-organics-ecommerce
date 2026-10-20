@@ -382,7 +382,7 @@ function InviteDrawer({
     <>
     <Drawer
       open={open}
-      onClose={unsavedGuard.requestClose}
+      onClose={unsavedGuard.requestClose} confirmClose={false}
       title="Invite Staff Member"
       width={640}
       footer={

@@ -237,7 +237,7 @@ export function AdminTrackingClient() {
       </div>
 
       {/* Update Tracking Drawer */}
-      <Drawer
+      <Drawer confirmClose={false}
         open={drawerOpen}
         onClose={closeDrawer}
         title="Update Tracking"

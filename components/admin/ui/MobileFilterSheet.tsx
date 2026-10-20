@@ -46,7 +46,7 @@ export function MobileFilterSheet({ groups, title = "Filters" }: { groups: Filte
           </span>
         )}
       </button>
-      <Drawer open={open} onClose={() => setOpen(false)} title={title}>
+      <Drawer confirmClose={false} open={open} onClose={() => setOpen(false)} title={title}>
         <SheetBody groups={groups} onDone={() => setOpen(false)} />
       </Drawer>
     </>

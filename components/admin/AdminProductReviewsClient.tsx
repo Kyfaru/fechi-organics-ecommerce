@@ -265,7 +265,7 @@ export function AdminProductReviewsClient() {
       </div>
 
       {/* Reply Drawer */}
-      <Drawer
+      <Drawer confirmClose={false}
         open={replyDrawerOpen}
         onClose={() => setReplyDrawerOpen(false)}
         title="Reply to Review"
