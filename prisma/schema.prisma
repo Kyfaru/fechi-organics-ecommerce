@@ -1382,21 +1382,26 @@ model couponRedemption {
 // ============================================================================
 
 model campaign {
-  id                  String         @id @default(cuid())
-  name                String
-  type                CampaignType
-  audienceType        String         @default("ALL")
-  subject             String?
-  heading             String?
-  previewText         String?
-  content             String?        @db.Text
-  audienceCustomerIds String[]       @default([])
-  status              CampaignStatus @default(DRAFT)
-  scheduledAt         DateTime?
-  sentAt              DateTime?
-  sentCount           Int            @default(0)
-  lastError           String?        @db.Text
-  createdAt           DateTime       @default(now())
+  id                      String         @id @default(cuid())
+  name                    String
+  type                    CampaignType
+  audienceType            String         @default("ALL")
+  subject                 String?
+  heading                 String?
+  previewText             String?
+  content                 String?        @db.Text
+  audienceCustomerIds     String[]       @default([])
+  // Customers never sent to, regardless of audience (picked in the campaign drawer).
+  audienceExcludeIds      String[]       @default([])
+  // "Edit" clones a campaign; when set, people the source already reached are skipped.
+  sourceCampaignId        String?
+  excludeSourceRecipients Boolean        @default(false)
+  status                  CampaignStatus @default(DRAFT)
+  scheduledAt             DateTime?
+  sentAt                  DateTime?
+  sentCount               Int            @default(0)
+  lastError               String?        @db.Text
+  createdAt               DateTime       @default(now())
 
   @@schema("admin")
 }

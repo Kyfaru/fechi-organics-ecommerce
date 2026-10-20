@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
     const users = await db.user.findMany({
       where,
       orderBy,
-      take: 200,
+      take: 50_000, // ponytail: effectively uncapped; add server paging if clients pass ~50k
       select: {
         id: true,
         companyId: true,
@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
     // Derive stats on the fetched set (always unfiltered for stat cards)
     const allUsers = await db.user.findMany({
       select: { banned: true, createdAt: true },
-      take: 10000,
+      take: 50_000,
     });
 
     const now = new Date();

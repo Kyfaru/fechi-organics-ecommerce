@@ -30,11 +30,17 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
 
   const users = await db.user.findMany({
     where: {
+      ...(campaign.audienceExcludeIds?.length ? { id: { notIn: campaign.audienceExcludeIds } } : {}),
       ...(isCustomAudience
-        ? { id: { in: campaign.audienceCustomerIds } }
-        : { emailVerified: true, banned: false }),
+        ? { id: { in: campaign.audienceCustomerIds.filter((id) => !campaign.audienceExcludeIds?.includes(id)) } }
+        // SMS needs only a phone number (no email consent involved); email/push
+        // additionally require a verified email — enforced per channel in the loop.
+        : {
+            banned: false,
+            OR: [{ emailVerified: true }, { phone: { not: null } }],
+          }),
     },
-    select: { id: true, email: true, name: true, phone: true, phoneCode: true },
+    select: { id: true, email: true, name: true, phone: true, phoneCode: true, emailVerified: true },
   });
 
   // Recipient rows already marked SENT/DELIVERED on a prior (failed/retried) run
@@ -45,6 +51,19 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
   });
   const sentKey = (userId: string, channel: string) => `${userId}:${channel}`;
   const alreadySentSet = new Set(alreadySent.map((r) => sentKey(r.userId, r.channel)));
+
+  // Edited-as-new campaign: skip anyone the original already reached, per channel.
+  if (campaign.excludeSourceRecipients && campaign.sourceCampaignId) {
+    const reached = await db.campaignRecipient.findMany({
+      where: {
+        campaignId: campaign.sourceCampaignId,
+        status: { in: ["SENT", "DELIVERED", "OPENED", "CLICKED"] },
+      },
+      select: { userId: true, channel: true },
+    });
+    for (const r of reached) alreadySentSet.add(sentKey(r.userId, r.channel));
+    console.info(`[send-campaign] ${campaignId} excluding ${reached.length} recipients already reached by ${campaign.sourceCampaignId}`);
+  }
 
   await db.campaign.update({
     where: { id: campaignId },
@@ -83,6 +102,7 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
   const countedUserIds = new Set(alreadySent.map((r) => r.userId));
   let sentCount = countedUserIds.size;
   let skippedNoPhone = 0;
+  const seenPhones = new Set<string>();
   let failedCount = 0;
 
   async function recordResult(
@@ -123,7 +143,9 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
     for (const user of batch) {
       for (const channel of channels) {
         if (alreadySentSet.has(sentKey(user.id, channel))) continue;
-        if (channel === "SMS" && !user.phone) {
+        // Email/push consent = verified email; custom lists are explicit admin picks.
+        if (channel !== "SMS" && !isCustomAudience && !user.emailVerified) continue;
+        if (channel === "SMS" && !user.phone?.trim()) {
           // Never skip silently — leave a row so the delivery drawer shows why.
           skippedNoPhone++;
           await recordResult(user.id, "SMS", { ok: false, error: "No phone number on file" });
@@ -143,6 +165,9 @@ export async function runCampaignSend(campaignId: string, campaign: Campaign) {
           } else if (channel === "SMS") {
             const phone = combineLegacyPhone(user.phone!, user.phoneCode);
             if (!phone) throw new Error("Invalid phone number");
+            // Guest checkouts can create several user rows for one phone; text each number once.
+            if (seenPhones.has(phone)) throw new Error("Duplicate number in this campaign");
+            seenPhones.add(phone);
             // noFallback: a timeout can mean AT already sent; a Twilio retry would double-send.
             const sid = await sendSms(phone, plainContent, TWILIO_STATUS_CALLBACK, { noFallback: true });
             await recordResult(user.id, "SMS", { ok: true, providerMessageId: sid });

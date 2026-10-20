@@ -30,6 +30,7 @@ export interface CustomerOption {
   id: string;
   name: string;
   email: string;
+  phone?: string | null;
   image?: string;
 }
 
@@ -40,6 +41,8 @@ export interface MultiCustomerSelectProps {
   onChange: (ids: string[]) => void;
   placeholder?: string;
   className?: string;
+  /** Allow removing the last selection (e.g. an optional exclude list). */
+  allowEmpty?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -76,6 +79,7 @@ export default function MultiCustomerSelect({
   onChange,
   placeholder = "Select customers…",
   className = "",
+  allowEmpty = false,
 }: MultiCustomerSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -113,11 +117,11 @@ export default function MultiCustomerSelect({
     (id: string) => {
       const isSelected = value.includes(id);
       // Enforce minimum 1 selected
-      if (isSelected && value.length <= 1) return;
+      if (isSelected && value.length <= 1 && !allowEmpty) return;
       const next = isSelected ? value.filter((x) => x !== id) : [...value, id];
       onChange(next);
     },
-    [value, onChange],
+    [value, onChange, allowEmpty],
   );
 
   // ── Derived data ─────────────────────────────────────────────────────────
@@ -126,7 +130,11 @@ export default function MultiCustomerSelect({
   const filteredCustomers = customers.filter((c) => {
     if (!query.trim()) return true;
     const q = query.toLowerCase();
-    return c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q);
+    return (
+      c.name.toLowerCase().includes(q) ||
+      c.email.toLowerCase().includes(q) ||
+      (c.phone ?? "").replace(/\s/g, "").includes(q.replace(/\s/g, ""))
+    );
   });
 
   // Partition into selected-first then rest (both sorted alphabetically within each group)
@@ -244,7 +252,7 @@ export default function MultiCustomerSelect({
             ) : (
               displayList.map((customer) => {
                 const isSelected = value.includes(customer.id);
-                const isOnlyOne  = isSelected && value.length <= 1;
+                const isOnlyOne  = isSelected && value.length <= 1 && !allowEmpty;
 
                 return (
                   <div

@@ -61,6 +61,9 @@ export async function POST(req: NextRequest) {
     previewText?: string;
     content?: string;
     audienceCustomerIds?: string[];
+    audienceExcludeIds?: string[];
+    sourceCampaignId?: string;
+    excludeSourceRecipients?: boolean;
     status?: "DRAFT" | "SCHEDULED";
     scheduledAt?: string;
   };
@@ -73,7 +76,16 @@ export async function POST(req: NextRequest) {
   if (!body.name?.trim()) return Err.validation("Campaign name is required");
   if (!["EMAIL", "SMS", "PUSH", "WHATSAPP", "ALL"].includes(body.type)) return Err.validation("Invalid campaign type");
 
+  const isIdList = (v: unknown) => v === undefined || (Array.isArray(v) && v.every((x) => typeof x === "string"));
+  if (!isIdList(body.audienceCustomerIds) || !isIdList(body.audienceExcludeIds)) {
+    return Err.validation("Audience lists must be arrays of customer ids");
+  }
+
   try {
+    if (body.sourceCampaignId) {
+      const src = await db.campaign.findUnique({ where: { id: body.sourceCampaignId }, select: { id: true } });
+      if (!src) return Err.validation("Source campaign not found");
+    }
     const ctx = await loadCallerContext();
     if (ctx.denied) return Err.forbidden();
 

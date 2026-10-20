@@ -45,6 +45,7 @@ interface Campaign {
   previewText: string | null;
   content: string | null;
   audienceCustomerIds: string[];
+  audienceExcludeIds?: string[];
   status: "DRAFT" | "SCHEDULED" | "SENDING" | "SENT" | "FAILED";
   scheduledAt: string | null;
   sentAt: string | null;
@@ -86,7 +87,7 @@ export function AdminCampaignsClient() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
   const [selectedType, setSelectedType] = useState<CampaignType | null>(null);
-  const [sendMode, setSendMode] = useState<"now" | "later">("now");
+  const [sendMode, setSendMode] = useState<"draft" | "now" | "later">("now");
   const [deleteTarget, setDeleteTarget] = useState<Campaign | null>(null);
 
   // Send-options modal state — lets an admin pick Send Now / Schedule / Send Later per campaign
@@ -104,8 +105,12 @@ export function AdminCampaignsClient() {
     previewText: "",
     content: "",
     audienceCustomerIds: [] as string[],
+    audienceExcludeIds: [] as string[],
+    excludeSourceRecipients: true,
     scheduledAt: "",
   });
+  // Set when the drawer was opened via Edit: saving creates a NEW campaign cloned from this one.
+  const [editSource, setEditSource] = useState<Campaign | null>(null);
   const unsavedGuard = useUnsavedChangesGuard(form, drawerOpen, closeDrawer);
 
   // ── Fetch campaigns ────────────────────────────────────────────────────────
@@ -149,10 +154,11 @@ export function AdminCampaignsClient() {
       fetch("/api/admin/customers").then((r) =>
         r.json().then((j) =>
           (j?.data?.users ?? []).map(
-            (u: { id: string; name: string; email: string; image?: string }) => ({
+            (u: { id: string; name: string; email: string; phone?: string | null; image?: string }) => ({
               id: u.id,
               name: u.name,
               email: u.email,
+              phone: u.phone,
               image: u.image,
             })
           )
@@ -163,7 +169,7 @@ export function AdminCampaignsClient() {
 
   // ── Create campaign ────────────────────────────────────────────────────────
   const createMutation = useMutation({
-    mutationFn: async (status: "DRAFT" | "SCHEDULED") => {
+    mutationFn: async () => {
       const res = await fetch("/api/admin/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -171,7 +177,7 @@ export function AdminCampaignsClient() {
           name: form.name,
           type: selectedType,
           audienceType: form.audienceType,
-          heading: form.heading || undefined,
+          heading: hasHeading ? form.heading || undefined : undefined,
           subject: form.subject || undefined,
           previewText: form.previewText || undefined,
           content: form.content || undefined,
@@ -179,18 +185,41 @@ export function AdminCampaignsClient() {
             form.audienceType === "CUSTOM"
               ? form.audienceCustomerIds
               : [],
-          status,
-          scheduledAt:
-            status === "SCHEDULED" ? form.scheduledAt || undefined : undefined,
+          audienceExcludeIds:
+            form.audienceType === "CUSTOM" ? [] : form.audienceExcludeIds,
+          sourceCampaignId: editSource?.id,
+          excludeSourceRecipients: editSource ? form.excludeSourceRecipients : false,
+          status: "DRAFT",
         }),
       });
       const json = await res.json();
       if (!json.ok)
         throw new Error(json.error?.message ?? "Failed to create campaign");
-      return json.data;
+      const created = json.data;
+      // Queued for approval: no campaign row yet, so there is nothing to send.
+      if (created?.queued) return created;
+      if (sendMode === "draft") return created;
+
+      // Create as DRAFT, then hand off to the send endpoint (queue/schedule/approval live there).
+      const sendRes = await fetch(`/api/admin/campaigns/${created.id}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          sendMode === "later"
+            ? { mode: "schedule", scheduledAt: new Date(form.scheduledAt).toISOString() }
+            : { mode: "now" }
+        ),
+      });
+      const sendJson = await sendRes.json();
+      if (!sendJson.ok)
+        throw new Error(`Saved as draft, but sending failed: ${sendJson.error?.message ?? "unknown error"}`);
+      return created;
     },
-    onSuccess: (d: Campaign) => {
-      toast.success(`Campaign "${d.name}" saved`);
+    onSuccess: (d: Campaign & { queued?: boolean }) => {
+      if (d?.queued) toast.success("Sent for approval");
+      else if (sendMode === "now") toast.success(`Campaign "${d.name}" is sending now`);
+      else if (sendMode === "later") toast.success(`Campaign "${d.name}" scheduled`);
+      else toast.success(`Campaign "${d.name}" saved as draft`);
       qc.invalidateQueries({ queryKey: ["admin-campaigns"] });
       closeDrawer();
     },
@@ -251,7 +280,29 @@ export function AdminCampaignsClient() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Edit = clone: prefill a fresh drawer from an existing campaign; the original is untouched.
+  function openEditDrawer(c: Campaign) {
+    setEditSource(c);
+    setSelectedType(c.type);
+    setStep(2);
+    setForm({
+      name: `${c.name} (edited)`,
+      heading: c.heading ?? "",
+      audienceType: c.audienceType,
+      subject: c.subject ?? "",
+      previewText: c.previewText ?? "",
+      content: c.content ?? "",
+      audienceCustomerIds: c.audienceCustomerIds ?? [],
+      audienceExcludeIds: c.audienceExcludeIds ?? [],
+      excludeSourceRecipients: true,
+      scheduledAt: "",
+    });
+    setSendMode("now");
+    setDrawerOpen(true);
+  }
+
   function openDrawer() {
+    setEditSource(null);
     setStep(1);
     setSelectedType(null);
     setForm({
@@ -262,6 +313,8 @@ export function AdminCampaignsClient() {
       previewText: "",
       content: "",
       audienceCustomerIds: [],
+      audienceExcludeIds: [],
+      excludeSourceRecipients: true,
       scheduledAt: "",
     });
     setSendMode("now");
@@ -278,6 +331,8 @@ export function AdminCampaignsClient() {
   // Whether the current type uses SMS sending
   const isSmsType =
     selectedType === "SMS" || selectedType === "ALL";
+  // Plain-text channels never render a heading.
+  const hasHeading = selectedType !== "SMS" && selectedType !== "WHATSAPP";
 
   // ── Table columns ─────────────────────────────────────────────────────────
   const columns = [
@@ -441,41 +496,34 @@ export function AdminCampaignsClient() {
       <Drawer
         open={drawerOpen}
         onClose={unsavedGuard.requestClose}
-        title="Create Campaign"
+        title={editSource ? "Edit campaign (saves as a new campaign)" : "Create Campaign"}
         width={640}
         footer={
           step === 2 ? (
             <>
               <button
-                onClick={() => setStep(1)}
+                onClick={() => (editSource ? unsavedGuard.requestClose() : setStep(1))}
                 className="h-10 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors"
               >
-                Back
+                {editSource ? "Cancel" : "Back"}
               </button>
               <div className="ml-auto flex gap-2">
                 <button
-                  onClick={() => createMutation.mutate("DRAFT")}
-                  disabled={createMutation.isPending}
-                  className="h-10 px-4 rounded-[8px] border border-(--neutral-200) font-dm text-[14px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors disabled:opacity-50"
-                >
-                  Save Draft
-                </button>
-                <button
-                  onClick={() =>
-                    createMutation.mutate(
-                      sendMode === "later" ? "SCHEDULED" : "DRAFT"
-                    )
-                  }
+                  onClick={() => createMutation.mutate()}
                   disabled={
-                    createMutation.isPending || !form.name.trim()
+                    createMutation.isPending ||
+                    !form.name.trim() ||
+                    (sendMode === "later" && !form.scheduledAt)
                   }
                   className="h-10 px-5 rounded-[8px] bg-(--green-800) text-white font-dm text-[14px] font-medium hover:bg-(--green-900) transition-colors disabled:opacity-50"
                 >
                   {createMutation.isPending
-                    ? "Saving..."
+                    ? "Working..."
                     : sendMode === "later"
                     ? "Schedule"
-                    : "Save"}
+                    : sendMode === "draft"
+                    ? "Save Draft"
+                    : "Send Now"}
                 </button>
               </div>
             </>
@@ -588,7 +636,8 @@ export function AdminCampaignsClient() {
               />
             </Field>
 
-            {/* Heading — always shown */}
+            {/* Heading — email/push only; SMS and WhatsApp are plain text */}
+            {hasHeading && (
             <Field label="Heading" required>
               <input
                 value={form.heading}
@@ -599,6 +648,7 @@ export function AdminCampaignsClient() {
                 className={inputCls}
               />
             </Field>
+            )}
 
             {/* Audience */}
             <Field label="Audience">
@@ -614,6 +664,8 @@ export function AdminCampaignsClient() {
                         e.target.value !== "CUSTOM"
                           ? []
                           : f.audienceCustomerIds,
+                      audienceExcludeIds:
+                        e.target.value === "CUSTOM" ? [] : f.audienceExcludeIds,
                     }))
                   }
                   className={`${inputCls} appearance-none pr-8`}
@@ -640,6 +692,44 @@ export function AdminCampaignsClient() {
                   }
                   placeholder="Search and select customers..."
                 />
+              </Field>
+            )}
+
+            {/* Exclude list — everyone-style audiences only */}
+            {form.audienceType !== "CUSTOM" && (
+              <Field label="Exclude Customers" hint="These customers will never receive this campaign">
+                <MultiCustomerSelect
+                  customers={customersData}
+                  value={form.audienceExcludeIds}
+                  allowEmpty
+                  onChange={(ids) =>
+                    setForm((f) => ({ ...f, audienceExcludeIds: ids }))
+                  }
+                  placeholder="Search customers to exclude..."
+                />
+              </Field>
+            )}
+
+            {/* Edited copy of a campaign that already went out */}
+            {editSource && editSource.sentCount > 0 && (
+              <Field label="People who already received the original">
+                <div className="flex flex-col gap-2">
+                  {[
+                    { v: true, t: `Exclude them (${editSource.sentCount} already reached)` },
+                    { v: false, t: "Include everyone again" },
+                  ].map((o) => (
+                    <label key={String(o.v)} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="excludeSource"
+                        checked={form.excludeSourceRecipients === o.v}
+                        onChange={() => setForm((f) => ({ ...f, excludeSourceRecipients: o.v }))}
+                        className="accent-(--green-800)"
+                      />
+                      <span className="font-dm text-[14px] text-(--neutral-700)">{o.t}</span>
+                    </label>
+                  ))}
+                </div>
               </Field>
             )}
 
@@ -721,7 +811,19 @@ export function AdminCampaignsClient() {
                     className="accent-(--green-800)"
                   />
                   <span className="font-dm text-[14px] text-(--neutral-700)">
-                    Save now (send manually later)
+                    Send now
+                  </span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="sendMode"
+                    checked={sendMode === "draft"}
+                    onChange={() => setSendMode("draft")}
+                    className="accent-(--green-800)"
+                  />
+                  <span className="font-dm text-[14px] text-(--neutral-700)">
+                    Save as draft (send manually later)
                   </span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -885,6 +987,18 @@ export function AdminCampaignsClient() {
       >
         {viewTarget && (
           <div className="space-y-5">
+            <div className="flex justify-end">
+              <button
+                onClick={() => {
+                  const c = viewTarget;
+                  setViewTarget(null);
+                  openEditDrawer(c);
+                }}
+                className="h-9 px-3 rounded-[8px] border border-(--neutral-200) font-dm text-[13px] text-(--neutral-700) hover:bg-(--neutral-50) transition-colors flex items-center gap-1.5"
+              >
+                <PencilLine size={14} /> Edit as new campaign
+              </button>
+            </div>
             {viewTarget.status === "FAILED" && (
               <div className="rounded-[8px] bg-(--danger-bg) p-3 font-dm text-[13px] text-(--danger)">
                 This campaign failed to send. Retrying it will skip recipients already
