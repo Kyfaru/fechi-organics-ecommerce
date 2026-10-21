@@ -382,7 +382,7 @@ export function AdminProductCategoriesClient() {
         open={drawerOpen}
         onClose={closeDrawer}
         title={editing ? "Edit Category" : "Add Category"}
-        width={480}
+        width={640}
         footer={drawerFooter}
       >
         <div className="flex flex-col gap-5">

@@ -143,7 +143,7 @@ export function AdminHomepageClient() {
         open={!!editing}
         onClose={() => setEditing(null)}
         title={`Edit Section${editing ? ` — ${editing.type.replace(/_/g, " ")}` : ""}`}
-        width={480}
+        width={640}
         footer={
           <>
             <button

@@ -241,7 +241,7 @@ export function AdminTrackingClient() {
         open={drawerOpen}
         onClose={closeDrawer}
         title="Update Tracking"
-        width={480}
+        width={640}
         footer={drawerFooter}
       >
         {editing && (

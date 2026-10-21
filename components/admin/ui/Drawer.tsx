@@ -27,7 +27,7 @@ function subscribeMobile(cb: () => void) {
 }
 const noop = () => () => {};
 
-export function Drawer({ open, onClose, title, children, footer, width = 480, confirmClose = true }: DrawerProps) {
+export function Drawer({ open, onClose, title, children, footer, width = 640, confirmClose = true }: DrawerProps) {
   const mobile = useSyncExternalStore(subscribeMobile, () => window.matchMedia("(max-width: 639px)").matches, () => false);
   const reduce = useReducedMotion();
   const mounted = useSyncExternalStore(noop, () => true, () => false);

@@ -271,7 +271,7 @@ export function AdminSuppliersClient() {
         open={drawer.open}
         onClose={closeDrawer}
         title={drawer.mode === "create" ? "Add Supplier" : "Edit Supplier"}
-        width={480}
+        width={640}
         footer={
           <>
             <button

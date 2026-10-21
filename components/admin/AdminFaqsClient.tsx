@@ -231,7 +231,7 @@ export function AdminFaqsClient() {
         open={drawer.open}
         onClose={closeDrawer}
         title={drawer.mode === "create" ? "Add FAQ" : "Edit FAQ"}
-        width={480}
+        width={640}
         footer={
           <>
             <button

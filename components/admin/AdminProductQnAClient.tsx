@@ -171,7 +171,7 @@ export function AdminProductQnAClient() {
         open={answerDrawerOpen}
         onClose={() => setAnswerDrawerOpen(false)}
         title="Answer Question"
-        width={480}
+        width={640}
         footer={answerFooter}
       >
         {selectedItem && (

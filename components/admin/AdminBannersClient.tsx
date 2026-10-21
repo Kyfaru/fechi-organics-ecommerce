@@ -299,7 +299,7 @@ export function AdminBannersClient() {
         open={drawer.open}
         onClose={closeDrawer}
         title={drawer.mode === "create" ? "Add Banner" : "Edit Banner"}
-        width={480}
+        width={640}
         footer={
           <>
             <button

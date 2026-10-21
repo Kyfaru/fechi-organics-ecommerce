@@ -3,6 +3,7 @@ import { CONSENT_COOKIE } from "@/lib/cookie-consent";
 import { GoogleAnalyticsScripts } from "./GoogleAnalyticsScripts";
 import { GoogleTagManagerScripts } from "./GoogleTagManagerScripts";
 import { CookieConsentBanner } from "./CookieConsentBanner";
+import { SkipOnAdmin } from "./SkipOnAdmin";
 
 /** Reads the consent cookie once and drives both the banner's visibility
  * and whether Google Analytics is allowed to load. Dynamic (reads
@@ -15,8 +16,8 @@ export async function ConsentGate() {
 
   return (
     <>
-      {hasConsented && <GoogleAnalyticsScripts />}
-      {hasConsented && <GoogleTagManagerScripts />}
+      {hasConsented && <SkipOnAdmin><GoogleAnalyticsScripts /></SkipOnAdmin>}
+      {hasConsented && <SkipOnAdmin><GoogleTagManagerScripts /></SkipOnAdmin>}
       <CookieConsentBanner initiallyConsented={hasConsented} />
     </>
   );

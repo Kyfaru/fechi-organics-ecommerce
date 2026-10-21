@@ -260,7 +260,7 @@ export function AdminShippingClient() {
         open={drawerOpen}
         onClose={closeDrawer}
         title={editing ? "Edit Shipping Zone" : "Add Shipping Zone"}
-        width={480}
+        width={640}
         footer={drawerFooter}
       >
         <div className="flex flex-col gap-5">

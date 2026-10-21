@@ -269,7 +269,7 @@ export function AdminProductReviewsClient() {
         open={replyDrawerOpen}
         onClose={() => setReplyDrawerOpen(false)}
         title="Reply to Review"
-        width={480}
+        width={640}
         footer={replyFooter}
       >
         {selectedReview && (

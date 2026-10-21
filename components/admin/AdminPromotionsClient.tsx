@@ -410,7 +410,7 @@ export function AdminPromotionsClient() {
         open={drawerOpen}
         onClose={unsavedGuard.requestClose} confirmClose={false}
         title={editTarget ? "Edit Promotion" : "Create Promotion"}
-        width={480}
+        width={640}
         footer={
           <>
             <button

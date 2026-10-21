@@ -620,7 +620,7 @@ function TestimonialDrawer({
       open={open}
       onClose={handleClose}
       title="Add Testimonial"
-      width={480}
+      width={640}
       footer={footer}
     >
       <div className="flex flex-col gap-6">

@@ -406,7 +406,7 @@ export function AdminInventoryClient() {
         open={adjustDrawer.open}
         onClose={closeDrawer}
         title="Adjust Stock"
-        width={480}
+        width={640}
         footer={
           <>
             <button
